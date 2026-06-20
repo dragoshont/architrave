@@ -1,0 +1,9 @@
+{
+  "platform": "web",
+  "stack": "react",
+  "designSource": { "type": "storybook", "path": "web/.storybook" },
+  "knowledgePack": "web",
+  "applyTo": ["web/**"],
+  "build": "npm --prefix web run build",
+  "test": "npm --prefix web run test"
+}

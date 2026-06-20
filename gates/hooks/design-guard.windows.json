@@ -1,0 +1,11 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "type": "command",
+        "command": "pwsh -NoProfile -File ./gates/checks.ps1 -Quick",
+        "timeout": 20
+      }
+    ]
+  }
+}

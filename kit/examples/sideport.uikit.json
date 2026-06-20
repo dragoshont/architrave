@@ -1,0 +1,15 @@
+{
+  "platform": "web",
+  "stack": "react",
+  "designSource": {
+    "type": "storybook",
+    "path": "src/Sideport.Admin/.storybook",
+    "url": "https://dragoshont.github.io/sideport/",
+    "spec": "docs/ui/sideport-ui-design-spec.md"
+  },
+  "knowledgePack": "web",
+  "applyTo": ["src/Sideport.Admin/**", "docs/ui/**"],
+  "build": "npm --prefix src/Sideport.Admin run build",
+  "test": "npm --prefix src/Sideport.Admin run lint",
+  "screenshot": "npm --prefix src/Sideport.Admin run test:screens"
+}

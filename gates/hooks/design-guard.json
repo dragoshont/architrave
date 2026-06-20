@@ -1,0 +1,11 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "type": "command",
+        "command": "./gates/checks.sh --quick",
+        "timeout": 20
+      }
+    ]
+  }
+}

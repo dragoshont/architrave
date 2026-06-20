@@ -1,0 +1,16 @@
+{
+  "platform": "apple-macos",
+  "stack": "swiftui",
+  "designSource": { "type": "storybook", "path": "ui-lab", "url": "http://localhost:6007" },
+  "designMap": "docs/design/phonodeck-ui-map.json",
+  "knowledgePack": "apple",
+  "applyTo": [
+    "Sources/PhonoDeck/Features/**",
+    "Sources/PhonoDeck/Views/**",
+    "Sources/PhonoDeck/Design/**"
+  ],
+  "generate": "make generate",
+  "build": "make build",
+  "test": "make test",
+  "screenshot": "scripts/screenshot.sh"
+}

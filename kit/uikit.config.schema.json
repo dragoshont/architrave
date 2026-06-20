@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://architrave-ui/uikit.config.schema.json",
+  "title": "Architrave UI per-repo config",
+  "description": "Declares how Architrave UI retargets its agents, gates, and platform knowledge for one repo. Lives at the repo root as uikit.config.json. UI-only; backend/IaC is out of scope.",
+  "type": "object",
+  "required": ["platform", "stack", "designSource", "applyTo", "build", "test"],
+  "additionalProperties": false,
+  "properties": {
+    "platform": {
+      "type": "string",
+      "description": "Selects the knowledge pack the Platform Design agent loads.",
+      "enum": ["apple-macos", "apple-ios", "windows", "web"]
+    },
+    "stack": {
+      "type": "string",
+      "description": "UI framework used to implement the design natively.",
+      "enum": ["swiftui", "appkit", "winui", "wpf", "maui", "fluent-react", "react", "other"]
+    },
+    "designSource": {
+      "type": "object",
+      "description": "Where the canonical design lives (the thing to reproduce, never reinvent).",
+      "required": ["type", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "enum": ["storybook", "swift-ui-lab", "design-doc"] },
+        "path": { "type": "string", "description": "Repo-relative path to the design workbench (e.g. src/Admin/.storybook, ui-lab)." },
+        "url": { "type": "string", "description": "Optional running/published Storybook URL (e.g. http://localhost:6007 or a gh-pages demo)." },
+        "spec": { "type": "string", "description": "Optional repo-relative path to a written design spec (e.g. docs/ui/*-design-spec.md)." }
+      }
+    },
+    "designMap": {
+      "type": "string",
+      "description": "Optional repo-relative path to the component glossary / ui-map (e.g. docs/design/phonodeck-ui-map.json). Source of truth for component names."
+    },
+    "tokens": {
+      "type": "string",
+      "description": "Optional repo-relative path to the design tokens file(s) in W3C DTCG format (*.tokens.json). The single source of truth for design<->code reconciliation."
+    },
+    "tokenBuild": {
+      "type": "string",
+      "description": "Optional command that regenerates platform code from tokens (e.g. Style Dictionary / Terrazzo). Used by the reconcile gate."
+    },
+    "knowledgePack": {
+      "type": "string",
+      "description": "Override which knowledge pack to load. Defaults to the one implied by platform.",
+      "enum": ["apple", "microsoft", "web"]
+    },
+    "applyTo": {
+      "type": "array",
+      "description": "Globs where the UI lives. Scopes the Architrave UI instructions/agents inside a mixed repo (so the backend lane is untouched).",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "build": { "type": "string", "description": "Build command (e.g. 'make build', 'npm run build', 'dotnet build')." },
+    "test": { "type": "string", "description": "Test command (e.g. 'make test', 'npx playwright test', 'dotnet test')." },
+    "generate": { "type": "string", "description": "Optional pre-build generation step (e.g. 'xcodegen generate')." },
+    "screenshot": { "type": "string", "description": "Optional command/recipe that captures a screenshot to compare against the Storybook reference." }
+  }
+}
