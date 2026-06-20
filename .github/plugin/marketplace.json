@@ -1,6 +1,8 @@
 {
   "name": "architrave",
-  "owner": { "name": "dragoshont" },
+  "owner": {
+    "name": "dragoshont"
+  },
   "metadata": {
     "description": "Architrave UI — the design-grounded, judge-gated cross-platform UI feature-builder kit.",
     "version": "0.1.0"
@@ -8,11 +10,19 @@
   "plugins": [
     {
       "name": "architrave-ui",
-      "description": "Cross-platform, design-grounded, judge-gated UI feature-builder: UX Architect, UI Visual, pluggable Platform Design, Adversarial Judge, and the Feature Builder harness. Retargeted per repo via uikit.config.json.",
+      "description": "UI/UX agents that design and build native-looking apps for Apple (SwiftUI), Microsoft (WinUI), and the web (React). Grounds in your existing Storybook + design tokens, builds native, and gates every change with an AI judge plus your real build and tests. Bundles the UX Architect, UI Visual, pluggable Platform Design, Adversarial Judge, and Feature Builder harness; retargeted per repo via uikit.config.json.",
       "version": "0.1.0",
       "source": ".",
       "license": "MIT",
-      "keywords": ["ui", "design-system", "swiftui", "winui", "react", "agents", "judge"]
+      "keywords": [
+        "ui",
+        "design-system",
+        "swiftui",
+        "winui",
+        "react",
+        "agents",
+        "judge"
+      ]
     }
   ]
 }

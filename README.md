@@ -2,19 +2,21 @@
 
 **A crew of UI/UX agents that design *and* build native‑looking apps — for Apple, Microsoft, and the web.**
 
-Architrave UI gives your AI assistant (GitHub Copilot **or** Claude Code) a small team of specialist **UI/UX agents** and a set of **quality gates**. They work like a real product‑design crew: a **UX Architect** maps the flow and information architecture, a **UI Visual** designer makes it look right, and a pluggable **Platform Design** reviewer keeps it idiomatic for the OS — Apple's Human Interface Guidelines, Microsoft's Fluent, or the web's WCAG. They sketch and validate in **Storybook** first, then build the real thing natively — **SwiftUI, WinUI, or React** — and won't call it done until it builds, passes its tests, and clears an automated design review.
+Architrave UI is a **plugin for GitHub Copilot and Claude Code** that turns your AI assistant into a small **UI/UX design team** — and adds the quality gates that keep it honest. You install it once, point it at a UI repo, and ask it to design or change a screen.
 
-It **follows the design you already have**: your **Storybook** + design tokens become the source of truth the agents reproduce — component by its real name — instead of inventing new UI. No design yet? It helps you **establish** one, grounded in the platform's own guidelines, which then becomes the thing every later change is held to.
+Instead of one assistant guessing at UI, you get specialists: a **UX Architect** for flows and information architecture, a **UI Visual** designer for look and feel, and a pluggable **Platform Design** reviewer that knows each platform's rules — Apple's Human Interface Guidelines, Microsoft's Fluent, or the web's WCAG. They sketch and validate in **Storybook** first, then build the real thing natively in **SwiftUI, WinUI, or React** — and won't call it done until it builds, passes its tests, and clears an automated design review.
 
-One small config file (`uikit.config.json`) retargets the whole crew from SwiftUI to WinUI to React, so the **same method works in every UI repo you own**. It deliberately covers **UI/UX only** — backend services and infrastructure are a separate lane.
+It **follows the design you already have**: your Storybook + design tokens become the source of truth the agents reproduce — component by its real name — instead of inventing new UI. No design yet? It helps you **establish** one, grounded in the platform's own guidelines, that every later change is then held to.
 
-> **Status:** complete (M1–M4). Packaged as an agent plugin — verified in the real **`copilot`** *and* **`claude`** CLIs — installable per‑repo, and dogfooded on **PhonoDeck** (SwiftUI/macOS) and **Sideport** (React/web).
+One small config file (`uikit.config.json`) retargets the whole team from SwiftUI to WinUI to React, so the **same method works across your UI repos**. It deliberately covers **UI/UX only** — backend services and infrastructure are a separate lane.
+
+> **Status:** stable — packaged as an agent plugin, verified in the real **`copilot`** *and* **`claude`** CLIs, installable per‑repo, and used on real apps (**PhonoDeck**, SwiftUI / macOS; **Sideport**, React / web).
 
 ![Architrave UI — ground in your design, let specialist agents propose, gate with a judge + your real build, then ship native UI](assets/overview.png)
 
 ## A real app, built this way
 
-**PhonoDeck** — a native macOS music app (SwiftUI) — is the most mature repo Architrave UI is dogfooded on. Its design lives in **Storybook**; the agents ground in it, reproduce components by their real names, and build the native app to match — the sidebar, the Home recommendations, the now‑playing panel, and the `NowPlayingBar`, all held to Apple's Human Interface Guidelines.
+**PhonoDeck** — a native macOS music app (SwiftUI) — is the most mature app built this way. Its design lives in **Storybook**; the agents ground in it, reproduce components by their real names, and build the native app to match — the sidebar, the Home recommendations, the now‑playing panel, and the `NowPlayingBar`, all held to Apple's Human Interface Guidelines.
 
 ![PhonoDeck — a native macOS music app (SwiftUI): sidebar, Home with recommendations, and the now-playing panel — designed in Storybook, built native](assets/phonodeck.png)
 
@@ -43,15 +45,11 @@ Install the plugin once — then the agents are available everywhere, and the de
 
 ## Why this exists
 
-Three of your repos independently arrived at the **same** workflow:
+Hand an AI agent a UI task and it tends to **reinvent**: a brand‑new button, slightly different spacing, a component that ignores the design system you already maintain. You end up cleaning up inconsistent "AI slop" by hand.
 
-| Repo | Stack | Design source of truth | Tests |
-|---|---|---|---|
-| **PhonoDeck** | SwiftUI / macOS | Storybook (`ui-lab/`) + `phonodeck-ui-map.json` | XCTest |
-| **Sideport** (admin) | Vite + TS / web | Storybook (`.storybook`) + `docs/ui/*-design-spec.md` | Playwright |
-| **Tessera** (web) | .NET + `web/` | Storybook / design docs | — |
+Architrave UI takes the opposite stance — **ground in the design you already have, reproduce it, and prove it.** Your Storybook + design tokens are the source of truth; agents reproduce existing components by name and change only what's needed; and nothing is "done" until it passes your real build and tests **and** an automated design review.
 
-That convergence is the signal: a single **design‑first, reproduce‑don't‑reinvent, judge‑gated** method is worth extracting. Architrave UI is that method, made stack‑agnostic by a small per‑repo config.
+The method isn't theoretical — it emerged independently across real apps, **PhonoDeck** (native macOS, SwiftUI) and **Sideport** (web, React), which had each settled on the same design‑first, Storybook‑as‑source‑of‑truth, judge‑gated workflow. Architrave UI extracts that shared method into a stack‑agnostic kit, retargeted per repo by one small config file.
 
 ## Architecture — four layers
 
