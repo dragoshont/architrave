@@ -12,6 +12,12 @@ One small config file (`uikit.config.json`) retargets the whole crew from SwiftU
 
 ![Architrave UI — ground in your design, let specialist agents propose, gate with a judge + your real build, then ship native UI](assets/overview.png)
 
+## A real app, built this way
+
+**PhonoDeck** — a native macOS music app (SwiftUI) — is the most mature repo Architrave UI is dogfooded on. Its design lives in **Storybook**; the agents ground in it, reproduce components by their real names, and build the native app to match — the sidebar, the Home recommendations, the now‑playing panel, and the `NowPlayingBar`, all held to Apple's Human Interface Guidelines.
+
+![PhonoDeck — a native macOS music app (SwiftUI): sidebar, Home with recommendations, and the now-playing panel — designed in Storybook, built native](assets/phonodeck.png)
+
 ## Design the flow first, then build it native
 
 The agents work the way a design team does — **UX before pixels, pixels before code.** The UX Architect maps the information architecture, the screens, and *every* state (empty, loading, populated, error). You validate it in **Storybook**. Then UI Visual + Platform Design make it look native, and the Feature Builder ships it — SwiftUI, WinUI, or React.
