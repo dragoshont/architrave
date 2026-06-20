@@ -9,6 +9,6 @@ This repo uses **Architrave UI**, a design-grounded, judge-gated UI workflow. Th
 
 **Gates — must be green before a change is "done":**
 - Deterministic: `gates/checks.sh` (POSIX) or `gates/checks.ps1` (Windows) → runs the configured generate/build/test + validates the designMap/tokens JSON. `gates/reconcile.sh` / `.ps1` → reports design↔code token drift.
-- Semantic: for non-trivial features, use the **Feature Builder** agent (the judge-gated harness); the **Adversarial Judge** grades against `gates/rubric.md` and must return PASS.
+- Semantic: for non-trivial features, use the **Architrave** agent (the judge-gated harness); the **Adversarial Judge** grades against `gates/rubric.md` and must return PASS.
 
 **Never:** introduce platform-foreign patterns, raw values where a token exists, parallel abstractions, or UI that claims a capability the app can't truthfully perform.

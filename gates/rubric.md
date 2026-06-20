@@ -1,6 +1,6 @@
 # Feature evaluation rubric (the Evaluator)
 
-The criteria the **Adversarial Judge** applies to grade a *proposal* (pre‑implementation) or *implementation* (post‑implementation) against its specs and the established design language. It is the canonical rubric for the judge gates inside the **Feature Builder** harness. Platform‑agnostic: it is resolved per repo through `uikit.config.json` + the matching platform knowledge pack (`knowledge/apple.md` | `microsoft.md` | `web.md`).
+The criteria the **Adversarial Judge** applies to grade a *proposal* (pre‑implementation) or *implementation* (post‑implementation) against its specs and the established design language. It is the canonical rubric for the judge gates inside the **Architrave** harness. Platform‑agnostic: it is resolved per repo through `uikit.config.json` + the matching platform knowledge pack (`knowledge/apple.md` | `microsoft.md` | `web.md`).
 
 Grounded in modern eval practice:
 - **Anthropic** — *evaluator–optimizer* loop with clear criteria + stopping conditions; SMART success criteria; LLM‑graded rubrics where the judge **reasons first, then emits a verdict**, graded in a **separate context from the generator**.

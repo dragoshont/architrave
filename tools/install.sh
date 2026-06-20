@@ -96,5 +96,5 @@ Done. Next steps:
   2. Install the agents for local Copilot surfaces (CLI + app + VS Code):
        copilot plugin marketplace add dragoshont/architrave-ui
        copilot plugin install architrave-ui@architrave
-  3. Run the Feature Builder agent for a non-trivial UI change.
+  3. Run the Architrave agent for a non-trivial UI change.
 EOF

@@ -1,9 +1,9 @@
 # AGENTS.md — Architrave UI
 
-Architrave UI is a **cross-platform, design-grounded, judge-gated UI feature-builder kit**, distributed as a Copilot **agent plugin** + a per-repo **installer**. It is **UI / native only**; backend services and IaC are a separate lane and out of scope here.
+Architrave UI is a **cross-platform, design-grounded, judge-gated UI architrave kit**, distributed as a Copilot **agent plugin** + a per-repo **installer**. It is **UI / native only**; backend services and IaC are a separate lane and out of scope here.
 
 ## What's here
-- `agents/` — the five agents: **UX Architect**, **UI Visual**, **Platform Design** (pluggable), **Adversarial Judge**, **Feature Builder**. Shared `.agent.md` format across VS Code / Copilot CLI / the Copilot app / Claude Code.
+- `agents/` — the five agents: **UX Architect**, **UI Visual**, **Platform Design** (pluggable), **Adversarial Judge**, **Architrave**. Shared `.agent.md` format across VS Code / Copilot CLI / the Copilot app / Claude Code.
 - `gates/` — deterministic gates as **`.sh` + `.ps1` pairs** (`checks`, `reconcile`, `quality-gate`) + `rubric.md` (the judge's rubric) + `hooks/` (PostToolUse guards).
 - `knowledge/` — platform packs (`apple.md`, `microsoft.md`, `web.md`) + `design-tokens.md`.
 - `kit/` — `uikit.config.schema.json` (the per-repo config keystone) + `examples/`.

@@ -10,7 +10,7 @@
 - [x] `agents/ux-architect.agent.md` — platform‑agnostic IA/flow/state, grounded per‑repo by config + Storybook.
 - [x] `agents/ui-visual.agent.md` — platform‑agnostic visual hierarchy/tokens; loads the platform pack for specifics.
 - [x] `agents/platform-design.agent.md` — **pluggable**: reads `config.platform` and the matching `knowledge/*.md` (Apple HIG / Fluent / Web).
-- [x] `agents/feature-builder.agent.md` — the config‑driven, judge‑gated harness (understand → propose → judge → implement → reconcile → tests → judge → verify).
+- [x] `agents/architrave.agent.md` — the config‑driven, judge‑gated harness (understand → propose → judge → implement → reconcile → tests → judge → verify).
 - [x] `agents/adversarial-judge.agent.md` — LLM‑as‑judge against `gates/rubric.md` (cross‑platform).
 
 ## Milestone 3 — Gates (DONE)

@@ -26,11 +26,23 @@ That installs the agents everywhere your assistant runs. Then [set up a repo](#s
 
 ## Use it
 
-Open your assistant, pick the **Feature Builder** agent, and describe the change in plain language:
+Open your assistant, pick the **Architrave** agent, and describe the change in plain language:
 
 > Add an empty state to the library list — an icon, a short message, and a primary action.
 
-It grounds in your Storybook, proposes a design, gets it graded by the **Adversarial Judge**, **shows you the result as a Storybook page for your sign-off**, then implements it, reconciles tokens, and runs your real build + tests before calling it done. For smaller jobs, call a specialist directly: **UX Architect** (flows), **UI Visual** (looks), or **Platform Design** (native correctness).
+It grounds in your Storybook, proposes a design, gets it graded by the **Adversarial Judge**, **shows you the result as a Storybook page for your sign-off**, then implements it, reconciles tokens, and runs your real build + tests before calling it done.
+
+### The team behind it
+
+You only ever invoke **Architrave** — it runs a small crew of specialists under the hood, so you don't pick them separately. Here's what each one does on that single request:
+
+| Agent | Its job | On *“Add an empty state to the library list”* |
+|---|---|---|
+| **Architrave** | the lead you invoke | Runs the whole pipeline — design → your Storybook sign-off → code → gates — and reports back. |
+| **UX Architect** | how it works | Writes the empty state's message + primary action, and defines the loading / populated / error variants. |
+| **UI Visual** | how it looks | Applies your design tokens: spacing, type scale, the icon, the button style. |
+| **Platform Design** | native correctness | Checks it against the platform's rules — Apple HIG, Fluent, or WCAG (contrast, hit-target size). |
+| **Adversarial Judge** | the quality gate | Grades the design, then the built code, **PASS / REVISE / FAIL** against the rubric before it ships. |
 
 ## A real app, built this way
 
@@ -43,7 +55,7 @@ It grounds in your Storybook, proposes a design, gets it graded by the **Adversa
 Every change starts in **Storybook** — the fastest, most visual place to design and iterate, and the source of truth the build then matches.
 
 1. **Design the flow in Storybook.** The **UX Architect** lays out the screens and *every* state (empty, loading, populated, error); **UI Visual** styles them with your design tokens. You see it live, tweak it, and confirm — before any app code is written.
-2. **Build it for real.** The **Feature Builder** turns the approved design into shipping code. On the **web**, Storybook *is* the build — it develops the real **React** components in isolation, then composes them into pages. On **native** (**SwiftUI**, **WinUI**), Storybook is the spec the native code reproduces, kept in sync by the same design tokens. Either way, the **Adversarial Judge** plus your real build and tests gate it before it's done.
+2. **Build it for real.** **Architrave** turns the approved design into shipping code. On the **web**, Storybook *is* the build — it develops the real **React** components in isolation, then composes them into pages. On **native** (**SwiftUI**, **WinUI**), Storybook is the spec the native code reproduces, kept in sync by the same design tokens. Either way, the **Adversarial Judge** plus your real build and tests gate it before it's done.
 
 ![Designing a flow: information architecture, screens, and every state — sketched in Storybook and grounded in the platform's guidelines, before any native code](assets/flows.png)
 
@@ -51,7 +63,7 @@ Every change starts in **Storybook** — the fastest, most visual place to desig
 
 - 🧭 **Designs the UX, not just the pixels.** The *UX Architect* works out information architecture, navigation, and every state (empty / loading / error) — validated in **Storybook** before anything is built.
 - 🎨 **Makes it look native.** *UI Visual* + *Platform Design* hold the UI to the platform's own language — Apple HIG, Microsoft Fluent, web / WCAG — so it feels at home on each OS.
-- 🏗️ **Builds the real thing.** The *Feature Builder* turns the approved design into native code — SwiftUI, WinUI, or React — driven by your repo's actual build + tests.
+- 🏗️ **Builds the real thing.** *Architrave* turns the approved design into native code — SwiftUI, WinUI, or React — driven by your repo's actual build + tests.
 - 🎯 **Follows your design, never reinvents.** Every change starts from your existing Storybook + component map; agents reproduce a component by its real name and touch only the deltas.
 - ✅ **Won't ship slop.** An *Adversarial Judge* (LLM‑as‑judge) plus deterministic gates (your real build + tests + token lint) must *both* be green — and design tokens stay reconciled with code.
 - 🧩 **One method, every surface.** The same kit runs in the Copilot CLI, the Copilot desktop app, VS Code, **Claude Code**, and the cloud coding agent.
@@ -82,7 +94,7 @@ The method isn't theoretical — it emerged independently across real apps, **Ph
         │  the Platform Design agent loads the pack named by config.platform
         ▼
 3. AGENTS                      UX Architect · UI Visual · Platform Design (pluggable) ·
-        │                      Feature Builder (harness) · Adversarial Judge (LLM-as-judge)
+        │                      Architrave (harness) · Adversarial Judge (LLM-as-judge)
         ▼
 4. GATES                       deterministic (build/test/token-lint) + semantic (judge) + design↔code reconcile
 ```
@@ -97,7 +109,7 @@ Everything in layers 2–4 is **retargeted per repo by one config file** (`uikit
 - **System / semantic** (`sys.*`) — roles ("label/primary", "surface"). Theming + context (light/dark/RTL/density) lives here.
 - **Component** (`comp.*`) — per‑component element decisions, pointing at system tokens.
 
-Both the design (Storybook/Figma) and the code (SwiftUI `Color`/`Font`, WinUI `ResourceDictionary`, CSS vars) **reference the same token names**. A translation step (Style Dictionary / Terrazzo) generates platform code from the tokens. **Drift = when generated platform values diverge from committed code.** The reconcile gate diffs the two and the Feature Builder fixes by regenerating from the tokens (or, if the design legitimately changed, updates the tokens first, then the code).
+Both the design (Storybook/Figma) and the code (SwiftUI `Color`/`Font`, WinUI `ResourceDictionary`, CSS vars) **reference the same token names**. A translation step (Style Dictionary / Terrazzo) generates platform code from the tokens. **Drift = when generated platform values diverge from committed code.** The reconcile gate diffs the two and the Architrave fixes by regenerating from the tokens (or, if the design legitimately changed, updates the tokens first, then the code).
 
 ```
 design tweak ──▶ tokens (.tokens.json, SSOT) ──▶ Style Dictionary ──▶ swift / xaml / css
@@ -131,7 +143,7 @@ pwsh -NoProfile -File /path/to/architrave-ui/tools/install.ps1 .    # Windows
 
 This copies the agents → `.github/agents/`, the gates → `gates/`, the knowledge packs → `knowledge/`, scaffolds `uikit.config.json`, injects a grounding stanza into `AGENTS.md` (idempotent), wires the PostToolUse hook, and drops `.github/workflows/copilot-setup-steps.yml`.
 
-Then point it at your repo — edit `uikit.config.json` — set `platform`, `stack`, `designSource` (your Storybook), `tokens`, and the `build`/`test` commands. Then ask the **Feature Builder** agent to make a UI change; it grounds, proposes, judges, implements, reconciles, and verifies.
+Then point it at your repo — edit `uikit.config.json` — set `platform`, `stack`, `designSource` (your Storybook), `tokens`, and the `build`/`test` commands. Then ask the **Architrave** agent to make a UI change; it grounds, proposes, judges, implements, reconciles, and verifies.
 
 ## Layout
 
@@ -149,7 +161,7 @@ knowledge/
   microsoft.md                ← Microsoft Fluent 2 / WinUI pack — cited
   web.md                      ← Web + React + component-driven dev pack — cited
   design-tokens.md            ← 3-tier tokens + design↔code reconciliation — cited
-agents/                       ← UX Architect · UI Visual · Platform Design · Feature Builder · Adversarial Judge
+agents/                       ← UX Architect · UI Visual · Platform Design · Architrave · Adversarial Judge
 gates/                        ← rubric.md · checks.{sh,ps1} · reconcile.{sh,ps1} · quality-gate.{sh,ps1} · hooks/
 templates/                    ← AGENTS.stanza.md · copilot-setup-steps.yml (injected by the installer)
 tools/                        ← install.sh · install.ps1 (per-repo grounding)
