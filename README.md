@@ -24,6 +24,14 @@ claude plugin install architrave-ui@architrave
 
 That installs the agents everywhere your assistant runs. Then [set up a repo](#set-up-a-repo) to point them at your Storybook + build.
 
+## Use it
+
+Open your assistant, pick the **Feature Builder** agent, and describe the change in plain language:
+
+> Add an empty state to the library list — an icon, a short message, and a primary action.
+
+It grounds in your Storybook, proposes a design, gets it graded by the **Adversarial Judge**, implements it, reconciles tokens, and runs your real build + tests before calling it done. For smaller jobs, call a specialist directly: **UX Architect** (flows), **UI Visual** (looks), or **Platform Design** (native correctness).
+
 ## A real app, built this way
 
 **PhonoDeck** — a native macOS music app (SwiftUI) — is the most mature app built this way. Its design lives in **Storybook**; the agents ground in it, reproduce components by their real names, and build the native app to match — the sidebar, the Home recommendations, the now‑playing panel, and the `NowPlayingBar`, all held to Apple's Human Interface Guidelines.
