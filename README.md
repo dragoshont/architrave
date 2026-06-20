@@ -30,7 +30,7 @@ Open your assistant, pick the **Feature Builder** agent, and describe the change
 
 > Add an empty state to the library list — an icon, a short message, and a primary action.
 
-It grounds in your Storybook, proposes a design, gets it graded by the **Adversarial Judge**, implements it, reconciles tokens, and runs your real build + tests before calling it done. For smaller jobs, call a specialist directly: **UX Architect** (flows), **UI Visual** (looks), or **Platform Design** (native correctness).
+It grounds in your Storybook, proposes a design, gets it graded by the **Adversarial Judge**, **shows you the result as a Storybook page for your sign-off**, then implements it, reconciles tokens, and runs your real build + tests before calling it done. For smaller jobs, call a specialist directly: **UX Architect** (flows), **UI Visual** (looks), or **Platform Design** (native correctness).
 
 ## A real app, built this way
 
