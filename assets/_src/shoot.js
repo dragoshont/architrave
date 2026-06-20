@@ -8,7 +8,7 @@ const ASSETS = __dirname.replace(/\/_src$/, '');
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
   const ctx = await browser.newContext({ deviceScaleFactor: 2 });
   const page = await ctx.newPage();
-  for (const [name, w, h] of [['overview', 1240, 560], ['cli', 900, 640]]) {
+  for (const [name, w, h] of [['overview', 1240, 560], ['cli', 900, 640], ['flows', 1300, 700]]) {
     await page.setViewportSize({ width: w, height: h });
     await page.goto('file://' + ASSETS + '/_src/' + name + '.html', { waitUntil: 'load' });
     await page.waitForTimeout(250);

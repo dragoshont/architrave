@@ -1,21 +1,30 @@
 # Architrave UI
 
-**Build native‑quality UI with AI agents that respect the design you already have — on Apple, Windows, and the Web.**
+**A crew of UI/UX agents that design *and* build native‑looking apps — for Apple, Microsoft, and the web.**
 
-Architrave UI is a small kit you drop into a UI repo. It gives GitHub Copilot a team of specialist **agents** and a set of **quality gates** that always start from *your* design (your Storybook + design tokens), reproduce the components you already have instead of inventing new ones, and refuse to call a change "done" until it builds, passes its tests, and clears an automated reviewer.
+Architrave UI gives your AI assistant (GitHub Copilot **or** Claude Code) a small team of specialist **UI/UX agents** and a set of **quality gates**. They work like a real product‑design crew: a **UX Architect** maps the flow and information architecture, a **UI Visual** designer makes it look right, and a pluggable **Platform Design** reviewer keeps it idiomatic for the OS — Apple's Human Interface Guidelines, Microsoft's Fluent, or the web's WCAG. They sketch and validate in **Storybook** first, then build the real thing natively — **SwiftUI, WinUI, or React** — and won't call it done until it builds, passes its tests, and clears an automated design review.
 
-One small config file (`uikit.config.json`) retargets the whole kit from SwiftUI to WinUI to React, so the **same method works in every UI repo you own**. It deliberately covers **UI only** — backend services and infrastructure are a separate lane.
+It **follows the design you already have**: your **Storybook** + design tokens become the source of truth the agents reproduce — component by its real name — instead of inventing new UI. No design yet? It helps you **establish** one, grounded in the platform's own guidelines, which then becomes the thing every later change is held to.
 
-> **Status:** complete (M1–M4). Packaged as a Copilot plugin (verified in the real `copilot` CLI), installable per‑repo, and dogfooded on **PhonoDeck** (SwiftUI/macOS) and **Sideport** (React/web).
+One small config file (`uikit.config.json`) retargets the whole crew from SwiftUI to WinUI to React, so the **same method works in every UI repo you own**. It deliberately covers **UI/UX only** — backend services and infrastructure are a separate lane.
+
+> **Status:** complete (M1–M4). Packaged as an agent plugin — verified in the real **`copilot`** *and* **`claude`** CLIs — installable per‑repo, and dogfooded on **PhonoDeck** (SwiftUI/macOS) and **Sideport** (React/web).
 
 ![Architrave UI — ground in your design, let specialist agents propose, gate with a judge + your real build, then ship native UI](assets/overview.png)
 
+## Design the flow first, then build it native
+
+The agents work the way a design team does — **UX before pixels, pixels before code.** The UX Architect maps the information architecture, the screens, and *every* state (empty, loading, populated, error). You validate it in **Storybook**. Then UI Visual + Platform Design make it look native, and the Feature Builder ships it — SwiftUI, WinUI, or React.
+
+![Designing a flow: information architecture, screens, and every state — sketched in Storybook and grounded in the platform's guidelines, before any native code](assets/flows.png)
+
 ## What it does
 
-- 🎯 **Grounds first, never reinvents.** Every change starts from your existing Storybook + component map; agents reproduce a component by its real name and touch only the deltas.
-- 👥 **Five specialist agents.** *UX Architect* (how it works), *UI Visual* (how it looks), *Platform Design* (is it idiomatic for this OS?), *Adversarial Judge* (an LLM‑as‑judge quality gate), and the *Feature Builder* that orchestrates them.
-- ✅ **Two layers of gates.** Deterministic checks (your real build + tests + JSON/token lint) **and** a semantic judge graded against a rubric — nothing ships until both are green.
-- 🔁 **Design ↔ code stays reconciled.** Design tokens are the single source of truth; a reconcile gate catches drift between the tokens and the committed code.
+- 🧭 **Designs the UX, not just the pixels.** The *UX Architect* works out information architecture, navigation, and every state (empty / loading / error) — validated in **Storybook** before anything is built.
+- 🎨 **Makes it look native.** *UI Visual* + *Platform Design* hold the UI to the platform's own language — Apple HIG, Microsoft Fluent, web / WCAG — so it feels at home on each OS.
+- 🏗️ **Builds the real thing.** The *Feature Builder* turns the approved design into native code — SwiftUI, WinUI, or React — driven by your repo's actual build + tests.
+- 🎯 **Follows your design, never reinvents.** Every change starts from your existing Storybook + component map; agents reproduce a component by its real name and touch only the deltas.
+- ✅ **Won't ship slop.** An *Adversarial Judge* (LLM‑as‑judge) plus deterministic gates (your real build + tests + token lint) must *both* be green — and design tokens stay reconciled with code.
 - 🧩 **One method, every surface.** The same kit runs in the Copilot CLI, the Copilot desktop app, VS Code, **Claude Code**, and the cloud coding agent.
 
 ## What it looks like
@@ -88,15 +97,22 @@ Your repo's own build/test toolchain (Node for web, Xcode for Apple, .NET for Wi
 
 ## Install
 
-**1 — Install the agents once** (shared across the Copilot CLI, the desktop app, VS Code, and Claude Code):
+**1 — Install the agents once.** With **GitHub Copilot** (CLI, desktop app, or VS Code):
 
 ```bash
 copilot plugin marketplace add dragoshont/architrave-ui
 copilot plugin install architrave-ui@architrave
 ```
 
+Or with **Claude Code**:
+
+```bash
+claude plugin marketplace add dragoshont/architrave-ui
+claude plugin install architrave-ui@architrave
+```
+
 > VS Code alternative: **Chat: Install Plugin From Source** → the repo URL.
-> Repo not on GitHub yet? Install from a local path: `copilot plugin install /abs/path/to/architrave-ui`.
+> Installing from a local path: `copilot plugin install /abs/path/to/architrave-ui`, or for Claude `claude plugin marketplace add /abs/path/to/architrave-ui` then `claude plugin install architrave-ui@architrave`.
 
 **2 — Ground a repo** (this is also what reaches the Copilot **cloud** agent):
 
@@ -115,7 +131,8 @@ This copies the agents → `.github/agents/`, the gates → `gates/`, the knowle
 README.md                     ← you are here
 ROADMAP.md                    ← what's built vs. ported next
 plugin.json                   ← agent-plugin manifest (Copilot CLI / app / VS Code)
-.github/plugin/marketplace.json ← self-hosting plugin marketplace
+.github/plugin/marketplace.json ← Copilot plugin marketplace (self-hosted)
+.claude-plugin/               ← Claude Code plugin + marketplace manifests
 kit/
   uikit.config.schema.json    ← per-repo config schema (the keystone)
   examples/                   ← phonodeck / sideport / tessera example configs

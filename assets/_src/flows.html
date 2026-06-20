@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:#f5f5f7}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif;color:#1d1d1f;width:1180px;padding:48px 52px}
+  .head{display:flex;align-items:baseline;gap:12px}
+  .kicker{font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#0071e3}
+  .title{font-size:25px;font-weight:700;letter-spacing:-.02em}
+  .sub{font-size:14.5px;color:#86868b;margin:9px 0 32px;max-width:1000px}
+  .flow{display:flex;align-items:flex-start}
+  .screen{flex:0 0 234px}
+  .win{background:#fff;border:1px solid #e3e3e6;border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,.06);overflow:hidden}
+  .bar{height:26px;background:#fafafa;border-bottom:1px solid #ededf0;display:flex;align-items:center;gap:5px;padding:0 10px}
+  .d{width:8px;height:8px;border-radius:50%;background:#e0e0e3}
+  .body{padding:14px;height:120px;display:flex;flex-direction:column;gap:9px}
+  .row{height:9px;border-radius:5px;background:#ececed}
+  .row.s{width:52%}
+  .row.t{width:78%}
+  .cta{height:30px;border-radius:8px;background:#eef4ff;border:1px solid #dbe8ff}
+  .name{font-size:13.5px;font-weight:600;margin:11px 2px 8px}
+  .chips{display:flex;flex-wrap:wrap;gap:5px}
+  .chip{font-size:11px;padding:3px 8px;border-radius:999px;border:1px solid #e3e3e6;background:#fff;color:#6e6e73}
+  .chip.on{background:#0071e3;border-color:#0071e3;color:#fff}
+  .arrow{flex:0 0 36px;padding-top:52px;text-align:center;color:#c7c7cc;font-size:20px}
+  .foot{margin-top:30px;font-size:14px;color:#6e6e73}
+  .tag{display:inline-block;background:#fff;border:1px solid #e3e3e6;border-radius:6px;padding:2px 9px;font-size:12.5px;color:#1d1d1f;font-weight:600}
+</style></head><body>
+  <div class="head"><span class="kicker">UX Architect</span><span class="title">Design the flow first</span></div>
+  <div class="sub">Information architecture, screens, and every state — sketched in Storybook and grounded in the platform's own guidelines, before a line of native code.</div>
+  <div class="flow">
+    <div class="screen">
+      <div class="win"><div class="bar"><span class="d"></span><span class="d"></span></div><div class="body"><div class="row t"></div><div class="row s"></div><div class="cta"></div><div class="row"></div></div></div>
+      <div class="name">First run</div>
+      <div class="chips"><span class="chip on">Empty</span><span class="chip">Welcome</span></div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="screen">
+      <div class="win"><div class="bar"><span class="d"></span><span class="d"></span></div><div class="body"><div class="row t"></div><div class="row"></div><div class="cta"></div><div class="row s"></div></div></div>
+      <div class="name">Connect a source</div>
+      <div class="chips"><span class="chip">Signed out</span><span class="chip on">Connecting</span><span class="chip">Error</span></div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="screen">
+      <div class="win"><div class="bar"><span class="d"></span><span class="d"></span></div><div class="body"><div class="row t"></div><div class="row"></div><div class="row s"></div><div class="row"></div></div></div>
+      <div class="name">Library</div>
+      <div class="chips"><span class="chip">Loading</span><span class="chip on">Populated</span><span class="chip">No results</span></div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="screen">
+      <div class="win"><div class="bar"><span class="d"></span><span class="d"></span></div><div class="body"><div class="cta"></div><div class="row t"></div><div class="row s"></div><div class="row"></div></div></div>
+      <div class="name">Now Playing</div>
+      <div class="chips"><span class="chip on">Ready</span><span class="chip">Offline</span></div>
+    </div>
+  </div>
+  <div class="foot">Then <span class="tag">UI Visual</span> + <span class="tag">Platform Design</span> make it look native — SwiftUI · WinUI · React — and the <span class="tag">Adversarial Judge</span> reviews it before it ships.</div>
+</body></html>

@@ -1,0 +1,10 @@
+{
+  "name": "architrave-ui",
+  "description": "Cross-platform, design-grounded, judge-gated UI feature-builder. Bundles the UX Architect, UI Visual, Platform Design, Adversarial Judge, and Feature Builder agents. Retargeted per repo via uikit.config.json.",
+  "version": "0.1.0",
+  "author": { "name": "dragoshont" },
+  "homepage": "https://github.com/dragoshont/architrave-ui",
+  "repository": "https://github.com/dragoshont/architrave-ui",
+  "license": "MIT",
+  "keywords": ["ui", "design-system", "swiftui", "winui", "react", "agents", "judge"]
+}
