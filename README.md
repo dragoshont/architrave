@@ -34,15 +34,15 @@ It grounds in your Storybook, proposes a design, gets it graded by the **Adversa
 
 ### The team behind it
 
-You only ever invoke **Architrave** — it runs a small crew of specialists under the hood, so you don't pick them separately. Here's what each one does on that single request:
+**Architrave** runs the whole crew for you. You can also call **UX Architect** or **UI Visual** directly for focused design help; **Platform Design** and the **Adversarial Judge** work under the hood. Here's what each does on that single request:
 
-| Agent | Its job | On *“Add an empty state to the library list”* |
-|---|---|---|
-| **Architrave** | the lead you invoke | Runs the whole pipeline — design → your Storybook sign-off → code → gates — and reports back. |
-| **UX Architect** | how it works | Writes the empty state's message + primary action, and defines the loading / populated / error variants. |
-| **UI Visual** | how it looks | Applies your design tokens: spacing, type scale, the icon, the button style. |
-| **Platform Design** | native correctness | Checks it against the platform's rules — Apple HIG, Fluent, or WCAG (contrast, hit-target size). |
-| **Adversarial Judge** | the quality gate | Grades the design, then the built code, **PASS / REVISE / FAIL** against the rubric before it ships. |
+| Agent | Invoke | Its job | On *“Add an empty state to the library list”* |
+|---|---|---|---|
+| **Architrave** | directly | the lead | Runs the whole pipeline — design → your Storybook sign-off → code → gates. |
+| **UX Architect** | directly | how it works | Writes the message + primary action; defines the loading / populated / error variants. |
+| **UI Visual** | directly | how it looks | Applies your design tokens: spacing, type scale, the icon, the button style. |
+| **Platform Design** | under the hood | native correctness | Checks against Apple HIG / Fluent / WCAG (contrast, hit-target size). |
+| **Adversarial Judge** | under the hood | the quality gate | Grades the design, then the built code — **PASS / REVISE / FAIL**. |
 
 ## A real app, built this way
 
