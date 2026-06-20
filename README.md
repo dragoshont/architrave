@@ -2,17 +2,27 @@
 
 **A crew of UI/UX agents that design *and* build native‑looking apps — for Apple, Microsoft, and the web.**
 
-Architrave UI is a **plugin for GitHub Copilot and Claude Code** that turns your AI assistant into a small **UI/UX design team** — and adds the quality gates that keep it honest. You install it once, point it at a UI repo, and ask it to design or change a screen.
-
-Instead of one assistant guessing at UI, you get specialists: a **UX Architect** for flows and information architecture, a **UI Visual** designer for look and feel, and a pluggable **Platform Design** reviewer that knows each platform's rules — Apple's Human Interface Guidelines, Microsoft's Fluent, or the web's WCAG. They sketch and validate in **Storybook** first, then build the real thing natively in **SwiftUI, WinUI, or React** — and won't call it done until it builds, passes its tests, and clears an automated design review.
-
-It **follows the design you already have**: your Storybook + design tokens become the source of truth the agents reproduce — component by its real name — instead of inventing new UI. No design yet? It helps you **establish** one, grounded in the platform's own guidelines, that every later change is then held to.
-
-One small config file (`uikit.config.json`) retargets the whole team from SwiftUI to WinUI to React, so the **same method works across your UI repos**. It deliberately covers **UI/UX only** — backend services and infrastructure are a separate lane.
-
-> **Status:** stable — packaged as an agent plugin, verified in the real **`copilot`** *and* **`claude`** CLIs, installable per‑repo, and used on real apps (**PhonoDeck**, SwiftUI / macOS; **Sideport**, React / web).
+Architrave UI is a **plugin for GitHub Copilot and Claude Code** that designs UI in [Storybook](https://storybook.js.org) first, then builds it natively in **SwiftUI, WinUI, or React** — and won't call it done until it builds, passes your tests, and clears an automated design review.
 
 ![Architrave UI — ground in your design, let specialist agents propose, gate with a judge + your real build, then ship native UI](assets/overview.png)
+
+## Install
+
+With **GitHub Copilot** (CLI, desktop app, or VS Code):
+
+```bash
+copilot plugin marketplace add dragoshont/architrave-ui
+copilot plugin install architrave-ui@architrave
+```
+
+Or with **Claude Code**:
+
+```bash
+claude plugin marketplace add dragoshont/architrave-ui
+claude plugin install architrave-ui@architrave
+```
+
+That installs the agents everywhere your assistant runs. Then [set up a repo](#set-up-a-repo) to point them at your Storybook + build.
 
 ## A real app, built this way
 
@@ -99,26 +109,9 @@ The kit is just Markdown + small scripts; the only hard dependencies are for the
 
 Your repo's own build/test toolchain (Node for web, Xcode for Apple, .NET for WinUI, …) is whatever your `uikit.config.json` `build`/`test` commands invoke — the gates just run those.
 
-## Install
+## Set up a repo
 
-**1 — Install the agents once.** With **GitHub Copilot** (CLI, desktop app, or VS Code):
-
-```bash
-copilot plugin marketplace add dragoshont/architrave-ui
-copilot plugin install architrave-ui@architrave
-```
-
-Or with **Claude Code**:
-
-```bash
-claude plugin marketplace add dragoshont/architrave-ui
-claude plugin install architrave-ui@architrave
-```
-
-> VS Code alternative: **Chat: Install Plugin From Source** → the repo URL.
-> Installing from a local path: `copilot plugin install /abs/path/to/architrave-ui`, or for Claude `claude plugin marketplace add /abs/path/to/architrave-ui` then `claude plugin install architrave-ui@architrave`.
-
-**2 — Ground a repo** (this is also what reaches the Copilot **cloud** agent):
+After installing the plugin (above), ground a repo — this is also what reaches the Copilot **cloud** agent:
 
 ```bash
 /path/to/architrave-ui/tools/install.sh .                          # macOS / Linux
@@ -127,7 +120,7 @@ pwsh -NoProfile -File /path/to/architrave-ui/tools/install.ps1 .    # Windows
 
 This copies the agents → `.github/agents/`, the gates → `gates/`, the knowledge packs → `knowledge/`, scaffolds `uikit.config.json`, injects a grounding stanza into `AGENTS.md` (idempotent), wires the PostToolUse hook, and drops `.github/workflows/copilot-setup-steps.yml`.
 
-**3 — Point it at your repo:** edit `uikit.config.json` — set `platform`, `stack`, `designSource` (your Storybook), `tokens`, and the `build`/`test` commands. Then ask the **Feature Builder** agent to make a UI change; it grounds, proposes, judges, implements, reconciles, and verifies.
+Then point it at your repo — edit `uikit.config.json` — set `platform`, `stack`, `designSource` (your Storybook), `tokens`, and the `build`/`test` commands. Then ask the **Feature Builder** agent to make a UI change; it grounds, proposes, judges, implements, reconciles, and verifies.
 
 ## Layout
 
