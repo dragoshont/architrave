@@ -38,9 +38,12 @@ It grounds in your Storybook, proposes a design, gets it graded by the **Adversa
 
 ![PhonoDeck — a native macOS music app (SwiftUI): sidebar, Home with recommendations, and the now-playing panel — designed in Storybook, built native](assets/phonodeck.png)
 
-## Design the flow first, then build it native
+## Design in Storybook first, then build it native
 
-The agents work the way a design team does — **UX before pixels, pixels before code.** The UX Architect maps the information architecture, the screens, and *every* state (empty, loading, populated, error). You validate it in **Storybook**. Then UI Visual + Platform Design make it look native, and the Feature Builder ships it — SwiftUI, WinUI, or React.
+Every change starts in **Storybook** — the fastest, most visual place to design and iterate, and the source of truth the build then matches.
+
+1. **Design the flow in Storybook.** The **UX Architect** lays out the screens and *every* state (empty, loading, populated, error); **UI Visual** styles them with your design tokens. You see it live, tweak it, and confirm — before any app code is written.
+2. **Build it for real.** The **Feature Builder** turns the approved design into shipping code. On the **web**, Storybook *is* the build — it develops the real **React** components in isolation, then composes them into pages. On **native** (**SwiftUI**, **WinUI**), Storybook is the spec the native code reproduces, kept in sync by the same design tokens. Either way, the **Adversarial Judge** plus your real build and tests gate it before it's done.
 
 ![Designing a flow: information architecture, screens, and every state — sketched in Storybook and grounded in the platform's guidelines, before any native code](assets/flows.png)
 
