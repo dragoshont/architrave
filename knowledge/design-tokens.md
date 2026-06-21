@@ -2,7 +2,7 @@
 
 The backbone that makes one process serve Apple, Windows, and Web — and that makes "reconcile any design/code variation" a mechanical step instead of a judgement call.
 
-Sources: W3C Design Tokens Community Group **Format Module** (designtokens.org/tr/drafts/format) · Material 3 **Design tokens** (m3.material.io/foundations/design-tokens).
+Sources: Design Tokens Community Group **Format Module** (designtokens.org/tr/drafts/format; draft/community-group report, not a W3C Recommendation) · Material 3 **Design tokens** (m3.material.io/foundations/design-tokens).
 
 ## What a token is
 A named design decision: `name → value`, platform‑agnostic, machine‑readable. The value may be a literal **or a reference to another token**. Tokens are the **single source of truth** — design tools, docs, and every platform's code all reference the *same names*, so "the same color/size is used in both places" is guaranteed even when the underlying value changes.
@@ -16,7 +16,7 @@ A named design decision: `name → value`, platform‑agnostic, machine‑readab
 
 Rule: component → system → reference. Components never hold hard‑coded values; system tokens never hold raw values when a reference exists.
 
-## File format (W3C DTCG)
+## File format (DTCG-style JSON)
 - JSON; a token is any object with a **`$value`**; metadata via `$type`, `$description`, `$deprecated`, `$extensions`.
 - **Groups** nest tokens; **aliases** use `{group.token}`; group inheritance via `$extends`.
 - **Types:** `color` (with `colorSpace`+`components`+`hex`), `dimension` (`px`|`rem`), `fontFamily`, `fontWeight` (`100–900` or `thin…black`), `duration` (`ms`|`s`), `cubicBezier`, `number`.
@@ -57,6 +57,13 @@ design tweak ─▶ tokens (.tokens.json = SSOT) ─▶ translation (Style Dicti
 | shadow/border | modifier | `BorderBrush`/`DropShadow` | `box-shadow`/`border` |
 
 ## Rules for the kit
-- Every UI repo SHOULD declare a `tokens` path in `uikit.config.json`. The reconcile gate is enabled when it's present.
+- Every UI repo SHOULD declare a `designMap` path once it has more than a few components. It is the glossary that tells agents which Storybook stories, code paths, states, tokens, and capability claims belong together.
+- Every mature UI repo SHOULD declare a `tokens` path in `uikit.config.json`. The reconcile gate is enabled when `tokens` + `tokenBuild` are present. Early repos may omit tokens and rely on Storybook/specs; in that mode reconcile must skip loudly/clearly rather than pretending token drift was checked.
 - Token names are the shared vocabulary between Storybook and native code — Architrave reproduces by **token + component name**, never by raw value.
 - `px`→`pt`/`dp` and `rem` conversions are the translation tool's job; agents must not hard‑convert.
+
+## Adoption ladder
+1. **Spec + Storybook only:** valid for early app work; set `designSource.spec` and Storybook path. Gates validate JSON/build/test; reconcile skips token generation.
+2. **Add a design map:** copy `kit/examples/design-map.stub.json` into the app repo and map real component/story/code names. This unlocks better grounding and anti-slop review without token tooling.
+3. **Add tokens:** copy or adapt `kit/examples/tokens.web-shadcn.tokens.json` or a platform-specific token file. Set `tokens` in `uikit.config.json`.
+4. **Add token build:** configure Style Dictionary, Terrazzo, or a repo-local generator and set `tokenBuild`. Now `gates/reconcile.*` can mechanically detect design↔code drift.

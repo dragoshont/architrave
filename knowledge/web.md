@@ -48,8 +48,13 @@ Accessibility · content design · **design tokens** (reference→system→compo
 - **Interaction tests** = `play` functions (`@storybook/test`: `expect` / `userEvent`) executed inside Vitest — assert behavior + final state.
 - **a11y** = the **a11y addon (axe)** in the test run. **Visual regression** = **Chromatic**. **App‑level e2e** = Playwright (separate from component tests).
 
+## Package/dependency hygiene
+- Nested web apps are common in full-stack repos (`src/Admin`, `web`, etc.). If `uikit.config.json` runs `npm --prefix <dir> run ...`, the developer/CI must run `npm --prefix <dir> ci` or `npm --prefix <dir> install` first. Architrave gates report the real command failure and print a dependency hint when `<dir>/node_modules` is missing.
+- In CI, cache against the nested lockfile (`cache-dependency-path: src/Admin/package-lock.json` or `web/package-lock.json`) rather than the repo root.
+- For Vitest + jsdom suites that flake under parallel workers, configure determinism in the repo, not only in ad-hoc commands: either set `test.pool` / worker options in `vitest.config.ts`, or encode the stable flags in `uikit.config.json` (for example `npm --prefix web run test -- --pool=threads --maxWorkers=1`). Vitest documents `pool` and `maxWorkers` as config/CLI controls; keep local and gate commands aligned.
+
 ## Storybook MCP — the agent's primary channel (10.3+/10.4)
-When `config.designSource.mcp` is set, the repo runs **`@storybook/addon-mcp`** and the agents use it as their highest‑signal channel — it equips them with real component metadata (stories, props, docs) to **reuse, not reinvent** (benchmarks: ~13% better component reuse, ~2.8× faster, ~27% fewer tokens vs. no MCP).
+When `config.designSource.mcp` is set, the repo runs **`@storybook/addon-mcp`** and the agents use it as their highest‑signal channel — it equips them with real component metadata (stories, props, docs) to **reuse, not reinvent** (benchmarks: ~13% better component reuse, ~2.8× faster, ~27% fewer tokens vs. no MCP). MCP is optional and currently a web/React Storybook path; native preview repos should omit it unless they provide a compatible Storybook MCP endpoint.
 
 **Wire it (per repo):** `npx storybook add @storybook/addon-mcp` (serves `/mcp` on the Storybook dev server) → `npx mcp-add --type http --url "http://localhost:6006/mcp" --scope project` (register in the agent client) → set `designSource.mcp` to that URL in `uikit.config.json`. The agents allow the server via `"@storybook/addon-mcp/*"` in their `tools` — rename that entry if your server is named differently. A **published/remote MCP** (Chromatic) lets teammates connect without running Storybook locally; **composition** merges multiple Storybooks behind one endpoint.
 

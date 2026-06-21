@@ -22,6 +22,8 @@ json_files=(
   kit/examples/phonodeck.uikit.json
   kit/examples/sideport.uikit.json
   kit/examples/tessera.uikit.json
+  kit/examples/design-map.stub.json
+  kit/examples/tokens.web-shadcn.tokens.json
 )
 for f in "${json_files[@]}"; do
   if jq -e . "$f" >/dev/null 2>&1; then ok "$f"; else err "invalid JSON: $f"; fi

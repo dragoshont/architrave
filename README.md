@@ -173,6 +173,10 @@ Then point it at your repo — edit `uikit.config.json`:
 - For **backend/service work**, add `backend` with the solution path, architecture docs, contract location if you have one, backend `applyTo` globs, and backend build/test commands.
 - For **infrastructure**, add `iac` with the IaC kind, path, plan/what-if/diff command, policy command, and apply globs. Keep it plan-only; the human applies.
 
+For early UI work, `designMap` and `tokens` can start empty while Storybook + specs are the source of truth. As the design system matures, copy `kit/examples/design-map.stub.json` and `kit/examples/tokens.web-shadcn.tokens.json` into your app and wire them in; that unlocks stronger grounding and design↔code reconciliation.
+
+If you are replacing repo-specific agents, use `kit/MIGRATION.md` to map old agents to the Architrave crew, then archive the old files under `docs/archive/` rather than leaving multiple active development agents competing in `.github/agents/`.
+
 Then ask the **Architrave** agent to make a feature change. It grounds, classifies the lane, proposes, judges, asks for the right sign-off artifact, implements, reconciles, and verifies.
 
 **Optional — wire the live Storybook MCP (React).** Let the agents pull real component metadata from a running Storybook (`@storybook/addon-mcp`) so they reuse components instead of reinventing them:
@@ -208,8 +212,9 @@ plugin.json                   ← agent-plugin manifest (Copilot CLI / app / VS 
 .github/workflows/            ← validate (gate every push/PR) · release (tag vX.Y.Z → GitHub Release)
 .claude-plugin/               ← Claude Code plugin + marketplace manifests
 kit/
+        MIGRATION.md                  ← how to replace bespoke repo agents with Architrave
   uikit.config.schema.json    ← per-repo config schema (the keystone)
-  examples/                   ← phonodeck / sideport / tessera example configs
+        examples/                   ← phonodeck / sideport / tessera configs + design map/token starters
 knowledge/
   apple.md                    ← Apple HIG pack (SwiftUI) — cited
   microsoft.md                ← Microsoft Fluent 2 / WinUI pack — cited

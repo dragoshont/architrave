@@ -83,8 +83,17 @@ function Invoke-Step($name, $field) {
   if ([string]::IsNullOrWhiteSpace($cmd)) { Write-Host "skip  $name (not configured)"; return }
   Write-Host "== $name`: $cmd =="
   $global:LASTEXITCODE = 0
-  try { Invoke-Expression $cmd } catch { Write-Host "FAIL  $name ($($_.Exception.Message))"; $script:fail = 1; return }
-  if ($LASTEXITCODE -ne 0) { Write-Host "FAIL  $name" ; $script:fail = 1 } else { Write-Host "ok    $name" }
+  try { Invoke-Expression $cmd } catch { Write-Host "FAIL  $name ($($_.Exception.Message))"; Show-DependencyHint $cmd; $script:fail = 1; return }
+  if ($LASTEXITCODE -ne 0) { Write-Host "FAIL  $name"; Show-DependencyHint $cmd; $script:fail = 1 } else { Write-Host "ok    $name" }
+}
+function Show-DependencyHint($cmd) {
+  $match = [regex]::Match($cmd, 'npm\s+--prefix\s+([^\s]+)\s+run')
+  if ($match.Success) {
+    $prefix = $match.Groups[1].Value
+    if ((Test-Path (Join-Path $prefix 'package.json')) -and -not (Test-Path (Join-Path $prefix 'node_modules'))) {
+      [Console]::Error.WriteLine("hint  $prefix/node_modules is missing - run: npm --prefix $prefix ci   (or npm --prefix $prefix install)")
+    }
+  }
 }
 Invoke-Step 'generate' 'generate'
 Invoke-Step 'build'    'build'

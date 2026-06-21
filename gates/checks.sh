@@ -80,7 +80,18 @@ run_step() {
   cmd="$(cfg "$2")"
   if [ -z "$cmd" ]; then echo "skip  $name (not configured)"; return 0; fi
   echo "== $name: $cmd =="
-  if eval "$cmd"; then echo "ok    $name"; else echo "FAIL  $name"; fail=1; fi
+  if eval "$cmd"; then
+    echo "ok    $name"
+  else
+    echo "FAIL  $name"
+    if [[ "$cmd" =~ npm[[:space:]]+--prefix[[:space:]]+([^[:space:]]+)[[:space:]]+run ]]; then
+      prefix="${BASH_REMATCH[1]}"
+      if [ -f "$prefix/package.json" ] && [ ! -d "$prefix/node_modules" ]; then
+        echo "hint  $prefix/node_modules is missing — run: npm --prefix $prefix ci   (or npm --prefix $prefix install)" >&2
+      fi
+    fi
+    fail=1
+  fi
 }
 run_step generate generate
 run_step build    build

@@ -27,16 +27,16 @@
         "path": { "type": "string", "description": "Repo-relative path to the design workbench (e.g. src/Admin/.storybook, ui-lab)." },
         "url": { "type": "string", "description": "Optional running/published Storybook URL (e.g. http://localhost:6007 or a gh-pages demo)." },
         "spec": { "type": "string", "description": "Optional repo-relative path to a written design spec (e.g. docs/ui/*-design-spec.md)." },
-        "mcp": { "type": "string", "description": "Optional Storybook MCP endpoint from @storybook/addon-mcp (e.g. http://localhost:6006/mcp). When set, agents ground via list-all-documentation/get-documentation, write stories via get-storybook-story-instructions, and preview for sign-off via preview-stories." }
+        "mcp": { "type": "string", "description": "Optional Storybook MCP endpoint from @storybook/addon-mcp (e.g. http://localhost:6006/mcp). Intended for React/web Storybook 10.3+ workbenches; omit for native-only previews unless a compatible MCP endpoint exists. When set, agents ground via list-all-documentation/get-documentation, write stories via get-storybook-story-instructions, and preview for sign-off via preview-stories." }
       }
     },
     "designMap": {
       "type": "string",
-      "description": "Optional repo-relative path to the component glossary / ui-map (e.g. docs/design/phonodeck-ui-map.json). Source of truth for component names."
+      "description": "Optional repo-relative path to the component glossary / ui-map (e.g. docs/design/phonodeck-ui-map.json). Strongly recommended for UI lanes; maps product/component names to Storybook stories, code paths, states, tokens, and capability claims."
     },
     "tokens": {
       "type": "string",
-      "description": "Optional repo-relative path to the design tokens file(s) in W3C DTCG format (*.tokens.json). The single source of truth for design<->code reconciliation."
+      "description": "Optional repo-relative path to design token file(s), commonly *.tokens.json. When set with tokenBuild, reconcile can mechanically validate design<->code drift; when omitted, Storybook/specs remain the design source and reconcile skips token regeneration."
     },
     "tokenBuild": {
       "type": "string",

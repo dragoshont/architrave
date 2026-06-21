@@ -29,6 +29,14 @@ Sequence: **contract + migration → handler → UI binds to it.** The UI lane a
 - **Official APIs and policy.** Stay inside official documented APIs, platform policies, and repo ADRs. Do not use scraped/undocumented service endpoints, private platform APIs, hidden/background playback, unauthorized downloads, or token storage outside the repo's approved secret store.
 - **Tests** cover the new logic + ≥ 1 adversarial/edge case + capability honesty, in the repo's existing test pattern (`config.backend.test`).
 
+### Native / unified app backends
+Some apps have no separate service process: SwiftUI, AppKit, MAUI, or desktop apps may keep OAuth, source adapters, playback routing, local stores, and sync engines inside the app target. Treat those as a backend lane when `config.backend.stack` is `swift-services` or similar:
+- The **contract** is the protocol/model boundary (`SourceAdapter`, `PlaybackEngine`, DTOs, capability matrix), not necessarily OpenAPI.
+- The **solution** may be an Xcode project, `project.yml`, package workspace, or Makefile-backed app build.
+- Unified builds are valid: `config.backend.build` may equal `config.build`, and `config.backend.test` may equal `config.test`. That is not duplication; it makes the backend lane explicit for review.
+- Check actor/threading and retry behavior: UI-owned services should be `@MainActor` only where necessary; network/storage code should have clear async boundaries and test doubles.
+- Capability honesty is mandatory: do not expose media keys, background playback, downloads, or account actions unless the adapter/engine can execute them under the product's policy.
+
 ## 4. Data & migrations (reversible by default)
 - **Expand → migrate → contract.** Add the new column/table (expand, backward-compatible) → backfill/migrate → remove the old (contract) only after readers move. Keep each step deployable on its own.
 - **No destructive change without an approved rollback.** Every migration ships with how to reverse it; the Backend Planner records it; the user approves it.

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://www.designtokens.org/schemas/2025.10/format.json",
+  "$description": "Starter W3C DTCG-style tokens for React/Radix/shadcn repos. Treat as a scaffold, not a brand palette.",
+  "ref": {
+    "color": {
+      "$type": "color",
+      "neutral-0": { "$value": { "colorSpace": "srgb", "components": [1, 1, 1], "hex": "#ffffff" } },
+      "neutral-950": { "$value": { "colorSpace": "srgb", "components": [0.031, 0.035, 0.043], "hex": "#08090b" } },
+      "blue-600": { "$value": { "colorSpace": "srgb", "components": [0.145, 0.388, 0.922], "hex": "#2563eb" } },
+      "red-600": { "$value": { "colorSpace": "srgb", "components": [0.863, 0.149, 0.149], "hex": "#dc2626" } }
+    },
+    "space": {
+      "$type": "dimension",
+      "2": { "$value": { "value": 8, "unit": "px" } },
+      "3": { "$value": { "value": 12, "unit": "px" } },
+      "4": { "$value": { "value": 16, "unit": "px" } }
+    }
+  },
+  "sys": {
+    "color": {
+      "$type": "color",
+      "surface": { "$value": "{ref.color.neutral-0}" },
+      "label": { "$value": "{ref.color.neutral-950}" },
+      "accent": { "$value": "{ref.color.blue-600}" },
+      "danger": { "$value": "{ref.color.red-600}" }
+    },
+    "space": {
+      "$type": "dimension",
+      "control-gap": { "$value": "{ref.space.2}" },
+      "section-gap": { "$value": "{ref.space.4}" }
+    }
+  },
+  "comp": {
+    "statusBadge": {
+      "background": { "$type": "color", "$value": "{sys.color.accent}" },
+      "label": { "$type": "color", "$value": "{sys.color.surface}" },
+      "gap": { "$type": "dimension", "$value": "{sys.space.control-gap}" }
+    }
+  }
+}
