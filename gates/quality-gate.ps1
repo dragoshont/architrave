@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# Architrave UI — Architrave Stop hook (lightweight, PowerShell / Windows).
+# Architrave UI — Stop hook (lightweight, PowerShell / Windows).
 # Mirror of gates/quality-gate.sh. Exit 0 = ok to stop, 2 = BLOCKING (invalid JSON).
 $ErrorActionPreference = 'Stop'
 $dir = Split-Path $MyInvocation.MyCommand.Path -Parent

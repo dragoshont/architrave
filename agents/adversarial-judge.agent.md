@@ -23,4 +23,4 @@ Apply the canonical rubric: `gates/rubric.md`. Read `uikit.config.json` to learn
 5. **Decide**: PASS only if all acceptance criteria are met, zero Blockers, deterministic gates are green, and design↔code is reconciled; otherwise REVISE (fixable, with concrete fixes) or FAIL (fundamentally off-spec/off-pattern).
 
 ## Output Format
-Exactly the rubric's format: (1) acceptance-criteria checklist (`criterion → met? → evidence`); (2) dimension scores table (`dimension → Pass/Concern/Fail → severity → evidence/doc ref → required fix`); (3) Blockers and Concerns; (4) specs not covered; (5) **VERDICT: PASS | REVISE | FAIL** + one-line rationale. Be specific and terse; the Architrave will act directly on your findings.
+Exactly the rubric's format: (1) acceptance-criteria checklist (`criterion → met? → evidence`); (2) dimension scores table (`dimension → Pass/Concern/Fail → severity → evidence/doc ref → required fix`); (3) Blockers and Concerns; (4) specs not covered; (5) **VERDICT: PASS | REVISE | FAIL** + one-line rationale. Be specific and terse; Architrave will act directly on your findings.

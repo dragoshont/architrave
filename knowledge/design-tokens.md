@@ -58,5 +58,5 @@ design tweak ─▶ tokens (.tokens.json = SSOT) ─▶ translation (Style Dicti
 
 ## Rules for the kit
 - Every UI repo SHOULD declare a `tokens` path in `uikit.config.json`. The reconcile gate is enabled when it's present.
-- Token names are the shared vocabulary between Storybook and native code — the Architrave reproduces by **token + component name**, never by raw value.
+- Token names are the shared vocabulary between Storybook and native code — Architrave reproduces by **token + component name**, never by raw value.
 - `px`→`pt`/`dp` and `rem` conversions are the translation tool's job; agents must not hard‑convert.
