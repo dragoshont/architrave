@@ -17,7 +17,7 @@
 - [x] `gates/rubric.md` — cross‑platform evaluation rubric (spec / design‑language / platform / adversarial / security / a11y / reconcile / tests / verification).
 - [x] `gates/reconcile.sh` + `gates/reconcile.ps1` — design↔code drift checker (regenerate from tokens via `config.tokenBuild`, diff against committed code).
 - [x] `gates/checks.sh` + `gates/checks.ps1` — deterministic gate runner driven by `uikit.config.json` (generate/build/test + designMap/tokens JSON valid; `--quick` / `-Quick` for hooks).
-- [x] `gates/quality-gate.sh` + `gates/quality-gate.ps1` — lightweight Stop‑hook gate (fast JSON guard + reconcile/judge reminder).
+- [x] `gates/quality-gate.sh` + `gates/quality-gate.ps1` — lightweight quick gate (fast JSON guard + reconcile/judge reminder).
 - [x] `gates/hooks/design-guard.json` (POSIX) + `design-guard.windows.json` (pwsh) — PostToolUse JSON‑validity guard.
 
 > **Cross‑platform:** every gate ships a POSIX `.sh` (jq) **and** a PowerShell `.ps1` (native `ConvertFrom-Json`, no jq needed on Windows) variant. Both verified to produce identical PASS / FAIL / BLOCK / DRIFT exit codes (0 / 1 / 2 / 1).

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Architrave UI — Stop hook (lightweight). Validates the design
+# Architrave UI — lightweight quick gate. Validates the design
 # map / tokens JSON fast and reminds that the FULL gates + Adversarial Judge must
 # pass before declaring done. NOT a full build (hooks must stay fast).
 # Exit 0 = ok to stop, 2 = BLOCKING (invalid JSON).
