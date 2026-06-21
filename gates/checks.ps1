@@ -42,6 +42,30 @@ function Test-JsonFile($f, $label) {
   } else { Write-Host "warn  $label $f (missing)" }
 }
 
+# F4 drift nudge: non-blocking warning when the repo's copied kit assets are older
+# than the locally installed plugin. Silent when it can't tell.
+function Show-KitDriftNudge {
+  $stamp = if (Test-Path 'gates/.kit-version') { (Get-Content 'gates/.kit-version' -Raw).Trim() } else { '' }
+  $plug = Get-ChildItem -Path "$HOME/.copilot/installed-plugins","$HOME/.claude/plugins" -Recurse -Filter 'plugin.json' -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match 'architrave-ui' } | Select-Object -First 1
+  if (-not $plug) { return }
+  $ref = (Get-Content $plug.FullName -Raw | ConvertFrom-Json).version
+  if (-not $ref -or $stamp -eq $ref) { return }
+  $older = $true
+  if ($stamp) {
+    $sa = $stamp.Split('.'); $ra = $ref.Split('.')
+    if ($sa.Count -ge 3 -and $ra.Count -ge 3) {
+      $older = $false
+      for ($i = 0; $i -lt 3; $i++) { $x = [int]$sa[$i]; $y = [int]$ra[$i]; if ($x -lt $y) { $older = $true; break }; if ($x -gt $y) { break } }
+    }
+  }
+  if ($older) {
+    $repoTxt = if ($stamp) { $stamp } else { 'unstamped' }
+    [Console]::Error.WriteLine("WARN  Architrave kit assets are stale (repo: $repoTxt, plugin: v$ref) - gates/knowledge won't auto-update.")
+    [Console]::Error.WriteLine("      Refresh: pwsh -File `"$(Split-Path $plug.FullName)/tools/update.ps1`" `"$root`"")
+  }
+}
+
 Write-Host "== Architrave UI checks (root: $root) =="
 Test-JsonFile 'uikit.config.json' 'config   '
 Test-JsonFile (Get-Field 'designMap') 'designMap'
@@ -51,6 +75,8 @@ if ($Quick) {
   if ($script:fail -eq 0) { Write-Host 'CHECKS (quick): PASS' } else { Write-Host 'CHECKS (quick): FAIL' }
   exit $script:fail
 }
+
+Show-KitDriftNudge
 
 function Invoke-Step($name, $field) {
   $cmd = Get-Field $field

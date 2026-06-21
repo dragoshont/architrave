@@ -28,6 +28,28 @@ cd "$root"
 
 cfg() { jq -r --arg k "$1" '.[$k] // ""' uikit.config.json; }
 
+# F4 drift nudge: warn (non-blocking) if this repo's copied kit assets are older
+# than the locally installed plugin. Silent when it can't tell (cloud / offline /
+# plugin not installed). Best-effort — never affects the exit code.
+kit_drift_nudge() {
+  local stamp="" ref="" plug="" plugdir="" older
+  stamp="$(cat gates/.kit-version 2>/dev/null || true)"
+  for plug in "$HOME"/.copilot/installed-plugins/*/architrave-ui/plugin.json \
+              "$HOME"/.claude/plugins/*/*/architrave-ui/plugin.json; do
+    [ -f "$plug" ] || continue
+    ref="$(jq -r '.version // empty' "$plug" 2>/dev/null || true)"
+    plugdir="$(dirname "$plug")"
+    break
+  done
+  [ -n "$ref" ] || return 0
+  [ "$stamp" = "$ref" ] && return 0
+  older="$(awk -v a="${stamp:-0.0.0}" -v b="$ref" 'BEGIN{split(a,A,".");split(b,B,".");for(i=1;i<=3;i++){x=A[i]+0;y=B[i]+0;if(x<y){print 1;exit}if(x>y){print 0;exit}}print 0}')"
+  if [ -z "$stamp" ] || [ "$older" = "1" ]; then
+    echo "⚠  Architrave kit assets are stale (repo: ${stamp:-unstamped}, plugin: v$ref) — gates/knowledge won't auto-update." >&2
+    echo "   Refresh:  \"$plugdir/tools/update.sh\" \"$root\"" >&2
+  fi
+}
+
 fail=0
 validate_json() {
   local f="$1" label="$2"
@@ -48,6 +70,8 @@ if [ "$quick" -eq 1 ]; then
   if [ "$fail" -eq 0 ]; then echo "CHECKS (quick): PASS"; else echo "CHECKS (quick): FAIL"; fi
   exit "$fail"
 fi
+
+kit_drift_nudge
 
 run_step() {
   local name="$1" cmd

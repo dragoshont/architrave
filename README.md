@@ -31,6 +31,15 @@ copilot plugin update architrave-ui            # Copilot (or: copilot plugin upd
 claude plugin marketplace update architrave    # Claude — refreshes the catalog; the new version applies on restart
 ```
 
+That refreshes the **agents**. A repo you adopted earlier also has **copied** gates + knowledge packs (they live in the repo so the gates can execute and the cloud agent — which has no plugin — can read them), and those don't auto-update. After bumping the plugin, refresh each adopted repo's copied assets in one command — it leaves your `uikit.config.json` untouched:
+
+```bash
+/path/to/architrave-ui/tools/update.sh .                        # macOS / Linux (your kit checkout or the installed plugin dir)
+pwsh -NoProfile -File /path/to/architrave-ui/tools/update.ps1 . # Windows
+```
+
+The gate (`gates/checks.sh`) prints a one-line nudge when a repo's assets are older than your installed plugin, so you know when to run it.
+
 ## Use it
 
 Open your assistant, pick the **Architrave** agent, and describe the change in plain language:
@@ -199,7 +208,7 @@ agents/                       ← Architrave · UX Architect · UI Visual · Pla
                                  + backend lane: Service Architect · Backend Planner · Backend Implementer · Infra Engineer
 gates/                        ← rubric.md · checks.{sh,ps1} · reconcile.{sh,ps1} · quality-gate.{sh,ps1} · backend-checks.{sh,ps1} · hooks/
 templates/                    ← AGENTS.stanza.md · copilot-setup-steps.yml (injected by the installer)
-tools/                        ← install.sh · install.ps1 (per-repo grounding)
+tools/                        ← install.sh · install.ps1 (adopt a repo) · update.sh · update.ps1 (refresh copied assets)
 scripts/                      ← check-manifests.sh (the gate) · bump-version.sh (one-command release bump)
 assets/                       ← README screenshots (drop PNGs here)
 AGENTS.md                     ← kit-level agent instructions

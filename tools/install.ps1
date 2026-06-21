@@ -70,6 +70,12 @@ if (-not (Test-Path $setup)) {
   Write-Host "  ok .github/workflows/copilot-setup-steps.yml"
 } else { Write-Host "  - copilot-setup-steps.yml present - merge jq install manually" }
 
+# 7) Version stamp - lets gates/checks.ps1 detect when these copied assets go stale.
+$ver = (Get-Content "$kit/plugin.json" -Raw | ConvertFrom-Json).version
+if (-not $ver) { $ver = '0.0.0' }
+Set-Content -Path "$Target/gates/.kit-version" -Value $ver -Encoding utf8
+Write-Host "  ok stamped gates/.kit-version = $ver"
+
 Write-Host ""
 Write-Host "Done. Next steps:"
 Write-Host "  1. Edit uikit.config.json to match this repo."
@@ -80,3 +86,6 @@ Write-Host "  3. (Optional, React Storybook) Wire the live Storybook MCP, then s
 Write-Host "       npx storybook add @storybook/addon-mcp"
 Write-Host "       npx mcp-add --type http --url ""http://localhost:6006/mcp"" --scope project"
 Write-Host "  4. Run the Architrave agent for a non-trivial UI change."
+Write-Host ""
+Write-Host "After you later update the plugin, refresh this repo's copied gates + knowledge:"
+Write-Host "       pwsh -NoProfile -File `"$kit/tools/update.ps1`" `"$Target`""

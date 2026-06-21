@@ -90,6 +90,11 @@ else
   echo "  • copilot-setup-steps.yml present — merge jq install manually"
 fi
 
+# 7) Version stamp — lets gates/checks.sh detect when these copied assets go stale.
+if command -v jq >/dev/null 2>&1; then ver="$(jq -r '.version // "0.0.0"' "$KIT/plugin.json")"; else ver="$(grep -m1 '"version"' "$KIT/plugin.json" | sed -E 's/.*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/')"; fi
+printf '%s\n' "${ver:-0.0.0}" > "$TARGET/gates/.kit-version"
+echo "  ✓ stamped gates/.kit-version = ${ver:-0.0.0}"
+
 cat <<EOF
 
 Done. Next steps:
@@ -102,4 +107,8 @@ Done. Next steps:
        npx storybook add @storybook/addon-mcp
        npx mcp-add --type http --url "http://localhost:6006/mcp" --scope project
   4. Run the Architrave agent for a non-trivial UI change.
+
+After you later update the plugin, refresh this repo's copied gates + knowledge
+(they don't auto-update; leaves uikit.config.json untouched):
+       "$KIT/tools/update.sh" "$TARGET"
 EOF
