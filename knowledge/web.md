@@ -11,7 +11,7 @@ Build **bottom‑up**, and this *is* the design source of truth:
 3. **Assemble pages** using **mock data** to reach hard states and edge cases.
 4. **Integrate** into the app — connect data + business logic last.
 
-Storybook is the workbench; the **Component Story Format (CSF)** is an open ES6‑module standard (non‑proprietary). Mental model: **Atomic Design** (atoms → molecules → organisms → templates → pages). Benefits: quality (states in isolation), durability (test at component level), speed (reuse), efficiency (parallelize design/dev).
+Storybook is the workbench; the **Component Story Format (CSF)** is an open ES6‑module standard (non‑proprietary) — type stories with `Meta` / `StoryObj` from the framework package (`@storybook/react-vite`, `@storybook/nextjs`, `@storybook/tanstack-react`, …). Set up with `npm create storybook@latest` (Storybook 10.x; default addons: **vitest, a11y, docs, chromatic, mcp**); mock app context with **MSW** (`msw-storybook-addon`) so components reach real states in isolation. Mental model: **Atomic Design** (atoms → molecules → organisms → templates → pages). Benefits: quality (states in isolation), durability (test at component level), speed (reuse), efficiency (parallelize design/dev).
 
 ## React specifics
 - Function components + **composition** over inheritance; controlled state; keep state out of presentational components.
@@ -42,8 +42,17 @@ Accessibility · content design · **design tokens** (reference→system→compo
 - **Target size** ≥ 24×24 CSS px (AA); ~44 px for touch.
 - Never color‑only meaning; honor `prefers-reduced-motion`; label icon‑only controls.
 
-## Testing / gates
-- **Storybook** (CSF) = the reference. **Chromatic** = visual regression against the stories. **Playwright** = interaction/e2e. **Testing Library + Jest** = unit. **a11y addon (axe)** = accessibility checks.
+## Testing / gates (Storybook 10.x)
+- **Storybook Test = Vitest.** Stories run as component tests via `@storybook/addon-vitest` (`npx vitest --project storybook run`) — every story is a render test (a story that throws fails). This replaces the old `@storybook/test-runner` + Jest / Testing‑Library setup.
+- **Interaction tests** = `play` functions (`@storybook/test`: `expect` / `userEvent`) executed inside Vitest — assert behavior + final state.
+- **a11y** = the **a11y addon (axe)** in the test run. **Visual regression** = **Chromatic**. **App‑level e2e** = Playwright (separate from component tests).
+
+## Storybook + agents (10.4)
+Storybook is increasingly agent‑aware — lean on it:
+- **Reuse, don't reinvent (the whole point):** if the repo runs **Storybook MCP for React** (10.3+) with **React Component Meta** (`features.experimentalReactComponentMeta: true`), pull existing component metadata from it to ground in and reproduce components — don't invent new ones.
+- **Agentic setup:** to add Storybook to a repo, run `npm create storybook@latest` (or have the agent “set up Storybook … and follow its instructions precisely”) — it scaffolds config, MSW mocks, stories + interaction tests, and verifies they render *with styles*.
+- **Review the diff:** use the sidebar **New / Modified / Related** filters (change detection) to review exactly the stories your change touched.
+- **Sign‑off:** use **Publish / Share** (one‑click upload to Chromatic) to show the live preview for the human sign‑off step — no commit / PR / CI needed.
 
 ## Mapping (how to reproduce)
 - Reproduce the **CSF story** as the app component — same component name, same states, same tokens.
@@ -51,4 +60,4 @@ Accessibility · content design · **design tokens** (reference→system→compo
 - Every interactive state from the story must exist in the implementation; verify with the visual‑regression + a11y gate.
 
 ## Citations
-componentdriven.org · storybook.js.org/docs/api/csf · m3.material.io/foundations · fluent2.microsoft.design/components/web/react · w3.org/TR/WCAG22.
+componentdriven.org · storybook.js.org/docs/api/csf · storybook.js.org/docs/ai/setup · storybook.js.org/docs/writing-tests (Vitest) · storybook.js.org/blog/storybook-mcp-for-react · m3.material.io/foundations · fluent2.microsoft.design/components/web/react · w3.org/TR/WCAG22.
