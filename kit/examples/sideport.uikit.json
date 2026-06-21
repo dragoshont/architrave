@@ -5,6 +5,7 @@
     "type": "storybook",
     "path": "src/Sideport.Admin/.storybook",
     "url": "https://dragoshont.github.io/sideport/",
+    "mcp": "http://localhost:6006/mcp",
     "spec": "docs/ui/sideport-ui-design-spec.md"
   },
   "knowledgePack": "web",

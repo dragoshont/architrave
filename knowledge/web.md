@@ -47,12 +47,18 @@ Accessibility · content design · **design tokens** (reference→system→compo
 - **Interaction tests** = `play` functions (`@storybook/test`: `expect` / `userEvent`) executed inside Vitest — assert behavior + final state.
 - **a11y** = the **a11y addon (axe)** in the test run. **Visual regression** = **Chromatic**. **App‑level e2e** = Playwright (separate from component tests).
 
-## Storybook + agents (10.4)
-Storybook is increasingly agent‑aware — lean on it:
-- **Reuse, don't reinvent (the whole point):** if the repo runs **Storybook MCP for React** (10.3+) with **React Component Meta** (`features.experimentalReactComponentMeta: true`), pull existing component metadata from it to ground in and reproduce components — don't invent new ones.
-- **Agentic setup:** to add Storybook to a repo, run `npm create storybook@latest` (or have the agent “set up Storybook … and follow its instructions precisely”) — it scaffolds config, MSW mocks, stories + interaction tests, and verifies they render *with styles*.
-- **Review the diff:** use the sidebar **New / Modified / Related** filters (change detection) to review exactly the stories your change touched.
-- **Sign‑off:** use **Publish / Share** (one‑click upload to Chromatic) to show the live preview for the human sign‑off step — no commit / PR / CI needed.
+## Storybook MCP — the agent's primary channel (10.3+/10.4)
+When `config.designSource.mcp` is set, the repo runs **`@storybook/addon-mcp`** and the agents use it as their highest‑signal channel — it equips them with real component metadata (stories, props, docs) to **reuse, not reinvent** (benchmarks: ~13% better component reuse, ~2.8× faster, ~27% fewer tokens vs. no MCP).
+
+**Wire it (per repo):** `npx storybook add @storybook/addon-mcp` (serves `/mcp` on the Storybook dev server) → `npx mcp-add --type http --url "http://localhost:6006/mcp" --scope project` (register in the agent client) → set `designSource.mcp` to that URL in `uikit.config.json`. The agents allow the server via `"@storybook/addon-mcp/*"` in their `tools` — rename that entry if your server is named differently. A **published/remote MCP** (Chromatic) lets teammates connect without running Storybook locally; **composition** merges multiple Storybooks behind one endpoint.
+
+**Tools → harness step:**
+- `list-all-documentation` → discover the component catalog (ground; step 1).
+- `get-documentation` / `get-documentation-for-story` → real props + story usage to reproduce; the Judge verifies against it (steps 1–2, 8).
+- `get-storybook-story-instructions` → **call before writing any `*.stories.*`** (step 4).
+- `preview-stories` → live preview URLs that embed in the chat — the **human sign‑off** surface (step 4); always include the URLs in your reply.
+
+Other 10.4 aids: **change detection** (New/Modified/Related sidebar filters to review the stories your change touched); **Publish/Share** (one‑click Chromatic upload) for a shareable sign‑off preview; agentic setup via `npm create storybook@latest`.
 
 ## Mapping (how to reproduce)
 - Reproduce the **CSF story** as the app component — same component name, same states, same tokens.

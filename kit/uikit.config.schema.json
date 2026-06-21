@@ -26,7 +26,8 @@
         "type": { "type": "string", "enum": ["storybook", "swift-ui-lab", "design-doc"] },
         "path": { "type": "string", "description": "Repo-relative path to the design workbench (e.g. src/Admin/.storybook, ui-lab)." },
         "url": { "type": "string", "description": "Optional running/published Storybook URL (e.g. http://localhost:6007 or a gh-pages demo)." },
-        "spec": { "type": "string", "description": "Optional repo-relative path to a written design spec (e.g. docs/ui/*-design-spec.md)." }
+        "spec": { "type": "string", "description": "Optional repo-relative path to a written design spec (e.g. docs/ui/*-design-spec.md)." },
+        "mcp": { "type": "string", "description": "Optional Storybook MCP endpoint from @storybook/addon-mcp (e.g. http://localhost:6006/mcp). When set, agents ground via list-all-documentation/get-documentation, write stories via get-storybook-story-instructions, and preview for sign-off via preview-stories." }
       }
     },
     "designMap": {

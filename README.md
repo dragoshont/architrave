@@ -145,6 +145,15 @@ This copies the agents → `.github/agents/`, the gates → `gates/`, the knowle
 
 Then point it at your repo — edit `uikit.config.json` — set `platform`, `stack`, `designSource` (your Storybook), `tokens`, and the `build`/`test` commands. Then ask the **Architrave** agent to make a UI change; it grounds, proposes, judges, implements, reconciles, and verifies.
 
+**Optional — wire the live Storybook MCP (React).** Let the agents pull real component metadata from a running Storybook (`@storybook/addon-mcp`) so they reuse components instead of reinventing them:
+
+```bash
+npx storybook add @storybook/addon-mcp                                       # serves /mcp on the dev server
+npx mcp-add --type http --url "http://localhost:6006/mcp" --scope project    # register in the agent client
+```
+
+Then set `designSource.mcp` to that URL in `uikit.config.json`. The agents now ground via `list-all-documentation` / `get-documentation`, write stories after `get-storybook-story-instructions`, and post `preview-stories` URLs for your sign‑off. (They allow the server via `"@storybook/addon-mcp/*"` in their `tools` — rename if your MCP server differs.)
+
 ## Layout
 
 ```

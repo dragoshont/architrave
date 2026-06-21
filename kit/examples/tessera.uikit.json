@@ -1,7 +1,7 @@
 {
   "platform": "web",
   "stack": "react",
-  "designSource": { "type": "storybook", "path": "web/.storybook" },
+  "designSource": { "type": "storybook", "path": "web/.storybook", "mcp": "http://localhost:6006/mcp" },
   "knowledgePack": "web",
   "applyTo": ["web/**"],
   "build": "npm --prefix web run build",

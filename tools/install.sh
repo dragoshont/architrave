@@ -96,5 +96,9 @@ Done. Next steps:
   2. Install the agents for local Copilot surfaces (CLI + app + VS Code):
        copilot plugin marketplace add dragoshont/architrave-ui
        copilot plugin install architrave-ui@architrave
-  3. Run the Architrave agent for a non-trivial UI change.
+  3. (Optional, React Storybook) Wire the live Storybook MCP so agents reuse real
+     components instead of reinventing — then set designSource.mcp to the URL:
+       npx storybook add @storybook/addon-mcp
+       npx mcp-add --type http --url "http://localhost:6006/mcp" --scope project
+  4. Run the Architrave agent for a non-trivial UI change.
 EOF
