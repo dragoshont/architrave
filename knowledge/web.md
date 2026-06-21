@@ -23,6 +23,16 @@ Storybook is the workbench; the **Component Story Format (CSF)** is an open ES6�
 - **Material** — Material Web / MUI; Material 3 token tiers (ref/sys/comp).
 - **Radix + shadcn/ui** — unstyled accessible primitives + token‑themed components.
 
+## Structural components (the building blocks)
+Reproduce real desktop‑class web app patterns with accessible primitives (Radix/shadcn, Fluent React, or Material) — not bespoke `<div>` soup:
+- **Shell:** `<nav>` sidebar + `<main>` content + optional `<aside>` drawer; responsive (the drawer collapses on narrow viewports).
+- **List vs Table:** a multi‑attribute collection (e.g. Title · Artist · Album · Time) is a real **`<table>`** with `<th scope="col">`, **resizable columns** and **sortable headers** (`aria-sort` + a sort control); use a **data‑grid** (TanStack Table / ARIA `role="grid"`) for large / virtualized sets, and cards or list rows only for compact / art‑led layouts. **Don't fake a table** with semantics‑free `<div>`s.
+- **Toolbar (top):** a `role="toolbar"` cluster — an overflow menu (`aria-haspopup="menu"`) + the **sort/filter menu** (Title · Genre · Year · … + Asc/Desc).
+- **Search (top):** `<input type="search">` (labeled), scoped + debounced to the visible list.
+- **Drawer / right panel:** a **Sheet / Dialog** (`role="dialog"` or `complementary`) — focus‑trapped, ESC‑dismissible, returns focus; not a layout‑shifting toggle.
+- **Context menu:** a right‑click **Context Menu** (Radix) plus a visible row `…` menu button (keyboard‑reachable); the menu **mirrors** the row's actions.
+- Everything: visible focus, full keyboard operability, `aria-*` only where semantic HTML falls short.
+
 ## Material 3 foundations (reference)
 Accessibility · content design · **design tokens** (reference→system→component) · interaction states · layout. Tokens are the single source of truth across design, tools, and code.
 

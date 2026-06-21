@@ -29,6 +29,16 @@ Fluent ships **global + alias design tokens** (`@fluentui/tokens`) and Figma UI 
 ## Icons
 **Fluent UI System Icons** (regular/filled) — match weight/size to text; filled for selected/active state.
 
+## Structural components (the native building blocks)
+Reproduce a Windows app from Fluent/WinUI system components (Windows 11 Settings, Mail, Media Player are the IA references):
+- **Shell:** `NavigationView` (left pane = sidebar, or top) + content; a **list‑detail** layout or a trailing `SplitView` pane for the **details / inspector** drawer.
+- **List vs grid/table:** a multi‑column, sortable collection = the **`DataGrid`** (Community Toolkit) — **resizable, stretching columns** + **click‑to‑sort headers**; use `ListView` / `ItemsRepeater` for row‑ or card‑led lists. Don't hand‑lay columns in a `StackPanel`.
+- **Commanding (toolbar):** `CommandBar` (primary commands + `…` overflow) in the header; the **sort/filter** control = a `DropDownButton` / `CommandBar` button opening a `MenuFlyout`.
+- **Search:** `AutoSuggestBox` in the header / command bar (the Fluent search field), scoped to the list.
+- **Inspector / right drawer:** a trailing `SplitView` pane, or the details pane of the list‑detail pattern — persistent / dismissible, **not** a modal `ContentDialog`.
+- **Context menus:** `MenuFlyout` via `ContextFlyout` on each item; mirror the row's commands, don't hide them.
+- Transient surfaces (flyouts/menus) ride on **Acrylic**; long‑lived window backgrounds on **Mica**.
+
 ## Accessibility
 WCAG 2.x AA contrast; ship **High‑Contrast** themes; full **keyboard** support + visible focus visuals; **Narrator** labels via UI Automation (`AutomationProperties.Name`); logical tab/focus order.
 
