@@ -253,6 +253,7 @@ agents/                       ← Architrave · Product Research · UX Architect
                                  + runtime lane: Runtime Observer
 gates/                        ← rubric.md · checks.{sh,ps1} · reconcile.{sh,ps1} · quality-gate.{sh,ps1} · backend-checks.{sh,ps1} · hooks/
 harness/                      ← init-run.{sh,ps1} · validate-run.{sh,ps1} · semantic-review.{sh,ps1} · schemas/
+benchmarks/                   ← scenario dataset + benchmark methodology for agent regression tests
 templates/                    ← AGENTS.stanza.md · copilot-setup-steps.yml (injected by the installer)
 tools/                        ← install.sh · install.ps1 (adopt a repo) · update.sh · update.ps1 (refresh copied assets)
 scripts/                      ← check-manifests.sh (the gate) · bump-version.sh (one-command release bump)

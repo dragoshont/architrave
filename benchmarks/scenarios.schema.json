@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://architrave/benchmarks/scenarios.schema.json",
+  "title": "Architrave benchmark scenarios",
+  "type": "object",
+  "required": ["version", "arms", "scenarios"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "type": "integer", "minimum": 1 },
+    "arms": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "runner"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+          "runner": { "type": "string", "enum": ["copilot", "shell"] },
+          "agent": { "type": "string" },
+          "model": { "type": "string" },
+          "customInstructions": { "type": "boolean" },
+          "allowAll": { "type": "boolean" },
+          "noAskUser": { "type": "boolean" },
+          "pluginDir": { "type": "string" },
+          "command": { "type": "array", "items": { "type": "string" } },
+          "env": { "type": "object", "additionalProperties": { "type": "string" } }
+        }
+      }
+    },
+    "scenarios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "repo", "baseRef", "lane", "prompt", "validation"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+          "enabled": { "type": "boolean" },
+          "repo": { "type": "string" },
+          "baseRef": { "type": "string" },
+          "lane": { "type": "string", "enum": ["ui", "ux", "backend", "full-stack", "infra", "ops", "learning", "yagni"] },
+          "prompt": { "type": "string", "minLength": 1 },
+          "validation": { "type": "array", "items": { "type": "string" } },
+          "expectedArtifacts": { "type": "array", "items": { "type": "string" } },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "scoring": { "type": "object", "additionalProperties": true }
+        }
+      }
+    }
+  }
+}

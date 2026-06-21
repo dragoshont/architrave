@@ -7,3 +7,8 @@ Thumbs.db
 # Node — only present if you install Playwright locally to regenerate assets/
 node_modules/
 package-lock.json
+
+# Python / benchmark scratch
+__pycache__/
+*.pyc
+.architrave/bench/

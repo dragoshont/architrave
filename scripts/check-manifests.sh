@@ -25,6 +25,8 @@ json_files=(
   kit/examples/design-map.stub.json
   kit/examples/tokens.web-shadcn.tokens.json
   harness/schemas/run-summary.schema.json
+  benchmarks/scenarios.schema.json
+  benchmarks/scenarios.json
 )
 for f in "${json_files[@]}"; do
   if jq -e . "$f" >/dev/null 2>&1; then ok "$f"; else err "invalid JSON: $f"; fi
@@ -71,6 +73,18 @@ else
   echo "  • npx not found — skipping ajv schema check"
 fi
 
+echo "== benchmark scenarios conform to schema (ajv) =="
+if command -v npx >/dev/null 2>&1; then
+  if npx --yes ajv-cli@5 validate -s benchmarks/scenarios.schema.json -d benchmarks/scenarios.json >/dev/null 2>&1; then
+    ok "schema: benchmarks/scenarios.json"
+  else
+    err "schema violation: benchmarks/scenarios.json"
+    npx --yes ajv-cli@5 validate -s benchmarks/scenarios.schema.json -d benchmarks/scenarios.json 2>&1 | sed 's/^/      /' | tail -8
+  fi
+else
+  echo "  • npx not found — skipping benchmark scenario schema check"
+fi
+
 echo "== no legacy config name references =="
 legacy_tmp="$(mktemp)"
 legacy_name="ui""kit"
@@ -102,6 +116,14 @@ echo "== knowledge packs present =="
 for k in apple microsoft web backend design-tokens learning-loop yagni; do
   [ -s "knowledge/$k.md" ] && ok "knowledge/$k.md" || err "missing knowledge/$k.md"
 done
+
+echo "== python syntax =="
+if python3 -m py_compile scripts/bench-architrave.py scripts/judge-bench.py scripts/summarize-bench.py >/dev/null 2>&1; then
+  ok "benchmark python scripts"
+else
+  err "python syntax problem in benchmark scripts"
+  python3 -m py_compile scripts/bench-architrave.py scripts/judge-bench.py scripts/summarize-bench.py 2>&1 | sed 's/^/      /' | tail -12
+fi
 
 echo
 if [ "$fail" -eq 0 ]; then

@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "arms": [
+    {
+      "id": "copilot-baseline",
+      "runner": "copilot",
+      "customInstructions": false,
+      "allowAll": true,
+      "noAskUser": true
+    },
+    {
+      "id": "copilot-architrave",
+      "runner": "copilot",
+      "agent": "Architrave",
+      "customInstructions": true,
+      "allowAll": true,
+      "noAskUser": true
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "phonodeck-ui-storybook-empty-state",
+      "enabled": true,
+      "repo": "/Users/dragoshont/Repo/phonodeck",
+      "baseRef": "main",
+      "lane": "ui",
+      "tags": ["storybook", "ui", "empty-state"],
+      "prompt": "Benchmark task. Add a Storybook-first empty state for the PhonoDeck Library home when all connected music sources are signed out or unavailable. Acceptance: update the design source first, keep source capability honesty, avoid native app implementation until the Storybook/design artifact exists, and run the repo quick gate. This benchmark has pre-approved proceeding without asking follow-up questions unless the task is impossible.",
+      "validation": ["gates/checks.sh --quick"],
+      "expectedArtifacts": [".architrave/runs", ".architrave/learning/repo-profile.md"],
+      "scoring": {
+        "mustShow": ["visible intake", "Tournament of Options", "YAGNI ladder", "Storybook/design source touched before app code"],
+        "failureModes": ["edits SwiftUI first", "generic marketing empty state", "claims unsupported playback/source capability"]
+      }
+    },
+    {
+      "id": "sideport-yagni-native-form-control",
+      "enabled": true,
+      "repo": "/Users/dragoshont/Repo/sideport",
+      "baseRef": "main",
+      "lane": "yagni",
+      "tags": ["yagni", "web", "native"],
+      "prompt": "Benchmark task. A user asks for a custom date picker in Sideport Admin for certificate renewal scheduling. Implement the smallest correct UI slice. Acceptance: apply the YAGNI ladder, prefer native/browser/design-system capability over a new picker dependency, keep accessibility and validation, and run the repo quick gate. This benchmark has pre-approved proceeding without asking follow-up questions unless impossible.",
+      "validation": ["gates/checks.sh --quick"],
+      "expectedArtifacts": [".architrave/runs", ".architrave/learning/repo-profile.md"],
+      "scoring": {
+        "mustShow": ["YAGNI ladder", "native/platform option", "no new dependency unless justified"],
+        "failureModes": ["adds a date-picker package", "builds a bespoke calendar", "drops keyboard/a11y basics"]
+      }
+    },
+    {
+      "id": "sideport-backend-contract-first-refresh-status",
+      "enabled": true,
+      "repo": "/Users/dragoshont/Repo/sideport",
+      "baseRef": "main",
+      "lane": "backend",
+      "tags": ["backend", "contract", "queue"],
+      "prompt": "Benchmark task. Add a backend-visible refresh status field for apps already queued for signing/refresh, without inventing a parallel queue abstraction. Acceptance: ground in existing Sideport architecture docs and solution seams, define or update the contract first, implement the smallest approved slice, preserve idempotency/capability honesty, and run the repo quick gate. This benchmark has pre-approved proceeding without asking follow-up questions unless impossible.",
+      "validation": ["gates/checks.sh --quick", "gates/backend-checks.sh"],
+      "expectedArtifacts": [".architrave/runs", ".architrave/learning/repo-profile.md"],
+      "scoring": {
+        "mustShow": ["contract-first", "Tournament of Options", "existing solution seam reused"],
+        "failureModes": ["parallel queue abstraction", "UI-only fake status", "non-idempotent state update"]
+      }
+    },
+    {
+      "id": "tessera-fullstack-contract-and-ui",
+      "enabled": true,
+      "repo": "/Users/dragoshont/Repo/tessera",
+      "baseRef": "main",
+      "lane": "full-stack",
+      "tags": ["full-stack", "contract", "storybook"],
+      "prompt": "Benchmark task. Add a minimal admin portal indicator for a backend job that is blocked by missing configuration. Acceptance: define the backend/API shape first from existing architecture docs, render an honest blocked state in the UI design source, avoid invented metrics, avoid unnecessary persistence, and run quick gates. This benchmark has pre-approved proceeding without asking follow-up questions unless impossible.",
+      "validation": ["gates/checks.sh --quick", "gates/backend-checks.sh"],
+      "expectedArtifacts": [".architrave/runs", ".architrave/learning/repo-profile.md"],
+      "scoring": {
+        "mustShow": ["contract-first", "Storybook/design source", "capability honesty", "YAGNI no unnecessary persistence"],
+        "failureModes": ["invented dashboard metric", "UI and backend shapes drift", "adds storage without current need"]
+      }
+    },
+    {
+      "id": "phonodeck-learning-repeated-build-gotcha",
+      "enabled": true,
+      "repo": "/Users/dragoshont/Repo/phonodeck",
+      "baseRef": "main",
+      "lane": "learning",
+      "tags": ["learning", "repo-profile", "build"],
+      "prompt": "Benchmark task. Capture the PhonoDeck build/relaunch gotcha as durable repo learning without changing product code. Acceptance: update the Architrave repo profile or candidate lessons with evidence, do not put a one-off note into architrave.config.json, redact secrets, validate the fact against current repo files, and run the repo quick gate. This benchmark has pre-approved proceeding without asking follow-up questions unless impossible.",
+      "validation": ["gates/checks.sh --quick", "harness/validate-run.sh"],
+      "expectedArtifacts": [".architrave/runs", ".architrave/learning/repo-profile.md", ".architrave/learning/repo-lessons.md"],
+      "scoring": {
+        "mustShow": ["repo profile or candidate lesson", "evidence", "no config bloat", "no secrets"],
+        "failureModes": ["writes secret value", "bloats config", "chat-only memory"]
+      }
+    }
+  ]
+}
