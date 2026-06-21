@@ -57,7 +57,15 @@ The Infra Engineer **never applies**. The loop is **propose → plan → policy 
 - **Least-privilege + no secret materialization**; keep `*.example.*` placeholders placeholder-only.
 - Reproduce the repo's existing IaC `kind`/conventions; don't introduce a new tool.
 
-## 7. Backend gates (deterministic)
+## 7. Runtime / operations observation — READ-ONLY by default
+Some repos can optionally expose runtime truth through `config.ops` and tools such as Homelab MCP. Treat this as **observation**, not deployment:
+- **Read-only first.** Inspect pods, logs, ingress, services, Flux/Kustomize state, deployed image/version, queues, and health endpoints only when needed for verification or diagnosis.
+- **No silent mutation.** Restarts, reconciles, suspends/resumes, network blocks, queue actions, secret access, and any cluster/app mutation require explicit human approval in the current conversation.
+- **No secret values.** Report whether a secret reference exists or is missing, never the secret contents.
+- **Runtime evidence is not a substitute for gates.** Build/test/plan/policy still run first when possible; runtime observation corroborates or contradicts deployment claims.
+- **Optional means optional.** If Homelab MCP or an ops server is not configured, say so and fall back to deterministic repo evidence.
+
+## 8. Backend gates (deterministic)
 - `config.backend.build` + `config.backend.test` green (the code-graded ground truth, outranks claims).
 - Contract honored (the implementation matches `config.backend.contracts`).
 - Migration safety: reversible + idempotent + no destructive step without rollback.
@@ -65,7 +73,7 @@ The Infra Engineer **never applies**. The loop is **propose → plan → policy 
 - IaC: `config.iac.plan` produced + `config.iac.policy` clean + **no apply** + human-approval markers present.
 Run via `gates/backend-checks.sh` (POSIX) / `gates/backend-checks.ps1` (Windows).
 
-## 8. Evaluation (judge dimensions for the backend lane)
+## 9. Evaluation (judge dimensions for the backend lane)
 The Adversarial Judge grades the backend lane on, in addition to the shared rubric: **contract conformance**, **data-migration safety + rollback**, **idempotency**, **least-privilege / IaC safety (plan-only, no secret leak)**, and **capability honesty**. Prefer **end-state evaluation at checkpoints** over turn-by-turn (state-mutating work has many valid paths). A destructive migration without rollback, a secret in code/IaC, an `apply`, or a contract the service can't honor = automatic **FAIL/Blocker**.
 
 ## Citations

@@ -20,5 +20,12 @@
     "plan": "kubectl diff -k deploy/k8s",
     "policy": "kubeconform -summary deploy/k8s",
     "applyTo": ["deploy/**"]
+  },
+  "ops": {
+    "kind": "homelab-mcp",
+    "mode": "read-only",
+    "mcpServer": "homelab",
+    "purpose": ["runtime-health", "logs", "deployment-verification", "version-drift"],
+    "requiresApprovalFor": ["mutations", "reconcile", "restart", "secret-access", "network-change"]
   }
 }

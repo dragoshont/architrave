@@ -34,6 +34,9 @@ Score each **Pass / Concern / Fail** with a severity and cite evidence (a spec l
 13. **Idempotency & resilience** — external‑effecting operations are idempotent / retry‑safe; at‑least‑once messaging assumed; honest failure / blocked / scarce states.
 14. **IaC safety (plan‑only)** — infra changes are **plan / what‑if / diff only, never applied**; `config.iac.policy` clean; least‑privilege (no wildcard RBAC, no unintended public exposure); **no secret materialized** in code / IaC / logs; identity / network / secret changes carry an explicit human‑approval gate. An `apply`, a leaked secret, or a destructive migration without rollback = automatic **FAIL / Blocker**.
 
+### Runtime / ops dimensions (apply when `config.ops` is set or runtime evidence is used)
+15. **Runtime observation safety** — ops evidence is read-only by default; logs/status/health/image/ingress observations are cited; no restart/reconcile/apply/network/queue mutation happened without explicit human approval; no secret values were revealed. A silent mutation or secret disclosure = automatic **FAIL / Blocker**.
+
 ## Severity
 **Blocker** (ship‑stopper / policy / spec miss) · **Major** (wrong but recoverable) · **Minor** (quality) · **Nit** (polish).
 

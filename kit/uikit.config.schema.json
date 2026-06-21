@@ -82,6 +82,18 @@
         "policy": { "type": "string", "description": "Optional policy/lint command (e.g. 'kubeconform', 'tfsec', 'checkov', 'bicep lint')." },
         "applyTo": { "type": "array", "description": "Globs where the IaC lives.", "items": { "type": "string" } }
       }
+    },
+    "ops": {
+      "type": "object",
+      "description": "Optional runtime/operations observation lane. Used by Runtime Observer for read-only deployment/runtime evidence (for example Homelab MCP, Kubernetes health, logs, ingress, Flux state). Runtime mutations require explicit human approval.",
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "description": "Runtime/ops provider type.", "enum": ["homelab-mcp", "kubernetes", "custom", "other"] },
+        "mode": { "type": "string", "description": "Default access mode. Use read-only unless the repo intentionally supports approval-gated operations.", "enum": ["read-only", "approval-required"] },
+        "mcpServer": { "type": "string", "description": "Optional MCP server name, e.g. homelab. Agents use it only if available in the client." },
+        "purpose": { "type": "array", "description": "Allowed observation purposes such as runtime-health, logs, deployment-verification, version-drift.", "items": { "type": "string" } },
+        "requiresApprovalFor": { "type": "array", "description": "Operations that require explicit human approval, e.g. mutations, reconcile, restart, secret-access, network-change.", "items": { "type": "string" } }
+      }
     }
   }
 }

@@ -4,14 +4,14 @@
     "name": "dragoshont"
   },
   "metadata": {
-    "description": "Architrave — a judge-gated agent crew for UI, backend, full-stack features, and plan-only infrastructure.",
-    "version": "0.5.2"
+    "description": "Architrave — a judge-gated agent crew for UI, backend, full-stack features, plan-only infrastructure, and optional read-only runtime observation.",
+    "version": "0.5.3"
   },
   "plugins": [
     {
       "name": "architrave",
-      "description": "Judge-gated agent crew for UI, backend, full-stack features, and plan-only infrastructure. Grounds UI in Storybook + design tokens, grounds backend in architecture docs + contracts, keeps IaC plan-only, and gates every change with specialist agents, deterministic checks, and an Adversarial Judge. Retargeted per repo via uikit.config.json.",
-      "version": "0.5.2",
+      "description": "Judge-gated agent crew for UI, backend, full-stack features, plan-only infrastructure, and optional read-only runtime observation. Grounds UI in Storybook + tokens, backend in architecture docs + contracts, ops in runtime evidence, and gates every change with deterministic checks plus an Adversarial Judge. Retargeted per repo via uikit.config.json.",
+      "version": "0.5.3",
       "source": ".",
       "license": "MIT",
       "keywords": [
@@ -23,6 +23,8 @@
         "backend",
         "full-stack",
         "iac",
+        "runtime",
+        "ops",
         "agents",
         "judge"
       ]

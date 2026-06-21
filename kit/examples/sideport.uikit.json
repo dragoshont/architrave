@@ -27,5 +27,12 @@
     "plan": "kubectl kustomize deploy/k8s >/tmp/sideport-k8s-rendered.yaml && test -s /tmp/sideport-k8s-rendered.yaml",
     "policy": "kubectl kustomize deploy/k8s >/tmp/sideport-k8s-rendered.yaml && kubeconform -summary /tmp/sideport-k8s-rendered.yaml",
     "applyTo": ["deploy/**"]
+  },
+  "ops": {
+    "kind": "homelab-mcp",
+    "mode": "read-only",
+    "mcpServer": "homelab",
+    "purpose": ["runtime-health", "logs", "deployment-verification", "version-drift"],
+    "requiresApprovalFor": ["mutations", "reconcile", "restart", "secret-access", "network-change"]
   }
 }

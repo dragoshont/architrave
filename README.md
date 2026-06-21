@@ -63,9 +63,10 @@ It classifies the request, grounds in the repo's source of truth, routes to the 
 | **Backend Planner** | under the hood | backend sign-off | Turns the contract into ordered slices, migration/rollback notes, and approval checklist. |
 | **Backend Implementer** | under the hood | service code | Implements approved backend slices and tests against the contract. |
 | **Infra Engineer** | under the hood | plan-only infrastructure | Proposes IaC diffs and runs plan/policy checks; never applies. |
+| **Runtime Observer** | under the hood | runtime truth | Optionally reads Homelab MCP/Kubernetes/logs/health evidence; never mutates without approval. |
 | **Adversarial Judge** | under the hood | the quality gate | Grades the design, then the built code — **PASS / REVISE / FAIL**. |
 
-**Full-stack is built in.** Set a `backend` and/or `iac` block in `uikit.config.json` and the same thin conductor extends past UI. Full-stack work is **contract-first** so tiers never drift; infra remains **plan-only** so identity, network, and secret changes wait for a human apply. Repos without a service or infra tier simply omit those blocks. Grounded in `knowledge/backend.md`.
+**Full-stack is built in.** Set a `backend` and/or `iac` block in `uikit.config.json` and the same thin conductor extends past UI. Full-stack work is **contract-first** so tiers never drift; infra remains **plan-only** so identity, network, and secret changes wait for a human apply. If you have a runtime truth source such as Homelab MCP, add an optional `ops` block so Architrave can ask the Runtime Observer for read-only deployment/log/health evidence. Repos without a service, infra, or runtime lane simply omit those blocks. Grounded in `knowledge/backend.md`.
 
 ## A real app, built this way
 
@@ -172,6 +173,7 @@ Then point it at your repo — edit `uikit.config.json`:
 - For **UI/app work**, set `platform`, `stack`, `designSource` (your Storybook), `designMap`, `tokens`, and the normal `generate` / `build` / `test` commands.
 - For **backend/service work**, add `backend` with the solution path, architecture docs, contract location if you have one, backend `applyTo` globs, and backend build/test commands.
 - For **infrastructure**, add `iac` with the IaC kind, path, plan/what-if/diff command, policy command, and apply globs. Keep it plan-only; the human applies.
+- For **runtime verification**, optionally add `ops` with `kind`, `mode: "read-only"`, `mcpServer` (for example `homelab`), observation purposes, and operations that require approval. This lets Architrave use Homelab MCP or similar tools when present without making them a hard dependency.
 
 For early UI work, `designMap` and `tokens` can start empty while Storybook + specs are the source of truth. As the design system matures, copy `kit/examples/design-map.stub.json` and `kit/examples/tokens.web-shadcn.tokens.json` into your app and wire them in; that unlocks stronger grounding and design↔code reconciliation.
 
@@ -223,6 +225,7 @@ knowledge/
   design-tokens.md            ← 3-tier tokens + design↔code reconciliation — cited
 agents/                       ← Architrave · Product Research · UX Architect · UI Visual · Platform Design · Adversarial Judge
                                  + backend lane: Service Architect · Backend Planner · Backend Implementer · Infra Engineer
+                                 + runtime lane: Runtime Observer
 gates/                        ← rubric.md · checks.{sh,ps1} · reconcile.{sh,ps1} · quality-gate.{sh,ps1} · backend-checks.{sh,ps1} · hooks/
 templates/                    ← AGENTS.stanza.md · copilot-setup-steps.yml (injected by the installer)
 tools/                        ← install.sh · install.ps1 (adopt a repo) · update.sh · update.ps1 (refresh copied assets)
