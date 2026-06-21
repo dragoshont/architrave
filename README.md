@@ -51,6 +51,8 @@ It grounds in your Storybook, proposes a design, gets it graded by the **Adversa
 | **Platform Design** | under the hood | native correctness | Checks against Apple HIG / Fluent / WCAG (contrast, hit-target size). |
 | **Adversarial Judge** | under the hood | the quality gate | Grades the design, then the built code — **PASS / REVISE / FAIL**. |
 
+**Full-stack (optional).** Set a `backend` and/or `iac` block in `uikit.config.json` and the same thin conductor extends past UI: it routes to a **Service Architect** (the API/data contract), a **Backend Planner** (the plan + migration/rollback = your sign-off artifact), a **Backend Implementer** (the service code + tests), and an **Infra Engineer** that is **plan-only** — it proposes infra diffs + `plan`/policy and **never applies** (you apply). Full-stack work is **contract-first** so the tiers never drift, and the Adversarial Judge grades the backend lane too (contract conformance, migration safety, IaC plan-only). UI-only repos just omit those blocks. Grounded in `knowledge/backend.md`.
+
 ## A real app, built this way
 
 **PhonoDeck** — a native macOS music app (SwiftUI) — is the most mature app built this way. Its design lives in **Storybook**; the agents ground in it, reproduce components by their real names, and build the native app to match — the sidebar, the Home recommendations, the now‑playing panel, and the `NowPlayingBar`, all held to Apple's Human Interface Guidelines.
@@ -191,9 +193,11 @@ knowledge/
   apple.md                    ← Apple HIG pack (SwiftUI) — cited
   microsoft.md                ← Microsoft Fluent 2 / WinUI pack — cited
   web.md                      ← Web + React + component-driven dev pack — cited
+  backend.md                  ← Backend + infra pack (thin orchestration · contract-first · IaC plan-only) — cited
   design-tokens.md            ← 3-tier tokens + design↔code reconciliation — cited
-agents/                       ← UX Architect · UI Visual · Platform Design · Architrave · Adversarial Judge
-gates/                        ← rubric.md · checks.{sh,ps1} · reconcile.{sh,ps1} · quality-gate.{sh,ps1} · hooks/
+agents/                       ← Architrave · UX Architect · UI Visual · Platform Design · Adversarial Judge
+                                 + backend lane: Service Architect · Backend Planner · Backend Implementer · Infra Engineer
+gates/                        ← rubric.md · checks.{sh,ps1} · reconcile.{sh,ps1} · quality-gate.{sh,ps1} · backend-checks.{sh,ps1} · hooks/
 templates/                    ← AGENTS.stanza.md · copilot-setup-steps.yml (injected by the installer)
 tools/                        ← install.sh · install.ps1 (per-repo grounding)
 scripts/                      ← check-manifests.sh (the gate) · bump-version.sh (one-command release bump)

@@ -5,5 +5,20 @@
   "knowledgePack": "web",
   "applyTo": ["web/**"],
   "build": "npm --prefix web run build",
-  "test": "npm --prefix web run test"
+  "test": "npm --prefix web run test",
+  "backend": {
+    "stack": "dotnet",
+    "solution": "Tessera.slnx",
+    "architectureDocs": ["docs/adr", "docs/architecture.md"],
+    "applyTo": ["src/**", "tests/**"],
+    "build": "dotnet build Tessera.slnx",
+    "test": "dotnet test Tessera.slnx"
+  },
+  "iac": {
+    "kind": "mixed",
+    "path": "deploy",
+    "plan": "kubectl diff -k deploy/k8s",
+    "policy": "kubeconform -summary deploy/k8s",
+    "applyTo": ["deploy/**"]
+  }
 }

@@ -5,14 +5,14 @@
   },
   "metadata": {
     "description": "Architrave UI — the design-grounded, judge-gated cross-platform UI architrave kit.",
-    "version": "0.2.0"
+    "version": "0.3.0"
   },
   "plugins": [
     {
       "name": "architrave-ui",
       "source": ".",
       "description": "UI/UX agents that design and build native-looking apps for Apple (SwiftUI), Microsoft (WinUI), and the web (React). Grounds in your existing Storybook + design tokens, builds native, and gates every change with an AI judge plus your real build and tests. Bundles the UX Architect, UI Visual, pluggable Platform Design, Adversarial Judge, and Architrave harness; retargeted per repo via uikit.config.json.",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "license": "MIT",
       "keywords": [
         "ui",

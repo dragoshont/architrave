@@ -33,15 +33,16 @@ echo "  ✓ agents → .github/agents/ ($(ls "$KIT"/agents/*.agent.md | wc -l | 
 cp "$KIT"/gates/checks.sh "$KIT"/gates/checks.ps1 \
    "$KIT"/gates/reconcile.sh "$KIT"/gates/reconcile.ps1 \
    "$KIT"/gates/quality-gate.sh "$KIT"/gates/quality-gate.ps1 \
+   "$KIT"/gates/backend-checks.sh "$KIT"/gates/backend-checks.ps1 \
    "$KIT"/gates/rubric.md "$TARGET/gates/"
 cp "$KIT"/gates/hooks/*.json "$TARGET/gates/hooks/"
 chmod +x "$TARGET"/gates/*.sh "$TARGET"/gates/*.ps1 2>/dev/null || true
-echo "  ✓ gates → gates/ (checks · reconcile · quality-gate, .sh + .ps1, + rubric)"
+echo "  ✓ gates → gates/ (checks · reconcile · quality-gate · backend-checks, .sh + .ps1, + rubric)"
 
 # 2b) Knowledge packs — the Platform Design agent reads these per config.platform.
 mkdir -p "$TARGET/knowledge"
 cp "$KIT"/knowledge/*.md "$TARGET/knowledge/"
-echo "  ✓ knowledge → knowledge/ (apple · microsoft · web · design-tokens)"
+echo "  ✓ knowledge → knowledge/ (apple · microsoft · web · backend · design-tokens)"
 
 # 3) uikit.config.json — scaffold only if absent (never clobber).
 if [ ! -f "$TARGET/uikit.config.json" ]; then

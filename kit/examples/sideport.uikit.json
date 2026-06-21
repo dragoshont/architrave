@@ -12,5 +12,20 @@
   "applyTo": ["src/Sideport.Admin/**", "docs/ui/**"],
   "build": "npm --prefix src/Sideport.Admin run build",
   "test": "npm --prefix src/Sideport.Admin run lint",
-  "screenshot": "npm --prefix src/Sideport.Admin run test:screens"
+  "screenshot": "npm --prefix src/Sideport.Admin run test:screens",
+  "backend": {
+    "stack": "dotnet",
+    "solution": "Sideport.slnx",
+    "architectureDocs": ["docs"],
+    "applyTo": ["src/**", "tests/**"],
+    "build": "dotnet build Sideport.slnx",
+    "test": "dotnet test Sideport.slnx"
+  },
+  "iac": {
+    "kind": "kubernetes",
+    "path": "deploy",
+    "plan": "kubectl diff -k deploy/k8s",
+    "policy": "kubeconform -summary deploy/k8s",
+    "applyTo": ["deploy/**"]
+  }
 }

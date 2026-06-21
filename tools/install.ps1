@@ -23,7 +23,7 @@ Copy-Item "$kit/agents/*.agent.md" "$Target/.github/agents/" -Force
 Write-Host "  ok agents -> .github/agents/"
 
 # 2) Gates
-Copy-Item "$kit/gates/checks.sh","$kit/gates/checks.ps1","$kit/gates/reconcile.sh","$kit/gates/reconcile.ps1","$kit/gates/quality-gate.sh","$kit/gates/quality-gate.ps1","$kit/gates/rubric.md" "$Target/gates/" -Force
+Copy-Item "$kit/gates/checks.sh","$kit/gates/checks.ps1","$kit/gates/reconcile.sh","$kit/gates/reconcile.ps1","$kit/gates/quality-gate.sh","$kit/gates/quality-gate.ps1","$kit/gates/backend-checks.sh","$kit/gates/backend-checks.ps1","$kit/gates/rubric.md" "$Target/gates/" -Force
 Copy-Item "$kit/gates/hooks/*.json" "$Target/gates/hooks/" -Force
 Write-Host "  ok gates -> gates/ (checks/reconcile/quality-gate .sh + .ps1 + rubric)"
 

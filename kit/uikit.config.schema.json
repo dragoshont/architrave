@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://architrave-ui/uikit.config.schema.json",
-  "title": "Architrave UI per-repo config",
-  "description": "Declares how Architrave UI retargets its agents, gates, and platform knowledge for one repo. Lives at the repo root as uikit.config.json. UI-only; backend/IaC is out of scope.",
+  "title": "Architrave per-repo config",
+  "description": "Declares how Architrave retargets its agents, gates, and knowledge for one repo. Lives at the repo root as uikit.config.json. UI is the default lane; the optional backend + iac blocks extend the same judge-gated harness to the service tier and infrastructure (infra is plan-only).",
   "type": "object",
   "required": ["platform", "stack", "designSource", "applyTo", "build", "test"],
   "additionalProperties": false,
@@ -56,6 +56,32 @@
     "build": { "type": "string", "description": "Build command (e.g. 'make build', 'npm run build', 'dotnet build')." },
     "test": { "type": "string", "description": "Test command (e.g. 'make test', 'npx playwright test', 'dotnet test')." },
     "generate": { "type": "string", "description": "Optional pre-build generation step (e.g. 'xcodegen generate')." },
-    "screenshot": { "type": "string", "description": "Optional command/recipe that captures a screenshot to compare against the Storybook reference." }
+    "screenshot": { "type": "string", "description": "Optional command/recipe that captures a screenshot to compare against the Storybook reference." },
+    "backend": {
+      "type": "object",
+      "description": "Optional service/backend tier. When set, the Architrave harness extends to the backend lane (Service Architect / Backend Planner / Backend Implementer) gated by the same Adversarial Judge. Omit for UI-only repos.",
+      "additionalProperties": false,
+      "properties": {
+        "stack": { "type": "string", "description": "Backend stack.", "enum": ["dotnet", "node", "python", "go", "swift-services", "other"] },
+        "solution": { "type": "string", "description": "Repo-relative path to the solution/workspace root the implementer grounds in (e.g. 'src', 'Tessera.slnx')." },
+        "architectureDocs": { "type": "array", "description": "Repo-relative paths to the architecture truth the backend agents ground in (ADRs, architecture.md) - the backend's 'designSource'. Reproduce these patterns; never invent parallel abstractions.", "items": { "type": "string" } },
+        "contracts": { "type": "string", "description": "Optional repo-relative path to the API/data contracts (OpenAPI, proto, DTOs) - the cross-tier handshake UI and backend both honor." },
+        "applyTo": { "type": "array", "description": "Globs where the backend lives (scopes the backend lane).", "items": { "type": "string" } },
+        "build": { "type": "string", "description": "Backend build command (e.g. 'dotnet build')." },
+        "test": { "type": "string", "description": "Backend test command (e.g. 'dotnet test')." }
+      }
+    },
+    "iac": {
+      "type": "object",
+      "description": "Optional infrastructure-as-code lane. The Infra Engineer is PLAN-ONLY by charter: it proposes diffs + plan/policy output and NEVER applies - apply stays a human action. Highest-blast-radius lane (secrets, identity, network).",
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "description": "IaC technology.", "enum": ["kubernetes", "bicep", "terraform", "pulumi", "compose", "mixed"] },
+        "path": { "type": "string", "description": "Repo-relative path to the IaC (e.g. 'deploy')." },
+        "plan": { "type": "string", "description": "Plan/preview command - NEVER apply (e.g. 'kubectl diff -k deploy/k8s', 'az deployment group what-if', 'terraform plan')." },
+        "policy": { "type": "string", "description": "Optional policy/lint command (e.g. 'kubeconform', 'tfsec', 'checkov', 'bicep lint')." },
+        "applyTo": { "type": "array", "description": "Globs where the IaC lives.", "items": { "type": "string" } }
+      }
+    }
   }
 }

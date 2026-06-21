@@ -1,6 +1,6 @@
 # Feature evaluation rubric (the Evaluator)
 
-The criteria the **Adversarial Judge** applies to grade a *proposal* (pre‑implementation) or *implementation* (post‑implementation) against its specs and the established design language. It is the canonical rubric for the judge gates inside the **Architrave** harness. Platform‑agnostic: it is resolved per repo through `uikit.config.json` + the matching platform knowledge pack (`knowledge/apple.md` | `microsoft.md` | `web.md`).
+The criteria the **Adversarial Judge** applies to grade a *proposal* (pre‑implementation) or *implementation* (post‑implementation) against its specs and the established design language. It is the canonical rubric for the judge gates inside the **Architrave** harness. Platform‑agnostic: it is resolved per repo through `uikit.config.json` + the matching platform knowledge pack (`knowledge/apple.md` | `microsoft.md` | `web.md`, plus `knowledge/backend.md` for the backend / infra lane).
 
 Grounded in modern eval practice:
 - **Anthropic** — *evaluator–optimizer* loop with clear criteria + stopping conditions; SMART success criteria; LLM‑graded rubrics where the judge **reasons first, then emits a verdict**, graded in a **separate context from the generator**.
@@ -8,7 +8,7 @@ Grounded in modern eval practice:
 - **IBM** — combine **rule‑based + semantic (LLM‑as‑judge)** evaluation; assess **each step and the whole path**, plus **policy‑adherence, prompt‑injection and bias** dimensions, not just final text.
 
 ## Two grading layers (use both)
-1. **Deterministic gates (code‑graded — rule‑based):** `gates/checks.sh` / `gates/checks.ps1` (`config.generate` + `config.build` + `config.test` + `config.designMap` / `config.tokens` JSON valid) and `gates/reconcile.sh` / `gates/reconcile.ps1` (design↔code token drift) and the `.github/hooks` checks. Objective ground truth; they **override optimistic claims** and must be green.
+1. **Deterministic gates (code‑graded — rule‑based):** `gates/checks.sh` / `gates/checks.ps1` (`config.generate` + `config.build` + `config.test` + `config.designMap` / `config.tokens` JSON valid) and `gates/reconcile.sh` / `gates/reconcile.ps1` (design↔code token drift) and the `.github/hooks` checks; for the backend lane, `gates/backend-checks.sh` (build/test + migration safety + secret scan + IaC plan/policy, **never apply**). Objective ground truth; they **override optimistic claims** and must be green.
 2. **Semantic gate (LLM‑as‑judge):** this rubric, applied adversarially.
 
 ## Before grading: derive acceptance criteria (BDD)
@@ -26,6 +26,12 @@ Score each **Pass / Concern / Fail** with a severity and cite evidence (a spec l
 7. **Design↔code reconciliation** — `gates/reconcile.*` clean: generated‑from‑tokens output matches committed code; any design‑value change went through `config.tokens` first.
 8. **Tests** — the repo's test pattern (`config.test`); cover the new logic **plus ≥ 1 adversarial/edge case** and capability honesty; deterministic and green.
 9. **Verification & ground truth** — `gates/checks.*` green; for UI, a screenshot (`config.screenshot`) matches the Storybook reference; sibling‑instance consistency sweep done.
+
+### Backend‑lane dimensions (apply when `config.backend` / `config.iac` are set — see `knowledge/backend.md`)
+10. **Contract conformance** — the implementation honors the agreed contract (`config.backend.contracts`): shapes, errors, auth scope, pagination; UI and backend bind to the *same* contract (no drift); capability honesty (nothing claimed that the service can't perform).
+11. **Data & migration safety** — schema/data changes are reversible + idempotent, follow expand → migrate → contract, and ship with an approved rollback; no destructive step without it. Data loss = Blocker.
+12. **Idempotency & resilience** — external‑effecting operations are idempotent / retry‑safe; at‑least‑once messaging assumed; honest failure / blocked / scarce states.
+13. **IaC safety (plan‑only)** — infra changes are **plan / what‑if / diff only, never applied**; `config.iac.policy` clean; least‑privilege (no wildcard RBAC, no unintended public exposure); **no secret materialized** in code / IaC / logs; identity / network / secret changes carry an explicit human‑approval gate. An `apply`, a leaked secret, or a destructive migration without rollback = automatic **FAIL / Blocker**.
 
 ## Severity
 **Blocker** (ship‑stopper / policy / spec miss) · **Major** (wrong but recoverable) · **Minor** (quality) · **Nit** (polish).
