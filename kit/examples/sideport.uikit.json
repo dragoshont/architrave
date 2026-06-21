@@ -24,8 +24,8 @@
   "iac": {
     "kind": "kubernetes",
     "path": "deploy",
-    "plan": "kubectl diff -k deploy/k8s",
-    "policy": "kubeconform -summary deploy/k8s",
+    "plan": "kubectl kustomize deploy/k8s >/tmp/sideport-k8s-rendered.yaml && test -s /tmp/sideport-k8s-rendered.yaml",
+    "policy": "kubectl kustomize deploy/k8s >/tmp/sideport-k8s-rendered.yaml && kubeconform -summary /tmp/sideport-k8s-rendered.yaml",
     "applyTo": ["deploy/**"]
   }
 }

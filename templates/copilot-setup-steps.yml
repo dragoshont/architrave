@@ -1,4 +1,4 @@
-# Architrave UI — pre-installs the gate dependencies the Copilot cloud agent needs
+# Architrave — pre-installs the gate dependencies the Copilot cloud agent needs
 # so it can run gates/checks.sh in its ephemeral environment.
 # Docs: https://docs.github.com/copilot/how-tos/use-copilot-agents/cloud-agent/customize-the-agent-environment
 #
@@ -15,7 +15,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Architrave UI gate dependencies (jq)
+      - name: Install Architrave gate dependencies (jq)
         run: sudo apt-get update && sudo apt-get install -y jq
 
       # - name: Set up your project toolchain (example)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Architrave UI — single-command version bump across every manifest (one source of truth).
+# Architrave — single-command version bump across every manifest (one source of truth).
 # Both Copilot and Claude treat a *changed* version string as "an update is available";
 # a static version means installed users never re-fetch. So bump here, then tag to release.
 #

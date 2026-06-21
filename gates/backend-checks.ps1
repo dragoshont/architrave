@@ -24,7 +24,7 @@ $fail = 0
 Write-Host "== Architrave backend-checks (root: $dir) =="
 
 if (-not $cfg.backend -and -not $cfg.iac) {
-  Write-Host 'skip  no backend/iac block in uikit.config.json - UI-only repo'; exit 0
+  Write-Host 'skip  no backend/iac block in uikit.config.json'; exit 0
 }
 
 function Run-Step($name, $cmd) {

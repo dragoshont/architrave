@@ -12,18 +12,18 @@
   .p{color:#58a6ff}.c{color:#d2a8ff}.ok{color:#3fb950}.dim{color:#8b949e}
 </style></head><body>
 <div class="term">
-  <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot gr"></span><span class="title">architrave-ui — zsh</span></div>
+  <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot gr"></span><span class="title">architrave — zsh</span></div>
 <pre><span class="dim"># 1 · install the agents once — shared by Copilot CLI, the app & VS Code</span>
-<span class="p">$</span> <span class="c">copilot</span> plugin install architrave-ui@architrave
-Plugin "architrave-ui" installed successfully.
+<span class="p">$</span> <span class="c">copilot</span> plugin install architrave@architrave
+Plugin "architrave" installed successfully.
 
 <span class="p">$</span> <span class="c">copilot</span> plugin list
 Installed plugins:
-  • architrave-ui@architrave (v0.1.0)
+  • architrave@architrave (v0.5.0)
 
 <span class="dim"># 2 · the deterministic gate runs your repo's real build + tests</span>
 <span class="p">$</span> ./gates/checks.sh
-== Architrave UI checks (root: ~/Repo/phonodeck) ==
+== Architrave checks (root: ~/Repo/phonodeck) ==
 <span class="ok">ok</span>    config    uikit.config.json
 <span class="ok">ok</span>    designMap docs/design/phonodeck-ui-map.json
 == build: make build ==          <span class="ok">✓</span>

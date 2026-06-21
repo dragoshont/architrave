@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://architrave-ui/uikit.config.schema.json",
+  "$id": "https://architrave/uikit.config.schema.json",
   "title": "Architrave per-repo config",
-  "description": "Declares how Architrave retargets its agents, gates, and knowledge for one repo. Lives at the repo root as uikit.config.json. UI is the default lane; the optional backend + iac blocks extend the same judge-gated harness to the service tier and infrastructure (infra is plan-only).",
+  "description": "Declares how Architrave retargets its agents, gates, and knowledge for one repo. Lives at the repo root as uikit.config.json. UI, backend, full-stack, and infrastructure lanes are configured here; infra is always plan-only.",
   "type": "object",
   "required": ["platform", "stack", "designSource", "applyTo", "build", "test"],
   "additionalProperties": false,
@@ -49,7 +49,7 @@
     },
     "applyTo": {
       "type": "array",
-      "description": "Globs where the UI lives. Scopes the Architrave UI instructions/agents inside a mixed repo (so the backend lane is untouched).",
+      "description": "Globs where the UI lane lives. Scopes UI instructions/agents inside a mixed repo so backend/infra lanes can stay separately governed.",
       "items": { "type": "string" },
       "minItems": 1
     },
@@ -59,7 +59,7 @@
     "screenshot": { "type": "string", "description": "Optional command/recipe that captures a screenshot to compare against the Storybook reference." },
     "backend": {
       "type": "object",
-      "description": "Optional service/backend tier. When set, the Architrave harness extends to the backend lane (Service Architect / Backend Planner / Backend Implementer) gated by the same Adversarial Judge. Omit for UI-only repos.",
+      "description": "Optional service/backend tier. When set, the Architrave harness extends to the backend lane (Service Architect / Backend Planner / Backend Implementer) gated by the same Adversarial Judge. Omit for repos without a service tier.",
       "additionalProperties": false,
       "properties": {
         "stack": { "type": "string", "description": "Backend stack.", "enum": ["dotnet", "node", "python", "go", "swift-services", "other"] },

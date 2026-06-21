@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# Architrave UI installer — grounds a target repo so the kit works across every
+# Architrave installer — grounds a target repo so the kit works across every
 # Copilot surface (CLI, the Copilot app, VS Code, and the cloud agent):
-#   • copies the five agents into .github/agents/   (discovery location)
+#   • copies the agent crew into .github/agents/    (discovery location)
 #   • copies the gates (sh + ps1 + rubric + hooks) into gates/
 #   • scaffolds uikit.config.json                   (retargeting config)
-#   • injects the Architrave UI stanza into AGENTS.md (reaches the cloud agent)
+#   • injects the Architrave stanza into AGENTS.md  (reaches the cloud agent)
 #   • drops .github/workflows/copilot-setup-steps.yml (cloud-agent gate deps)
 #   • wires the POSIX PostToolUse hook into .github/hooks/
 #
 # Usage: tools/install.sh [TARGET_REPO_DIR]      (default: current directory)
 # For local agents you ALSO install the plugin once:
-#   copilot plugin marketplace add dragoshont/architrave-ui
-#   copilot plugin install architrave-ui@architrave
+#   copilot plugin marketplace add dragoshont/architrave
+#   copilot plugin install architrave@architrave
 set -uo pipefail
 
 KIT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -19,10 +19,12 @@ TARGET="${1:-$PWD}"
 TARGET="$(cd "$TARGET" 2>/dev/null && pwd)" || { echo "install: target dir not found: ${1:-$PWD}" >&2; exit 1; }
 [ "$TARGET" = "$KIT" ] && { echo "install: refusing to install the kit into itself" >&2; exit 1; }
 
-begin="<!-- architrave-ui:begin -->"
-end="<!-- architrave-ui:end -->"
+begin="<!-- architrave:begin -->"
+end="<!-- architrave:end -->"
+legacy_begin="<!-- architrave-ui:begin -->"
+legacy_end="<!-- architrave-ui:end -->"
 
-echo "Architrave UI → installing into: $TARGET"
+echo "Architrave → installing into: $TARGET"
 mkdir -p "$TARGET/.github/agents" "$TARGET/.github/hooks" "$TARGET/.github/workflows" "$TARGET/gates/hooks"
 
 # 1) Agents — the discovery location read by CLI / app / VS Code / cloud agent.
@@ -66,13 +68,18 @@ fi
 # 4) AGENTS.md stanza — idempotent (replace the managed block, else append).
 ag="$TARGET/AGENTS.md"
 tmp="$(mktemp)"
-if [ -f "$ag" ] && grep -qF "$begin" "$ag"; then
-  awk -v b="$begin" -v e="$end" '$0==b{drop=1} drop&&$0==e{drop=0;next} !drop{print}' "$ag" > "$tmp"
-elif [ -f "$ag" ]; then
+if [ -f "$ag" ]; then
   cat "$ag" > "$tmp"
 else
   printf '# AGENTS.md\n' > "$tmp"
 fi
+tmp2="$(mktemp)"
+awk -v b="$begin" -v e="$end" -v lb="$legacy_begin" -v le="$legacy_end" '
+  $0==b || $0==lb {drop=1; next}
+  drop && ($0==e || $0==le) {drop=0; next}
+  !drop {print}
+' "$tmp" > "$tmp2"
+mv "$tmp2" "$tmp"
 { printf '\n%s\n' "$begin"; cat "$KIT/templates/AGENTS.stanza.md"; printf '%s\n' "$end"; } >> "$tmp"
 mv "$tmp" "$ag"
 echo "  ✓ AGENTS.md stanza injected/refreshed"
@@ -100,8 +107,8 @@ cat <<EOF
 Done. Next steps:
   1. Edit uikit.config.json to match this repo (platform/stack/designSource/tokens/build/test).
   2. Install the agents for local Copilot surfaces (CLI + app + VS Code):
-       copilot plugin marketplace add dragoshont/architrave-ui
-       copilot plugin install architrave-ui@architrave
+      copilot plugin marketplace add dragoshont/architrave
+      copilot plugin install architrave@architrave
   3. (Optional, React Storybook) Wire the live Storybook MCP so agents reuse real
      components instead of reinventing — then set designSource.mcp to the URL:
        npx storybook add @storybook/addon-mcp

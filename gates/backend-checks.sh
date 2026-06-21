@@ -30,7 +30,7 @@ fail=0
 echo "== Architrave backend-checks (root: $root) =="
 
 if ! has_block backend && ! has_block iac; then
-  echo "skip  no backend/iac block in uikit.config.json — UI-only repo"
+  echo "skip  no backend/iac block in uikit.config.json"
   exit 0
 fi
 

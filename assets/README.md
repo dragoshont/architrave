@@ -17,7 +17,7 @@ Optional real screenshots you can add (drop the PNG here, then reference it from
 | File | What to capture |
 |---|---|
 | `phonodeck.png` | **Included.** The PhonoDeck `screens--home` story — captured from its live Storybook (`cd ../phonodeck/ui-lab && npm run storybook` → http://localhost:6007) via headless Edge, element `#storybook-root`, `deviceScaleFactor: 2`. The flagship native-macOS showcase. |
-| `agents.png` | The Copilot agent picker (VS Code chat, the desktop app, or `copilot` CLI) showing the five agents. |
+| `agents.png` | The Copilot agent picker (VS Code chat, the desktop app, or `copilot` CLI) showing the Architrave agent crew. |
 | `architrave.png` | A Architrave session: the acceptance‑criteria checklist + an Adversarial Judge PASS verdict. |
 
 Embed with: `![alt text](assets/overview.png)`.

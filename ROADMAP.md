@@ -23,11 +23,11 @@
 > **Cross‑platform:** every gate ships a POSIX `.sh` (jq) **and** a PowerShell `.ps1` (native `ConvertFrom-Json`, no jq needed on Windows) variant. Both verified to produce identical PASS / FAIL / BLOCK / DRIFT exit codes (0 / 1 / 2 / 1).
 
 ## Milestone 4 — Distribution
-- [x] **Plugin packaging** — `plugin.json` + `.github/plugin/marketplace.json`. Verified end‑to‑end with the real Copilot CLI (v1.0.64): both `copilot plugin install <path>` and the future‑proof `copilot plugin marketplace add dragoshont/architrave-ui` + `copilot plugin install architrave-ui@architrave` load all five agents. The shared `~/.copilot` runtime ⇒ also reaches the Copilot app + VS Code.
+- [x] **Plugin packaging** — `plugin.json` + `.github/plugin/marketplace.json`. Verified end‑to‑end with the real Copilot CLI (v1.0.64): both `copilot plugin install <path>` and the future‑proof `copilot plugin marketplace add dragoshont/architrave` + `copilot plugin install architrave@architrave` load the agent crew. The shared `~/.copilot` runtime ⇒ also reaches the Copilot app + VS Code.
 - [x] `tools/install.sh` (+ `install.ps1`) — per‑repo grounding: copies agents → `.github/agents/`, gates → `gates/`, scaffolds `uikit.config.json`, injects the `AGENTS.md` stanza (idempotent), wires the per‑OS PostToolUse hook, drops `copilot-setup-steps.yml`. Both variants tested on throwaway repos.
 - [x] `AGENTS.md` (kit) + a per‑repo `AGENTS.md` stanza template (`templates/AGENTS.stanza.md`) — the cloud‑agent reach.
 - [x] Prove on Sideport (web) — adopted on an isolated worktree (branch `architrave-ui-adoption`, based on the UI branch's committed HEAD). The installer wired the gates to Sideport's real `tsc -b && vite build` + `eslint`; baseline gate green; ran the Feature‑Builder harness for a grounded a11y change (`aria-current` on the primary nav + the onboarding step‑tabs — WCAG 2.2 / web pack), with a consistency sweep; post‑change gate green. The config was corrected to the repo's real scripts (`test`→`lint`, `screenshot`→`test:screens`).
 
 ---
 
-**Status: M1–M4 complete.** The kit is built, cross‑platform tested, packaged as a Copilot plugin (verified in the real CLI), installable per‑repo, and proven on a non‑PhonoDeck repo. Remaining optional: push to GitHub so the `copilot plugin marketplace add dragoshont/architrave-ui` one‑liner resolves.
+**Status: M1–M4 complete.** The kit is built, cross‑platform tested, packaged as a Copilot/Claude plugin, installable per‑repo, and proven on a non‑PhonoDeck repo. The public repo is `dragoshont/architrave`.

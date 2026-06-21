@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Architrave UI — design<->code reconciliation gate. Regenerates platform code
+# Architrave — design<->code reconciliation gate. Regenerates platform code
 # from the design tokens (config.tokenBuild) and reports drift vs committed code.
 # Exit 0 = reconciled (or not applicable), 1 = DRIFT, 2 = error. Deps: jq, git.
 set -uo pipefail

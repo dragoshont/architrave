@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Architrave UI — deterministic gate runner (the "code-graded" layer that
+# Architrave — deterministic gate runner (the "code-graded" layer that
 # complements the semantic Adversarial Judge). Reads uikit.config.json and runs
 # the configured generate/build/test, plus validates the designMap + tokens JSON.
 #
@@ -23,7 +23,7 @@ find_root() {
   done
   return 1
 }
-root="$(find_root)" || { echo "checks: uikit.config.json not found (run inside a repo that adopted Architrave UI)" >&2; exit 2; }
+root="$(find_root)" || { echo "checks: uikit.config.json not found (run inside a repo that adopted Architrave)" >&2; exit 2; }
 cd "$root"
 
 cfg() { jq -r --arg k "$1" '.[$k] // ""' uikit.config.json; }
@@ -34,7 +34,9 @@ cfg() { jq -r --arg k "$1" '.[$k] // ""' uikit.config.json; }
 kit_drift_nudge() {
   local stamp="" ref="" plug="" plugdir="" older
   stamp="$(cat gates/.kit-version 2>/dev/null || true)"
-  for plug in "$HOME"/.copilot/installed-plugins/*/architrave-ui/plugin.json \
+  for plug in "$HOME"/.copilot/installed-plugins/*/architrave/plugin.json \
+              "$HOME"/.copilot/installed-plugins/*/architrave-ui/plugin.json \
+              "$HOME"/.claude/plugins/*/*/architrave/plugin.json \
               "$HOME"/.claude/plugins/*/*/architrave-ui/plugin.json; do
     [ -f "$plug" ] || continue
     ref="$(jq -r '.version // empty' "$plug" 2>/dev/null || true)"
@@ -61,7 +63,7 @@ validate_json() {
   fi
 }
 
-echo "== Architrave UI checks (root: $root) =="
+echo "== Architrave checks (root: $root) =="
 validate_json "uikit.config.json" "config   "
 validate_json "$(cfg designMap)"  "designMap"
 validate_json "$(cfg tokens)"     "tokens   "

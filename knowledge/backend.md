@@ -1,6 +1,6 @@
 # Backend & infrastructure pack
 
-The cited rule base Architrave's **backend lane** grounds in: how the thin orchestrator routes, how the service tier is built, and how infrastructure is changed **safely**. Loaded when `uikit.config.json` sets a `backend` and/or `iac` block. UI-only repos ignore this pack. Resolved per repo through `config.backend` (`stack`, `solution`, `architectureDocs`, `contracts`) and `config.iac` (`kind`, `path`, `plan`, `policy`).
+The cited rule base Architrave's **backend lane** grounds in: how the thin orchestrator routes, how the service tier is built, and how infrastructure is changed **safely**. Loaded when `uikit.config.json` sets a `backend` and/or `iac` block. Repos without those blocks do not run this lane. Resolved per repo through `config.backend` (`stack`, `solution`, `architectureDocs`, `contracts`) and `config.iac` (`kind`, `path`, `plan`, `policy`).
 
 Grounded in current practice:
 - **Anthropic — *Building effective agents* / *multi-agent research system*:** the **orchestrator-workers** pattern (a lead agent decomposes, delegates to specialized workers, synthesizes) and **evaluator-optimizer** loop; "maintain simplicity," show planning steps, **scale effort to complexity**, give each worker a clear objective/output/boundary, and prefer **artifacts over a "game of telephone."**
@@ -25,6 +25,8 @@ Sequence: **contract + migration → handler → UI binds to it.** The UI lane a
 - **Reproduce, don't reinvent.** Ground in `config.backend.architectureDocs` (ADRs) + the `config.backend.solution` layout. Put each concern in the project that owns it; do not create a parallel abstraction or cross a boundary the Architect didn't sanction. When no ADR governs a lasting decision, **write the ADR first**.
 - **Idempotency & retries.** External-effecting operations are idempotent (idempotency keys / natural keys); assume at-least-once delivery for messaging/brokers; make handlers safe to retry.
 - **Honest errors & states.** Surface real failure/blocked/scarce states; never paper over them with a generic 200/empty.
+- **Capability matrices for integrations.** For service/source adapters, make capabilities explicit (auth scopes, quotas, native vs embedded playback/control, downloads/offline, sharing/casting, cache, account tier, revocation path). UI and API contracts must expose unsupported/limited states honestly instead of hiding them behind generic success or empty responses.
+- **Official APIs and policy.** Stay inside official documented APIs, platform policies, and repo ADRs. Do not use scraped/undocumented service endpoints, private platform APIs, hidden/background playback, unauthorized downloads, or token storage outside the repo's approved secret store.
 - **Tests** cover the new logic + ≥ 1 adversarial/edge case + capability honesty, in the repo's existing test pattern (`config.backend.test`).
 
 ## 4. Data & migrations (reversible by default)

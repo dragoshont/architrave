@@ -1,25 +1,25 @@
-# Architrave UI
+# Architrave
 
-**A crew of UI/UX agents that design *and* build native‑looking apps — for Apple, Microsoft, and the web.**
+**A judge-gated agent crew that plans, designs, and builds UI, backend, full-stack features, and plan-only infrastructure.**
 
-Architrave UI is a **plugin for GitHub Copilot and Claude Code** that designs UI in [Storybook](https://storybook.js.org) first, then builds it natively in **SwiftUI, WinUI, or React** — and won't call it done until it builds, passes your tests, and clears an automated design review.
+Architrave is a **plugin for GitHub Copilot and Claude Code** that turns one front-door agent into a thin conductor: UI is designed in [Storybook](https://storybook.js.org) first, backend work is contract-first, infrastructure is plan-only, and every lane must pass deterministic checks plus an Adversarial Judge before it is called done.
 
-![Architrave UI — ground in your design, let specialist agents propose, gate with a judge + your real build, then ship native UI](assets/overview.png)
+![Architrave — ground in the repo, route to specialists, gate with a judge plus real checks, then ship](assets/overview.png)
 
 ## Install
 
 With **GitHub Copilot** (CLI, desktop app, or VS Code):
 
 ```bash
-copilot plugin marketplace add dragoshont/architrave-ui
-copilot plugin install architrave-ui@architrave
+copilot plugin marketplace add dragoshont/architrave
+copilot plugin install architrave@architrave
 ```
 
 Or with **Claude Code**:
 
 ```bash
-claude plugin marketplace add dragoshont/architrave-ui
-claude plugin install architrave-ui@architrave
+claude plugin marketplace add dragoshont/architrave
+claude plugin install architrave@architrave
 ```
 
 That installs the agents everywhere your assistant runs. Then [set up a repo](#set-up-a-repo) to point them at your Storybook + build.
@@ -27,15 +27,15 @@ That installs the agents everywhere your assistant runs. Then [set up a repo](#s
 **Updating.** Releases bump the plugin version, so a plain update pulls them — no uninstall/reinstall:
 
 ```bash
-copilot plugin update architrave-ui            # Copilot (or: copilot plugin update --all)
+copilot plugin update architrave               # Copilot (or: copilot plugin update --all)
 claude plugin marketplace update architrave    # Claude — refreshes the catalog; the new version applies on restart
 ```
 
 That refreshes the **agents**. A repo you adopted earlier also has **copied** gates + knowledge packs (they live in the repo so the gates can execute and the cloud agent — which has no plugin — can read them), and those don't auto-update. After bumping the plugin, refresh each adopted repo's copied assets in one command — it leaves your `uikit.config.json` untouched:
 
 ```bash
-/path/to/architrave-ui/tools/update.sh .                        # macOS / Linux (your kit checkout or the installed plugin dir)
-pwsh -NoProfile -File /path/to/architrave-ui/tools/update.ps1 . # Windows
+/path/to/architrave/tools/update.sh .                        # macOS / Linux (your kit checkout or the installed plugin dir)
+pwsh -NoProfile -File /path/to/architrave/tools/update.ps1 . # Windows
 ```
 
 The gate (`gates/checks.sh`) prints a one-line nudge when a repo's assets are older than your installed plugin, so you know when to run it.
@@ -46,21 +46,26 @@ Open your assistant, pick the **Architrave** agent, and describe the change in p
 
 > Add an empty state to the library list — an icon, a short message, and a primary action.
 
-It grounds in your Storybook, proposes a design, gets it graded by the **Adversarial Judge**, **shows you the result as a Storybook page for your sign-off**, then implements it, reconciles tokens, and runs your real build + tests before calling it done.
+It classifies the request, grounds in the repo's source of truth, routes to the smallest useful specialist crew, gets the proposal graded by the **Adversarial Judge**, asks for the right human sign-off artifact (Storybook preview for UI, contract + plan for backend, plan/policy output for infra), then implements and runs the real gates before calling it done.
 
 ### The team behind it
 
-**Architrave** runs the whole crew for you. You can also call **UX Architect** or **UI Visual** directly for focused design help; **Platform Design** and the **Adversarial Judge** work under the hood. Here's what each does on that single request:
+**Architrave** runs the whole crew for you. You can also call **UX Architect** or **UI Visual** directly for focused design help; backend, platform, infrastructure, and judge specialists normally work under the hood. Here's what each does on a feature request:
 
 | Agent | Invoke | Its job | On *“Add an empty state to the library list”* |
 |---|---|---|---|
 | **Architrave** | directly | the lead | Runs the whole pipeline — design → your Storybook sign-off → code → gates. |
+| **Product Research** | under the hood | real-world evidence | Finds shipped workflow patterns, patterns to avoid, and missing backend data before planning. |
 | **UX Architect** | directly | how it works | Writes the message + primary action; defines the loading / populated / error variants. |
 | **UI Visual** | directly | how it looks | Applies your design tokens: spacing, type scale, the icon, the button style. |
 | **Platform Design** | under the hood | native correctness | Checks against Apple HIG / Fluent / WCAG (contrast, hit-target size). |
+| **Service Architect** | under the hood | backend contract | Defines the API/data contract and boundary decisions from existing architecture docs. |
+| **Backend Planner** | under the hood | backend sign-off | Turns the contract into ordered slices, migration/rollback notes, and approval checklist. |
+| **Backend Implementer** | under the hood | service code | Implements approved backend slices and tests against the contract. |
+| **Infra Engineer** | under the hood | plan-only infrastructure | Proposes IaC diffs and runs plan/policy checks; never applies. |
 | **Adversarial Judge** | under the hood | the quality gate | Grades the design, then the built code — **PASS / REVISE / FAIL**. |
 
-**Full-stack (optional).** Set a `backend` and/or `iac` block in `uikit.config.json` and the same thin conductor extends past UI: it routes to a **Service Architect** (the API/data contract), a **Backend Planner** (the plan + migration/rollback = your sign-off artifact), a **Backend Implementer** (the service code + tests), and an **Infra Engineer** that is **plan-only** — it proposes infra diffs + `plan`/policy and **never applies** (you apply). Full-stack work is **contract-first** so the tiers never drift, and the Adversarial Judge grades the backend lane too (contract conformance, migration safety, IaC plan-only). UI-only repos just omit those blocks. Grounded in `knowledge/backend.md`.
+**Full-stack is built in.** Set a `backend` and/or `iac` block in `uikit.config.json` and the same thin conductor extends past UI. Full-stack work is **contract-first** so tiers never drift; infra remains **plan-only** so identity, network, and secret changes wait for a human apply. Repos without a service or infra tier simply omit those blocks. Grounded in `knowledge/backend.md`.
 
 ## A real app, built this way
 
@@ -81,16 +86,18 @@ Every change starts in **Storybook** — the fastest, most visual place to desig
 
 - 🧭 **Designs the UX, not just the pixels.** The *UX Architect* works out information architecture, navigation, and every state (empty / loading / error) — validated in **Storybook** before anything is built.
 - 🎨 **Makes it look native.** *UI Visual* + *Platform Design* hold the UI to the platform's own language — Apple HIG, Microsoft Fluent, web / WCAG — so it feels at home on each OS.
-- 🏗️ **Builds the real thing.** *Architrave* turns the approved design into native code — SwiftUI, WinUI, or React — driven by your repo's actual build + tests.
-- 🎯 **Follows your design, never reinvents.** Every change starts from your existing Storybook + component map; agents reproduce a component by its real name and touch only the deltas.
-- ✅ **Won't ship slop.** An *Adversarial Judge* (LLM‑as‑judge) plus deterministic gates (your real build + tests + token lint) must *both* be green — and design tokens stay reconciled with code.
+- 🏗️ **Builds the real thing.** *Architrave* turns the approved design or contract into native/web UI, backend/service code, and tests — driven by your repo's actual build + test commands.
+- 🔌 **Keeps full-stack work contract-first.** *Service Architect* and *Backend Planner* define the API/data handshake, migration/rollback plan, and approval checklist before implementation.
+- 🛡️ **Keeps infrastructure plan-only.** *Infra Engineer* can propose IaC diffs and run `plan` / policy checks, but never applies changes or materializes secrets.
+- 🎯 **Follows your system, never reinvents.** Every change starts from your Storybook/component map, architecture docs/contracts, and existing repo seams; agents touch only the deltas.
+- ✅ **Won't ship slop.** An *Adversarial Judge* (LLM‑as‑judge) plus deterministic gates (your real build + tests + token lint + backend/IaC checks) must *both* be green — and design tokens stay reconciled with code.
 - 🧩 **One method, every surface.** The same kit runs in the Copilot CLI, the Copilot desktop app, VS Code, **Claude Code**, and the cloud coding agent.
 
 ## What it looks like
 
 Install the plugin once — then the agents are available everywhere, and the deterministic gate runs your repo's real build + tests:
 
-![Installing the Architrave UI plugin in the Copilot CLI, then a green gate run](assets/cli.png)
+![Installing the Architrave plugin in the Copilot CLI, then a green gate run](assets/cli.png)
 
 ---
 
@@ -98,9 +105,9 @@ Install the plugin once — then the agents are available everywhere, and the de
 
 Hand an AI agent a UI task and it tends to **reinvent**: a brand‑new button, slightly different spacing, a component that ignores the design system you already maintain. You end up cleaning up inconsistent "AI slop" by hand.
 
-Architrave UI takes the opposite stance — **ground in the design you already have, reproduce it, and prove it.** Your Storybook + design tokens are the source of truth; agents reproduce existing components by name and change only what's needed; and nothing is "done" until it passes your real build and tests **and** an automated design review.
+Architrave takes the opposite stance — **ground in the system you already have, reproduce it, and prove it.** Your Storybook + design tokens are the UI source of truth; your architecture docs + contracts are the backend source of truth; your IaC plan/policy commands are the infrastructure guardrail. Nothing is "done" until it passes your real checks and an automated adversarial review.
 
-The method isn't theoretical — it emerged independently across real apps, **PhonoDeck** (native macOS, SwiftUI) and **Sideport** (web, React), which had each settled on the same design‑first, Storybook‑as‑source‑of‑truth, judge‑gated workflow. Architrave UI extracts that shared method into a stack‑agnostic kit, retargeted per repo by one small config file.
+The method isn't theoretical — it emerged independently across real apps, **PhonoDeck** (native macOS, SwiftUI) and **Sideport** (web, React + .NET), which had each settled on the same source-of-truth-first, judge-gated workflow. Architrave extracts that shared method into a stack-agnostic kit, retargeted per repo by one small config file.
 
 ## Architecture — four layers
 
@@ -108,13 +115,12 @@ The method isn't theoretical — it emerged independently across real apps, **Ph
 1. DESIGN SOURCE OF TRUTH      Storybook (component workbench) + design tokens (.tokens.json, W3C DTCG)
         │  validate / tweak the design here FIRST
         ▼
-2. KNOWLEDGE PACKS             knowledge/apple.md · microsoft.md · web.md · design-tokens.md
+2. KNOWLEDGE PACKS             knowledge/apple.md · microsoft.md · web.md · backend.md · design-tokens.md
         │  the Platform Design agent loads the pack named by config.platform
         ▼
-3. AGENTS                      UX Architect · UI Visual · Platform Design (pluggable) ·
-        │                      Architrave (harness) · Adversarial Judge (LLM-as-judge)
+3. AGENTS                      Architrave conductor · UI specialists · backend/infra specialists · Adversarial Judge
         ▼
-4. GATES                       deterministic (build/test/token-lint) + semantic (judge) + design↔code reconcile
+4. GATES                       deterministic (build/test/token-lint/backend-checks) + semantic (judge) + reconcile
 ```
 
 Everything in layers 2–4 is **retargeted per repo by one config file** (`uikit.config.json`). The agents never hard‑code a stack; they read the config and the matching knowledge pack.
@@ -155,13 +161,19 @@ Your repo's own build/test toolchain (Node for web, Xcode for Apple, .NET for Wi
 After installing the plugin (above), ground a repo — this is also what reaches the Copilot **cloud** agent:
 
 ```bash
-/path/to/architrave-ui/tools/install.sh .                          # macOS / Linux
-pwsh -NoProfile -File /path/to/architrave-ui/tools/install.ps1 .    # Windows
+/path/to/architrave/tools/install.sh .                          # macOS / Linux
+pwsh -NoProfile -File /path/to/architrave/tools/install.ps1 .    # Windows
 ```
 
 This copies the agents → `.github/agents/`, the gates → `gates/`, the knowledge packs → `knowledge/`, scaffolds `uikit.config.json`, injects a grounding stanza into `AGENTS.md` (idempotent), wires the PostToolUse hook, and drops `.github/workflows/copilot-setup-steps.yml`.
 
-Then point it at your repo — edit `uikit.config.json` — set `platform`, `stack`, `designSource` (your Storybook), `tokens`, and the `build`/`test` commands. Then ask the **Architrave** agent to make a UI change; it grounds, proposes, judges, implements, reconciles, and verifies.
+Then point it at your repo — edit `uikit.config.json`:
+
+- For **UI/app work**, set `platform`, `stack`, `designSource` (your Storybook), `designMap`, `tokens`, and the normal `generate` / `build` / `test` commands.
+- For **backend/service work**, add `backend` with the solution path, architecture docs, contract location if you have one, backend `applyTo` globs, and backend build/test commands.
+- For **infrastructure**, add `iac` with the IaC kind, path, plan/what-if/diff command, policy command, and apply globs. Keep it plan-only; the human applies.
+
+Then ask the **Architrave** agent to make a feature change. It grounds, classifies the lane, proposes, judges, asks for the right sign-off artifact, implements, reconciles, and verifies.
 
 **Optional — wire the live Storybook MCP (React).** Let the agents pull real component metadata from a running Storybook (`@storybook/addon-mcp`) so they reuse components instead of reinventing them:
 
@@ -204,7 +216,7 @@ knowledge/
   web.md                      ← Web + React + component-driven dev pack — cited
   backend.md                  ← Backend + infra pack (thin orchestration · contract-first · IaC plan-only) — cited
   design-tokens.md            ← 3-tier tokens + design↔code reconciliation — cited
-agents/                       ← Architrave · UX Architect · UI Visual · Platform Design · Adversarial Judge
+agents/                       ← Architrave · Product Research · UX Architect · UI Visual · Platform Design · Adversarial Judge
                                  + backend lane: Service Architect · Backend Planner · Backend Implementer · Infra Engineer
 gates/                        ← rubric.md · checks.{sh,ps1} · reconcile.{sh,ps1} · quality-gate.{sh,ps1} · backend-checks.{sh,ps1} · hooks/
 templates/                    ← AGENTS.stanza.md · copilot-setup-steps.yml (injected by the installer)

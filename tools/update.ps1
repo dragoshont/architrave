@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# Architrave UI - refresh an adopted repo's COPIED kit assets (gates + knowledge +
+# Architrave - refresh an adopted repo's COPIED kit assets (gates + knowledge +
 # the AGENTS.md grounding stanza) to match THIS kit, and re-stamp the version.
 # PowerShell mirror of tools/update.sh. Never touches uikit.config.json or
 # re-adds per-repo .github/agents.
@@ -18,10 +18,12 @@ if (-not (Test-Path (Join-Path $Target 'uikit.config.json'))) {
 
 $ver = (Get-Content (Join-Path $kit 'plugin.json') -Raw | ConvertFrom-Json).version
 if (-not $ver) { $ver = '0.0.0' }
-$begin = '<!-- architrave-ui:begin -->'
-$end   = '<!-- architrave-ui:end -->'
+$begin = '<!-- architrave:begin -->'
+$end   = '<!-- architrave:end -->'
+$legacyBegin = '<!-- architrave-ui:begin -->'
+$legacyEnd   = '<!-- architrave-ui:end -->'
 
-Write-Host "Architrave UI -> refreshing assets in: $Target (kit v$ver)"
+Write-Host "Architrave -> refreshing assets in: $Target (kit v$ver)"
 New-Item -ItemType Directory -Force -Path "$Target/gates/hooks","$Target/knowledge" | Out-Null
 
 # Gates - copied because they EXECUTE in the repo.
@@ -37,8 +39,11 @@ Write-Host '  ok knowledge refreshed (apple/microsoft/web/backend/design-tokens)
 $ag = "$Target/AGENTS.md"
 $stanza = (Get-Content "$kit/templates/AGENTS.stanza.md" -Raw).TrimEnd()
 $content = if (Test-Path $ag) { Get-Content $ag -Raw } else { "# AGENTS.md`n" }
-$pattern = [regex]::Escape($begin) + '.*?' + [regex]::Escape($end)
-$content = [regex]::Replace($content, $pattern, '', [System.Text.RegularExpressions.RegexOptions]::Singleline).TrimEnd()
+foreach ($pair in @(@($begin, $end), @($legacyBegin, $legacyEnd))) {
+  $pattern = [regex]::Escape($pair[0]) + '.*?' + [regex]::Escape($pair[1])
+  $content = [regex]::Replace($content, $pattern, '', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+}
+$content = $content.TrimEnd()
 $content = $content + "`n`n$begin`n$stanza`n$end`n"
 Set-Content -Path $ag -Value $content -Encoding utf8
 Write-Host '  ok AGENTS.md stanza refreshed'

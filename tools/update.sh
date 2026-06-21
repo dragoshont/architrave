@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Architrave UI — refresh an adopted repo's COPIED kit assets (gates + knowledge +
+# Architrave — refresh an adopted repo's COPIED kit assets (gates + knowledge +
 # the AGENTS.md grounding stanza) to match THIS kit, and re-stamp the version.
 #
 # Why this exists: a plugin update (`copilot plugin update` / `claude plugin
@@ -24,10 +24,12 @@ if command -v jq >/dev/null 2>&1; then
 else
   ver="$(grep -m1 '"version"' "$KIT/plugin.json" | sed -E 's/.*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/')"
 fi
-begin="<!-- architrave-ui:begin -->"
-end="<!-- architrave-ui:end -->"
+begin="<!-- architrave:begin -->"
+end="<!-- architrave:end -->"
+legacy_begin="<!-- architrave-ui:begin -->"
+legacy_end="<!-- architrave-ui:end -->"
 
-echo "Architrave UI → refreshing assets in: $TARGET (kit v${ver:-?})"
+echo "Architrave → refreshing assets in: $TARGET (kit v${ver:-?})"
 mkdir -p "$TARGET/gates/hooks" "$TARGET/knowledge"
 
 # Gates — copied because they EXECUTE in the repo (hook + cloud agent run them).
@@ -47,13 +49,18 @@ echo "  ✓ knowledge refreshed (apple · microsoft · web · backend · design-
 # AGENTS.md grounding stanza — idempotent (replace the managed block, else append).
 ag="$TARGET/AGENTS.md"
 tmp="$(mktemp)"
-if [ -f "$ag" ] && grep -qF "$begin" "$ag"; then
-  awk -v b="$begin" -v e="$end" '$0==b{drop=1} drop&&$0==e{drop=0;next} !drop{print}' "$ag" > "$tmp"
-elif [ -f "$ag" ]; then
+if [ -f "$ag" ]; then
   cat "$ag" > "$tmp"
 else
   printf '# AGENTS.md\n' > "$tmp"
 fi
+tmp2="$(mktemp)"
+awk -v b="$begin" -v e="$end" -v lb="$legacy_begin" -v le="$legacy_end" '
+  $0==b || $0==lb {drop=1; next}
+  drop && ($0==e || $0==le) {drop=0; next}
+  !drop {print}
+' "$tmp" > "$tmp2"
+mv "$tmp2" "$tmp"
 { printf '\n%s\n' "$begin"; cat "$KIT/templates/AGENTS.stanza.md"; printf '%s\n' "$end"; } >> "$tmp"
 mv "$tmp" "$ag"
 echo "  ✓ AGENTS.md stanza refreshed"

@@ -1,9 +1,9 @@
 #!/usr/bin/env pwsh
-# Architrave UI installer (PowerShell / Windows). Mirror of tools/install.sh.
+# Architrave installer (PowerShell / Windows). Mirror of tools/install.sh.
 # Usage: pwsh -NoProfile -File tools/install.ps1 [TargetRepoDir]   (default: CWD)
 # For local agents you ALSO install the plugin once:
-#   copilot plugin marketplace add dragoshont/architrave-ui
-#   copilot plugin install architrave-ui@architrave
+#   copilot plugin marketplace add dragoshont/architrave
+#   copilot plugin install architrave@architrave
 [CmdletBinding()]
 param([string]$Target = "$PWD")
 $ErrorActionPreference = 'Stop'
@@ -12,10 +12,12 @@ $kit = Split-Path (Split-Path $MyInvocation.MyCommand.Path -Parent) -Parent
 $Target = (Resolve-Path $Target).Path
 if ($Target -eq $kit) { [Console]::Error.WriteLine('install: refusing to install the kit into itself'); exit 1 }
 
-$begin = '<!-- architrave-ui:begin -->'
-$end   = '<!-- architrave-ui:end -->'
+$begin = '<!-- architrave:begin -->'
+$end   = '<!-- architrave:end -->'
+$legacyBegin = '<!-- architrave-ui:begin -->'
+$legacyEnd   = '<!-- architrave-ui:end -->'
 
-Write-Host "Architrave UI -> installing into: $Target"
+Write-Host "Architrave -> installing into: $Target"
 New-Item -ItemType Directory -Force -Path "$Target/.github/agents","$Target/.github/hooks","$Target/.github/workflows","$Target/gates/hooks" | Out-Null
 
 # 1) Agents
@@ -53,8 +55,11 @@ if (-not (Test-Path "$Target/uikit.config.json")) {
 $ag = "$Target/AGENTS.md"
 $stanza = (Get-Content "$kit/templates/AGENTS.stanza.md" -Raw).TrimEnd()
 $content = if (Test-Path $ag) { Get-Content $ag -Raw } else { "# AGENTS.md`n" }
-$pattern = [regex]::Escape($begin) + '.*?' + [regex]::Escape($end)
-$content = [regex]::Replace($content, $pattern, '', [System.Text.RegularExpressions.RegexOptions]::Singleline).TrimEnd()
+foreach ($pair in @(@($begin, $end), @($legacyBegin, $legacyEnd))) {
+  $pattern = [regex]::Escape($pair[0]) + '.*?' + [regex]::Escape($pair[1])
+  $content = [regex]::Replace($content, $pattern, '', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+}
+$content = $content.TrimEnd()
 $content = $content + "`n`n$begin`n$stanza`n$end`n"
 Set-Content -Path $ag -Value $content -Encoding utf8
 Write-Host "  ok AGENTS.md stanza injected/refreshed"
@@ -80,8 +85,8 @@ Write-Host ""
 Write-Host "Done. Next steps:"
 Write-Host "  1. Edit uikit.config.json to match this repo."
 Write-Host "  2. Install the agents for local Copilot surfaces:"
-Write-Host "       copilot plugin marketplace add dragoshont/architrave-ui"
-Write-Host "       copilot plugin install architrave-ui@architrave"
+Write-Host "       copilot plugin marketplace add dragoshont/architrave"
+Write-Host "       copilot plugin install architrave@architrave"
 Write-Host "  3. (Optional, React Storybook) Wire the live Storybook MCP, then set designSource.mcp:"
 Write-Host "       npx storybook add @storybook/addon-mcp"
 Write-Host "       npx mcp-add --type http --url ""http://localhost:6006/mcp"" --scope project"

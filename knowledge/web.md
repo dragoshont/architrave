@@ -27,6 +27,7 @@ Storybook is the workbench; the **Component Story Format (CSF)** is an open ES6�
 Reproduce real desktop‑class web app patterns with accessible primitives (Radix/shadcn, Fluent React, or Material) — not bespoke `<div>` soup:
 - **Shell:** `<nav>` sidebar + `<main>` content + optional `<aside>` drawer; responsive (the drawer collapses on narrow viewports).
 - **List vs Table:** a multi‑attribute collection (e.g. Title · Artist · Album · Time) is a real **`<table>`** with `<th scope="col">`, **resizable columns** and **sortable headers** (`aria-sort` + a sort control); use a **data‑grid** (TanStack Table / ARIA `role="grid"`) for large / virtualized sets, and cards or list rows only for compact / art‑led layouts. **Don't fake a table** with semantics‑free `<div>`s.
+- **Operational admin surfaces:** prefer dense but readable lists, tables, queues, timelines, logs, and diagnostics over decorative dashboard cards. Make scarce limits, blocked states, queued work, failed actions, and recovery steps visible before the user hits them. Do not auto-trigger destructive or costly actions from route load; require user intent and show progress/failure reasons.
 - **Toolbar (top):** a `role="toolbar"` cluster — an overflow menu (`aria-haspopup="menu"`) + the **sort/filter menu** (Title · Genre · Year · … + Asc/Desc).
 - **Search (top):** `<input type="search">` (labeled), scoped + debounced to the visible list.
 - **Drawer / right panel:** a **Sheet / Dialog** (`role="dialog"` or `complementary`) — focus‑trapped, ESC‑dismissible, returns focus; not a layout‑shifting toggle.
@@ -64,6 +65,7 @@ Other 10.4 aids: **change detection** (New/Modified/Related sidebar filters to r
 - Reproduce the **CSF story** as the app component — same component name, same states, same tokens.
 - Tokens → CSS custom properties (or the chosen styling system) — never hard‑coded values.
 - Every interactive state from the story must exist in the implementation; verify with the visual‑regression + a11y gate.
+- For desktop tables, provide a mobile/card/list fallback so the feature does not depend on horizontal scrolling at phone widths.
 
 ## Citations
 componentdriven.org · storybook.js.org/docs/api/csf · storybook.js.org/docs/ai/setup · storybook.js.org/docs/writing-tests (Vitest) · storybook.js.org/blog/storybook-mcp-for-react · m3.material.io/foundations · fluent2.microsoft.design/components/web/react · w3.org/TR/WCAG22.

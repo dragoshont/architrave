@@ -9,6 +9,29 @@
     "Sources/PhonoDeck/Views/**",
     "Sources/PhonoDeck/Design/**"
   ],
+  "backend": {
+    "stack": "swift-services",
+    "solution": "project.yml",
+    "architectureDocs": [
+      "docs/architecture/overview.md",
+      "docs/architecture/adrs",
+      "docs/research/platform-analysis.md"
+    ],
+    "applyTo": [
+      "Sources/PhonoDeck/App/**",
+      "Sources/PhonoDeck/Devices/**",
+      "Sources/PhonoDeck/Integrations/**",
+      "Sources/PhonoDeck/Library/**",
+      "Sources/PhonoDeck/Media/**",
+      "Sources/PhonoDeck/Models/**",
+      "Sources/PhonoDeck/Playback/**",
+      "Sources/PhonoDeck/Services/**",
+      "Sources/PhonoDeck/Support/**",
+      "Tests/**"
+    ],
+    "build": "make build",
+    "test": "make test"
+  },
   "generate": "make generate",
   "build": "make build",
   "test": "make test",

@@ -1,11 +1,11 @@
-# AGENTS.md — Architrave UI
+# AGENTS.md — Architrave
 
-Architrave UI is a **cross-platform, design-grounded, judge-gated UI architrave kit**, distributed as a Copilot **agent plugin** + a per-repo **installer**. It is **UI / native only**; backend services and IaC are a separate lane and out of scope here.
+Architrave is a **cross-platform, judge-gated agent kit** for UI, backend, full-stack features, and plan-only infrastructure, distributed as a Copilot / Claude **agent plugin** plus a per-repo **installer**. UI grounds in Storybook + design tokens; backend grounds in architecture docs + contracts; IaC is proposal/plan-only.
 
 ## What's here
-- `agents/` — the five agents: **UX Architect**, **UI Visual**, **Platform Design** (pluggable), **Adversarial Judge**, **Architrave**. Shared `.agent.md` format across VS Code / Copilot CLI / the Copilot app / Claude Code.
-- `gates/` — deterministic gates as **`.sh` + `.ps1` pairs** (`checks`, `reconcile`, `quality-gate`) + `rubric.md` (the judge's rubric) + `hooks/` (PostToolUse guards).
-- `knowledge/` — platform packs (`apple.md`, `microsoft.md`, `web.md`) + `design-tokens.md`.
+- `agents/` — the ten agents: **Architrave**, **Product Research**, **UX Architect**, **UI Visual**, **Platform Design**, **Service Architect**, **Backend Planner**, **Backend Implementer**, **Infra Engineer**, and **Adversarial Judge**. Shared `.agent.md` format across VS Code / Copilot CLI / the Copilot app / Claude Code.
+- `gates/` — deterministic gates as **`.sh` + `.ps1` pairs** (`checks`, `reconcile`, `quality-gate`, `backend-checks`) + `rubric.md` (the judge's rubric) + `hooks/` (PostToolUse guards).
+- `knowledge/` — platform packs (`apple.md`, `microsoft.md`, `web.md`) + `backend.md` + `design-tokens.md`.
 - `kit/` — `uikit.config.schema.json` (the per-repo config keystone) + `examples/`.
 - `plugin.json` + `.github/plugin/marketplace.json` — agent-plugin + self-hosting marketplace.
 - `templates/` + `tools/install.{sh,ps1}` — the per-repo installer and what it injects.
@@ -20,4 +20,4 @@ Architrave UI is a **cross-platform, design-grounded, judge-gated UI architrave 
 - Validate JSON manifests: `jq empty plugin.json .github/plugin/marketplace.json kit/uikit.config.schema.json`.
 - Validate agent YAML frontmatter with `ruby -ryaml` (PyYAML is not installed on the dev Mac).
 - Smoke-test the gates against a config with `gates/checks.sh --quick`.
-- Test plugin load: `copilot plugin install "$PWD"` → `copilot plugin list` → `copilot plugin uninstall architrave-ui`.
+- Test plugin load: `copilot plugin install "$PWD"` → `copilot plugin list` → `copilot plugin uninstall architrave`.

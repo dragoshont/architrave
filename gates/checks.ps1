@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# Architrave UI — deterministic gate runner (PowerShell / Windows). Mirror of
+# Architrave — deterministic gate runner (PowerShell / Windows). Mirror of
 # gates/checks.sh. Reads uikit.config.json with native ConvertFrom-Json (no jq
 # needed on Windows) and runs the configured generate/build/test, validating the
 # designMap + tokens JSON.
@@ -25,7 +25,7 @@ function Find-Root {
 }
 
 $root = Find-Root
-if (-not $root) { [Console]::Error.WriteLine('checks: uikit.config.json not found (run inside a repo that adopted Architrave UI)'); exit 2 }
+if (-not $root) { [Console]::Error.WriteLine('checks: uikit.config.json not found (run inside a repo that adopted Architrave)'); exit 2 }
 Set-Location $root
 $cfg = Get-Content 'uikit.config.json' -Raw | ConvertFrom-Json
 
@@ -47,7 +47,7 @@ function Test-JsonFile($f, $label) {
 function Show-KitDriftNudge {
   $stamp = if (Test-Path 'gates/.kit-version') { (Get-Content 'gates/.kit-version' -Raw).Trim() } else { '' }
   $plug = Get-ChildItem -Path "$HOME/.copilot/installed-plugins","$HOME/.claude/plugins" -Recurse -Filter 'plugin.json' -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -match 'architrave-ui' } | Select-Object -First 1
+            Where-Object { $_.FullName -match 'architrave(-ui)?' } | Select-Object -First 1
   if (-not $plug) { return }
   $ref = (Get-Content $plug.FullName -Raw | ConvertFrom-Json).version
   if (-not $ref -or $stamp -eq $ref) { return }
@@ -66,7 +66,7 @@ function Show-KitDriftNudge {
   }
 }
 
-Write-Host "== Architrave UI checks (root: $root) =="
+Write-Host "== Architrave checks (root: $root) =="
 Test-JsonFile 'uikit.config.json' 'config   '
 Test-JsonFile (Get-Field 'designMap') 'designMap'
 Test-JsonFile (Get-Field 'tokens') 'tokens   '

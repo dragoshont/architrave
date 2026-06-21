@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# Architrave UI — design<->code reconciliation gate (PowerShell / Windows).
+# Architrave — design<->code reconciliation gate (PowerShell / Windows).
 # Mirror of gates/reconcile.sh. Exit 0 = reconciled/N-A, 1 = DRIFT, 2 = error.
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'

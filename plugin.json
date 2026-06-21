@@ -1,11 +1,11 @@
 {
-  "name": "architrave-ui",
-  "description": "UI/UX agents that design and build native-looking apps for Apple (SwiftUI), Microsoft (WinUI), and the web (React). Grounds in your existing Storybook + design tokens, builds native, and gates every change with an AI judge plus your real build and tests. Bundles the UX Architect, UI Visual, pluggable Platform Design, Adversarial Judge, and Architrave harness; retargeted per repo via uikit.config.json.",
-  "version": "0.4.0",
+  "name": "architrave",
+  "description": "Judge-gated agent crew for UI, backend, full-stack features, and plan-only infrastructure. Grounds UI in Storybook + design tokens, grounds backend in architecture docs + contracts, keeps IaC plan-only, and gates every change with specialist agents, deterministic checks, and an Adversarial Judge. Retargeted per repo via uikit.config.json.",
+  "version": "0.5.0",
   "author": {
     "name": "dragoshont"
   },
-  "repository": "https://github.com/dragoshont/architrave-ui",
+  "repository": "https://github.com/dragoshont/architrave",
   "license": "MIT",
   "keywords": [
     "ui",
@@ -13,6 +13,9 @@
     "swiftui",
     "winui",
     "react",
+    "backend",
+    "full-stack",
+    "iac",
     "agents",
     "judge",
     "design-tokens"

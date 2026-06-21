@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Architrave UI — meta-validation for the plugin/marketplace manifests + kit JSON.
+# Architrave — meta-validation for the plugin/marketplace manifests + kit JSON.
 # Because `main` IS the published artifact (marketplace source ".") a bad push breaks
 # every consumer instantly — this is the gate that stops that. Runs locally and in CI
 # (.github/workflows/validate.yml). Needs: jq, ruby (frontmatter), npx (ajv, optional).
@@ -45,14 +45,14 @@ check_v .claude-plugin/marketplace.json '.plugins[0].version'
 
 echo "== name consistency =="
 nb=$fail
-[ "$(jq -r '.name' plugin.json)" = "architrave-ui" ] || err "plugin.json name != architrave-ui"
-[ "$(jq -r '.name' .claude-plugin/plugin.json)" = "architrave-ui" ] || err ".claude-plugin/plugin.json name != architrave-ui"
+[ "$(jq -r '.name' plugin.json)" = "architrave" ] || err "plugin.json name != architrave"
+[ "$(jq -r '.name' .claude-plugin/plugin.json)" = "architrave" ] || err ".claude-plugin/plugin.json name != architrave"
 for mf in .github/plugin/marketplace.json .claude-plugin/marketplace.json; do
   [ "$(jq -r '.name' "$mf")" = "architrave" ] || err "$mf marketplace name != architrave"
-  [ "$(jq -r '.plugins[0].name' "$mf")" = "architrave-ui" ] || err "$mf plugin entry name != architrave-ui"
+  [ "$(jq -r '.plugins[0].name' "$mf")" = "architrave" ] || err "$mf plugin entry name != architrave"
   [ "$(jq -r '.plugins[0].source' "$mf")" = "." ] || err "$mf plugin source != '.'"
 done
-[ "$fail" -eq "$nb" ] && ok "names consistent (marketplace=architrave, plugin=architrave-ui, source=.)"
+[ "$fail" -eq "$nb" ] && ok "names consistent (marketplace=architrave, plugin=architrave, source=.)"
 
 echo "== examples conform to uikit.config.schema.json (ajv) =="
 if command -v npx >/dev/null 2>&1; then
