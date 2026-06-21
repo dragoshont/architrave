@@ -1,0 +1,38 @@
+name: release
+
+# Push a tag vX.Y.Z to cut a release. The tag must match the version already bumped
+# into the manifests (scripts/bump-version.sh) — this re-runs the full gate, enforces
+# tag↔manifest agreement, then publishes a GitHub Release with auto-generated notes.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validate manifests, kit JSON, schema, frontmatter, version sync
+        run: ./scripts/check-manifests.sh
+
+      - name: Tag must match manifest version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          man="$(jq -r '.version' plugin.json)"
+          if [ "$tag" != "$man" ]; then
+            echo "::error::tag v$tag != manifest version $man — run scripts/bump-version.sh $tag, commit, then re-tag" >&2
+            exit 1
+          fi
+          echo "tag matches manifest version: $man"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes

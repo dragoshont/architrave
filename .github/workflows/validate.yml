@@ -1,0 +1,29 @@
+name: validate
+
+# main IS the published plugin (marketplace source "."), so gate every push and PR:
+# a malformed manifest, broken kit JSON, schema-violating example, or version drift
+# would otherwise reach consumers the moment it lands.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # jq + ruby are preinstalled on ubuntu-latest; node provides npx for ajv.
+      - name: Validate manifests, kit JSON, schema, frontmatter, version sync
+        run: ./scripts/check-manifests.sh

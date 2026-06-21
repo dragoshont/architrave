@@ -24,6 +24,13 @@ claude plugin install architrave-ui@architrave
 
 That installs the agents everywhere your assistant runs. Then [set up a repo](#set-up-a-repo) to point them at your Storybook + build.
 
+**Updating.** Releases bump the plugin version, so a plain update pulls them — no uninstall/reinstall:
+
+```bash
+copilot plugin update architrave-ui            # Copilot (or: copilot plugin update --all)
+claude plugin marketplace update architrave    # Claude — refreshes the catalog; the new version applies on restart
+```
+
 ## Use it
 
 Open your assistant, pick the **Architrave** agent, and describe the change in plain language:
@@ -154,6 +161,20 @@ npx mcp-add --type http --url "http://localhost:6006/mcp" --scope project    # r
 
 Then set `designSource.mcp` to that URL in `uikit.config.json`. The agents now ground via `list-all-documentation` / `get-documentation`, write stories after `get-storybook-story-instructions`, and post `preview-stories` URLs for your sign‑off. (They allow the server via `"@storybook/addon-mcp/*"` in their `tools` — rename if your MCP server differs.)
 
+## Releasing (maintainers)
+
+`main` *is* the published plugin — both marketplaces use `"source": "."`, so there's no build step and a push to `main` is the release. Two safeguards keep that honest:
+
+- **Gate** — [`.github/workflows/validate.yml`](.github/workflows/validate.yml) runs [`scripts/check-manifests.sh`](scripts/check-manifests.sh) on every push and PR: all manifests + kit JSON parse, examples conform to the schema, agent frontmatter is valid, and the version is in sync across all six fields.
+- **Versioned release** — a *static* version means installed users never re-fetch, so cut releases by bumping the version, then tagging:
+
+```bash
+scripts/bump-version.sh 0.2.0                 # writes the version into all 6 manifest fields
+scripts/check-manifests.sh                    # confirm green
+git commit -am "Release v0.2.0"
+git tag v0.2.0 && git push origin main --tags # release.yml verifies tag==version, then publishes a GitHub Release
+```
+
 ## Layout
 
 ```
@@ -161,6 +182,7 @@ README.md                     ← you are here
 ROADMAP.md                    ← what's built vs. ported next
 plugin.json                   ← agent-plugin manifest (Copilot CLI / app / VS Code)
 .github/plugin/marketplace.json ← Copilot plugin marketplace (self-hosted)
+.github/workflows/            ← validate (gate every push/PR) · release (tag vX.Y.Z → GitHub Release)
 .claude-plugin/               ← Claude Code plugin + marketplace manifests
 kit/
   uikit.config.schema.json    ← per-repo config schema (the keystone)
@@ -174,6 +196,7 @@ agents/                       ← UX Architect · UI Visual · Platform Design �
 gates/                        ← rubric.md · checks.{sh,ps1} · reconcile.{sh,ps1} · quality-gate.{sh,ps1} · hooks/
 templates/                    ← AGENTS.stanza.md · copilot-setup-steps.yml (injected by the installer)
 tools/                        ← install.sh · install.ps1 (per-repo grounding)
+scripts/                      ← check-manifests.sh (the gate) · bump-version.sh (one-command release bump)
 assets/                       ← README screenshots (drop PNGs here)
 AGENTS.md                     ← kit-level agent instructions
 ```
