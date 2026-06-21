@@ -21,6 +21,7 @@ find_root() {
 }
 root="$(find_root)" || { echo "backend-checks: uikit.config.json not found" >&2; exit 2; }
 cd "$root"
+root="$(pwd -P)"
 
 bcfg() { jq -r --arg k "$1" '.backend[$k] // ""' uikit.config.json; }
 icfg() { jq -r --arg k "$1" '.iac[$k] // ""' uikit.config.json; }
@@ -41,8 +42,56 @@ run_step() {
   if eval "$cmd"; then echo "ok    $name"; else echo "FAIL  $name"; fail=1; fi
 }
 
+project_paths_from_solution() {
+  local solution="$1"
+  case "$solution" in
+    *.slnx)
+      sed -nE 's/.*<Project[^>]*[[:space:]]Path="([^"]+)".*/\1/p' "$solution"
+      ;;
+    *.sln)
+      sed -nE 's/^[[:space:]]*Project\([^)]*\)[[:space:]]*=[^,]*,[[:space:]]*"([^"]+)".*/\1/p' "$solution" | grep -E '\.(csproj|fsproj|vbproj|vcxproj)$' || true
+      ;;
+  esac
+}
+
+validate_backend_solution_paths() {
+  local solution="$1" solution_dir path candidate candidate_dir full bad=0
+  [ -n "$solution" ] || return 0
+  case "$solution" in *.sln|*.slnx) ;; *) return 0 ;; esac
+  echo "== backend solution path check: $solution =="
+  if [ ! -f "$solution" ]; then
+    echo "FAIL  backend solution not found: $solution"
+    fail=1
+    return 0
+  fi
+  solution_dir="$(cd "$(dirname "$solution")" && pwd -P)"
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    case "$path" in
+      /*) candidate="$path" ;;
+      *) candidate="$solution_dir/$path" ;;
+    esac
+    candidate_dir="$(dirname "$candidate")"
+    if [ -d "$candidate_dir" ]; then
+      full="$(cd "$candidate_dir" && pwd -P)/$(basename "$candidate")"
+    else
+      full="$candidate"
+    fi
+    case "$full" in
+      "$root"/*) ;;
+      *) echo "FAIL  solution project escapes repo: $path -> $full"; bad=1; continue ;;
+    esac
+    if [ ! -f "$full" ]; then
+      echo "FAIL  solution project missing: $path -> $full"
+      bad=1
+    fi
+  done < <(project_paths_from_solution "$solution")
+  if [ "$bad" -eq 0 ]; then echo "ok    backend solution project paths stay inside repo"; else fail=1; fi
+}
+
 # --- Backend lane ---
 if has_block backend; then
+  validate_backend_solution_paths "$(bcfg solution)"
   run_step "backend build" "$(bcfg build)"
   run_step "backend test"  "$(bcfg test)"
 fi

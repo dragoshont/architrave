@@ -18,6 +18,7 @@ if (-not (Test-Path (Join-Path $dir 'uikit.config.json'))) {
   [Console]::Error.WriteLine('backend-checks: uikit.config.json not found'); exit 2
 }
 Set-Location $dir
+$root = (Resolve-Path '.').Path
 $cfg = Get-Content 'uikit.config.json' -Raw | ConvertFrom-Json
 
 $fail = 0
@@ -38,8 +39,55 @@ function Run-Step($name, $cmd) {
   if ($LASTEXITCODE -eq 0) { Write-Host "ok    $name" } else { Write-Host "FAIL  $name"; $script:fail = 1 }
 }
 
+function Get-SolutionProjectPaths($solution) {
+  if ($solution -like '*.slnx') {
+    [xml]$doc = Get-Content $solution -Raw
+    return @($doc.SelectNodes('//Project') | ForEach-Object { $_.Path } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+  }
+  if ($solution -like '*.sln') {
+    $paths = New-Object System.Collections.Generic.List[string]
+    foreach ($line in Get-Content $solution) {
+      if ($line -match '^\s*Project\([^)]*\)\s*=\s*"[^"]+",\s*"([^"]+)"' -and $Matches[1] -match '\.(csproj|fsproj|vbproj|vcxproj)$') {
+        [void]$paths.Add($Matches[1])
+      }
+    }
+    return @($paths)
+  }
+  return @()
+}
+
+function Test-BackendSolutionPaths($solution) {
+  if ([string]::IsNullOrWhiteSpace($solution)) { return }
+  if (-not ($solution.EndsWith('.sln') -or $solution.EndsWith('.slnx'))) { return }
+  Write-Host "== backend solution path check: $solution =="
+  if (-not (Test-Path $solution)) {
+    Write-Host "FAIL  backend solution not found: $solution"
+    $script:fail = 1
+    return
+  }
+  $solutionPath = (Resolve-Path $solution).Path
+  $solutionDir = Split-Path $solutionPath -Parent
+  $rootPrefix = $root.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+  $bad = $false
+  foreach ($path in Get-SolutionProjectPaths $solutionPath) {
+    if ([IO.Path]::IsPathRooted($path)) { $candidate = $path } else { $candidate = Join-Path $solutionDir $path }
+    $full = [IO.Path]::GetFullPath($candidate)
+    if (-not $full.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+      Write-Host "FAIL  solution project escapes repo: $path -> $full"
+      $bad = $true
+      continue
+    }
+    if (-not (Test-Path $full)) {
+      Write-Host "FAIL  solution project missing: $path -> $full"
+      $bad = $true
+    }
+  }
+  if ($bad) { $script:fail = 1 } else { Write-Host 'ok    backend solution project paths stay inside repo' }
+}
+
 # --- Backend lane ---
 if ($cfg.backend) {
+  Test-BackendSolutionPaths $cfg.backend.solution
   Run-Step 'backend build' $cfg.backend.build
   Run-Step 'backend test'  $cfg.backend.test
 }
