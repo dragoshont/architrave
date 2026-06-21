@@ -28,6 +28,16 @@ Design for **hierarchy, harmony, and consistency**; defer to content; use system
 ## SF Symbols
 - Use SF Symbols for iconography (never in app icons/logos). Match symbol **weight/scale to adjacent text**; use **fill vs outline vs slash** to encode state. Keep symbol animation purposeful and rare.
 
+## macOS structural components (the native building blocks)
+What makes an app read as native macOS (Music.app / Apple Music / Mail are the IA references — reproduce the *structure*, not the pixels):
+- **Three‑pane shell:** `NavigationSplitView` — **sidebar** (a `List` of `Section`s, each row a `Label` + SF Symbol: Search / Home / Library / Devices / Playlists) │ **content** │ optional **inspector** (trailing drawer). Sidebar + toolbar sit in the material/control layer.
+- **List vs Table:** a multi‑attribute collection (Song · Artist · Album · Time) is a **`Table`** with `TableColumn`s — **columns stretch to fill the width** and are user‑resizable, with **click‑to‑sort headers** (`sortOrder` + `KeyPathComparator`). Use a **`List` + custom row** (e.g. `SongRow`) only for compact / art‑led / iOS layouts. **Don't fake a table** with hand‑laid `HStack` columns.
+- **Toolbar (top):** `.toolbar { ToolbarItem(placement: .primaryAction / .navigation) }` — the trailing cluster: download, the **•••** overflow `Menu`, and the **sort/filter `Menu`** (Playlist Order · Title · Genre · Year · Artist · Album · Time + Ascending / Descending). Never hand‑roll a toolbar strip in the content layer.
+- **Search (top):** `.searchable(text:, placement: .toolbar)` for the "Find in …" field, scoped to the visible list — not a custom text field.
+- **Inspector / right drawer:** the Up Next / queue / Get‑Info panel = `.inspector(isPresented:)` (macOS 14+) or a trailing `NavigationSplitView` column — a dismissible trailing pane, **not** a modal sheet.
+- **Context menus:** `.contextMenu` on each row for its actions (Add to Library, Play Next, Get Info, Favourite, Share…). The menu **mirrors** the row's affordances — it never *hides* the primary action.
+- **Transport:** the now‑playing bar is a persistent bottom control‑layer surface (`safeAreaInset(edge: .bottom)`), wired to media keys / `MPRemoteCommandCenter`.
+
 ## Accessibility (WCAG AA, enforced)
 - Contrast: **≤17 pt → 4.5:1**; **≥18 pt or bold → 3:1**. Verify in **both** light and dark; honor **Increase Contrast**.
 - **VoiceOver:** every control labeled, sensible reading order. **Full Keyboard Access** + standard shortcuts (don't override system ones). **Switch Control** friendly.
