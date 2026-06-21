@@ -14,11 +14,9 @@ if ($Target -eq $kit) { [Console]::Error.WriteLine('install: refusing to install
 
 $begin = '<!-- architrave:begin -->'
 $end   = '<!-- architrave:end -->'
-$legacyBegin = '<!-- architrave-ui:begin -->'
-$legacyEnd   = '<!-- architrave-ui:end -->'
 
 Write-Host "Architrave -> installing into: $Target"
-New-Item -ItemType Directory -Force -Path "$Target/.github/agents","$Target/.github/hooks","$Target/.github/workflows","$Target/gates/hooks" | Out-Null
+New-Item -ItemType Directory -Force -Path "$Target/.github/agents","$Target/.github/hooks","$Target/.github/workflows","$Target/gates/hooks","$Target/harness" | Out-Null
 
 # 1) Agents
 Copy-Item "$kit/agents/*.agent.md" "$Target/.github/agents/" -Force
@@ -32,10 +30,14 @@ Write-Host "  ok gates -> gates/ (checks/reconcile/quality-gate .sh + .ps1 + rub
 # 2b) Knowledge packs
 New-Item -ItemType Directory -Force -Path "$Target/knowledge" | Out-Null
 Copy-Item "$kit/knowledge/*.md" "$Target/knowledge/" -Force
-Write-Host "  ok knowledge -> knowledge/ (apple/microsoft/web/design-tokens)"
+Write-Host "  ok knowledge -> knowledge/ (apple/microsoft/web/backend/design-tokens/learning-loop/yagni)"
 
-# 3) uikit.config.json — scaffold only if absent
-if (-not (Test-Path "$Target/uikit.config.json")) {
+# 2c) Audit harness
+Copy-Item "$kit/harness/*" "$Target/harness/" -Recurse -Force
+Write-Host "  ok harness -> harness/ (init-run / validate-run / semantic-review)"
+
+# 3) architrave.config.json — scaffold only if absent
+if (-not (Test-Path "$Target/architrave.config.json")) {
 @'
 {
   "platform": "web",
@@ -45,17 +47,28 @@ if (-not (Test-Path "$Target/uikit.config.json")) {
   "tokens": "tokens/tokens.json",
   "applyTo": ["src/**"],
   "build": "npm run build",
-  "test": "npm test"
+  "test": "npm test",
+  "learning": {
+    "runArtifactsPath": ".architrave/runs",
+    "repoProfilePath": ".architrave/learning/repo-profile.md",
+    "lessonsPath": ".architrave/learning/repo-lessons.md",
+    "capture": ["run-artifacts", "gate-results", "judge-verdicts", "runtime-evidence", "repo-profile", "lessons"],
+    "redactionPolicy": "no-secrets",
+    "staleFactPolicy": "validate-before-use",
+    "promotionPolicy": "approval-required",
+    "promoteAfterOccurrences": 2,
+    "promoteTargets": ["architrave.config.json", "AGENTS.md", ".github/instructions", "docs"]
+  }
 }
-'@ | Set-Content -Path "$Target/uikit.config.json" -Encoding utf8
-  Write-Host "  ok scaffolded uikit.config.json  <- EDIT to match this repo"
-} else { Write-Host "  - uikit.config.json present - left as-is" }
+'@ | Set-Content -Path "$Target/architrave.config.json" -Encoding utf8
+  Write-Host "  ok scaffolded architrave.config.json  <- EDIT to match this repo"
+} else { Write-Host "  - architrave.config.json present - left as-is" }
 
 # 4) AGENTS.md stanza — idempotent
 $ag = "$Target/AGENTS.md"
 $stanza = (Get-Content "$kit/templates/AGENTS.stanza.md" -Raw).TrimEnd()
 $content = if (Test-Path $ag) { Get-Content $ag -Raw } else { "# AGENTS.md`n" }
-foreach ($pair in @(@($begin, $end), @($legacyBegin, $legacyEnd))) {
+foreach ($pair in @(@($begin, $end))) {
   $pattern = [regex]::Escape($pair[0]) + '.*?' + [regex]::Escape($pair[1])
   $content = [regex]::Replace($content, $pattern, '', [System.Text.RegularExpressions.RegexOptions]::Singleline)
 }
@@ -83,7 +96,7 @@ Write-Host "  ok stamped gates/.kit-version = $ver"
 
 Write-Host ""
 Write-Host "Done. Next steps:"
-Write-Host "  1. Edit uikit.config.json to match this repo."
+Write-Host "  1. Edit architrave.config.json to match this repo."
 Write-Host "  2. Install the agents for local Copilot surfaces:"
 Write-Host "       copilot plugin marketplace add dragoshont/architrave"
 Write-Host "       copilot plugin install architrave@architrave"
@@ -92,5 +105,5 @@ Write-Host "       npx storybook add @storybook/addon-mcp"
 Write-Host "       npx mcp-add --type http --url ""http://localhost:6006/mcp"" --scope project"
 Write-Host "  4. Run the Architrave agent for a non-trivial UI change."
 Write-Host ""
-Write-Host "After you later update the plugin, refresh this repo's copied gates + knowledge:"
+Write-Host "After you later update the plugin, refresh this repo's copied gates + harness + knowledge:"
 Write-Host "       pwsh -NoProfile -File `"$kit/tools/update.ps1`" `"$Target`""

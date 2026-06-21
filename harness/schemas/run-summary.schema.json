@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://architrave/run-summary.schema.json",
+  "title": "Architrave run summary",
+  "type": "object",
+  "required": ["schema", "runId", "status", "artifacts"],
+  "additionalProperties": true,
+  "properties": {
+    "schema": { "const": "architrave.run.v1" },
+    "runId": { "type": "string", "minLength": 1 },
+    "status": { "type": "string", "enum": ["in-progress", "blocked", "passed", "revised", "failed"] },
+    "startedAt": { "type": "string" },
+    "completedAt": { "type": "string" },
+    "artifacts": {
+      "type": "object",
+      "required": ["intake", "tournament", "recommendedPlan", "deterministicGates"],
+      "additionalProperties": { "type": "string" }
+    },
+    "learning": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repoProfile": { "type": "string" },
+        "repoLessons": { "type": "string" },
+        "candidateLessons": { "type": "integer", "minimum": 0 },
+        "promotionsProposed": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

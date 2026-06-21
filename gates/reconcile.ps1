@@ -4,11 +4,11 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Find-Root { $d=(Get-Location).Path; while ($d) { if (Test-Path (Join-Path $d 'uikit.config.json')) { return $d }; $p=Split-Path $d -Parent; if ($p -eq $d -or [string]::IsNullOrEmpty($p)) { break }; $d=$p }; return $null }
+function Find-Root { $d=(Get-Location).Path; while ($d) { if (Test-Path (Join-Path $d 'architrave.config.json')) { return $d }; $p=Split-Path $d -Parent; if ($p -eq $d -or [string]::IsNullOrEmpty($p)) { break }; $d=$p }; return $null }
 $root = Find-Root
-if (-not $root) { [Console]::Error.WriteLine('reconcile: uikit.config.json not found'); exit 2 }
+if (-not $root) { [Console]::Error.WriteLine('reconcile: architrave.config.json not found'); exit 2 }
 Set-Location $root
-$cfg = Get-Content 'uikit.config.json' -Raw | ConvertFrom-Json
+$cfg = Get-Content 'architrave.config.json' -Raw | ConvertFrom-Json
 function Get-Field($n) { if ($cfg.PSObject.Properties.Name -contains $n) { return [string]$cfg.$n }; return '' }
 
 $tokens = Get-Field 'tokens'; $tokenBuild = Get-Field 'tokenBuild'

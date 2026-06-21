@@ -1,6 +1,6 @@
 #!/usr/bin/env pwsh
 # Architrave — deterministic gate runner (PowerShell / Windows). Mirror of
-# gates/checks.sh. Reads uikit.config.json with native ConvertFrom-Json (no jq
+# gates/checks.sh. Reads architrave.config.json with native ConvertFrom-Json (no jq
 # needed on Windows) and runs the configured generate/build/test, validating the
 # designMap + tokens JSON.
 #
@@ -16,7 +16,7 @@ $ErrorActionPreference = 'Stop'
 function Find-Root {
   $d = (Get-Location).Path
   while ($d) {
-    if (Test-Path (Join-Path $d 'uikit.config.json')) { return $d }
+    if (Test-Path (Join-Path $d 'architrave.config.json')) { return $d }
     $p = Split-Path $d -Parent
     if ($p -eq $d -or [string]::IsNullOrEmpty($p)) { break }
     $d = $p
@@ -25,9 +25,9 @@ function Find-Root {
 }
 
 $root = Find-Root
-if (-not $root) { [Console]::Error.WriteLine('checks: uikit.config.json not found (run inside a repo that adopted Architrave)'); exit 2 }
+if (-not $root) { [Console]::Error.WriteLine('checks: architrave.config.json not found (run inside a repo that adopted Architrave)'); exit 2 }
 Set-Location $root
-$cfg = Get-Content 'uikit.config.json' -Raw | ConvertFrom-Json
+$cfg = Get-Content 'architrave.config.json' -Raw | ConvertFrom-Json
 
 $script:fail = 0
 function Get-Field($name) {
@@ -67,7 +67,7 @@ function Show-KitDriftNudge {
 }
 
 Write-Host "== Architrave checks (root: $root) =="
-Test-JsonFile 'uikit.config.json' 'config   '
+Test-JsonFile 'architrave.config.json' 'config   '
 Test-JsonFile (Get-Field 'designMap') 'designMap'
 Test-JsonFile (Get-Field 'tokens') 'tokens   '
 

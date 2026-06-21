@@ -1,13 +1,13 @@
 # Migrating Bespoke Agents To Architrave
 
-Architrave is meant to replace most project-specific development agents with one front-door conductor plus a small specialist crew. Keep project knowledge in `uikit.config.json`, `AGENTS.md`, `.github/instructions/*.md`, docs, contracts, and Storybook; keep reusable workflow behavior in Architrave.
+Architrave is meant to replace most project-specific development agents with one front-door conductor plus a small specialist crew. Keep project knowledge in `architrave.config.json`, `AGENTS.md`, `.github/instructions/*.md`, docs, contracts, and Storybook; keep reusable workflow behavior in Architrave.
 
 ## Migration Pattern
 
 1. **Inventory existing agents.** Capture each agent's mission, tools, trigger phrases, handoffs, and hard rules.
 2. **Map reusable behavior to Architrave.** Move general behaviors into Architrave agents, knowledge packs, or `gates/rubric.md`; leave product/domain facts in the app repo.
 3. **Archive, don't delete.** Move old agents into `docs/archive/<old-agent-set>/` with a README explaining the replacement mapping.
-4. **Adopt the repo.** Add `uikit.config.json`, refresh copied `gates/` + `knowledge/`, and inject the Architrave `AGENTS.md` stanza with `tools/install.*` or `tools/update.*`.
+4. **Adopt the repo.** Add `architrave.config.json`, refresh copied `gates/` + `knowledge/`, and inject the Architrave `AGENTS.md` stanza with `tools/install.*` or `tools/update.*`.
 5. **Validate.** Run `gates/checks.*`, `gates/backend-checks.*` when configured, and any app-specific test/screenshot gates.
 
 ## Common Mappings

@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://architrave/uikit.config.schema.json",
+  "$id": "https://architrave/architrave.config.schema.json",
   "title": "Architrave per-repo config",
-  "description": "Declares how Architrave retargets its agents, gates, and knowledge for one repo. Lives at the repo root as uikit.config.json. UI, backend, full-stack, and infrastructure lanes are configured here; infra is always plan-only.",
+  "description": "Declares how Architrave retargets its agents, gates, and knowledge for one repo. Lives at the repo root as architrave.config.json. UI, backend, full-stack, and infrastructure lanes are configured here; infra is always plan-only.",
   "type": "object",
   "required": ["platform", "stack", "designSource", "applyTo", "build", "test"],
   "additionalProperties": false,
@@ -93,6 +93,22 @@
         "mcpServer": { "type": "string", "description": "Optional MCP server name, e.g. homelab. Agents use it only if available in the client." },
         "purpose": { "type": "array", "description": "Allowed observation purposes such as runtime-health, logs, deployment-verification, version-drift.", "items": { "type": "string" } },
         "requiresApprovalFor": { "type": "array", "description": "Operations that require explicit human approval, e.g. mutations, reconcile, restart, secret-access, network-change.", "items": { "type": "string" } }
+      }
+    },
+    "learning": {
+      "type": "object",
+      "description": "Optional learning-loop settings. Durable run artifacts, repo profile, and repeated repo lessons live outside the config; stable lessons are promoted into config/docs only after review.",
+      "additionalProperties": false,
+      "properties": {
+        "runArtifactsPath": { "type": "string", "description": "Repo-relative directory for per-run audit artifacts, e.g. .architrave/runs." },
+        "repoProfilePath": { "type": "string", "description": "Repo-relative markdown file for the concise validated repo description, e.g. .architrave/learning/repo-profile.md." },
+        "lessonsPath": { "type": "string", "description": "Repo-relative markdown file for durable repeated lessons, e.g. .architrave/learning/repo-lessons.md." },
+        "capture": { "type": "array", "description": "Artifact categories Architrave should keep for non-trivial runs.", "items": { "type": "string", "enum": ["run-artifacts", "gate-results", "judge-verdicts", "runtime-evidence", "repo-profile", "lessons"] } },
+        "redactionPolicy": { "type": "string", "description": "How learning artifacts handle sensitive data. Use no-secrets unless the repo has a stricter custom policy.", "enum": ["no-secrets", "custom"] },
+        "staleFactPolicy": { "type": "string", "description": "How persisted facts are trusted before use or promotion.", "enum": ["validate-before-use", "manual-review"] },
+        "promotionPolicy": { "type": "string", "description": "How repeated lessons become durable repo instructions/config.", "enum": ["propose", "approval-required", "manual"] },
+        "promoteAfterOccurrences": { "type": "integer", "description": "How many repeated observations before Architrave should propose promotion into config/AGENTS/docs.", "minimum": 1 },
+        "promoteTargets": { "type": "array", "description": "Allowed durable destinations for promoted lessons.", "items": { "type": "string", "enum": ["architrave.config.json", "AGENTS.md", ".github/instructions", "docs"] } }
       }
     }
   }

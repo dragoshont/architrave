@@ -1,6 +1,6 @@
 # Backend & infrastructure pack
 
-The cited rule base Architrave's **backend lane** grounds in: how the thin orchestrator routes, how the service tier is built, and how infrastructure is changed **safely**. Loaded when `uikit.config.json` sets a `backend` and/or `iac` block. Repos without those blocks do not run this lane. Resolved per repo through `config.backend` (`stack`, `solution`, `architectureDocs`, `contracts`) and `config.iac` (`kind`, `path`, `plan`, `policy`).
+The cited rule base Architrave's **backend lane** grounds in: how the thin orchestrator routes, how the service tier is built, and how infrastructure is changed **safely**. Loaded when `architrave.config.json` sets a `backend` and/or `iac` block. Repos without those blocks do not run this lane. Resolved per repo through `config.backend` (`stack`, `solution`, `architectureDocs`, `contracts`) and `config.iac` (`kind`, `path`, `plan`, `policy`).
 
 Grounded in current practice:
 - **Anthropic — *Building effective agents* / *multi-agent research system*:** the **orchestrator-workers** pattern (a lead agent decomposes, delegates to specialized workers, synthesizes) and **evaluator-optimizer** loop; "maintain simplicity," show planning steps, **scale effort to complexity**, give each worker a clear objective/output/boundary, and prefer **artifacts over a "game of telephone."**

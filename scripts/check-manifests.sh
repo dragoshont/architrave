@@ -18,12 +18,13 @@ json_files=(
   .github/plugin/marketplace.json
   .claude-plugin/plugin.json
   .claude-plugin/marketplace.json
-  kit/uikit.config.schema.json
-  kit/examples/phonodeck.uikit.json
-  kit/examples/sideport.uikit.json
-  kit/examples/tessera.uikit.json
+  kit/architrave.config.schema.json
+  kit/examples/phonodeck.architrave.json
+  kit/examples/sideport.architrave.json
+  kit/examples/tessera.architrave.json
   kit/examples/design-map.stub.json
   kit/examples/tokens.web-shadcn.tokens.json
+  harness/schemas/run-summary.schema.json
 )
 for f in "${json_files[@]}"; do
   if jq -e . "$f" >/dev/null 2>&1; then ok "$f"; else err "invalid JSON: $f"; fi
@@ -56,19 +57,32 @@ for mf in .github/plugin/marketplace.json .claude-plugin/marketplace.json; do
 done
 [ "$fail" -eq "$nb" ] && ok "names consistent (marketplace=architrave, plugin=architrave, source=.)"
 
-echo "== examples conform to uikit.config.schema.json (ajv) =="
+echo "== examples conform to architrave.config.schema.json (ajv) =="
 if command -v npx >/dev/null 2>&1; then
-  for ex in kit/examples/*.uikit.json; do
-    if npx --yes ajv-cli@5 validate -s kit/uikit.config.schema.json -d "$ex" >/dev/null 2>&1; then
+  for ex in kit/examples/*.architrave.json; do
+    if npx --yes ajv-cli@5 validate -s kit/architrave.config.schema.json -d "$ex" >/dev/null 2>&1; then
       ok "schema: $ex"
     else
       err "schema violation: $ex"
-      npx --yes ajv-cli@5 validate -s kit/uikit.config.schema.json -d "$ex" 2>&1 | sed 's/^/      /' | tail -6
+      npx --yes ajv-cli@5 validate -s kit/architrave.config.schema.json -d "$ex" 2>&1 | sed 's/^/      /' | tail -6
     fi
   done
 else
   echo "  • npx not found — skipping ajv schema check"
 fi
+
+echo "== no legacy config name references =="
+legacy_tmp="$(mktemp)"
+legacy_name="ui""kit"
+legacy_plugin="architrave""-ui"
+if rg --hidden -n "${legacy_name}[.]config|[.]${legacy_name}[.]json|${legacy_name} config|${legacy_plugin}" \
+    --glob '!node_modules' --glob '!.git' --glob '!assets/*.png' . >"$legacy_tmp" 2>/dev/null; then
+  err "legacy config name references remain"
+  sed 's/^/      /' "$legacy_tmp" | head -20
+else
+  ok "no legacy config references"
+fi
+rm -f "$legacy_tmp"
 
 echo "== agent frontmatter (YAML parses + has name/description) =="
 if command -v ruby >/dev/null 2>&1; then
@@ -83,6 +97,11 @@ if command -v ruby >/dev/null 2>&1; then
 else
   echo "  • ruby not found — skipping frontmatter check"
 fi
+
+echo "== knowledge packs present =="
+for k in apple microsoft web backend design-tokens learning-loop yagni; do
+  [ -s "knowledge/$k.md" ] && ok "knowledge/$k.md" || err "missing knowledge/$k.md"
+done
 
 echo
 if [ "$fail" -eq 0 ]; then

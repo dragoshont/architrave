@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Architrave — backend + infra deterministic gate (complements gates/checks.sh,
 # which covers the UI lane). Reads the `backend` and `iac` blocks of
-# uikit.config.json and runs: the backend build/test, the IaC PLAN (never apply),
+# architrave.config.json and runs: the backend build/test, the IaC PLAN (never apply),
 # the policy lint, and a secret scan of the IaC path.
 #
 #   gates/backend-checks.sh
@@ -14,24 +14,24 @@ command -v jq >/dev/null 2>&1 || { echo "backend-checks: 'jq' is required (brew 
 find_root() {
   local d="$PWD"
   while [ "$d" != "/" ]; do
-    [ -f "$d/uikit.config.json" ] && { printf '%s\n' "$d"; return 0; }
+    [ -f "$d/architrave.config.json" ] && { printf '%s\n' "$d"; return 0; }
     d="$(dirname "$d")"
   done
   return 1
 }
-root="$(find_root)" || { echo "backend-checks: uikit.config.json not found" >&2; exit 2; }
+root="$(find_root)" || { echo "backend-checks: architrave.config.json not found" >&2; exit 2; }
 cd "$root"
 root="$(pwd -P)"
 
-bcfg() { jq -r --arg k "$1" '.backend[$k] // ""' uikit.config.json; }
-icfg() { jq -r --arg k "$1" '.iac[$k] // ""' uikit.config.json; }
-has_block() { [ "$(jq -r --arg b "$1" '.[$b] // empty' uikit.config.json)" != "" ]; }
+bcfg() { jq -r --arg k "$1" '.backend[$k] // ""' architrave.config.json; }
+icfg() { jq -r --arg k "$1" '.iac[$k] // ""' architrave.config.json; }
+has_block() { [ "$(jq -r --arg b "$1" '.[$b] // empty' architrave.config.json)" != "" ]; }
 
 fail=0
 echo "== Architrave backend-checks (root: $root) =="
 
 if ! has_block backend && ! has_block iac; then
-  echo "skip  no backend/iac block in uikit.config.json"
+  echo "skip  no backend/iac block in architrave.config.json"
   exit 0
 fi
 

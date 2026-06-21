@@ -5,10 +5,10 @@
 set -uo pipefail
 command -v jq >/dev/null 2>&1 || { echo "reconcile: 'jq' is required" >&2; exit 2; }
 
-find_root() { local d="$PWD"; while [ "$d" != "/" ]; do [ -f "$d/uikit.config.json" ] && { printf '%s\n' "$d"; return 0; }; d="$(dirname "$d")"; done; return 1; }
-root="$(find_root)" || { echo "reconcile: uikit.config.json not found" >&2; exit 2; }
+find_root() { local d="$PWD"; while [ "$d" != "/" ]; do [ -f "$d/architrave.config.json" ] && { printf '%s\n' "$d"; return 0; }; d="$(dirname "$d")"; done; return 1; }
+root="$(find_root)" || { echo "reconcile: architrave.config.json not found" >&2; exit 2; }
 cd "$root"
-cfg() { jq -r --arg k "$1" '.[$k] // ""' uikit.config.json; }
+cfg() { jq -r --arg k "$1" '.[$k] // ""' architrave.config.json; }
 
 tokens="$(cfg tokens)"; tokenBuild="$(cfg tokenBuild)"
 if [ -z "$tokens" ] || [ -z "$tokenBuild" ]; then

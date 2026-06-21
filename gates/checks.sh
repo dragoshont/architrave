@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Architrave — deterministic gate runner (the "code-graded" layer that
-# complements the semantic Adversarial Judge). Reads uikit.config.json and runs
+# complements the semantic Adversarial Judge). Reads architrave.config.json and runs
 # the configured generate/build/test, plus validates the designMap + tokens JSON.
 #
 #   gates/checks.sh            # full: JSON validity + generate + build + test
@@ -14,19 +14,19 @@ command -v jq >/dev/null 2>&1 || { echo "checks: 'jq' is required (macOS: brew i
 quick=0
 [ "${1:-}" = "--quick" ] && quick=1
 
-# Repo root = nearest ancestor containing uikit.config.json.
+# Repo root = nearest ancestor containing architrave.config.json.
 find_root() {
   local d="$PWD"
   while [ "$d" != "/" ]; do
-    [ -f "$d/uikit.config.json" ] && { printf '%s\n' "$d"; return 0; }
+    [ -f "$d/architrave.config.json" ] && { printf '%s\n' "$d"; return 0; }
     d="$(dirname "$d")"
   done
   return 1
 }
-root="$(find_root)" || { echo "checks: uikit.config.json not found (run inside a repo that adopted Architrave)" >&2; exit 2; }
+root="$(find_root)" || { echo "checks: architrave.config.json not found (run inside a repo that adopted Architrave)" >&2; exit 2; }
 cd "$root"
 
-cfg() { jq -r --arg k "$1" '.[$k] // ""' uikit.config.json; }
+cfg() { jq -r --arg k "$1" '.[$k] // ""' architrave.config.json; }
 
 # F4 drift nudge: warn (non-blocking) if this repo's copied kit assets are older
 # than the locally installed plugin. Silent when it can't tell (cloud / offline /
@@ -35,9 +35,7 @@ kit_drift_nudge() {
   local stamp="" ref="" plug="" plugdir="" older
   stamp="$(cat gates/.kit-version 2>/dev/null || true)"
   for plug in "$HOME"/.copilot/installed-plugins/*/architrave/plugin.json \
-              "$HOME"/.copilot/installed-plugins/*/architrave-ui/plugin.json \
-              "$HOME"/.claude/plugins/*/*/architrave/plugin.json \
-              "$HOME"/.claude/plugins/*/*/architrave-ui/plugin.json; do
+              "$HOME"/.claude/plugins/*/*/architrave/plugin.json; do
     [ -f "$plug" ] || continue
     ref="$(jq -r '.version // empty' "$plug" 2>/dev/null || true)"
     plugdir="$(dirname "$plug")"
@@ -64,7 +62,7 @@ validate_json() {
 }
 
 echo "== Architrave checks (root: $root) =="
-validate_json "uikit.config.json" "config   "
+validate_json "architrave.config.json" "config   "
 validate_json "$(cfg designMap)"  "designMap"
 validate_json "$(cfg tokens)"     "tokens   "
 

@@ -1,31 +1,31 @@
 #!/usr/bin/env pwsh
 # Architrave - backend + infra deterministic gate (PowerShell mirror of
 # gates/backend-checks.sh). Reads the `backend` and `iac` blocks of
-# uikit.config.json: backend build/test, IaC PLAN (never apply), policy lint,
+# architrave.config.json: backend build/test, IaC PLAN (never apply), policy lint,
 # and a secret scan of the IaC path. Exit 0 = PASS, non-zero = FAIL.
 [CmdletBinding()]
 param()
 $ErrorActionPreference = 'Stop'
 
-# Repo root = nearest ancestor containing uikit.config.json.
+# Repo root = nearest ancestor containing architrave.config.json.
 $dir = (Get-Location).Path
-while ($dir -and -not (Test-Path (Join-Path $dir 'uikit.config.json'))) {
+while ($dir -and -not (Test-Path (Join-Path $dir 'architrave.config.json'))) {
   $parent = Split-Path $dir -Parent
   if ($parent -eq $dir) { break }
   $dir = $parent
 }
-if (-not (Test-Path (Join-Path $dir 'uikit.config.json'))) {
-  [Console]::Error.WriteLine('backend-checks: uikit.config.json not found'); exit 2
+if (-not (Test-Path (Join-Path $dir 'architrave.config.json'))) {
+  [Console]::Error.WriteLine('backend-checks: architrave.config.json not found'); exit 2
 }
 Set-Location $dir
 $root = (Resolve-Path '.').Path
-$cfg = Get-Content 'uikit.config.json' -Raw | ConvertFrom-Json
+$cfg = Get-Content 'architrave.config.json' -Raw | ConvertFrom-Json
 
 $fail = 0
 Write-Host "== Architrave backend-checks (root: $dir) =="
 
 if (-not $cfg.backend -and -not $cfg.iac) {
-  Write-Host 'skip  no backend/iac block in uikit.config.json'; exit 0
+  Write-Host 'skip  no backend/iac block in architrave.config.json'; exit 0
 }
 
 function Run-Step($name, $cmd) {

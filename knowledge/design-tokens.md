@@ -58,12 +58,12 @@ design tweak ─▶ tokens (.tokens.json = SSOT) ─▶ translation (Style Dicti
 
 ## Rules for the kit
 - Every UI repo SHOULD declare a `designMap` path once it has more than a few components. It is the glossary that tells agents which Storybook stories, code paths, states, tokens, and capability claims belong together.
-- Every mature UI repo SHOULD declare a `tokens` path in `uikit.config.json`. The reconcile gate is enabled when `tokens` + `tokenBuild` are present. Early repos may omit tokens and rely on Storybook/specs; in that mode reconcile must skip loudly/clearly rather than pretending token drift was checked.
+- Every mature UI repo SHOULD declare a `tokens` path in `architrave.config.json`. The reconcile gate is enabled when `tokens` + `tokenBuild` are present. Early repos may omit tokens and rely on Storybook/specs; in that mode reconcile must skip loudly/clearly rather than pretending token drift was checked.
 - Token names are the shared vocabulary between Storybook and native code — Architrave reproduces by **token + component name**, never by raw value.
 - `px`→`pt`/`dp` and `rem` conversions are the translation tool's job; agents must not hard‑convert.
 
 ## Adoption ladder
 1. **Spec + Storybook only:** valid for early app work; set `designSource.spec` and Storybook path. Gates validate JSON/build/test; reconcile skips token generation.
 2. **Add a design map:** copy `kit/examples/design-map.stub.json` into the app repo and map real component/story/code names. This unlocks better grounding and anti-slop review without token tooling.
-3. **Add tokens:** copy or adapt `kit/examples/tokens.web-shadcn.tokens.json` or a platform-specific token file. Set `tokens` in `uikit.config.json`.
+3. **Add tokens:** copy or adapt `kit/examples/tokens.web-shadcn.tokens.json` or a platform-specific token file. Set `tokens` in `architrave.config.json`.
 4. **Add token build:** configure Style Dictionary, Terrazzo, or a repo-local generator and set `tokenBuild`. Now `gates/reconcile.*` can mechanically detect design↔code drift.

@@ -1,8 +1,8 @@
 # Architrave
 
-**A judge-gated agent crew that plans, designs, and builds UI, backend, full-stack features, and plan-only infrastructure.**
+**A Storybook-first, contract-first agent crew that builds only the repo-proven slice.**
 
-Architrave is a **plugin for GitHub Copilot and Claude Code** that turns one front-door agent into a thin conductor: UI is designed in [Storybook](https://storybook.js.org) first, backend work is contract-first, infrastructure is plan-only, and every lane must pass deterministic checks plus an Adversarial Judge before it is called done.
+Architrave is a **plugin for GitHub Copilot and Claude Code** that turns one front-door agent into a thin conductor: UI starts in [Storybook](https://storybook.js.org), backend work starts with the contract, infrastructure stops at a plan, YAGNI keeps speculative code out, durable learning artifacts preserve repo knowledge, and every lane must pass deterministic checks plus an Adversarial Judge before it is called done.
 
 ![Architrave — ground in the repo, route to specialists, gate with a judge plus real checks, then ship](assets/overview.png)
 
@@ -31,7 +31,7 @@ copilot plugin update architrave               # Copilot (or: copilot plugin upd
 claude plugin marketplace update architrave    # Claude — refreshes the catalog; the new version applies on restart
 ```
 
-That refreshes the **agents**. A repo you adopted earlier also has **copied** gates + knowledge packs (they live in the repo so the gates can execute and the cloud agent — which has no plugin — can read them), and those don't auto-update. After bumping the plugin, refresh each adopted repo's copied assets in one command — it leaves your `uikit.config.json` untouched:
+That refreshes the **agents**. A repo you adopted earlier also has **copied** gates, harness helpers, and knowledge packs (they live in the repo so the gates can execute and the cloud agent — which has no plugin — can read them), and those don't auto-update. After bumping the plugin, refresh each adopted repo's copied assets in one command — it leaves your `architrave.config.json` untouched:
 
 ```bash
 /path/to/architrave/tools/update.sh .                        # macOS / Linux (your kit checkout or the installed plugin dir)
@@ -46,11 +46,11 @@ Open your assistant, pick the **Architrave** agent, and describe the change in p
 
 > Add an empty state to the library list — an icon, a short message, and a primary action.
 
-It classifies the request, grounds in the repo's source of truth, runs a compact tournament of options, recommends a plan, routes to the smallest useful specialist crew, gets the proposal graded by the **Adversarial Judge**, asks for the right human sign-off artifact (Storybook preview for UI, contract + plan for backend, plan/policy output for infra), then implements and runs the real gates before calling it done.
+It classifies the request, grounds in the repo's source of truth, runs a compact tournament of options, applies the YAGNI ladder, recommends a plan, routes to the smallest useful specialist crew, gets the proposal graded by the **Adversarial Judge**, asks for the right human sign-off artifact (Storybook preview for UI, contract + plan for backend, plan/policy output for infra), then implements and runs the real gates before calling it done.
 
 For non-trivial work, Architrave starts with a visible intake block: understanding, acceptance criteria, grounding sources, assumptions, and blocking questions. If there are no blocking questions, it says so and proceeds; if there are, it asks before implementation.
 
-Then it runs a **Tournament of Options**: minimal safe fix vs. proper architectural fix vs. defer/ask-more when relevant. The recommended plan must explain why it beats the alternatives before implementation starts.
+Then it runs a **Tournament of Options** plus the **YAGNI ladder**: skip/delete, reuse existing repo source of truth, platform/native feature, standard library, installed dependency, tiny local implementation, and only then new abstraction/dependency/config when the current task proves it. The recommended plan must explain why it beats the alternatives before implementation starts. For non-trivial work, it also writes a compact run folder under `.architrave/runs/` so the next agent can resume the reasoning instead of depending on chat history.
 
 ### The team behind it
 
@@ -70,7 +70,11 @@ Then it runs a **Tournament of Options**: minimal safe fix vs. proper architectu
 | **Runtime Observer** | under the hood | runtime truth | Optionally reads Homelab MCP/Kubernetes/logs/health evidence; never mutates without approval. |
 | **Adversarial Judge** | under the hood | the quality gate | Grades the design, then the built code — **PASS / REVISE / FAIL**. |
 
-**Full-stack is built in.** Set a `backend` and/or `iac` block in `uikit.config.json` and the same thin conductor extends past UI. Full-stack work is **contract-first** so tiers never drift; infra remains **plan-only** so identity, network, and secret changes wait for a human apply. If you have a runtime truth source such as Homelab MCP, add an optional `ops` block so Architrave can ask the Runtime Observer for read-only deployment/log/health evidence. Repos without a service, infra, or runtime lane simply omit those blocks. Grounded in `knowledge/backend.md`.
+**Full-stack is built in.** Set a `backend` and/or `iac` block in `architrave.config.json` and the same thin conductor extends past UI. Full-stack work is **contract-first** so tiers never drift; infra remains **plan-only** so identity, network, and secret changes wait for a human apply. If you have a runtime truth source such as Homelab MCP, add an optional `ops` block so Architrave can ask the Runtime Observer for read-only deployment/log/health evidence. Repos without a service, infra, or runtime lane simply omit those blocks. Grounded in `knowledge/backend.md`.
+
+**Learning is explicit.** Set the optional `learning` block and Architrave keeps three durable artifacts: per-run evidence in `.architrave/runs/`, a concise repo profile in `.architrave/learning/repo-profile.md`, and candidate repeated lessons in `.architrave/learning/repo-lessons.md`. The profile is the living repo description: purpose, surfaces, source-of-truth paths, build/test commands, architecture map, recurring gotchas, and validated facts. Candidate lessons only become standing repo guidance after validation and review, so the config stays a keystone rather than a diary. Grounded in `knowledge/learning-loop.md`.
+
+**YAGNI is enforced.** Architrave uses a minimum-sufficient-change ladder grounded in `knowledge/yagni.md`: do not build something until the current acceptance criteria, contract, ADR, or explicit user request proves it is needed. It still keeps the enabling practices that make YAGNI safe: refactoring, contracts, tests, validation, security, accessibility, and design-token reconciliation. The Ponytail research was useful here: a bare "use YAGNI" prompt helps, but the repeatable value comes from a concrete ladder, safety carve-outs, and review tags.
 
 ## A real app, built this way
 
@@ -87,11 +91,14 @@ Every change starts in **Storybook** — the fastest, most visual place to desig
 
 ![Designing a flow: information architecture, screens, and every state — sketched in Storybook and grounded in the platform's guidelines, before any native code](assets/flows.png)
 
+This is Architrave's clearest wedge: a general coding agent starts in code; Architrave starts by reproducing the repo's design system in Storybook, gets sign-off, then builds the smallest matching native/web slice. For full-stack work the same pattern becomes contract-first: the service shape is approved before UI and backend drift apart.
+
 ## What it does
 
 - 🧭 **Designs the UX, not just the pixels.** The *UX Architect* works out information architecture, navigation, and every state (empty / loading / error) — validated in **Storybook** before anything is built.
 - 🎨 **Makes it look native.** *UI Visual* + *Platform Design* hold the UI to the platform's own language — Apple HIG, Microsoft Fluent, web / WCAG — so it feels at home on each OS.
 - 🏗️ **Builds the real thing.** *Architrave* turns the approved design or contract into native/web UI, backend/service code, and tests — driven by your repo's actual build + test commands.
+- ✂️ **Builds less, on purpose.** The YAGNI ladder blocks speculative abstractions, unused config, new dependencies, and wrapper layers until the task proves they are needed.
 - 🔌 **Keeps full-stack work contract-first.** *Service Architect* and *Backend Planner* define the API/data handshake, migration/rollback plan, and approval checklist before implementation.
 - 🛡️ **Keeps infrastructure plan-only.** *Infra Engineer* can propose IaC diffs and run `plan` / policy checks, but never applies changes or materializes secrets.
 - 🎯 **Follows your system, never reinvents.** Every change starts from your Storybook/component map, architecture docs/contracts, and existing repo seams; agents touch only the deltas.
@@ -110,7 +117,7 @@ Install the plugin once — then the agents are available everywhere, and the de
 
 Hand an AI agent a UI task and it tends to **reinvent**: a brand‑new button, slightly different spacing, a component that ignores the design system you already maintain. You end up cleaning up inconsistent "AI slop" by hand.
 
-Architrave takes the opposite stance — **ground in the system you already have, reproduce it, and prove it.** Your Storybook + design tokens are the UI source of truth; your architecture docs + contracts are the backend source of truth; your IaC plan/policy commands are the infrastructure guardrail. Nothing is "done" until it passes your real checks and an automated adversarial review.
+Architrave takes the opposite stance — **ground in the system you already have, reproduce it, build only the needed slice, and prove it.** Your Storybook + design tokens are the UI source of truth; your architecture docs + contracts are the backend source of truth; your IaC plan/policy commands are the infrastructure guardrail. Nothing is "done" until it passes your real checks and an automated adversarial review.
 
 The method isn't theoretical — it emerged independently across real apps, **PhonoDeck** (native macOS, SwiftUI) and **Sideport** (web, React + .NET), which had each settled on the same source-of-truth-first, judge-gated workflow. Architrave extracts that shared method into a stack-agnostic kit, retargeted per repo by one small config file.
 
@@ -125,10 +132,21 @@ The method isn't theoretical — it emerged independently across real apps, **Ph
         ▼
 3. AGENTS                      Architrave conductor · UI specialists · backend/infra specialists · Adversarial Judge
         ▼
-4. GATES                       deterministic (build/test/token-lint/backend-checks) + semantic (judge) + reconcile
+4. GATES + HARNESS             deterministic (build/test/token-lint/backend-checks) + semantic (judge) + reconcile + run artifacts
 ```
 
-Everything in layers 2–4 is **retargeted per repo by one config file** (`uikit.config.json`). The agents never hard‑code a stack; they read the config and the matching knowledge pack.
+Everything in layers 2–4 is **retargeted per repo by one config file** (`architrave.config.json`). The agents never hard‑code a stack; they read the config and the matching knowledge pack.
+
+## The learning loop
+
+AI agents get better in a repo the same way developers do: they remember the shape of the system, which commands actually work, which assumptions caused mistakes, and which rules are stable enough to teach the next run. Architrave makes that learning visible and reviewable instead of relying on hidden chat context.
+
+- **Run artifacts** are episodic memory: `.architrave/runs/<run-id>/intake.md`, `tournament.md`, `recommended-plan.md`, gate output, judge verdicts, runtime evidence, and `summary.json`.
+- **Repo profile** is semantic memory: `.architrave/learning/repo-profile.md` captures the repo description and validated operational facts future agents should read first.
+- **Candidate lessons** are a review queue: `.architrave/learning/repo-lessons.md` records repeated observations with evidence and occurrence counts.
+- **Promoted rules** are procedural memory: stable lessons move into `architrave.config.json`, `AGENTS.md`, `.github/instructions/`, docs, or contracts after review.
+
+This keeps memory scoped: config stores stable pointers and policy, profile stores concise repo description, lessons store evidence, and run folders store task history. Secrets are never recorded, and stale facts must be validated against the current branch before use or promotion.
 
 ## The design↔code reconciliation model (the hard part)
 
@@ -153,13 +171,13 @@ The kit is just Markdown + small scripts; the only hard dependencies are for the
 | Tool | Why it's needed | Install |
 |---|---|---|
 | **GitHub Copilot** (CLI, desktop app, or VS Code) **or Claude Code** | runs the agents | [github.com/features/copilot](https://github.com/features/copilot) |
-| **`jq`** | the POSIX (`.sh`) gates read `uikit.config.json` | macOS: `brew install jq` · Ubuntu/Debian: `sudo apt-get install -y jq` · Windows: `winget install jqlang.jq` |
+| **`jq`** | the POSIX (`.sh`) gates read `architrave.config.json` | macOS: `brew install jq` · Ubuntu/Debian: `sudo apt-get install -y jq` · Windows: `winget install jqlang.jq` |
 | **PowerShell 7+** | only for the Windows (`.ps1`) gates — built in on Windows | macOS: `brew install --cask powershell` · [releases](https://github.com/PowerShell/PowerShell/releases) |
 | **git** | the reconcile gate diffs generated vs committed code | already installed on most systems |
 
 > On **Windows you don't need `jq`** — the `.ps1` gates use PowerShell's built‑in `ConvertFrom-Json`. On **macOS/Linux you don't need PowerShell** — the `.sh` gates use `jq`.
 
-Your repo's own build/test toolchain (Node for web, Xcode for Apple, .NET for WinUI, …) is whatever your `uikit.config.json` `build`/`test` commands invoke — the gates just run those.
+Your repo's own build/test toolchain (Node for web, Xcode for Apple, .NET for WinUI, …) is whatever your `architrave.config.json` `build`/`test` commands invoke — the gates just run those.
 
 ## Set up a repo
 
@@ -170,14 +188,15 @@ After installing the plugin (above), ground a repo — this is also what reaches
 pwsh -NoProfile -File /path/to/architrave/tools/install.ps1 .    # Windows
 ```
 
-This copies the agents → `.github/agents/`, the gates → `gates/`, the knowledge packs → `knowledge/`, scaffolds `uikit.config.json`, injects a grounding stanza into `AGENTS.md` (idempotent), wires the PostToolUse hook, and drops `.github/workflows/copilot-setup-steps.yml`.
+This copies the agents → `.github/agents/`, the gates → `gates/`, the harness helpers → `harness/`, the knowledge packs → `knowledge/`, scaffolds `architrave.config.json`, injects a grounding stanza into `AGENTS.md` (idempotent), wires the PostToolUse hook, and drops `.github/workflows/copilot-setup-steps.yml`.
 
-Then point it at your repo — edit `uikit.config.json`:
+Then point it at your repo — edit `architrave.config.json`:
 
 - For **UI/app work**, set `platform`, `stack`, `designSource` (your Storybook), `designMap`, `tokens`, and the normal `generate` / `build` / `test` commands.
 - For **backend/service work**, add `backend` with the solution path, architecture docs, contract location if you have one, backend `applyTo` globs, and backend build/test commands.
 - For **infrastructure**, add `iac` with the IaC kind, path, plan/what-if/diff command, policy command, and apply globs. Keep it plan-only; the human applies.
 - For **runtime verification**, optionally add `ops` with `kind`, `mode: "read-only"`, `mcpServer` (for example `homelab`), observation purposes, and operations that require approval. This lets Architrave use Homelab MCP or similar tools when present without making them a hard dependency.
+- For **learning**, add `learning` with `runArtifactsPath`, `repoProfilePath`, `lessonsPath`, `capture`, `redactionPolicy: "no-secrets"`, `staleFactPolicy: "validate-before-use"`, `promotionPolicy`, and promotion targets. The installer scaffolds this block for new repos.
 
 For early UI work, `designMap` and `tokens` can start empty while Storybook + specs are the source of truth. As the design system matures, copy `kit/examples/design-map.stub.json` and `kit/examples/tokens.web-shadcn.tokens.json` into your app and wire them in; that unlocks stronger grounding and design↔code reconciliation.
 
@@ -192,7 +211,7 @@ npx storybook add @storybook/addon-mcp                                       # s
 npx mcp-add --type http --url "http://localhost:6006/mcp" --scope project    # register in the agent client
 ```
 
-Then set `designSource.mcp` to that URL in `uikit.config.json`. The agents now ground via `list-all-documentation` / `get-documentation`, write stories after `get-storybook-story-instructions`, and post `preview-stories` URLs for your sign‑off. (They allow the server via `"@storybook/addon-mcp/*"` in their `tools` — rename if your MCP server differs.)
+Then set `designSource.mcp` to that URL in `architrave.config.json`. The agents now ground via `list-all-documentation` / `get-documentation`, write stories after `get-storybook-story-instructions`, and post `preview-stories` URLs for your sign‑off. (They allow the server via `"@storybook/addon-mcp/*"` in their `tools` — rename if your MCP server differs.)
 
 ## Releasing (maintainers)
 
@@ -219,7 +238,7 @@ plugin.json                   ← agent-plugin manifest (Copilot CLI / app / VS 
 .claude-plugin/               ← Claude Code plugin + marketplace manifests
 kit/
         MIGRATION.md                  ← how to replace bespoke repo agents with Architrave
-  uikit.config.schema.json    ← per-repo config schema (the keystone)
+  architrave.config.schema.json    ← per-repo config schema (the keystone)
         examples/                   ← phonodeck / sideport / tessera configs + design map/token starters
 knowledge/
   apple.md                    ← Apple HIG pack (SwiftUI) — cited
@@ -227,10 +246,13 @@ knowledge/
   web.md                      ← Web + React + component-driven dev pack — cited
   backend.md                  ← Backend + infra pack (thin orchestration · contract-first · IaC plan-only) — cited
   design-tokens.md            ← 3-tier tokens + design↔code reconciliation — cited
+        learning-loop.md            ← durable run artifacts + repo profile + lesson promotion — cited
+        yagni.md                    ← minimum-sufficient-change ladder + Ponytail/Caveman research — cited
 agents/                       ← Architrave · Product Research · UX Architect · UI Visual · Platform Design · Adversarial Judge
                                  + backend lane: Service Architect · Backend Planner · Backend Implementer · Infra Engineer
                                  + runtime lane: Runtime Observer
 gates/                        ← rubric.md · checks.{sh,ps1} · reconcile.{sh,ps1} · quality-gate.{sh,ps1} · backend-checks.{sh,ps1} · hooks/
+harness/                      ← init-run.{sh,ps1} · validate-run.{sh,ps1} · semantic-review.{sh,ps1} · schemas/
 templates/                    ← AGENTS.stanza.md · copilot-setup-steps.yml (injected by the installer)
 tools/                        ← install.sh · install.ps1 (adopt a repo) · update.sh · update.ps1 (refresh copied assets)
 scripts/                      ← check-manifests.sh (the gate) · bump-version.sh (one-command release bump)

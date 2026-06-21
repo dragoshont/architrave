@@ -3,7 +3,8 @@
 # Copilot surface (CLI, the Copilot app, VS Code, and the cloud agent):
 #   • copies the agent crew into .github/agents/    (discovery location)
 #   • copies the gates (sh + ps1 + rubric + hooks) into gates/
-#   • scaffolds uikit.config.json                   (retargeting config)
+#   • copies the audit harness into harness/
+#   • scaffolds architrave.config.json                   (retargeting config)
 #   • injects the Architrave stanza into AGENTS.md  (reaches the cloud agent)
 #   • drops .github/workflows/copilot-setup-steps.yml (cloud-agent gate deps)
 #   • wires the POSIX PostToolUse hook into .github/hooks/
@@ -21,11 +22,9 @@ TARGET="$(cd "$TARGET" 2>/dev/null && pwd)" || { echo "install: target dir not f
 
 begin="<!-- architrave:begin -->"
 end="<!-- architrave:end -->"
-legacy_begin="<!-- architrave-ui:begin -->"
-legacy_end="<!-- architrave-ui:end -->"
 
 echo "Architrave → installing into: $TARGET"
-mkdir -p "$TARGET/.github/agents" "$TARGET/.github/hooks" "$TARGET/.github/workflows" "$TARGET/gates/hooks"
+mkdir -p "$TARGET/.github/agents" "$TARGET/.github/hooks" "$TARGET/.github/workflows" "$TARGET/gates/hooks" "$TARGET/harness"
 
 # 1) Agents — the discovery location read by CLI / app / VS Code / cloud agent.
 cp "$KIT"/agents/*.agent.md "$TARGET/.github/agents/"
@@ -44,11 +43,16 @@ echo "  ✓ gates → gates/ (checks · reconcile · quality-gate · backend-che
 # 2b) Knowledge packs — the Platform Design agent reads these per config.platform.
 mkdir -p "$TARGET/knowledge"
 cp "$KIT"/knowledge/*.md "$TARGET/knowledge/"
-echo "  ✓ knowledge → knowledge/ (apple · microsoft · web · backend · design-tokens)"
+echo "  ✓ knowledge → knowledge/ (apple · microsoft · web · backend · design-tokens · learning-loop · yagni)"
 
-# 3) uikit.config.json — scaffold only if absent (never clobber).
-if [ ! -f "$TARGET/uikit.config.json" ]; then
-  cat > "$TARGET/uikit.config.json" <<'JSON'
+# 2c) Audit harness — durable run artifacts + optional semantic review helpers.
+cp -R "$KIT"/harness/* "$TARGET/harness/"
+chmod +x "$TARGET"/harness/*.sh 2>/dev/null || true
+echo "  ✓ harness → harness/ (init-run · validate-run · semantic-review)"
+
+# 3) architrave.config.json — scaffold only if absent (never clobber).
+if [ ! -f "$TARGET/architrave.config.json" ]; then
+  cat > "$TARGET/architrave.config.json" <<'JSON'
 {
   "platform": "web",
   "stack": "react",
@@ -57,12 +61,23 @@ if [ ! -f "$TARGET/uikit.config.json" ]; then
   "tokens": "tokens/tokens.json",
   "applyTo": ["src/**"],
   "build": "npm run build",
-  "test": "npm test"
+  "test": "npm test",
+  "learning": {
+    "runArtifactsPath": ".architrave/runs",
+    "repoProfilePath": ".architrave/learning/repo-profile.md",
+    "lessonsPath": ".architrave/learning/repo-lessons.md",
+    "capture": ["run-artifacts", "gate-results", "judge-verdicts", "runtime-evidence", "repo-profile", "lessons"],
+    "redactionPolicy": "no-secrets",
+    "staleFactPolicy": "validate-before-use",
+    "promotionPolicy": "approval-required",
+    "promoteAfterOccurrences": 2,
+    "promoteTargets": ["architrave.config.json", "AGENTS.md", ".github/instructions", "docs"]
+  }
 }
 JSON
-  echo "  ✓ scaffolded uikit.config.json  ← EDIT to match this repo"
+  echo "  ✓ scaffolded architrave.config.json  ← EDIT to match this repo"
 else
-  echo "  • uikit.config.json already present — left as-is"
+  echo "  • architrave.config.json already present — left as-is"
 fi
 
 # 4) AGENTS.md stanza — idempotent (replace the managed block, else append).
@@ -74,9 +89,9 @@ else
   printf '# AGENTS.md\n' > "$tmp"
 fi
 tmp2="$(mktemp)"
-awk -v b="$begin" -v e="$end" -v lb="$legacy_begin" -v le="$legacy_end" '
-  $0==b || $0==lb {drop=1; next}
-  drop && ($0==e || $0==le) {drop=0; next}
+awk -v b="$begin" -v e="$end" '
+  $0==b {drop=1; next}
+  drop && $0==e {drop=0; next}
   !drop {print}
 ' "$tmp" > "$tmp2"
 mv "$tmp2" "$tmp"
@@ -105,7 +120,7 @@ echo "  ✓ stamped gates/.kit-version = ${ver:-0.0.0}"
 cat <<EOF
 
 Done. Next steps:
-  1. Edit uikit.config.json to match this repo (platform/stack/designSource/tokens/build/test).
+  1. Edit architrave.config.json to match this repo (platform/stack/designSource/tokens/build/test/learning).
   2. Install the agents for local Copilot surfaces (CLI + app + VS Code):
       copilot plugin marketplace add dragoshont/architrave
       copilot plugin install architrave@architrave
@@ -115,7 +130,7 @@ Done. Next steps:
        npx mcp-add --type http --url "http://localhost:6006/mcp" --scope project
   4. Run the Architrave agent for a non-trivial UI change.
 
-After you later update the plugin, refresh this repo's copied gates + knowledge
-(they don't auto-update; leaves uikit.config.json untouched):
+After you later update the plugin, refresh this repo's copied gates + harness + knowledge
+(they don't auto-update; leaves architrave.config.json untouched):
        "$KIT/tools/update.sh" "$TARGET"
 EOF
