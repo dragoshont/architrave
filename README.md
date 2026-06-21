@@ -46,9 +46,11 @@ Open your assistant, pick the **Architrave** agent, and describe the change in p
 
 > Add an empty state to the library list — an icon, a short message, and a primary action.
 
-It classifies the request, grounds in the repo's source of truth, routes to the smallest useful specialist crew, gets the proposal graded by the **Adversarial Judge**, asks for the right human sign-off artifact (Storybook preview for UI, contract + plan for backend, plan/policy output for infra), then implements and runs the real gates before calling it done.
+It classifies the request, grounds in the repo's source of truth, runs a compact tournament of options, recommends a plan, routes to the smallest useful specialist crew, gets the proposal graded by the **Adversarial Judge**, asks for the right human sign-off artifact (Storybook preview for UI, contract + plan for backend, plan/policy output for infra), then implements and runs the real gates before calling it done.
 
 For non-trivial work, Architrave starts with a visible intake block: understanding, acceptance criteria, grounding sources, assumptions, and blocking questions. If there are no blocking questions, it says so and proceeds; if there are, it asks before implementation.
+
+Then it runs a **Tournament of Options**: minimal safe fix vs. proper architectural fix vs. defer/ask-more when relevant. The recommended plan must explain why it beats the alternatives before implementation starts.
 
 ### The team behind it
 
