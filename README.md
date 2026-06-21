@@ -48,6 +48,8 @@ Open your assistant, pick the **Architrave** agent, and describe the change in p
 
 It classifies the request, grounds in the repo's source of truth, routes to the smallest useful specialist crew, gets the proposal graded by the **Adversarial Judge**, asks for the right human sign-off artifact (Storybook preview for UI, contract + plan for backend, plan/policy output for infra), then implements and runs the real gates before calling it done.
 
+For non-trivial work, Architrave starts with a visible intake block: understanding, acceptance criteria, grounding sources, assumptions, and blocking questions. If there are no blocking questions, it says so and proceeds; if there are, it asks before implementation.
+
 ### The team behind it
 
 **Architrave** runs the whole crew for you. You can also call **UX Architect** or **UI Visual** directly for focused design help; backend, platform, infrastructure, and judge specialists normally work under the hood. Here's what each does on a feature request:

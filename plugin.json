@@ -1,7 +1,7 @@
 {
   "name": "architrave",
   "description": "Judge-gated agent crew for UI, backend, full-stack features, plan-only infrastructure, and optional read-only runtime observation. Grounds UI in Storybook + tokens, backend in architecture docs + contracts, ops in runtime evidence, and gates every change with deterministic checks plus an Adversarial Judge. Retargeted per repo via uikit.config.json.",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "author": {
     "name": "dragoshont"
   },

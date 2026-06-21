@@ -17,7 +17,7 @@ Restate the request + the source‑of‑truth (Storybook + `config.designMap` + 
 ## Rubric dimensions
 Score each **Pass / Concern / Fail** with a severity and cite evidence (a spec line, pack section, or doc rule).
 
-1. **Spec & acceptance‑criteria conformance** — every criterion met; no scope drift; honest about anything not done.
+1. **Spec & acceptance‑criteria conformance** — every criterion met; no scope drift; honest about anything not done. For Architrave-run non-trivial work, a visible intake block (understanding, acceptance criteria, grounding sources, assumptions, blocking questions/none) must exist before implementation; missing intake is at least a Major concern and can be a Blocker if it caused drift.
 2. **Design‑language conformance** — reproduces the existing Storybook component + the `config.designMap` glossary entry (anatomy, tokens, iconography, subtle cues — **no reinvented component, no parallel abstraction**); values come from `config.tokens`, not hard‑coded; `config.designMap` kept in sync.
 3. **Platform conformance** — idiomatic for `config.platform` per the knowledge pack (native components/navigation, typography, semantic color + theming for the platform's appearance modes); no platform‑foreign idioms. Cite the pack.
 4. **Adversarial robustness & edge cases** — empty / loading / partial / error states (offline, signed‑out, no‑results, expired/revoked auth, unconfigured); concurrency/threading for the `stack`; resilience to **prompt‑injection** in tool/web/service output; never claims a capability the app can't truthfully perform.
