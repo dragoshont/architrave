@@ -56,12 +56,14 @@ Start small and controlled:
 
 Later arms can add `claude`, `opencode`, `kilo`, or other external-agent commands. The runner is intentionally command-pluggable; it does not require direct Anthropic/OpenAI credentials.
 
+Supported runner types today are `copilot` and `shell`. Add new runner types in both `benchmarks/scenarios.schema.json` and `scripts/bench-architrave.py` in the same change.
+
 ## Dataset Shape
 
 Use existing repositories, but never mutate their real working trees. Each scenario declares:
 
 - `repo`: local repository path;
-- `baseRef`: commit/tag/branch to check out in a detached benchmark worktree;
+- `baseRef`: pinned commit SHA to check out in a detached benchmark worktree;
 - `lane`: `ui`, `ux`, `backend`, `full-stack`, `infra`, `ops`, `learning`, or `yagni`;
 - `prompt`: the benchmark task;
 - `validation`: shell commands run after the agent finishes;
@@ -69,6 +71,14 @@ Use existing repositories, but never mutate their real working trees. Each scena
 - `scoring`: rubric notes for human/LLM review.
 
 The runner creates `.architrave/bench/runs/<run-id>/<scenario>/<arm>/worktree` using `git worktree add --detach`. This makes it cheap to go back to older changesets, replay old product work, and compare agent variants against the same starting point.
+
+Use full commit SHAs, not moving branch names, for published scenarios. Branch names are acceptable for private exploratory smoke tests only.
+
+Preflight scenario refs before spending model calls:
+
+```bash
+python3 scripts/bench-architrave.py --scenarios benchmarks/scenarios.json --validate
+```
 
 ## Scenario Portfolio
 
@@ -92,7 +102,7 @@ Collect three layers:
 2. **LLM judge:** rubric-based scoring using Copilot CLI/GitHub Models when available; blind the arm name and randomize order for pairwise comparisons.
 3. **Human review:** small annotation queue for subjective dimensions: design quality, maintainability, over-build, and whether the produced plan would be accepted by a senior engineer.
 
-Human feedback should become new scenarios. Do not bury it in chat.
+Use `benchmarks/HUMAN_REVIEW.md` for single-run and pairwise annotations. Human feedback should become new scenarios. Do not bury it in chat.
 
 ## Autonomous Run Pattern
 
@@ -111,11 +121,52 @@ python3 scripts/bench-architrave.py --scenarios benchmarks/scenarios.json --all-
 
 The run output stays under `.architrave/bench/` by default and is not committed unless intentionally publishing a benchmark snapshot.
 
+Summarize rows:
+
+```bash
+python3 scripts/summarize-bench.py .architrave/bench/runs/<run-id>/results.jsonl --out .architrave/bench/runs/<run-id>/summary.md
+```
+
+Optional LLM judging through Copilot CLI:
+
+```bash
+python3 scripts/judge-bench.py --results .architrave/bench/runs/<run-id>/results.jsonl --out .architrave/bench/runs/<run-id>/judged.jsonl
+```
+
 ## Safety Rules
 
 - Use detached worktrees or temp clones only.
 - Keep secrets out of prompts, artifacts, transcripts, and result rows.
 - Use `--execute` as an explicit switch; default mode lists/plans but does not run agents.
+- Use `--scenario <id>` or `--all-enabled` when executing; the runner refuses implicit one-scenario execution.
 - Treat DNF/timeouts as results, not crashes.
 - Validate with deterministic gates before trusting an LLM judge.
 - Keep benchmark prompts and expected outcomes versioned.
+
+## Secrets And Data Safety
+
+Benchmark runs include raw agent stdout/stderr, session transcripts, prompts, diffs, and validation logs. Treat `.architrave/bench/` as sensitive. It is ignored by git, but do not upload it to CI artifacts, share it externally, or publish snapshots without review.
+
+Set `ARCHITRAVE_BENCH_SECRET_ENV_VARS` to a comma-separated list of environment variable names that should be redacted from captured artifacts, for example:
+
+```bash
+ARCHITRAVE_BENCH_SECRET_ENV_VARS='GITHUB_TOKEN,GH_TOKEN,ANTHROPIC_API_KEY,OPENAI_API_KEY' \
+	python3 scripts/bench-architrave.py --scenario ... --arm ... --execute
+```
+
+The runner also redacts common bearer/API-key/token/password patterns from captured stdout/stderr/diffs, but explicit env-var redaction is still the strongest path. Never put real secrets in scenario prompts.
+
+Timeouts are intentionally row-level data. If an agent exceeds `--agent-timeout`, the row records `agent.timed_out=true`, `agent.returncode=124`, any partial stdout/stderr, and then the runner continues to the next arm/scenario. That is how long-running autonomy failures become loop-engineering evidence instead of wedging the suite.
+
+## Result Retention
+
+- Keep raw `.architrave/bench/runs/<run-id>/` directories locally while debugging.
+- Commit only curated aggregate snapshots under a deliberate docs/data path after redaction and human review.
+- Delete stale raw runs after extracting `results.jsonl`, `summary.md`, selected patches, and human annotations.
+- Treat timeouts, nonzero agent exits, validation failures, and artifact misses as distinct `failure_mode` values.
+
+## Tooling Caveats
+
+- Copilot CLI minimum tested version: `1.0.64-1`; the runner relies on non-interactive `-p`, `--output-format json`, `--share`, `--no-ask-user`, and `--secret-env-vars`.
+- `copilot-architrave` uses the fully qualified agent id `architrave:architrave`.
+- On Windows, timeout cleanup uses normal process termination rather than POSIX process groups; prefer short smoke tests before long runs.

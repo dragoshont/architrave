@@ -20,7 +20,16 @@ def read_json(path: Path) -> dict[str, Any]:
 
 def read_rows(path: Path) -> list[dict[str, Any]]:
     with path.open("r", encoding="utf-8") as handle:
-        return [json.loads(line) for line in handle if line.strip()]
+        rows = []
+        for number, line in enumerate(handle, start=1):
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            missing = [key for key in ("run_id", "scenario", "arm", "repeat", "passed") if key not in row]
+            if missing:
+                raise ValueError(f"{path}:{number}: missing required result keys: {', '.join(missing)}")
+            rows.append(row)
+        return rows
 
 
 def scenario_map(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -44,6 +53,9 @@ def prompt_for(row: dict[str, Any], scenario: dict[str, Any], rubric: str, limit
     validations = row.get("validation", [])
     artifacts = row.get("artifacts", [])
     diff = row.get("diff", {})
+    diff_artifacts = row.get("diff_artifacts", {})
+    patch = excerpt(diff_artifacts.get("patch"), limit)
+    status = excerpt(diff_artifacts.get("status"), 2000)
     return f"""You are judging one Architrave benchmark run.
 
 Return ONLY JSON with this shape:
@@ -68,6 +80,9 @@ Rubric:
 Scenario:
 {json.dumps(scenario, indent=2)}
 
+Scenario-specific scoring checklist:
+{json.dumps(scenario.get('scoring', {}), indent=2)}
+
 Run row:
 {json.dumps(row, indent=2)}
 
@@ -79,6 +94,12 @@ Artifact checks:
 
 Diff metrics:
 {json.dumps(diff, indent=2)}
+
+Git status:
+{status}
+
+Diff patch tail:
+{patch}
 
 Agent stdout tail:
 {stdout}
@@ -140,8 +161,8 @@ def main() -> int:
     parser.add_argument("--results", required=True, type=Path)
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--rubric", default="benchmarks/judge-rubric.md", type=Path)
-    parser.add_argument("--model", default=os.environ.get("ARCHITRAVE_BENCH_JUDGE_MODEL", "auto"))
-    parser.add_argument("--timeout", type=int, default=300)
+    parser.add_argument("--model", default=os.environ.get("ARCHITRAVE_BENCH_JUDGE_MODEL", "auto"), help="Copilot judge model id. 'auto' means Copilot CLI default; set ARCHITRAVE_BENCH_JUDGE_MODEL to pin.")
+    parser.add_argument("--timeout", type=int, default=300, help="Per-row judge timeout in seconds. Increase for long diffs or slow frontier models.")
     parser.add_argument("--excerpt-chars", type=int, default=12000)
     parser.add_argument("--limit", type=int, default=0)
     args = parser.parse_args()

@@ -11,7 +11,7 @@
     {
       "id": "copilot-architrave",
       "runner": "copilot",
-      "agent": "Architrave",
+      "agent": "architrave:architrave",
       "customInstructions": true,
       "allowAll": true,
       "noAskUser": true
@@ -22,7 +22,7 @@
       "id": "phonodeck-ui-storybook-empty-state",
       "enabled": true,
       "repo": "/Users/dragoshont/Repo/phonodeck",
-      "baseRef": "main",
+      "baseRef": "83e675e3baea718e3551a08783f93f4db2fa8f89",
       "lane": "ui",
       "tags": ["storybook", "ui", "empty-state"],
       "prompt": "Benchmark task. Add a Storybook-first empty state for the PhonoDeck Library home when all connected music sources are signed out or unavailable. Acceptance: update the design source first, keep source capability honesty, avoid native app implementation until the Storybook/design artifact exists, and run the repo quick gate. This benchmark has pre-approved proceeding without asking follow-up questions unless the task is impossible.",
@@ -37,7 +37,7 @@
       "id": "sideport-yagni-native-form-control",
       "enabled": true,
       "repo": "/Users/dragoshont/Repo/sideport",
-      "baseRef": "main",
+      "baseRef": "728e09535ca62c6b7f4c6f6eef7b0645978c2e5b",
       "lane": "yagni",
       "tags": ["yagni", "web", "native"],
       "prompt": "Benchmark task. A user asks for a custom date picker in Sideport Admin for certificate renewal scheduling. Implement the smallest correct UI slice. Acceptance: apply the YAGNI ladder, prefer native/browser/design-system capability over a new picker dependency, keep accessibility and validation, and run the repo quick gate. This benchmark has pre-approved proceeding without asking follow-up questions unless impossible.",
@@ -52,7 +52,7 @@
       "id": "sideport-backend-contract-first-refresh-status",
       "enabled": true,
       "repo": "/Users/dragoshont/Repo/sideport",
-      "baseRef": "main",
+      "baseRef": "728e09535ca62c6b7f4c6f6eef7b0645978c2e5b",
       "lane": "backend",
       "tags": ["backend", "contract", "queue"],
       "prompt": "Benchmark task. Add a backend-visible refresh status field for apps already queued for signing/refresh, without inventing a parallel queue abstraction. Acceptance: ground in existing Sideport architecture docs and solution seams, define or update the contract first, implement the smallest approved slice, preserve idempotency/capability honesty, and run the repo quick gate. This benchmark has pre-approved proceeding without asking follow-up questions unless impossible.",
@@ -67,7 +67,7 @@
       "id": "tessera-fullstack-contract-and-ui",
       "enabled": true,
       "repo": "/Users/dragoshont/Repo/tessera",
-      "baseRef": "main",
+      "baseRef": "a9595e2345e842d7582592129e5f0ab8bb42fe9e",
       "lane": "full-stack",
       "tags": ["full-stack", "contract", "storybook"],
       "prompt": "Benchmark task. Add a minimal admin portal indicator for a backend job that is blocked by missing configuration. Acceptance: define the backend/API shape first from existing architecture docs, render an honest blocked state in the UI design source, avoid invented metrics, avoid unnecessary persistence, and run quick gates. This benchmark has pre-approved proceeding without asking follow-up questions unless impossible.",
@@ -82,12 +82,18 @@
       "id": "phonodeck-learning-repeated-build-gotcha",
       "enabled": true,
       "repo": "/Users/dragoshont/Repo/phonodeck",
-      "baseRef": "main",
+      "baseRef": "83e675e3baea718e3551a08783f93f4db2fa8f89",
       "lane": "learning",
       "tags": ["learning", "repo-profile", "build"],
       "prompt": "Benchmark task. Capture the PhonoDeck build/relaunch gotcha as durable repo learning without changing product code. Acceptance: update the Architrave repo profile or candidate lessons with evidence, do not put a one-off note into architrave.config.json, redact secrets, validate the fact against current repo files, and run the repo quick gate. This benchmark has pre-approved proceeding without asking follow-up questions unless impossible.",
-      "validation": ["gates/checks.sh --quick", "harness/validate-run.sh"],
-      "expectedArtifacts": [".architrave/runs", ".architrave/learning/repo-profile.md", ".architrave/learning/repo-lessons.md"],
+      "validation": ["gates/checks.sh --quick"],
+      "validationByArm": {
+        "copilot-architrave": ["gates/checks.sh --quick", "harness/validate-run.sh"]
+      },
+      "expectedArtifacts": [".architrave/learning/repo-profile.md"],
+      "expectedArtifactsByArm": {
+        "copilot-architrave": [".architrave/runs", ".architrave/learning/repo-profile.md", ".architrave/learning/repo-lessons.md"]
+      },
       "scoring": {
         "mustShow": ["repo profile or candidate lesson", "evidence", "no config bloat", "no secrets"],
         "failureModes": ["writes secret value", "bloats config", "chat-only memory"]

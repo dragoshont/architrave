@@ -13,9 +13,13 @@ from typing import Any
 def rows(path: Path) -> list[dict[str, Any]]:
     out = []
     with path.open("r", encoding="utf-8") as handle:
-        for line in handle:
+        for number, line in enumerate(handle, start=1):
             if line.strip():
-                out.append(json.loads(line))
+                row = json.loads(line)
+                missing = [key for key in ("run_id", "scenario", "arm", "repeat", "passed") if key not in row]
+                if missing:
+                    raise ValueError(f"{path}:{number}: missing required result keys: {', '.join(missing)}")
+                out.append(row)
     return out
 
 
@@ -38,11 +42,12 @@ def summarize(items: list[dict[str, Any]]) -> str:
     for (scenario, arm), group in sorted(groups.items()):
         n = len(group)
         pass_rate = 100 * sum(1 for row in group if row.get("passed")) / n if n else 0
-        durations = [row.get("agent", {}).get("duration_ms") for row in group if row.get("agent", {}).get("duration_ms") is not None]
+        agents = [row.get("agent") or {} for row in group]
+        durations = [agent.get("duration_ms") for agent in agents if agent.get("duration_ms") is not None]
         net_locs = [row.get("diff", {}).get("net_loc") for row in group if row.get("diff", {}).get("net_loc") is not None]
         files = [row.get("diff", {}).get("changed_files") for row in group if row.get("diff", {}).get("changed_files") is not None]
-        output_tokens = [row.get("agent", {}).get("output_tokens") for row in group if row.get("agent", {}).get("output_tokens") is not None]
-        timeouts = sum(1 for row in group if row.get("agent", {}).get("timed_out"))
+        output_tokens = [agent.get("output_tokens") for agent in agents if agent.get("output_tokens") is not None]
+        timeouts = sum(1 for agent in agents if agent.get("timed_out"))
         lines.append(
             "| "
             + " | ".join(
@@ -69,7 +74,8 @@ def summarize(items: list[dict[str, Any]]) -> str:
         lines.append("None.")
     else:
         for row in failed:
-            lines.append(f"- `{row.get('scenario')}` / `{row.get('arm')}` rep `{row.get('repeat')}`: {row.get('error') or 'validation/artifact failure'} ({row.get('cell_dir')})")
+            reason = row.get("failure_mode") or row.get("error") or "validation/artifact failure"
+            lines.append(f"- `{row.get('scenario')}` / `{row.get('arm')}` rep `{row.get('repeat')}`: {reason} ({row.get('cell_dir')})")
     lines.append("")
     return "\n".join(lines)
 

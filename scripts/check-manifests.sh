@@ -26,6 +26,7 @@ json_files=(
   kit/examples/tokens.web-shadcn.tokens.json
   harness/schemas/run-summary.schema.json
   benchmarks/scenarios.schema.json
+  benchmarks/results.schema.json
   benchmarks/scenarios.json
 )
 for f in "${json_files[@]}"; do

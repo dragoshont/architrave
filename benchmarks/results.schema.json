@@ -1,0 +1,80 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://architrave/benchmarks/results.schema.json",
+  "title": "Architrave benchmark result row",
+  "type": "object",
+  "required": ["run_id", "scenario", "lane", "arm", "repeat", "repo", "base_ref", "started_at", "finished_at", "passed"],
+  "additionalProperties": true,
+  "properties": {
+    "run_id": { "type": "string" },
+    "scenario": { "type": "string" },
+    "lane": { "type": "string" },
+    "arm": { "type": "string" },
+    "repeat": { "type": "integer", "minimum": 0 },
+    "repo": { "type": "string" },
+    "base_ref": { "type": "string" },
+    "base_commit": { "type": "string" },
+    "cell_dir": { "type": "string" },
+    "worktree": { "type": "string" },
+    "prompt_file": { "type": "string" },
+    "started_at": { "type": "string" },
+    "finished_at": { "type": "string" },
+    "passed": { "type": "boolean" },
+    "failure_mode": {
+      "type": ["string", "null"],
+      "enum": [null, "timeout", "agent_error", "setup_error", "validation_timeout", "validation_failed", "artifact_missing", "unknown"]
+    },
+    "error": { "type": "string" },
+    "agent": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "returncode": { "type": "integer" },
+        "timed_out": { "type": "boolean" },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "models": { "type": "array", "items": { "type": "string" } },
+        "output_tokens": { "type": "integer", "minimum": 0 },
+        "tool_requests": { "type": "integer", "minimum": 0 },
+        "result_usage": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "diff": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "changed_files": { "type": "integer", "minimum": 0 },
+        "additions": { "type": "integer", "minimum": 0 },
+        "deletions": { "type": "integer", "minimum": 0 },
+        "net_loc": { "type": "integer" },
+        "dependency_or_project_files": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "diff_artifacts": { "type": "object", "additionalProperties": { "type": "string" } },
+    "validation": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["command", "returncode", "timed_out", "duration_ms"],
+        "additionalProperties": true,
+        "properties": {
+          "command": { "type": "string" },
+          "returncode": { "type": "integer" },
+          "timed_out": { "type": "boolean" },
+          "duration_ms": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "exists"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string" },
+          "exists": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}

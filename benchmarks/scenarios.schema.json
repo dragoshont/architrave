@@ -38,11 +38,25 @@
           "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
           "enabled": { "type": "boolean" },
           "repo": { "type": "string" },
-          "baseRef": { "type": "string" },
+          "baseRef": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
           "lane": { "type": "string", "enum": ["ui", "ux", "backend", "full-stack", "infra", "ops", "learning", "yagni"] },
           "prompt": { "type": "string", "minLength": 1 },
           "validation": { "type": "array", "items": { "type": "string" } },
+          "validationByArm": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
           "expectedArtifacts": { "type": "array", "items": { "type": "string" } },
+          "expectedArtifactsByArm": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
           "tags": { "type": "array", "items": { "type": "string" } },
           "scoring": { "type": "object", "additionalProperties": true }
         }

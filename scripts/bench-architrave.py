@@ -11,7 +11,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shlex
+import re
+import signal
 import shutil
 import subprocess
 import sys
@@ -50,6 +51,85 @@ def run_shell(command: str, cwd: Path, env: dict[str, str], timeout: int | None 
         stderr=subprocess.PIPE,
         check=False,
     )
+
+
+def as_text(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", "replace")
+    return str(value)
+
+
+SECRET_PATTERNS = [
+    re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._~+/=-]{12,}"),
+    re.compile(r"(?i)(api[_-]?key\s*[=:]\s*)[A-Za-z0-9._~+/=-]{12,}"),
+    re.compile(r"(?i)(token\s*[=:]\s*)[A-Za-z0-9._~+/=-]{12,}"),
+    re.compile(r"(?i)(password\s*[=:]\s*)\S{8,}"),
+    re.compile(r"gh[pousr]_[A-Za-z0-9_]{20,}"),
+    re.compile(r"sk-[A-Za-z0-9]{20,}"),
+]
+
+
+def redact_text(text: str, env: dict[str, str] | None = None) -> str:
+    redacted = text
+    env = env or os.environ
+    for name in filter(None, os.environ.get("ARCHITRAVE_BENCH_SECRET_ENV_VARS", "").split(",")):
+        value = env.get(name.strip())
+        if value:
+            redacted = redacted.replace(value, f"<redacted:{name.strip()}>")
+    for pattern in SECRET_PATTERNS:
+        redacted = pattern.sub(lambda match: (match.group(1) if match.lastindex else "") + "<redacted>", redacted)
+    return redacted
+
+
+def redact_file(path: Path, env: dict[str, str] | None = None) -> None:
+    if path.exists():
+        path.write_text(redact_text(path.read_text(encoding="utf-8", errors="replace"), env), encoding="utf-8")
+
+
+def normalize_git_path(path: str) -> str:
+    return path.replace("\\", "/")
+
+
+def run_to_files(cmd: list[str], cwd: Path, env: dict[str, str], timeout: int, stdout_path: Path, stderr_path: Path) -> tuple[int, bool, int]:
+    stdout_path.parent.mkdir(parents=True, exist_ok=True)
+    start = time.time()
+    timed_out = False
+    with stdout_path.open("w", encoding="utf-8") as stdout, stderr_path.open("w", encoding="utf-8") as stderr:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(cwd),
+            env=env,
+            text=True,
+            stdout=stdout,
+            stderr=stderr,
+            start_new_session=True,
+        )
+        try:
+            returncode = proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            if os.name == "posix" and hasattr(os, "killpg"):
+                try:
+                    os.killpg(proc.pid, signal.SIGTERM)
+                    returncode = proc.wait(timeout=10)
+                except Exception:
+                    try:
+                        os.killpg(proc.pid, signal.SIGKILL)
+                    except Exception:
+                        proc.kill()
+                    returncode = proc.wait(timeout=10)
+            else:
+                proc.terminate()
+                try:
+                    returncode = proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    returncode = proc.wait(timeout=10)
+            stderr.write(f"\nARCHITRAVE_BENCH_TIMEOUT after {timeout}s\n")
+    duration_ms = int((time.time() - start) * 1000)
+    return returncode, timed_out, duration_ms
 
 
 def load_config(path: Path) -> dict[str, Any]:
@@ -94,7 +174,11 @@ def create_worktree(repo: Path, base_ref: str, worktree: Path) -> str:
 
 
 def cleanup_worktree(repo: Path, worktree: Path) -> None:
-    run(["git", "-C", str(repo), "worktree", "remove", "--force", str(worktree)])
+    worktrees = run(["git", "-C", str(repo), "worktree", "list", "--porcelain"]).stdout or ""
+    if str(worktree) in worktrees or worktree.exists():
+        proc = run(["git", "-C", str(repo), "worktree", "remove", "--force", str(worktree)])
+        if proc.returncode != 0:
+            raise RuntimeError(proc.stderr.strip() or proc.stdout.strip())
 
 
 def prompt_for(scenario: dict[str, Any], arm: dict[str, Any], repeat: int) -> str:
@@ -162,24 +246,16 @@ def run_arm(arm: dict[str, Any], worktree: Path, prompt: str, run_dir: Path, tim
             "ARCHITRAVE_BENCH_PROMPT_FILE": str(run_dir / "prompt.md"),
         }
     )
-    start = time.time()
-    try:
-        if arm["runner"] == "copilot":
-            proc = run(copilot_command(arm, worktree, prompt, session_md), cwd=worktree, env=env, timeout=timeout)
-        elif arm["runner"] == "shell":
-            command = " ".join(shlex.quote(part) for part in arm["command"])
-            proc = run_shell(command, cwd=worktree, env=env, timeout=timeout)
-        else:
-            raise RuntimeError(f"unknown runner: {arm['runner']}")
-        timed_out = False
-    except subprocess.TimeoutExpired as exc:
-        proc = subprocess.CompletedProcess(exc.cmd, 124, exc.stdout or "", exc.stderr or "")
-        timed_out = True
-    duration_ms = int((time.time() - start) * 1000)
-    write(raw_stdout, proc.stdout or "")
-    write(raw_stderr, proc.stderr or "")
+    if arm["runner"] == "copilot":
+        returncode, timed_out, duration_ms = run_to_files(copilot_command(arm, worktree, prompt, session_md), worktree, env, timeout, raw_stdout, raw_stderr)
+    elif arm["runner"] == "shell":
+        returncode, timed_out, duration_ms = run_to_files(arm["command"], worktree, env, timeout, raw_stdout, raw_stderr)
+    else:
+        raise RuntimeError(f"unknown runner: {arm['runner']}")
+    redact_file(raw_stdout, env)
+    redact_file(raw_stderr, env)
     metrics = parse_copilot_events(raw_stdout) if arm["runner"] == "copilot" else {}
-    metrics.update({"returncode": proc.returncode, "timed_out": timed_out, "duration_ms": duration_ms})
+    metrics.update({"returncode": returncode, "timed_out": timed_out, "duration_ms": duration_ms})
     return metrics
 
 
@@ -190,14 +266,20 @@ def parse_copilot_events(path: Path) -> dict[str, Any]:
     tool_requests = 0
     event_count = 0
     final_text = ""
+    result_usage: dict[str, Any] = {}
+    non_json_lines = 0
+    json_errors = 0
     with path.open("r", encoding="utf-8", errors="replace") as handle:
         for line in handle:
             line = line.strip()
             if not line.startswith("{"):
+                if line:
+                    non_json_lines += 1
                 continue
             try:
                 event = json.loads(line)
             except json.JSONDecodeError:
+                json_errors += 1
                 continue
             event_count += 1
             data = event.get("data") or {}
@@ -209,6 +291,16 @@ def parse_copilot_events(path: Path) -> dict[str, Any]:
                 tool_requests += len(data.get("toolRequests") or [])
                 if data.get("content"):
                     final_text = data["content"]
+            if event.get("type") == "result":
+                usage = event.get("usage") or {}
+                result_usage = {
+                    "premium_requests": usage.get("premiumRequests"),
+                    "total_api_duration_ms": usage.get("totalApiDurationMs"),
+                    "session_duration_ms": usage.get("sessionDurationMs"),
+                    "code_changes": usage.get("codeChanges"),
+                    "exit_code": event.get("exitCode"),
+                    "session_id": event.get("sessionId"),
+                }
     return {
         "event_count": event_count,
         "models": sorted(models),
@@ -216,6 +308,9 @@ def parse_copilot_events(path: Path) -> dict[str, Any]:
         "output_tokens": output_tokens,
         "tool_requests": tool_requests,
         "final_text_chars": len(final_text),
+        "result_usage": result_usage,
+        "non_json_lines": non_json_lines,
+        "json_errors": json_errors,
     }
 
 
@@ -234,8 +329,8 @@ def diff_metrics(worktree: Path) -> dict[str, Any]:
                 additions += int(add)
             if delete.isdigit():
                 deletions += int(delete)
-            files.append(file_path)
-    dep_files = [file for file in files if file.endswith(("package.json", "package-lock.json", ".csproj", ".fsproj", ".sln", ".slnx", "Package.swift", "project.yml"))]
+                files.append(normalize_git_path(file_path))
+            dep_files = [file for file in files if file.endswith(("package.json", "package-lock.json", ".csproj", ".fsproj", ".sln", ".slnx", "Package.swift", "project.yml"))]
     return {
         "changed_files": len(files),
         "additions": additions,
@@ -246,19 +341,37 @@ def diff_metrics(worktree: Path) -> dict[str, Any]:
     }
 
 
+def save_diff_artifacts(worktree: Path, out_dir: Path, env: dict[str, str] | None = None) -> dict[str, str]:
+    status = redact_text(run(["git", "-C", str(worktree), "status", "--porcelain=v1"]).stdout or "", env)
+    numstat = redact_text(run(["git", "-C", str(worktree), "diff", "--numstat"]).stdout or "", env)
+    patch = redact_text(run(["git", "-C", str(worktree), "diff", "--binary"]).stdout or "", env)
+    write(out_dir / "status.txt", status)
+    write(out_dir / "numstat.txt", numstat)
+    write(out_dir / "diff.patch", patch)
+    return {
+        "status": str(out_dir / "status.txt"),
+        "numstat": str(out_dir / "numstat.txt"),
+        "patch": str(out_dir / "diff.patch"),
+    }
+
+
 def run_validation(worktree: Path, commands: list[str], out_dir: Path, timeout: int) -> list[dict[str, Any]]:
     results = []
     for index, command in enumerate(commands, start=1):
         start = time.time()
+        env = os.environ.copy()
         try:
-            proc = run_shell(command, cwd=worktree, env=os.environ.copy(), timeout=timeout)
+            proc = run_shell(command, cwd=worktree, env=env, timeout=timeout)
             timed_out = False
         except subprocess.TimeoutExpired as exc:
-            proc = subprocess.CompletedProcess(command, 124, exc.stdout or "", exc.stderr or "")
+            proc = subprocess.CompletedProcess(command, 124, as_text(exc.stdout), as_text(exc.stderr))
             timed_out = True
+        except Exception as exc:
+            proc = subprocess.CompletedProcess(command, 125, "", repr(exc))
+            timed_out = False
         duration_ms = int((time.time() - start) * 1000)
-        write(out_dir / f"validation-{index}.stdout", proc.stdout or "")
-        write(out_dir / f"validation-{index}.stderr", proc.stderr or "")
+        write(out_dir / f"validation-{index}.stdout", redact_text(proc.stdout or "", env))
+        write(out_dir / f"validation-{index}.stderr", redact_text(proc.stderr or "", env))
         results.append({"command": command, "returncode": proc.returncode, "timed_out": timed_out, "duration_ms": duration_ms})
     return results
 
@@ -267,8 +380,59 @@ def artifact_results(worktree: Path, artifacts: list[str]) -> list[dict[str, Any
     return [{"path": artifact, "exists": (worktree / artifact).exists()} for artifact in artifacts]
 
 
+def arm_values(scenario: dict[str, Any], key: str, arm_id: str) -> list[str]:
+    by_arm = scenario.get(f"{key}ByArm", {}) or {}
+    if arm_id in by_arm:
+        return list(by_arm[arm_id])
+    return list(scenario.get(key, []) or [])
+
+
+def failure_mode(row: dict[str, Any]) -> str | None:
+    agent = row.get("agent") or {}
+    if agent.get("timed_out"):
+        return "timeout"
+    if agent and agent.get("returncode") != 0:
+        return "agent_error"
+    if row.get("error"):
+        return "setup_error"
+    if any(item.get("timed_out") for item in row.get("validation", [])):
+        return "validation_timeout"
+    if any(item.get("returncode") != 0 for item in row.get("validation", [])):
+        return "validation_failed"
+    if any(not item.get("exists") for item in row.get("artifacts", [])):
+        return "artifact_missing"
+    if row.get("passed") is False:
+        return "unknown"
+    return None
+
+
+def append_jsonl(path: Path, row: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(row, sort_keys=True) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
+def validate_scenarios(config: dict[str, Any]) -> int:
+    failures = 0
+    for scenario in config.get("scenarios", []):
+        repo = Path(scenario["repo"]).expanduser().resolve()
+        proc = run(["git", "-C", str(repo), "rev-parse", "--verify", scenario["baseRef"]])
+        if proc.returncode != 0:
+            failures += 1
+            print(f"FAIL {scenario['id']}: baseRef {scenario['baseRef']} not found in {repo}")
+        else:
+            print(f"ok   {scenario['id']}: {scenario['baseRef']} -> {proc.stdout.strip()}")
+    return failures
+
+
 def bench(args: argparse.Namespace) -> int:
     config = load_config(Path(args.scenarios))
+    if args.validate:
+        return 1 if validate_scenarios(config) else 0
+    if args.execute and not args.scenario and not args.all_enabled:
+        raise SystemExit("refusing to execute an implicit one-scenario subset; pass --scenario <id> or --all-enabled")
     scenarios = selected(config["scenarios"], args.scenario, args.all_enabled or args.list)
     arms = selected(config["arms"], args.arm, all_enabled=True)
     if args.list or not args.execute:
@@ -283,7 +447,7 @@ def bench(args: argparse.Namespace) -> int:
             return 0
 
     run_id = args.run_id or utc_stamp()
-    root = Path(args.out) / run_id
+    root = Path(args.out).expanduser().resolve() / run_id
     root.mkdir(parents=True, exist_ok=True)
     results_path = root / "results.jsonl"
     failures = 0
@@ -313,19 +477,28 @@ def bench(args: argparse.Namespace) -> int:
                     row["base_commit"] = create_worktree(repo, scenario["baseRef"], worktree)
                     row["agent"] = run_arm(arm, worktree, prompt, cell_dir, args.agent_timeout)
                     row["diff"] = diff_metrics(worktree)
-                    row["validation"] = run_validation(worktree, scenario.get("validation", []), cell_dir, args.validation_timeout)
-                    row["artifacts"] = artifact_results(worktree, scenario.get("expectedArtifacts", []))
-                    row["passed"] = all(item["returncode"] == 0 for item in row["validation"]) and all(item["exists"] for item in row["artifacts"])
+                    row["diff_artifacts"] = save_diff_artifacts(worktree, cell_dir, os.environ.copy())
+                    row["validation"] = run_validation(worktree, arm_values(scenario, "validation", arm["id"]), cell_dir, args.validation_timeout)
+                    row["artifacts"] = artifact_results(worktree, arm_values(scenario, "expectedArtifacts", arm["id"]))
+                    row["passed"] = (
+                        row["agent"].get("returncode") == 0
+                        and not row["agent"].get("timed_out")
+                        and all(item["returncode"] == 0 for item in row["validation"])
+                        and all(item["exists"] for item in row["artifacts"])
+                    )
                 except Exception as exc:  # keep batch moving; DNF is data
                     failures += 1
                     row["passed"] = False
                     row["error"] = repr(exc)
                 finally:
+                    row["failure_mode"] = failure_mode(row)
                     row["finished_at"] = datetime.now(timezone.utc).isoformat()
-                    with results_path.open("a", encoding="utf-8") as handle:
-                        handle.write(json.dumps(row, sort_keys=True) + "\n")
+                    append_jsonl(results_path, row)
                     if args.cleanup_worktrees and worktree.exists():
-                        cleanup_worktree(repo, worktree)
+                        try:
+                            cleanup_worktree(repo, worktree)
+                        except Exception as exc:
+                            print(f"warn cleanup failed for {worktree}: {exc}", file=sys.stderr)
                     print(f"{scenario['id']} {arm['id']} rep={repeat} passed={row.get('passed')} -> {cell_dir}")
     print(f"results: {results_path}")
     return 1 if failures else 0
@@ -345,6 +518,7 @@ def main() -> int:
     parser.add_argument("--cleanup-worktrees", action="store_true")
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--execute", action="store_true")
+    parser.add_argument("--validate", action="store_true", help="validate scenario repo/baseRef references and exit")
     return bench(parser.parse_args())
 
 
