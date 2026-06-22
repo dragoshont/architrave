@@ -10,10 +10,23 @@ It has Apple and Microsoft design language built in, plus web/WCAG guidance, Sto
 
 ## Built With Architrave
 
-| PhonoDeck | Sideport | Tessera |
-|---|---|---|
-| ![PhonoDeck native macOS music app designed in Storybook and built in SwiftUI](assets/phonodeck.png) | ![Sideport admin console for devices, app signing, renewals, diagnostics, and live API health](assets/sideport.jpg) | ![Tessera homelab account and connection console with health and re-seed states](assets/tessera.png) |
-| Native macOS music app. Storybook design source, SwiftUI implementation. | Web admin console. React UI, .NET backend, Kubernetes runtime. | Homelab access console. React UI, .NET backend, connection health workflows. |
+<table>
+        <tr>
+                <th width="33%">PhonoDeck</th>
+                <th width="33%">Sideport</th>
+                <th width="33%">Tessera</th>
+        </tr>
+        <tr>
+                <td><img src="assets/gallery-phonodeck.png" alt="PhonoDeck native macOS music app designed in Storybook and built in SwiftUI" width="100%"></td>
+                <td><img src="assets/gallery-sideport.png" alt="Sideport admin console for devices, app signing, renewals, diagnostics, and live API health" width="100%"></td>
+                <td><img src="assets/gallery-tessera.png" alt="Tessera homelab account and connection console with health and re-seed states" width="100%"></td>
+        </tr>
+        <tr>
+                <td>Native macOS music app. Storybook design source, SwiftUI implementation.</td>
+                <td>Web admin console. React UI, .NET backend, Kubernetes runtime.</td>
+                <td>Homelab access console. React UI, .NET backend, connection health workflows.</td>
+        </tr>
+</table>
 
 ## The Crew
 
