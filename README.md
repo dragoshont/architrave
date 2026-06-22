@@ -1,12 +1,34 @@
 # Architrave
 
-**A Storybook-first, contract-first agent crew that builds only the repo-proven slice.**
+**An AI agent that runs a full-stack specialist crew inside GitHub Copilot or Claude Code.**
 
-Architrave is a **plugin for GitHub Copilot and Claude Code** that turns one front-door agent into a thin conductor: UI starts in [Storybook](https://storybook.js.org), backend work starts with the contract, infrastructure stops at a plan, YAGNI keeps speculative code out, durable learning artifacts preserve repo knowledge, and every lane must pass deterministic checks plus an Adversarial Judge before it is called done.
+Architrave helps you build a full-stack application, or any slice of one, without turning your codebase into an agent experiment. You ask for the feature; Architrave reads the repo, grounds in its Storybook/design map and backend architecture docs, runs the right specialist agents, and ships only the smallest proven change.
+
+It has Apple and Microsoft design language built in, plus web/WCAG guidance, Storybook-first UI, contract-first backend work, plan-only infrastructure, YAGNI, Tournament of Options, durable learning artifacts, and an Adversarial Judge. The point is simple: build the useful thing, in the repo's own patterns, with evidence.
 
 ![Architrave — ground in the repo, route to specialists, gate with a judge plus real checks, then ship](assets/overview.png)
 
+## The Crew
+
+**Architrave** is the front door. It stays in control of the plan, routes focused work to specialists, and refuses to call the job done until real checks pass.
+
+| Agent | Invoke | What it owns |
+|---|---|---|
+| **Architrave** | directly | Leads the whole run: intake, tournament, YAGNI ladder, Storybook/contract sign-off, implementation, gates, and final summary. |
+| **Product Research** | under the hood | Finds shipped product/workflow patterns, competitor references, and domain-specific traps before planning. |
+| **UX Architect** | directly | Information architecture, navigation, flows, interaction model, keyboard/input behavior, and empty/loading/error states. |
+| **UI Visual** | directly | Visual hierarchy, layout, tokens, typography, color/materials, iconography, and polish. |
+| **Platform Design** | under the hood | Native platform correctness: Apple HIG, Microsoft Fluent, or web/WCAG, depending on `architrave.config.json`. |
+| **Service Architect** | under the hood | Backend boundaries, API/data contracts, ADR fit, auth surfaces, and source-of-truth architecture decisions. |
+| **Backend Planner** | under the hood | Turns the backend contract into ordered slices, migration/rollback notes, risk, and human sign-off checklist. |
+| **Backend Implementer** | under the hood | Implements approved backend/service slices and tests against the contract. |
+| **Infra Engineer** | under the hood | Proposes IaC diffs and plan/policy output only. It never applies. |
+| **Runtime Observer** | under the hood | Reads deployment/runtime truth such as Kubernetes health, logs, ingress, Flux, and version drift. Read-only by default. |
+| **Adversarial Judge** | under the hood | Grades proposals and implementations against the rubric: PASS / REVISE / FAIL. |
+
 ## Install
+
+Install the plugin once in your agent client:
 
 With **GitHub Copilot** (CLI, desktop app, or VS Code):
 
@@ -22,59 +44,45 @@ claude plugin marketplace add dragoshont/architrave
 claude plugin install architrave@architrave
 ```
 
-That installs the agents everywhere your assistant runs. Then [set up a repo](#set-up-a-repo) to point them at your Storybook + build.
-
-**Updating.** Releases bump the plugin version, so a plain update pulls them — no uninstall/reinstall:
+Then ground each repository so local agents, cloud agents, and deterministic gates all see the same source of truth:
 
 ```bash
-copilot plugin update architrave               # Copilot (or: copilot plugin update --all)
-claude plugin marketplace update architrave    # Claude — refreshes the catalog; the new version applies on restart
+/path/to/architrave/tools/install.sh .                          # macOS / Linux
+pwsh -NoProfile -File /path/to/architrave/tools/install.ps1 .    # Windows
 ```
 
-That refreshes the **agents**. A repo you adopted earlier also has **copied** gates, harness helpers, and knowledge packs (they live in the repo so the gates can execute and the cloud agent — which has no plugin — can read them), and those don't auto-update. After bumping the plugin, refresh each adopted repo's copied assets in one command — it leaves your `architrave.config.json` untouched:
+Edit `architrave.config.json` to point at the repo's Storybook/design source, build/test commands, optional backend, optional IaC, optional runtime observation, and optional learning paths. Then ask the **Architrave** agent to build a feature.
+
+**Updating.** Releases bump the plugin version, so a plain update pulls them:
 
 ```bash
-/path/to/architrave/tools/update.sh .                        # macOS / Linux (your kit checkout or the installed plugin dir)
-pwsh -NoProfile -File /path/to/architrave/tools/update.ps1 . # Windows
+copilot plugin update architrave
+claude plugin marketplace update architrave
+claude plugin update architrave@architrave
 ```
 
-The gate (`gates/checks.sh`) prints a one-line nudge when a repo's assets are older than your installed plugin, so you know when to run it.
+After updating the plugin, refresh each adopted repo's copied gates, harness helpers, and knowledge packs. This leaves `architrave.config.json` untouched:
 
-## Use it
+```bash
+/path/to/architrave/tools/update.sh .
+pwsh -NoProfile -File /path/to/architrave/tools/update.ps1 .
+```
+
+## How It Works
 
 Open your assistant, pick the **Architrave** agent, and describe the change in plain language:
 
 > Add an empty state to the library list — an icon, a short message, and a primary action.
 
-It classifies the request, grounds in the repo's source of truth, runs a compact tournament of options, applies the YAGNI ladder, recommends a plan, routes to the smallest useful specialist crew, gets the proposal graded by the **Adversarial Judge**, asks for the right human sign-off artifact (Storybook preview for UI, contract + plan for backend, plan/policy output for infra), then implements and runs the real gates before calling it done.
+Architrave starts with visible intake: understanding, acceptance criteria, grounding sources, assumptions, and blocking questions. Then it runs a **Tournament of Options** plus the **YAGNI ladder**: skip/delete, reuse existing repo source of truth, platform/native feature, standard library, installed dependency, tiny local implementation, and only then new abstraction/dependency/config when the current task proves it. The recommended plan must explain why it beats the alternatives before implementation starts.
 
-For non-trivial work, Architrave starts with a visible intake block: understanding, acceptance criteria, grounding sources, assumptions, and blocking questions. If there are no blocking questions, it says so and proceeds; if there are, it asks before implementation.
+For UI, Architrave starts in **Storybook** or the configured design source, not in random app code. For backend/full-stack, it starts with the **contract** so UI and backend do not drift. For infrastructure, it stops at **plan/policy output** and leaves apply to a human. For non-trivial work, it writes run artifacts under `.architrave/runs/` so future agents can resume from evidence instead of chat memory.
 
-Then it runs a **Tournament of Options** plus the **YAGNI ladder**: skip/delete, reuse existing repo source of truth, platform/native feature, standard library, installed dependency, tiny local implementation, and only then new abstraction/dependency/config when the current task proves it. The recommended plan must explain why it beats the alternatives before implementation starts. For non-trivial work, it also writes a compact run folder under `.architrave/runs/` so the next agent can resume the reasoning instead of depending on chat history.
+**Full-stack is built in.** Set a `backend` and/or `iac` block in `architrave.config.json` and the same conductor extends past UI. Repos without a service, infra, or runtime lane simply omit those blocks.
 
-### The team behind it
+**Learning is explicit.** Set the optional `learning` block and Architrave keeps per-run evidence, a concise repo profile, and candidate repeated lessons. Lessons only become standing repo guidance after validation and review.
 
-**Architrave** runs the whole crew for you. You can also call **UX Architect** or **UI Visual** directly for focused design help; backend, platform, infrastructure, and judge specialists normally work under the hood. Here's what each does on a feature request:
-
-| Agent | Invoke | Its job | On *“Add an empty state to the library list”* |
-|---|---|---|---|
-| **Architrave** | directly | the lead | Runs the whole pipeline — design → your Storybook sign-off → code → gates. |
-| **Product Research** | under the hood | real-world evidence | Finds shipped workflow patterns, patterns to avoid, and missing backend data before planning. |
-| **UX Architect** | directly | how it works | Writes the message + primary action; defines the loading / populated / error variants. |
-| **UI Visual** | directly | how it looks | Applies your design tokens: spacing, type scale, the icon, the button style. |
-| **Platform Design** | under the hood | native correctness | Checks against Apple HIG / Fluent / WCAG (contrast, hit-target size). |
-| **Service Architect** | under the hood | backend contract | Defines the API/data contract and boundary decisions from existing architecture docs. |
-| **Backend Planner** | under the hood | backend sign-off | Turns the contract into ordered slices, migration/rollback notes, and approval checklist. |
-| **Backend Implementer** | under the hood | service code | Implements approved backend slices and tests against the contract. |
-| **Infra Engineer** | under the hood | plan-only infrastructure | Proposes IaC diffs and runs plan/policy checks; never applies. |
-| **Runtime Observer** | under the hood | runtime truth | Optionally reads Homelab MCP/Kubernetes/logs/health evidence; never mutates without approval. |
-| **Adversarial Judge** | under the hood | the quality gate | Grades the design, then the built code — **PASS / REVISE / FAIL**. |
-
-**Full-stack is built in.** Set a `backend` and/or `iac` block in `architrave.config.json` and the same thin conductor extends past UI. Full-stack work is **contract-first** so tiers never drift; infra remains **plan-only** so identity, network, and secret changes wait for a human apply. If you have a runtime truth source such as Homelab MCP, add an optional `ops` block so Architrave can ask the Runtime Observer for read-only deployment/log/health evidence. Repos without a service, infra, or runtime lane simply omit those blocks. Grounded in `knowledge/backend.md`.
-
-**Learning is explicit.** Set the optional `learning` block and Architrave keeps three durable artifacts: per-run evidence in `.architrave/runs/`, a concise repo profile in `.architrave/learning/repo-profile.md`, and candidate repeated lessons in `.architrave/learning/repo-lessons.md`. The profile is the living repo description: purpose, surfaces, source-of-truth paths, build/test commands, architecture map, recurring gotchas, and validated facts. Candidate lessons only become standing repo guidance after validation and review, so the config stays a keystone rather than a diary. Grounded in `knowledge/learning-loop.md`.
-
-**YAGNI is enforced.** Architrave uses a minimum-sufficient-change ladder grounded in `knowledge/yagni.md`: do not build something until the current acceptance criteria, contract, ADR, or explicit user request proves it is needed. It still keeps the enabling practices that make YAGNI safe: refactoring, contracts, tests, validation, security, accessibility, and design-token reconciliation. The Ponytail research was useful here: a bare "use YAGNI" prompt helps, but the repeatable value comes from a concrete ladder, safety carve-outs, and review tags.
+**YAGNI is enforced.** Architrave uses a minimum-sufficient-change ladder grounded in `knowledge/yagni.md`. It blocks speculative abstractions, unused config, new dependencies, and wrapper layers until the task proves they are needed. It still keeps the practices that make YAGNI safe: refactoring, contracts, tests, validation, security, accessibility, and design-token reconciliation.
 
 ## Benchmarks
 
