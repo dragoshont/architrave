@@ -11,4 +11,6 @@ package-lock.json
 # Python / benchmark scratch
 __pycache__/
 *.pyc
+.architrave/learning/
+.architrave/runs/
 .architrave/bench/

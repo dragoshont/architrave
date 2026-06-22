@@ -5,9 +5,11 @@
 - [x] Per‑repo config schema (`kit/architrave.config.schema.json`) + example configs for PhonoDeck / Sideport / Tessera
 - [x] Platform knowledge packs (researched + cited): Apple HIG, Microsoft Fluent 2 / WinUI, Web + React + component‑driven dev
 - [x] Design‑token + design↔code reconciliation backbone (`knowledge/design-tokens.md`)
+- [x] Operations/admin UX knowledge pack (`knowledge/operations-ux.md`): onboarding, offboarding, inventories, app catalogs/uploads, RBAC, health, diagnostics, queues/jobs/schedules, and operational state truth.
 
 ## Milestone 2 — Agents (port + generalize from PhonoDeck)
 - [x] `agents/ux-architect.agent.md` — platform‑agnostic IA/flow/state, grounded per‑repo by config + Storybook.
+- [x] `agents/operations-ux.agent.md` — source-backed operational/admin product UX patterns and contract requirements.
 - [x] `agents/ui-visual.agent.md` — platform‑agnostic visual hierarchy/tokens; loads the platform pack for specifics.
 - [x] `agents/platform-design.agent.md` — **pluggable**: reads `config.platform` and the matching `knowledge/*.md` (Apple HIG / Fluent / Web).
 - [x] `agents/architrave.agent.md` — the config‑driven, judge‑gated harness (understand → propose → judge → implement → reconcile → tests → judge → verify).

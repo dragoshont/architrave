@@ -3,10 +3,10 @@
 Architrave is a **cross-platform, judge-gated agent kit** for UI, backend, full-stack features, plan-only infrastructure, optional runtime observation, and durable learning/audit artifacts, distributed as a Copilot / Claude **agent plugin** plus a per-repo **installer**. UI grounds in Storybook + design tokens; backend grounds in architecture docs + contracts; IaC is proposal/plan-only.
 
 ## What's here
-- `agents/` — the eleven agents: **Architrave**, **Product Research**, **UX Architect**, **UI Visual**, **Platform Design**, **Service Architect**, **Backend Planner**, **Backend Implementer**, **Infra Engineer**, **Runtime Observer**, and **Adversarial Judge**. Shared `.agent.md` format across VS Code / Copilot CLI / the Copilot app / Claude Code.
+- `agents/` — the twelve agents: **Architrave**, **Product Research**, **Operations UX**, **UX Architect**, **UI Visual**, **Platform Design**, **Service Architect**, **Backend Planner**, **Backend Implementer**, **Infra Engineer**, **Runtime Observer**, and **Adversarial Judge**. Shared `.agent.md` format across VS Code / Copilot CLI / the Copilot app / Claude Code.
 - `gates/` — deterministic gates as **`.sh` + `.ps1` pairs** (`checks`, `reconcile`, `quality-gate`, `backend-checks`) + `rubric.md` (the judge's rubric) + `hooks/` (PostToolUse guards).
 - `harness/` — durable run-artifact helpers (`init-run`, `validate-run`, `semantic-review`) as `.sh` + `.ps1` pairs plus schemas.
-- `knowledge/` — platform packs (`apple.md`, `microsoft.md`, `web.md`) + `backend.md` + `design-tokens.md` + `learning-loop.md` + `yagni.md`.
+- `knowledge/` — platform packs (`apple.md`, `microsoft.md`, `web.md`) + `backend.md` + `operations-ux.md` + `design-tokens.md` + `learning-loop.md` + `yagni.md`.
 - `kit/` — `architrave.config.schema.json` (the per-repo config keystone) + `examples/`.
 - `plugin.json` + `.github/plugin/marketplace.json` — agent-plugin + self-hosting marketplace.
 - `templates/` + `tools/install.{sh,ps1}` — the per-repo installer and what it injects.

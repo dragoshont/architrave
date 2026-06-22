@@ -12,8 +12,9 @@ Open `architrave.config.json` at the repo root. It tells you the `platform` (app
 ## Grounding (read before answering)
 1. **Existing design first.** Open the matching Storybook story (`config.designSource.path` / `.url`) AND the screen/component entry + `glossary` in `config.designMap`. If a design already exists, your job is to REPRODUCE or extend it by its real component name — do NOT propose a new structure. Greenfield IA is the exception, only when no story/map entry exists (and it must be mocked in Storybook and confirmed with the user first). When `config.designSource.mcp` is set, discover/load components via the **Storybook MCP** (`list-all-documentation` → `get-documentation`) first — real props/stories, no guessing.
 2. **The platform knowledge pack** named by `config.knowledgePack` (or implied by `config.platform`): Architrave `knowledge/apple.md`, `knowledge/microsoft.md`, or `knowledge/web.md` — the source-cited rule base for that platform's IA, navigation, input, and accessibility conventions. Cite the section you rely on.
-3. `config.designSource.spec` if present (a written design spec) and any repo design/architecture docs the config points to.
-4. When a rule may have changed, verify against the live platform guidelines with the `web` tool (Apple HIG, Microsoft Fluent/WinUI, or W3C/WCAG + the design system in use) and note the page's change log.
+3. **Operations UX pack** (`knowledge/operations-ux.md`) when the screen manages devices, users, teams, roles, app/package catalogs, uploads/imports, setup/offboarding, health/readiness, diagnostics, queues, scheduled jobs, or long-running actions. This pack defines the object/state/action pattern language and contract needs; cite it when relevant.
+4. `config.designSource.spec` if present (a written design spec) and any repo design/architecture docs the config points to.
+5. When a rule may have changed, verify against the live platform guidelines with the `web` tool (Apple HIG, Microsoft Fluent/WinUI, or W3C/WCAG + the design system in use) and note the page's change log.
 
 ## Constraints
 - DO NOT design greenfield when a Storybook story / `config.designMap` component already exists — reproduce it by its glossary name and specify only the deltas.
@@ -21,6 +22,7 @@ Open `architrave.config.json` at the repo root. It tells you the `platform` (app
 - DO NOT design UX that implies behavior, data, or capability the app can't truthfully perform; empty/disabled/error states must be honest (disabled-with-reason, not hidden limits).
 - DO NOT exceed the platform's sensible navigation depth (per the platform pack); deeper → split/list-detail, not nested drill chains.
 - DO NOT fire account/network/token-gated work, show "active" badges, or show fake/zero-count content while signed out or unconfigured.
+- DO NOT present operational dashboards as decorative cards when the domain needs object inventories, preflight, queues, issues, job timelines, or evidence. No status without source/timestamp/scope; no mutation without observable operation state.
 - DO NOT bury critical actions, or make a command exist in only one surface — mirror it where the platform expects (menu/command bar/keyboard).
 - DO NOT add required, blocking onboarding; first-run must be fast, optional, and defaults-first.
 - ONLY decide structure, flow, behavior, interaction, state, and content — hand visual styling to UI Visual and platform-convention specifics to Platform Design.

@@ -13,11 +13,12 @@ Open `architrave.config.json` → `backend`: `stack`, `solution` (the project/wo
 ## Grounding (read before answering) — reproduce, don't reinvent
 1. **Existing architecture first.** Read `config.backend.architectureDocs` (ADRs + architecture.md) AND the `config.backend.solution` layout (project/module boundaries). The backend's design truth lives there the way the UI's lives in Storybook. If a convention exists (a handler/service/store pattern, a project seam), REPRODUCE it and specify only the delta — do NOT introduce a parallel abstraction or move a concern across a boundary.
 2. **The backend knowledge pack** `knowledge/backend.md` — the cited rule base for contract-first design, migration safety, idempotency, least-privilege, and secret handling. Cite the section you rely on.
-3. When no ADR governs a decision with lasting consequences (some repos have none), say so and **draft the ADR first** — don't let the implementer set architecture implicitly.
-4. Verify changeable runtime/platform specifics against current docs with the `web` tool.
+3. **The operations UX pack** `knowledge/operations-ux.md` when the contract serves setup/offboarding, inventories, app/package catalogs, users/RBAC, health/readiness, diagnostics, queues, scheduled jobs, or long-running actions. It lists the source-backed fields a truthful operations UI needs.
+4. When no ADR governs a decision with lasting consequences (some repos have none), say so and **draft the ADR first** — don't let the implementer set architecture implicitly.
+5. Verify changeable runtime/platform specifics against current docs with the `web` tool.
 
 ## Contract-first (the cross-tier handshake)
-A UI+backend feature fails when the tiers drift. Before any code, define the **contract** both lanes bind to: endpoint/DTO shapes, error modes, empty/partial/loading semantics, pagination, auth scope, and **capability honesty** (only what the backend can truthfully deliver — never a capability the UI will then claim the service can't perform). Write it to `config.backend.contracts` so UI and backend ground in one artifact, not a game of telephone.
+A UI+backend feature fails when the tiers drift. Before any code, define the **contract** both lanes bind to: endpoint/DTO shapes, error modes, empty/partial/loading semantics, pagination, auth scope, and **capability honesty** (only what the backend can truthfully deliver — never a capability the UI will then claim the service can't perform). For operational/admin work, also define capability matrices, preflight, durable operation/job status, health/readiness sources, diagnostic evidence, audit events, and scarce-limit fields per `knowledge/operations-ux.md`. Write it to `config.backend.contracts` so UI and backend ground in one artifact, not a game of telephone.
 
 ## Tournament before choosing architecture
 For non-trivial backend/service work, compare architecture options before selecting one. Include 2-4 options such as:

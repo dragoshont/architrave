@@ -30,7 +30,7 @@ Write-Host "  ok gates -> gates/ (checks/reconcile/quality-gate .sh + .ps1 + rub
 # 2b) Knowledge packs
 New-Item -ItemType Directory -Force -Path "$Target/knowledge" | Out-Null
 Copy-Item "$kit/knowledge/*.md" "$Target/knowledge/" -Force
-Write-Host "  ok knowledge -> knowledge/ (apple/microsoft/web/backend/design-tokens/learning-loop/yagni)"
+Write-Host "  ok knowledge -> knowledge/ (apple/microsoft/web/backend/operations-ux/design-tokens/learning-loop/yagni)"
 
 # 2c) Audit harness
 Copy-Item "$kit/harness/*" "$Target/harness/" -Recurse -Force
@@ -107,3 +107,4 @@ Write-Host "  4. Run the Architrave agent for a non-trivial UI change."
 Write-Host ""
 Write-Host "After you later update the plugin, refresh this repo's copied gates + harness + knowledge:"
 Write-Host "       pwsh -NoProfile -File `"$kit/tools/update.ps1`" `"$Target`""
+Write-Host "Use -Agents only when you deliberately want to refresh copied Architrave agents after archiving bespoke repo agents."

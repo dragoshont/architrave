@@ -40,10 +40,10 @@ cp "$KIT"/gates/hooks/*.json "$TARGET/gates/hooks/"
 chmod +x "$TARGET"/gates/*.sh "$TARGET"/gates/*.ps1 2>/dev/null || true
 echo "  ✓ gates → gates/ (checks · reconcile · quality-gate · backend-checks, .sh + .ps1, + rubric)"
 
-# 2b) Knowledge packs — the Platform Design agent reads these per config.platform.
+# 2b) Knowledge packs — platform, backend, operations UX, token, learning, and YAGNI rule bases.
 mkdir -p "$TARGET/knowledge"
 cp "$KIT"/knowledge/*.md "$TARGET/knowledge/"
-echo "  ✓ knowledge → knowledge/ (apple · microsoft · web · backend · design-tokens · learning-loop · yagni)"
+echo "  ✓ knowledge → knowledge/ (apple · microsoft · web · backend · operations-ux · design-tokens · learning-loop · yagni)"
 
 # 2c) Audit harness — durable run artifacts + optional semantic review helpers.
 cp -R "$KIT"/harness/* "$TARGET/harness/"
@@ -131,6 +131,8 @@ Done. Next steps:
   4. Run the Architrave agent for a non-trivial UI change.
 
 After you later update the plugin, refresh this repo's copied gates + harness + knowledge
-(they don't auto-update; leaves architrave.config.json untouched):
+(they don't auto-update; leaves architrave.config.json and .github/agents untouched by default):
        "$KIT/tools/update.sh" "$TARGET"
+Use "$KIT/tools/update.sh" --agents "$TARGET" only when you deliberately want
+to refresh copied Architrave agents after archiving bespoke repo agents.
 EOF

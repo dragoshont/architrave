@@ -3,18 +3,42 @@
 # the AGENTS.md grounding stanza) to match THIS kit, and re-stamp the version.
 #
 # Why this exists: a plugin update (`copilot plugin update` / `claude plugin
-# marketplace update`) refreshes the AGENTS only. But `tools/install.sh` also
-# copies the gates + knowledge packs INTO each repo (so the gates can execute and
-# the cloud agent — which has no plugin — can read them). Those copies do NOT
-# auto-update, so after you bump the plugin, run this in each adopted repo.
+# marketplace update`) refreshes only the locally installed plugin. But `tools/install.sh`
+# also copies agents, gates, knowledge packs, and harness INTO each repo (so the gates
+# can execute and the cloud agent — which has no plugin — can read them). Those copies
+# do NOT auto-update, so after you bump the plugin, run this in each adopted repo.
 #
-# It never touches architrave.config.json and never re-adds per-repo .github/agents.
+# It never touches architrave.config.json. By default it does not touch .github/agents;
+# pass --agents to refresh the Architrave-managed copied agent files after archiving
+# bespoke repo agents to avoid split authority.
 #
-# Usage: tools/update.sh [TARGET_REPO_DIR]   (default: current directory)
+# Usage: tools/update.sh [--agents] [TARGET_REPO_DIR]   (default: current directory)
 set -uo pipefail
 
 KIT="$(cd "$(dirname "$0")/.." && pwd)"
-TARGET="${1:-$PWD}"
+
+refresh_agents=0
+target_arg=""
+for arg in "$@"; do
+  case "$arg" in
+    --agents)
+      refresh_agents=1
+      ;;
+    -h|--help)
+      echo "Usage: tools/update.sh [--agents] [TARGET_REPO_DIR]"
+      exit 0
+      ;;
+    *)
+      if [ -n "$target_arg" ]; then
+        echo "update: unexpected extra argument: $arg" >&2
+        exit 2
+      fi
+      target_arg="$arg"
+      ;;
+  esac
+done
+
+TARGET="${target_arg:-$PWD}"
 TARGET="$(cd "$TARGET" 2>/dev/null && pwd)" || { echo "update: target dir not found: ${1:-$PWD}" >&2; exit 1; }
 [ "$TARGET" = "$KIT" ] && { echo "update: refusing to update the kit into itself" >&2; exit 1; }
 [ -f "$TARGET/architrave.config.json" ] || { echo "update: $TARGET has no architrave.config.json — run tools/install.sh first" >&2; exit 1; }
@@ -30,6 +54,14 @@ end="<!-- architrave:end -->"
 echo "Architrave → refreshing assets in: $TARGET (kit v${ver:-?})"
 mkdir -p "$TARGET/gates/hooks" "$TARGET/knowledge" "$TARGET/harness"
 
+if [ "$refresh_agents" -eq 1 ]; then
+  mkdir -p "$TARGET/.github/agents"
+  cp "$KIT"/agents/*.agent.md "$TARGET/.github/agents/"
+  echo "  ✓ agents refreshed ($(ls "$KIT"/agents/*.agent.md | wc -l | tr -d ' ') files)"
+else
+  echo "  • agents left unchanged (use --agents to refresh .github/agents/)"
+fi
+
 # Gates — copied because they EXECUTE in the repo (hook + cloud agent run them).
 cp "$KIT"/gates/checks.sh "$KIT"/gates/checks.ps1 \
    "$KIT"/gates/reconcile.sh "$KIT"/gates/reconcile.ps1 \
@@ -42,7 +74,7 @@ echo "  ✓ gates refreshed"
 
 # Knowledge packs — copied so the cloud agent (no plugin) can read them.
 cp "$KIT"/knowledge/*.md "$TARGET/knowledge/"
-echo "  ✓ knowledge refreshed (apple · microsoft · web · backend · design-tokens · learning-loop · yagni)"
+echo "  ✓ knowledge refreshed (apple · microsoft · web · backend · operations-ux · design-tokens · learning-loop · yagni)"
 
 # Audit harness.
 cp -R "$KIT"/harness/* "$TARGET/harness/"
@@ -71,4 +103,4 @@ echo "  ✓ AGENTS.md stanza refreshed"
 # Version stamp — lets gates/checks.sh detect future drift.
 printf '%s\n' "${ver:-0.0.0}" > "$TARGET/gates/.kit-version"
 echo "  ✓ stamped gates/.kit-version = ${ver:-0.0.0}"
-echo "Done. (architrave.config.json and .github/agents left untouched.)"
+echo "Done. (architrave.config.json left untouched.)"

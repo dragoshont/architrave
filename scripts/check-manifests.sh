@@ -114,7 +114,7 @@ else
 fi
 
 echo "== knowledge packs present =="
-for k in apple microsoft web backend design-tokens learning-loop yagni; do
+for k in apple microsoft web backend operations-ux design-tokens learning-loop yagni; do
   [ -s "knowledge/$k.md" ] && ok "knowledge/$k.md" || err "missing knowledge/$k.md"
 done
 

@@ -36,6 +36,7 @@ It has Apple and Microsoft design language built in, plus web/WCAG guidance, Sto
 |---|---|---|
 | **Architrave** | directly | Leads the whole run: intake, tournament, YAGNI ladder, Storybook/contract sign-off, implementation, gates, and final summary. |
 | **Product Research** | under the hood | Finds shipped product/workflow patterns, competitor references, and domain-specific traps before planning. |
+| **Operations UX** | under the hood | Turns admin/operations research into setup, offboarding, inventory, catalog/upload, RBAC, health, diagnostics, queue/job, and audit patterns with contract requirements. |
 | **UX Architect** | directly | Information architecture, navigation, flows, interaction model, keyboard/input behavior, and empty/loading/error states. |
 | **UI Visual** | directly | Visual hierarchy, layout, tokens, typography, color/materials, iconography, and polish. |
 | **Platform Design** | under the hood | Native platform correctness: Apple HIG, Microsoft Fluent, or web/WCAG, depending on `architrave.config.json`. |
@@ -81,11 +82,18 @@ claude plugin marketplace update architrave
 claude plugin update architrave@architrave
 ```
 
-After updating the plugin, refresh each adopted repo's copied gates, harness helpers, and knowledge packs. This leaves `architrave.config.json` untouched:
+After updating the plugin, refresh each adopted repo's copied gates, harness helpers, and knowledge packs. This leaves `architrave.config.json` and copied `.github/agents` untouched by default:
 
 ```bash
 /path/to/architrave/tools/update.sh .
 pwsh -NoProfile -File /path/to/architrave/tools/update.ps1 .
+```
+
+When the Architrave crew itself changes and you want to refresh the copied repo agents too, opt in explicitly after archiving any bespoke repo agents:
+
+```bash
+/path/to/architrave/tools/update.sh --agents .
+pwsh -NoProfile -File /path/to/architrave/tools/update.ps1 . -Agents
 ```
 
 ## How It Works
@@ -103,6 +111,8 @@ For UI, Architrave starts in **Storybook** or the configured design source, not 
 **Learning is explicit.** Set the optional `learning` block and Architrave keeps per-run evidence, a concise repo profile, and candidate repeated lessons. Lessons only become standing repo guidance after validation and review.
 
 **YAGNI is enforced.** Architrave uses a minimum-sufficient-change ladder grounded in `knowledge/yagni.md`. It blocks speculative abstractions, unused config, new dependencies, and wrapper layers until the task proves they are needed. It still keeps the practices that make YAGNI safe: refactoring, contracts, tests, validation, security, accessibility, and design-token reconciliation.
+
+**Operations UX is source-backed.** When a feature is an admin console, device/fleet workflow, app catalog/upload, setup/offboarding flow, user/RBAC surface, diagnostic page, queue, scheduled job, or long-running action, Architrave loads `knowledge/operations-ux.md` and routes to **Operations UX**. The rule is simple: no status without source/timestamp/scope, no mutation without preflight and durable job state, no destructive flow without impact/recovery/audit, and no generic dashboard where the product needs object lists, queues, issues, or evidence.
 
 ## Benchmarks
 
@@ -187,7 +197,7 @@ The method isn't theoretical — it emerged independently across real apps, **Ph
 1. DESIGN SOURCE OF TRUTH      Storybook (component workbench) + design tokens (.tokens.json, W3C DTCG)
         │  validate / tweak the design here FIRST
         ▼
-2. KNOWLEDGE PACKS             knowledge/apple.md · microsoft.md · web.md · backend.md · design-tokens.md
+2. KNOWLEDGE PACKS             knowledge/apple.md · microsoft.md · web.md · backend.md · operations-ux.md · design-tokens.md
         │  the Platform Design agent loads the pack named by config.platform
         ▼
 3. AGENTS                      Architrave conductor · UI specialists · backend/infra specialists · Adversarial Judge
@@ -248,7 +258,7 @@ After installing the plugin (above), ground a repo — this is also what reaches
 pwsh -NoProfile -File /path/to/architrave/tools/install.ps1 .    # Windows
 ```
 
-This copies the agents → `.github/agents/`, the gates → `gates/`, the harness helpers → `harness/`, the knowledge packs → `knowledge/`, scaffolds `architrave.config.json`, injects a grounding stanza into `AGENTS.md` (idempotent), wires the PostToolUse hook, and drops `.github/workflows/copilot-setup-steps.yml`.
+This copies the agents → `.github/agents/`, the gates → `gates/`, the harness helpers → `harness/`, the knowledge packs → `knowledge/`, scaffolds `architrave.config.json`, injects a grounding stanza into `AGENTS.md` (idempotent), wires the PostToolUse hook, and drops `.github/workflows/copilot-setup-steps.yml`. `tools/update.*` refreshes copied gates/harness/knowledge later while leaving `architrave.config.json` and `.github/agents` alone by default; pass `--agents` / `-Agents` to refresh copied Architrave agents deliberately.
 
 Then point it at your repo — edit `architrave.config.json`:
 
@@ -308,7 +318,7 @@ knowledge/
   design-tokens.md            ← 3-tier tokens + design↔code reconciliation — cited
         learning-loop.md            ← durable run artifacts + repo profile + lesson promotion — cited
         yagni.md                    ← minimum-sufficient-change ladder + Ponytail/Caveman research — cited
-agents/                       ← Architrave · Product Research · UX Architect · UI Visual · Platform Design · Adversarial Judge
+agents/                       ← Architrave · Product Research · Operations UX · UX Architect · UI Visual · Platform Design · Adversarial Judge
                                  + backend lane: Service Architect · Backend Planner · Backend Implementer · Infra Engineer
                                  + runtime lane: Runtime Observer
 gates/                        ← rubric.md · checks.{sh,ps1} · reconcile.{sh,ps1} · quality-gate.{sh,ps1} · backend-checks.{sh,ps1} · hooks/
