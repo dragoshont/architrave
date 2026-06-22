@@ -76,6 +76,38 @@ Then it runs a **Tournament of Options** plus the **YAGNI ladder**: skip/delete,
 
 **YAGNI is enforced.** Architrave uses a minimum-sufficient-change ladder grounded in `knowledge/yagni.md`: do not build something until the current acceptance criteria, contract, ADR, or explicit user request proves it is needed. It still keeps the enabling practices that make YAGNI safe: refactoring, contracts, tests, validation, security, accessibility, and design-token reconciliation. The Ponytail research was useful here: a bare "use YAGNI" prompt helps, but the repeatable value comes from a concrete ladder, safety carve-outs, and review tags.
 
+## Benchmarks
+
+Architrave now ships a benchmark harness because agent quality has to be measured against real work, not vibes. The suite in `benchmarks/` runs frozen tasks against real local repos in detached worktrees, compares agent arms such as `copilot-baseline` and `copilot-architrave`, and records JSONL rows with validation results, diff size, output tokens, wall time, artifacts, and optional Copilot LLM-judge scores.
+
+The first smoke benchmark is intentionally small: a PhonoDeck learning-loop task that asks the agent to capture a real build/relaunch gotcha as durable repo knowledge without touching product code. It proves the harness path end to end.
+
+| Run | Arm | Result | Gates | Judge | Output tokens | Wall time | Diff |
+|---|---|---:|---|---|---:|---:|---:|
+| `pilot-architrave-learning-20260622T073711Z` | `copilot-architrave` | **PASS** | `checks.sh --quick` + `validate-run.sh` PASS | PASS, 5/5 across correctness / clarity / YAGNI / process / repo fit | 3,893 | 393.9s | +117 LOC / 10 artifact files |
+
+Read that honestly: it is a verified smoke, not a leaderboard. A generic baseline run on the same learning scenario timed out before producing the required run artifacts, which is useful failure data, but we are not publishing a broad win claim until the full curated suite runs with repeats and human review. The important part is the shape of the evidence: every claim is tied to a scenario, a pinned commit, a worktree, deterministic gates, a patch, and an optional judge row.
+
+Reproduce the harness checks:
+
+```bash
+python3 scripts/bench-architrave.py --scenarios benchmarks/scenarios.json --validate
+python3 scripts/bench-architrave.py --scenarios benchmarks/scenarios.json --list
+```
+
+Run one scenario when you are ready to spend Copilot credits:
+
+```bash
+ARCHITRAVE_BENCH_SECRET_ENV_VARS='GITHUB_TOKEN,GH_TOKEN,ANTHROPIC_API_KEY,OPENAI_API_KEY' \
+        python3 scripts/bench-architrave.py \
+                --scenarios benchmarks/scenarios.json \
+                --scenario phonodeck-learning-repeated-build-gotcha \
+                --arm copilot-architrave \
+                --execute --cleanup-worktrees
+```
+
+The benchmark design follows the same lesson Ponytail surfaced well: the persuasive metric is not "the agent said it used YAGNI." It is the resulting diff, the gates, the token/time trace, and whether a reviewer would accept the change.
+
 ## A real app, built this way
 
 **PhonoDeck** — a native macOS music app (SwiftUI) — is the most mature app built this way. Its design lives in **Storybook**; the agents ground in it, reproduce components by their real names, and build the native app to match — the sidebar, the Home recommendations, the now‑playing panel, and the `NowPlayingBar`, all held to Apple's Human Interface Guidelines.
