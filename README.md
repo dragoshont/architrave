@@ -8,6 +8,13 @@ It has Apple and Microsoft design language built in, plus web/WCAG guidance, Sto
 
 ![Architrave — ground in the repo, route to specialists, gate with a judge plus real checks, then ship](assets/overview.png)
 
+## Built With Architrave
+
+| PhonoDeck | Sideport | Tessera |
+|---|---|---|
+| ![PhonoDeck native macOS music app designed in Storybook and built in SwiftUI](assets/phonodeck.png) | ![Sideport admin console for devices, app signing, renewals, diagnostics, and live API health](assets/sideport.jpg) | ![Tessera homelab account and connection console with health and re-seed states](assets/tessera.png) |
+| Native macOS music app. Storybook design source, SwiftUI implementation. | Web admin console. React UI, .NET backend, Kubernetes runtime. | Homelab access console. React UI, .NET backend, connection health workflows. |
+
 ## The Crew
 
 **Architrave** is the front door. It stays in control of the plan, routes focused work to specialists, and refuses to call the job done until real checks pass.
