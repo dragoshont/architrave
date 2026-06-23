@@ -15,6 +15,7 @@ if (-not $Lesson) { [Console]::Error.WriteLine('promote-lesson: -Lesson is requi
 if (-not $Target) { [Console]::Error.WriteLine('promote-lesson: -Target is required'); exit 2 }
 if (-not ($Target.EndsWith('.md') -or $Target -eq 'AGENTS.md')) { [Console]::Error.WriteLine('promote-lesson: target must be a Markdown file'); exit 2 }
 $RepoRoot = (Resolve-Path '.').Path
+if ($Target -match '^[A-Za-z]:[\\/]' -or $Target.StartsWith('\')) { [Console]::Error.WriteLine('promote-lesson: target must be repo-relative and stay inside the repo'); exit 2 }
 if ([System.IO.Path]::IsPathRooted($Target)) { [Console]::Error.WriteLine('promote-lesson: target must be repo-relative and stay inside the repo'); exit 2 }
 $FullTarget = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot $Target))
 $RepoPrefix = $RepoRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar

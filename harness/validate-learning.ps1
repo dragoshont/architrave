@@ -36,6 +36,7 @@ function Validate-Links($File) {
     if ($Target -match '^(https?://|mailto:|#)' -or -not $Target) { continue }
     $Path = ($Target -split '#', 2)[0].Replace('%20', ' ')
     if (-not $Path) { continue }
+    if ($Path -match '^[A-Za-z]:[\\/]' -or $Path.StartsWith('\')) { Err "$File link escapes repo: $Target"; $Bad = 1; continue }
     if ([System.IO.Path]::IsPathRooted($Path)) { Err "$File link escapes repo: $Target"; $Bad = 1; continue }
     $FullPath = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot $Path))
     $RepoPrefix = $RepoRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
