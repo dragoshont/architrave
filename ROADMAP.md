@@ -41,9 +41,13 @@
 - [x] Harness scaffolding for phase-ledger artifacts (`harness/init-run.*`) and schema support (`harness/schemas/run-summary.schema.json`).
 - [x] Validator hardening for phase-ledger structure: required columns, allowed statuses, at most one `in-progress` phase, non-empty phase rows, and summary phase validation.
 - [x] Direct validator fixture tests (`scripts/test-validate-run.sh`) covering valid and malformed run artifacts.
+- [x] Learning artifact validator (`harness/validate-learning.*`) for required learning files, local markdown links, and obvious secret patterns.
+- [x] Approval-first lesson promotion helper (`harness/promote-lesson.*`), dry-run by default and Markdown-only in the first slice.
 
 ## Next SDD Phases
-- [ ] PowerShell execution validation in CI (Windows or `pwsh` runner) for gates/harness parity.
+- [x] PowerShell execution validation in CI for run-artifact, learning, and promotion harness parity.
+- [ ] PowerShell execution validation in CI for all gate scripts.
 - [ ] Expanded benchmark suite: 3-5 representative scenarios across UI, backend, full-stack, plan-only infra, operations UX, and learning promotion.
-- [ ] Interactive lesson promotion helper for `.architrave/learning/repo-lessons.md` candidates.
-- [ ] Optional stale-fact recovery check that validates repo-profile and lessons against the current branch before promotion.
+- [ ] Interactive lesson promotion picker for `.architrave/learning/repo-lessons.md` candidate rows.
+- [x] Deterministic stale-learning guard that validates repo-profile and lessons against current repo files before promotion.
+- [ ] Stale-fact semantic recovery that marks unsupported facts as unvalidated before promotion.

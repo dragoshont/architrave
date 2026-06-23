@@ -18,6 +18,7 @@ concurrency:
 
 jobs:
   manifests:
+    name: POSIX manifests and fixtures
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -27,3 +28,15 @@ jobs:
       # jq + ruby are preinstalled on ubuntu-latest; node provides npx for ajv.
       - name: Validate manifests, kit JSON, schema, frontmatter, version sync
         run: ./scripts/check-manifests.sh
+
+  powershell-harness:
+    name: PowerShell harness fixtures
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v5
+      - name: Validate PowerShell run-artifact fixtures
+        shell: pwsh
+        run: |
+          ./scripts/test-validate-run.ps1
+          ./scripts/test-validate-learning.ps1
+          ./scripts/test-promote-lesson.ps1

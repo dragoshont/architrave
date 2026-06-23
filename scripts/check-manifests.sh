@@ -155,6 +155,42 @@ else
   echo "  • pwsh not found — skipping PowerShell harness validator fixtures"
 fi
 
+echo "== learning validator fixtures =="
+if scripts/test-validate-learning.sh >/dev/null 2>&1; then
+  ok "harness/validate-learning.sh positive and negative fixtures"
+else
+  err "learning validator fixture tests failed"
+  scripts/test-validate-learning.sh 2>&1 | sed 's/^/      /' | tail -20
+fi
+if command -v pwsh >/dev/null 2>&1; then
+  if pwsh -NoProfile -File scripts/test-validate-learning.ps1 >/dev/null 2>&1; then
+    ok "harness/validate-learning.ps1 positive and negative fixtures"
+  else
+    err "PowerShell learning validator fixture tests failed"
+    pwsh -NoProfile -File scripts/test-validate-learning.ps1 2>&1 | sed 's/^/      /' | tail -20
+  fi
+else
+  echo "  • pwsh not found — skipping PowerShell learning validator fixtures"
+fi
+
+echo "== lesson promotion fixtures =="
+if scripts/test-promote-lesson.sh >/dev/null 2>&1; then
+  ok "harness/promote-lesson.sh dry-run/apply/error fixtures"
+else
+  err "lesson promotion fixture tests failed"
+  scripts/test-promote-lesson.sh 2>&1 | sed 's/^/      /' | tail -20
+fi
+if command -v pwsh >/dev/null 2>&1; then
+  if pwsh -NoProfile -File scripts/test-promote-lesson.ps1 >/dev/null 2>&1; then
+    ok "harness/promote-lesson.ps1 dry-run/apply/error fixtures"
+  else
+    err "PowerShell lesson promotion fixture tests failed"
+    pwsh -NoProfile -File scripts/test-promote-lesson.ps1 2>&1 | sed 's/^/      /' | tail -20
+  fi
+else
+  echo "  • pwsh not found — skipping PowerShell lesson promotion fixtures"
+fi
+
 echo
 if [ "$fail" -eq 0 ]; then
   echo "PASS — manifests valid, versions in sync ($v)"
