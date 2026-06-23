@@ -137,6 +137,24 @@ else
   python3 -m py_compile scripts/bench-architrave.py scripts/judge-bench.py scripts/summarize-bench.py 2>&1 | sed 's/^/      /' | tail -12
 fi
 
+echo "== harness validator fixtures =="
+if scripts/test-validate-run.sh >/dev/null 2>&1; then
+  ok "harness/validate-run.sh positive and negative fixtures"
+else
+  err "harness validator fixture tests failed"
+  scripts/test-validate-run.sh 2>&1 | sed 's/^/      /' | tail -20
+fi
+if command -v pwsh >/dev/null 2>&1; then
+  if pwsh -NoProfile -File scripts/test-validate-run.ps1 >/dev/null 2>&1; then
+    ok "harness/validate-run.ps1 positive and negative fixtures"
+  else
+    err "PowerShell harness validator fixture tests failed"
+    pwsh -NoProfile -File scripts/test-validate-run.ps1 2>&1 | sed 's/^/      /' | tail -20
+  fi
+else
+  echo "  • pwsh not found — skipping PowerShell harness validator fixtures"
+fi
+
 echo
 if [ "$fail" -eq 0 ]; then
   echo "PASS — manifests valid, versions in sync ($v)"

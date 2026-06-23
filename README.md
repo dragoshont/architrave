@@ -129,6 +129,8 @@ Read that honestly: it is a verified smoke, not a leaderboard. A generic baselin
 Reproduce the harness checks:
 
 ```bash
+scripts/test-validate-run.sh
+pwsh -NoProfile -File scripts/test-validate-run.ps1   # optional, when pwsh is available
 python3 scripts/bench-architrave.py --scenarios benchmarks/scenarios.json --validate
 python3 scripts/bench-architrave.py --scenarios benchmarks/scenarios.json --list
 ```

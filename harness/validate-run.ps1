@@ -31,6 +31,37 @@ Require-Heading 'recommended-plan.md' 'Implementation Sequence'
 Require-Heading 'recommended-plan.md' 'Test Strategy'
 Require-File 'phase-ledger.md' 'phase ledger'
 if ((Test-Path (Join-Path $RunDir 'phase-ledger.md')) -and ((Get-Content (Join-Path $RunDir 'phase-ledger.md') -Raw) -match '(?m)^\|\s*Phase\s*\|')) { Write-Host 'ok    phase ledger table' } else { Write-Host "FAIL  phase ledger table missing in $(Join-Path $RunDir 'phase-ledger.md')"; $fail = 1 }
+function Validate-PhaseLedger {
+  $file = Join-Path $RunDir 'phase-ledger.md'
+  if (-not (Test-Path $file)) { return }
+  $lines = Get-Content $file
+  $headerSeen = $false
+  $rows = 0
+  $active = 0
+  foreach ($line in $lines) {
+    if ($line -notmatch '^\|') { continue }
+    $cells = $line.Trim('|').Split('|') | ForEach-Object { $_.Trim() }
+    if ($cells.Count -lt 6) { continue }
+    if ($cells[0] -eq 'Phase') {
+      $headerSeen = $true
+      if ($cells[1] -ne 'Name' -or $cells[2] -ne 'Status' -or $cells[3] -ne 'Scope' -or $cells[4] -ne 'Gate' -or $cells[5] -ne 'Result') {
+        Write-Host 'FAIL  phase ledger header must be Phase | Name | Status | Scope | Gate | Result'; $script:fail = 1
+      }
+      continue
+    }
+    if (($cells -join '') -match '^[-:]+$') { continue }
+    $rows++
+    if ($cells[0] -notmatch '^[0-9]+$') { Write-Host "FAIL  phase ledger invalid phase $($cells[0])"; $script:fail = 1 }
+    if ($cells[2] -notin @('not-started','in-progress','blocked','completed','skipped')) { Write-Host "FAIL  phase ledger invalid status $($cells[2])"; $script:fail = 1 }
+    if ($cells[2] -eq 'in-progress') { $active++ }
+    if (-not $cells[1] -or -not $cells[3] -or -not $cells[4]) { Write-Host 'FAIL  phase ledger rows require name, scope, and gate'; $script:fail = 1 }
+  }
+  if (-not $headerSeen) { Write-Host 'FAIL  phase ledger header missing'; $script:fail = 1 }
+  if ($rows -lt 1) { Write-Host 'FAIL  phase ledger has no phase rows'; $script:fail = 1 }
+  if ($active -gt 1) { Write-Host 'FAIL  phase ledger has more than one in-progress phase'; $script:fail = 1 }
+  if ($script:fail -eq 0) { Write-Host 'ok    phase ledger structure' }
+}
+Validate-PhaseLedger
 Require-File 'deterministic-gates.md' 'deterministic gates'
 Require-File 'summary.json' 'summary'
 
@@ -39,7 +70,18 @@ if ((Test-Path '.architrave/learning/repo-lessons.md') -and ((Get-Item '.architr
 
 try {
   $summary = Get-Content (Join-Path $RunDir 'summary.json') -Raw | ConvertFrom-Json
-  if ($summary.schema -eq 'architrave.run.v1' -and $summary.runId -and $summary.status -and ($summary.PSObject.Properties.Name -contains 'phases')) { Write-Host 'ok    summary schema' } else { throw 'invalid fields' }
+  if ($summary.schema -ne 'architrave.run.v1' -or -not $summary.runId -or -not $summary.status -or -not ($summary.PSObject.Properties.Name -contains 'phases') -or $summary.phases.Count -lt 1) { throw 'invalid fields' }
+  $activeSummary = 0
+  foreach ($phase in $summary.phases) {
+    if ($phase.phase -isnot [int] -and $phase.phase -isnot [long]) { throw 'invalid phase number' }
+    if (-not $phase.name -or -not $phase.scope -or -not $phase.gate) { throw 'missing phase fields' }
+    if ($phase.status -notin @('not-started','in-progress','blocked','completed','skipped')) { throw 'invalid phase status' }
+    if ($phase.status -eq 'in-progress') { $activeSummary++ }
+  }
+  if ($activeSummary -gt 1) { throw 'too many active phases' }
+  if ($summary.status -eq 'in-progress' -and $activeSummary -ne 1) { throw 'in-progress summary requires exactly one active phase' }
+  if ($summary.status -ne 'in-progress' -and $activeSummary -ne 0) { throw 'terminal summary cannot have active phases' }
+  Write-Host 'ok    summary schema'
 } catch {
   Write-Host 'FAIL  invalid summary.json'; $fail = 1
 }

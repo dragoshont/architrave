@@ -34,3 +34,16 @@
 ---
 
 **Status: M1–M4 complete.** The kit is built, cross‑platform tested, packaged as a Copilot/Claude plugin, installable per‑repo, and proven on a non‑PhonoDeck repo. The public repo is `dragoshont/architrave`.
+
+## Milestone 5 — SDD + Learning Hardening
+- [x] Mandatory visible intake and Tournament of Options for non-trivial work.
+- [x] Mandatory phase ledger for non-trivial SDD/backend/full-stack/multi-slice/runtime runs, mirrored into `.architrave/runs/<id>/phase-ledger.md` and `summary.json.phases`.
+- [x] Harness scaffolding for phase-ledger artifacts (`harness/init-run.*`) and schema support (`harness/schemas/run-summary.schema.json`).
+- [x] Validator hardening for phase-ledger structure: required columns, allowed statuses, at most one `in-progress` phase, non-empty phase rows, and summary phase validation.
+- [x] Direct validator fixture tests (`scripts/test-validate-run.sh`) covering valid and malformed run artifacts.
+
+## Next SDD Phases
+- [ ] PowerShell execution validation in CI (Windows or `pwsh` runner) for gates/harness parity.
+- [ ] Expanded benchmark suite: 3-5 representative scenarios across UI, backend, full-stack, plan-only infra, operations UX, and learning promotion.
+- [ ] Interactive lesson promotion helper for `.architrave/learning/repo-lessons.md` candidates.
+- [ ] Optional stale-fact recovery check that validates repo-profile and lessons against the current branch before promotion.
