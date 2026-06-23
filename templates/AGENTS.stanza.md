@@ -13,6 +13,7 @@ This repo uses **Architrave**, a config-grounded, judge-gated workflow for UI, b
 
 **Before any implementation:**
 - **YAGNI ladder.** Do not build presumptive features. First try: delete/skip, reuse existing repo source of truth, native/platform feature, standard library, already-installed dependency, tiny local implementation. New abstractions, dependencies, flags, config, factories, or layers need current evidence, not a guessed future. Never cut validation, data-loss handling, security, accessibility, capability honesty, or the smallest useful test.
+- **Phase ledger.** For non-trivial SDD/backend/full-stack/multi-slice work, keep a visible phase ledger before implementation. Mark exactly one phase `in-progress`, state each phase's scope/out-of-scope/gate, and explicitly separate completed phases from phases that are `not-started`. Do not silently begin the next phase.
 
 **Gates — must be green before a change is "done":**
 - Deterministic: `gates/checks.sh` (POSIX) or `gates/checks.ps1` (Windows) → runs the configured generate/build/test + validates the designMap/tokens JSON. `gates/reconcile.sh` / `.ps1` → reports design↔code token drift. `gates/backend-checks.sh` / `.ps1` covers backend build/test plus plan-only IaC checks when configured.

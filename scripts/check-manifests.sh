@@ -99,6 +99,17 @@ else
 fi
 rm -f "$legacy_tmp"
 
+echo "== no MCP bearer/auth material committed =="
+mcp_secret_tmp="$(mktemp)"
+if rg --hidden -n 'mcp-[A-Za-z0-9_-]{12,}|Authorization[=:]Bearer[[:space:]]+mcp-' \
+    --glob '!node_modules' --glob '!.git' --glob '!assets/*.png' . >"$mcp_secret_tmp" 2>/dev/null; then
+  err "possible MCP bearer token/auth material committed"
+  sed 's/^/      /' "$mcp_secret_tmp" | head -20
+else
+  ok "no MCP-looking bearer tokens or auth headers"
+fi
+rm -f "$mcp_secret_tmp"
+
 echo "== agent frontmatter (YAML parses + has name/description) =="
 if command -v ruby >/dev/null 2>&1; then
   for a in agents/*.agent.md; do

@@ -32,13 +32,15 @@ require_heading tournament.md "Decision Matrix"
 require_file recommended-plan.md "recommended plan"
 require_heading recommended-plan.md "Implementation Sequence"
 require_heading recommended-plan.md "Test Strategy"
+require_file phase-ledger.md "phase ledger"
+if grep -qE '^\|[[:space:]]*Phase[[:space:]]*\|' "$run_dir/phase-ledger.md" 2>/dev/null; then echo "ok    phase ledger table"; else echo "FAIL  phase ledger table missing in $run_dir/phase-ledger.md"; fail=1; fi
 require_file deterministic-gates.md "deterministic gates"
 require_file summary.json summary
 
 if [ -s ".architrave/learning/repo-profile.md" ]; then echo "ok    repo profile .architrave/learning/repo-profile.md"; else echo "FAIL  missing/empty repo profile .architrave/learning/repo-profile.md"; fail=1; fi
 if [ -s ".architrave/learning/repo-lessons.md" ]; then echo "ok    repo lessons .architrave/learning/repo-lessons.md"; else echo "FAIL  missing/empty repo lessons .architrave/learning/repo-lessons.md"; fail=1; fi
 
-if jq -e '.schema == "architrave.run.v1" and (.runId | type == "string") and (.status | type == "string")' "$run_dir/summary.json" >/dev/null; then
+if jq -e '.schema == "architrave.run.v1" and (.runId | type == "string") and (.status | type == "string") and ((.phases // []) | type == "array")' "$run_dir/summary.json" >/dev/null; then
   echo "ok    summary schema"
 else
   echo "FAIL  invalid summary.json"; fail=1

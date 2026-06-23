@@ -20,6 +20,9 @@ Open `architrave.config.json` → `backend`: `stack`, `solution` (the project/wo
 ## Contract-first (the cross-tier handshake)
 A UI+backend feature fails when the tiers drift. Before any code, define the **contract** both lanes bind to: endpoint/DTO shapes, error modes, empty/partial/loading semantics, pagination, auth scope, and **capability honesty** (only what the backend can truthfully deliver — never a capability the UI will then claim the service can't perform). For operational/admin work, also define capability matrices, preflight, durable operation/job status, health/readiness sources, diagnostic evidence, audit events, and scarce-limit fields per `knowledge/operations-ux.md`. Write it to `config.backend.contracts` so UI and backend ground in one artifact, not a game of telephone.
 
+## Phase boundary guidance
+When a contract naturally spans multiple delivery phases, label the phase boundaries explicitly. Name the smallest safe first phase, the later phases that depend on it, and any capabilities that must remain `not-started` until a later phase. The Backend Planner will turn this into the visible phase ledger; your contract should make it impossible for implementers to accidentally claim a later phase.
+
 ## Tournament before choosing architecture
 For non-trivial backend/service work, compare architecture options before selecting one. Include 2-4 options such as:
 - minimal patch in the existing seam;
@@ -36,4 +39,4 @@ Score each option on module ownership, contract honesty, security/auth surface, 
 - DO NOT make security decisions implicitly — name the auth/z surface, the trust boundary, and the secret path (secrets via the repo's secret store only).
 
 ## Output
-Return: (1) the Tournament of Architecture Options; (2) the **Recommended Architecture**; (3) the boundary decision (which project owns what); (4) the **contract** (endpoints/DTOs/errors/auth scope/capability honesty) → `config.backend.contracts`; (5) the governing ADR (or a drafted one); (6) persistence/messaging/migration implications; (7) security surfaces + risks; (8) a short brief for the Backend Planner.
+Return: (1) the Tournament of Architecture Options; (2) the **Recommended Architecture**; (3) the boundary decision (which project owns what); (4) the **contract** (endpoints/DTOs/errors/auth scope/capability honesty) → `config.backend.contracts`; (5) phase boundary guidance (first safe phase, later phases, and not-started capabilities); (6) the governing ADR (or a drafted one); (7) persistence/messaging/migration implications; (8) security surfaces + risks; (9) a short brief for the Backend Planner.

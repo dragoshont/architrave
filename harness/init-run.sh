@@ -33,6 +33,7 @@ create_if_missing() {
 create_if_missing "$run_dir/intake.md" "Intake" $'## Understanding\n\n## Acceptance Criteria\n\n## Grounding Sources\n\n## Assumptions\n\n## Blocking Questions'
 create_if_missing "$run_dir/tournament.md" "Tournament of Options" $'## Option A — Minimal Safe Fix\n\n## Option B — Proper Architectural Fix\n\n## Option C — Defer / Ask More\n\n## Decision Matrix\n\n## Winner'
 create_if_missing "$run_dir/recommended-plan.md" "Recommended Plan" $'## Summary\n\n## Implementation Sequence\n\n## Test Strategy\n\n## Rollback / Recovery\n\n## Human Approval Needed'
+create_if_missing "$run_dir/phase-ledger.md" "Phase Ledger" $'| Phase | Name | Status | Scope | Gate | Result |\n|---:|---|---|---|---|---|\n| 0 | Intake / Grounding | in-progress | Define the request, acceptance criteria, and sources of truth. | Intake + tournament recorded | pending |\n\n## Phase Transition Log'
 create_if_missing "$run_dir/deterministic-gates.md" "Deterministic Gates" $'## checks\n\n## backend-checks\n\n## reconcile\n\n## other'
 create_if_missing "$run_dir/judge-pre.md" "Judge Gate 1" $'## Verdict\n\n## Findings'
 create_if_missing "$run_dir/judge-post.md" "Judge Gate 2" $'## Verdict\n\n## Findings'
@@ -49,6 +50,7 @@ if [ ! -f "$run_dir/summary.json" ]; then
     "intake": "$run_dir/intake.md",
     "tournament": "$run_dir/tournament.md",
     "recommendedPlan": "$run_dir/recommended-plan.md",
+    "phaseLedger": "$run_dir/phase-ledger.md",
     "deterministicGates": "$run_dir/deterministic-gates.md",
     "judgePre": "$run_dir/judge-pre.md",
     "judgePost": "$run_dir/judge-post.md",
@@ -59,7 +61,17 @@ if [ ! -f "$run_dir/summary.json" ]; then
     "repoLessons": "$learning_dir/repo-lessons.md",
     "candidateLessons": 0,
     "promotionsProposed": 0
-  }
+  },
+  "phases": [
+    {
+      "phase": 0,
+      "name": "Intake / Grounding",
+      "status": "in-progress",
+      "scope": "Define the request, acceptance criteria, and sources of truth.",
+      "gate": "Intake + tournament recorded",
+      "result": "pending"
+    }
+  ]
 }
 JSON
 fi

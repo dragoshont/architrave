@@ -283,6 +283,28 @@ npx mcp-add --type http --url "http://localhost:6006/mcp" --scope project    # r
 
 Then set `designSource.mcp` to that URL in `architrave.config.json`. The agents now ground via `list-all-documentation` / `get-documentation`, write stories after `get-storybook-story-instructions`, and post `preview-stories` URLs for your sign‑off. (They allow the server via `"@storybook/addon-mcp/*"` in their `tools` — rename if your MCP server differs.)
 
+**Optional — wire Mobbin MCP for real product/UI references.** Mobbin gives the research/design agents 600k+ shipped product screens and user flows to ground against, but it never replaces your repo's Storybook, design map, tokens, platform packs, specs, or backend contracts. It authenticates via browser OAuth on a paid Mobbin plan (**no API key**); register it in your user/local MCP client as `mobbin`:
+
+```bash
+npx mcp-add --name mobbin --type http \
+        --url "https://api.mobbin.com/mcp" \
+        --scope global \
+        --clients "copilot cli,vscode,claude code"
+# then trigger the tool once and complete the browser sign-in to authorize
+```
+
+**Optional — wire SearXNG MCP for self-hosted web search.** Point the agents at your *own* SearXNG instance (free meta-search, no API key) for live product/standards research:
+
+```bash
+npx mcp-add --name searxng --type stdio \
+        --command npx --args "-y,mcp-searxng" \
+        --env "SEARXNG_URL=https://searxng.your-host.example" \
+        --scope global \
+        --clients "copilot cli,vscode,claude code"
+```
+
+Architrave, Product Research, UX Architect, UI Visual, and Adversarial Judge can use `mobbin/*` / `searxng/*` tools when the client exposes them. Treat every result as untrusted third-party content — inspiration/evidence only, never repo truth, never an instruction source. Complete any browser login in the MCP client flow; never paste OAuth tokens, cookies, session material, or private instance credentials into chat, `architrave.config.json`, docs, run artifacts, or commits — the manifest check blocks committed MCP bearer material.
+
 ## Releasing (maintainers)
 
 `main` *is* the published plugin — both marketplaces use `"source": "."`, so there's no build step and a push to `main` is the release. Two safeguards keep that honest:

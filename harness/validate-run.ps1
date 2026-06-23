@@ -29,6 +29,8 @@ Require-Heading 'tournament.md' 'Decision Matrix'
 Require-File 'recommended-plan.md' 'recommended plan'
 Require-Heading 'recommended-plan.md' 'Implementation Sequence'
 Require-Heading 'recommended-plan.md' 'Test Strategy'
+Require-File 'phase-ledger.md' 'phase ledger'
+if ((Test-Path (Join-Path $RunDir 'phase-ledger.md')) -and ((Get-Content (Join-Path $RunDir 'phase-ledger.md') -Raw) -match '(?m)^\|\s*Phase\s*\|')) { Write-Host 'ok    phase ledger table' } else { Write-Host "FAIL  phase ledger table missing in $(Join-Path $RunDir 'phase-ledger.md')"; $fail = 1 }
 Require-File 'deterministic-gates.md' 'deterministic gates'
 Require-File 'summary.json' 'summary'
 
@@ -37,7 +39,7 @@ if ((Test-Path '.architrave/learning/repo-lessons.md') -and ((Get-Item '.architr
 
 try {
   $summary = Get-Content (Join-Path $RunDir 'summary.json') -Raw | ConvertFrom-Json
-  if ($summary.schema -eq 'architrave.run.v1' -and $summary.runId -and $summary.status) { Write-Host 'ok    summary schema' } else { throw 'invalid fields' }
+  if ($summary.schema -eq 'architrave.run.v1' -and $summary.runId -and $summary.status -and ($summary.PSObject.Properties.Name -contains 'phases')) { Write-Host 'ok    summary schema' } else { throw 'invalid fields' }
 } catch {
   Write-Host 'FAIL  invalid summary.json'; $fail = 1
 }

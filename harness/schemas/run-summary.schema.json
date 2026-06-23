@@ -13,8 +13,24 @@
     "completedAt": { "type": "string" },
     "artifacts": {
       "type": "object",
-      "required": ["intake", "tournament", "recommendedPlan", "deterministicGates"],
+      "required": ["intake", "tournament", "recommendedPlan", "phaseLedger", "deterministicGates"],
       "additionalProperties": { "type": "string" }
+    },
+    "phases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["phase", "name", "status", "scope", "gate"],
+        "additionalProperties": true,
+        "properties": {
+          "phase": { "type": "integer", "minimum": 0 },
+          "name": { "type": "string", "minLength": 1 },
+          "status": { "type": "string", "enum": ["not-started", "in-progress", "blocked", "completed", "skipped"] },
+          "scope": { "type": "string" },
+          "gate": { "type": "string" },
+          "result": { "type": "string" }
+        }
+      }
     },
     "learning": {
       "type": "object",

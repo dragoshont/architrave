@@ -128,7 +128,16 @@ Done. Next steps:
      components instead of reinventing — then set designSource.mcp to the URL:
        npx storybook add @storybook/addon-mcp
        npx mcp-add --type http --url "http://localhost:6006/mcp" --scope project
-  4. Run the Architrave agent for a non-trivial UI change.
+  4. (Optional, real product/UI references) Wire Mobbin MCP (browser OAuth, no API key)
+     as a local client config:
+       npx mcp-add --name mobbin --type http --url "https://api.mobbin.com/mcp" \
+         --scope global --clients "copilot cli,vscode,claude code"
+  5. (Optional, self-hosted web search) Wire SearXNG MCP pointed at your own instance;
+     keep private instance URLs/credentials out of Git and architrave.config.json:
+       npx mcp-add --name searxng --type stdio --command npx --args "-y,mcp-searxng" \
+         --env "SEARXNG_URL=https://searxng.your-host.example" --scope global \
+         --clients "copilot cli,vscode,claude code"
+  6. Run the Architrave agent for a non-trivial UI change.
 
 After you later update the plugin, refresh this repo's copied gates + harness + knowledge
 (they don't auto-update; leaves architrave.config.json and .github/agents untouched by default):
