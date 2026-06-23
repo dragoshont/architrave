@@ -65,7 +65,7 @@ claude plugin marketplace add dragoshont/architrave
 claude plugin install architrave@architrave
 ```
 
-Then ground each repository so local agents, cloud agents, and deterministic gates all see the same source of truth:
+Then **adopt/ground each repository** so local agents, cloud agents, and deterministic gates all see the same source of truth. This is a per-repo step: run the shell script on macOS/Linux, or the PowerShell script on Windows:
 
 ```bash
 /path/to/architrave/tools/install.sh .                          # macOS / Linux
@@ -82,7 +82,7 @@ claude plugin marketplace update architrave
 claude plugin update architrave@architrave
 ```
 
-After updating the plugin, refresh each adopted repo's copied gates, harness helpers, and knowledge packs. This leaves `architrave.config.json` and copied `.github/agents` untouched by default:
+After updating the plugin, users **must also refresh each adopted repo's copied kit assets**. A plugin update refreshes the locally installed agent package only; it does not change the copied `gates/`, `harness/`, `knowledge/`, or `AGENTS.md` stanza inside existing repos. Run the matching repo script in every adopted repo. This leaves `architrave.config.json` and copied `.github/agents` untouched by default:
 
 ```bash
 /path/to/architrave/tools/update.sh .
@@ -251,14 +251,16 @@ Your repo's own build/test toolchain (Node for web, Xcode for Apple, .NET for Wi
 
 ## Set up a repo
 
-After installing the plugin (above), ground a repo — this is also what reaches the Copilot **cloud** agent:
+After installing the plugin (above), **adopt/ground a repo** — this is also what reaches the Copilot **cloud** agent. This is a per-repo onboarding step: run the `.sh` script on macOS/Linux or the `.ps1` script on Windows from the repo you are adopting.
 
 ```bash
 /path/to/architrave/tools/install.sh .                          # macOS / Linux
 pwsh -NoProfile -File /path/to/architrave/tools/install.ps1 .    # Windows
 ```
 
-This copies the agents → `.github/agents/`, the gates → `gates/`, the harness helpers → `harness/`, the knowledge packs → `knowledge/`, scaffolds `architrave.config.json`, injects a grounding stanza into `AGENTS.md` (idempotent), wires the PostToolUse hook, and drops `.github/workflows/copilot-setup-steps.yml`. `tools/update.*` refreshes copied gates/harness/knowledge later while leaving `architrave.config.json` and `.github/agents` alone by default; pass `--agents` / `-Agents` to refresh copied Architrave agents deliberately.
+This copies the agents → `.github/agents/`, the gates → `gates/`, the harness helpers → `harness/`, the knowledge packs → `knowledge/`, scaffolds `architrave.config.json`, injects a grounding stanza into `AGENTS.md` (idempotent), wires the PostToolUse hook, and drops `.github/workflows/copilot-setup-steps.yml`.
+
+**Important update rule:** after every Architrave plugin update, run `tools/update.sh` (macOS/Linux) or `tools/update.ps1` (Windows) in each adopted repo. Plugin updates do not rewrite these copied repo assets. `tools/update.*` refreshes copied gates/harness/knowledge and the managed `AGENTS.md` stanza while leaving `architrave.config.json` and `.github/agents` alone by default; pass `--agents` / `-Agents` only when you deliberately want to refresh copied Architrave agents too.
 
 Then point it at your repo — edit `architrave.config.json`:
 
