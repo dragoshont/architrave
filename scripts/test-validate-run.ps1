@@ -136,3 +136,4 @@ ok
 finally {
   Remove-Item -Recurse -Force $Tmp -ErrorAction SilentlyContinue
 }
+exit 0

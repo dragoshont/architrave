@@ -27,3 +27,4 @@ try {
   $Secret = Join-Path $Tmp 'secret'; Make-Repo $Secret; Set-Content -Path (Join-Path $Secret '.architrave/learning/repo-lessons.md') -Value "# Repo Lessons`n`ntoken = ghp_123456789012345678901234567890123456" -Encoding utf8; Expect-Fail 'secret-material' $Secret
 }
 finally { Remove-Item -Recurse -Force $Tmp -ErrorAction SilentlyContinue }
+exit 0
