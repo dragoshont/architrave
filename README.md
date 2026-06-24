@@ -132,9 +132,14 @@ Reproduce the harness checks:
 scripts/test-validate-run.sh
 scripts/test-validate-learning.sh
 scripts/test-promote-lesson.sh
+scripts/test-promote-lesson-picker.sh
+scripts/test-mark-stale-learning.sh
 pwsh -NoProfile -File scripts/test-validate-run.ps1   # optional, when pwsh is available
 pwsh -NoProfile -File scripts/test-validate-learning.ps1
 pwsh -NoProfile -File scripts/test-promote-lesson.ps1
+pwsh -NoProfile -File scripts/test-promote-lesson-picker.ps1
+pwsh -NoProfile -File scripts/test-mark-stale-learning.ps1
+pwsh -NoProfile -File scripts/test-gates.ps1
 python3 scripts/bench-architrave.py --scenarios benchmarks/scenarios.json --validate
 python3 scripts/bench-architrave.py --scenarios benchmarks/scenarios.json --list
 ```

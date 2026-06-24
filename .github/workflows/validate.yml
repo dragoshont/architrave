@@ -30,7 +30,7 @@ jobs:
         run: ./scripts/check-manifests.sh
 
   powershell-harness:
-    name: PowerShell harness fixtures
+    name: PowerShell harness and gate fixtures
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@v5
@@ -40,3 +40,6 @@ jobs:
           ./scripts/test-validate-run.ps1
           ./scripts/test-validate-learning.ps1
           ./scripts/test-promote-lesson.ps1
+          ./scripts/test-promote-lesson-picker.ps1
+          ./scripts/test-mark-stale-learning.ps1
+          ./scripts/test-gates.ps1

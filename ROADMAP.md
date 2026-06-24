@@ -43,11 +43,13 @@
 - [x] Direct validator fixture tests (`scripts/test-validate-run.sh`) covering valid and malformed run artifacts.
 - [x] Learning artifact validator (`harness/validate-learning.*`) for required learning files, local markdown links, and obvious secret patterns.
 - [x] Approval-first lesson promotion helper (`harness/promote-lesson.*`), dry-run by default and Markdown-only in the first slice.
+- [x] Candidate-row lesson promotion picker (`harness/promote-lesson-picker.*`) for `.architrave/learning/repo-lessons.md`.
 
 ## Next SDD Phases
 - [x] PowerShell execution validation in CI for run-artifact, learning, and promotion harness parity.
-- [ ] PowerShell execution validation in CI for all gate scripts.
-- [ ] Expanded benchmark suite: 3-5 representative scenarios across UI, backend, full-stack, plan-only infra, operations UX, and learning promotion.
-- [ ] Interactive lesson promotion picker for `.architrave/learning/repo-lessons.md` candidate rows.
+- [x] PowerShell execution validation in CI for all gate scripts.
+- [x] Expanded benchmark scenario suite: representative scenarios across UI, backend, full-stack, plan-only infra, operations UX/read-only runtime, YAGNI, and learning promotion.
+- [x] Interactive lesson promotion picker for `.architrave/learning/repo-lessons.md` candidate rows.
 - [x] Deterministic stale-learning guard that validates repo-profile and lessons against current repo files before promotion.
-- [ ] Stale-fact semantic recovery that marks unsupported facts as unvalidated before promotion.
+- [x] Deterministic stale-fact recovery that marks unsupported local-link facts as `UNVALIDATED` before promotion.
+- [ ] Semantic stale-fact recovery that checks prose claims beyond local file references.

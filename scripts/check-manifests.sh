@@ -190,6 +190,52 @@ if command -v pwsh >/dev/null 2>&1; then
 else
   echo "  • pwsh not found — skipping PowerShell lesson promotion fixtures"
 fi
+if scripts/test-promote-lesson-picker.sh >/dev/null 2>&1; then
+  ok "harness/promote-lesson-picker.sh candidate-row fixtures"
+else
+  err "lesson promotion picker fixture tests failed"
+  scripts/test-promote-lesson-picker.sh 2>&1 | sed 's/^/      /' | tail -20
+fi
+if command -v pwsh >/dev/null 2>&1; then
+  if pwsh -NoProfile -File scripts/test-promote-lesson-picker.ps1 >/dev/null 2>&1; then
+    ok "harness/promote-lesson-picker.ps1 candidate-row fixtures"
+  else
+    err "PowerShell lesson promotion picker fixture tests failed"
+    pwsh -NoProfile -File scripts/test-promote-lesson-picker.ps1 2>&1 | sed 's/^/      /' | tail -20
+  fi
+else
+  echo "  • pwsh not found — skipping PowerShell lesson promotion picker fixtures"
+fi
+
+echo "== PowerShell gate fixtures =="
+if command -v pwsh >/dev/null 2>&1; then
+  if pwsh -NoProfile -File scripts/test-gates.ps1 >/dev/null 2>&1; then
+    ok "gates/*.ps1 smoke fixtures"
+  else
+    err "PowerShell gate fixture tests failed"
+    pwsh -NoProfile -File scripts/test-gates.ps1 2>&1 | sed 's/^/      /' | tail -20
+  fi
+else
+  echo "  • pwsh not found — skipping PowerShell gate fixtures"
+fi
+
+echo "== stale learning fixtures =="
+if scripts/test-mark-stale-learning.sh >/dev/null 2>&1; then
+  ok "harness/mark-stale-learning.sh dry-run/apply fixtures"
+else
+  err "stale learning fixture tests failed"
+  scripts/test-mark-stale-learning.sh 2>&1 | sed 's/^/      /' | tail -20
+fi
+if command -v pwsh >/dev/null 2>&1; then
+  if pwsh -NoProfile -File scripts/test-mark-stale-learning.ps1 >/dev/null 2>&1; then
+    ok "harness/mark-stale-learning.ps1 dry-run/apply fixtures"
+  else
+    err "PowerShell stale learning fixture tests failed"
+    pwsh -NoProfile -File scripts/test-mark-stale-learning.ps1 2>&1 | sed 's/^/      /' | tail -20
+  fi
+else
+  echo "  • pwsh not found — skipping PowerShell stale learning fixtures"
+fi
 
 echo
 if [ "$fail" -eq 0 ]; then
