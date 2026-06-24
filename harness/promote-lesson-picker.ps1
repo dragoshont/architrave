@@ -20,7 +20,10 @@ foreach ($Line in Get-Content $Lessons) {
   $Rows += $Cells[0]
 }
 if ($Index -gt $Rows.Count) { [Console]::Error.WriteLine("promote-lesson-picker: candidate index not found: $Index"); exit 2 }
-$ArgsList = @('-Lesson', $Rows[$Index - 1], '-Target', $Target, '-Repo', (Get-Location).Path)
-if ($Apply) { $ArgsList += '-Apply' }
-& ./harness/promote-lesson.ps1 @ArgsList
+$RepoRoot = (Get-Location).Path
+if ($Apply) {
+  & ./harness/promote-lesson.ps1 -Lesson $Rows[$Index - 1] -Target $Target -Repo $RepoRoot -Apply
+} else {
+  & ./harness/promote-lesson.ps1 -Lesson $Rows[$Index - 1] -Target $Target -Repo $RepoRoot
+}
 exit $LASTEXITCODE
