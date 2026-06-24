@@ -48,7 +48,7 @@ echo "  ✓ knowledge → knowledge/ (apple · microsoft · web · backend · op
 # 2c) Audit harness — durable run artifacts + optional semantic review helpers.
 cp -R "$KIT"/harness/* "$TARGET/harness/"
 chmod +x "$TARGET"/harness/*.sh 2>/dev/null || true
-echo "  ✓ harness → harness/ (init-run · validate-run · semantic-review)"
+echo "  ✓ harness → harness/ (init-run · validate-run · semantic-review · semantic learning recovery)"
 
 # 3) architrave.config.json — scaffold only if absent (never clobber).
 if [ ! -f "$TARGET/architrave.config.json" ]; then

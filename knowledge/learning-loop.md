@@ -26,6 +26,7 @@ Architrave uses four different stores because each has a different job:
 - Add a candidate lesson when a fact would save a future agent time or prevent a repeated mistake. Include evidence: run id, file/command, current branch/source, and whether it was validated.
 - Promote after the configured threshold, usually two occurrences, or immediately for a high-severity validated safety/build fact with human approval.
 - Before promotion, validate against the current branch. Stale facts from closed/unmerged branches must not affect behavior unless the codebase still substantiates them.
+- For prose claims that cannot be proven by local link existence alone, run the semantic learning review helper. The provider-backed review emits JSONL findings for unsupported claims; the deterministic apply helper only marks exact matching learning lines as `UNVALIDATED:` so stale review output cannot mutate changed text.
 - Keep always-loaded instruction files short and scoped. Use path-specific `.github/instructions/*.instructions.md` or docs for local rules instead of stuffing every detail into `AGENTS.md`.
 - Redact secrets. Learning artifacts may say a secret reference exists or a config file is required; they must not contain secret values, tokens, private keys, cookies, or credentials.
 

@@ -34,7 +34,7 @@ Write-Host "  ok knowledge -> knowledge/ (apple/microsoft/web/backend/operations
 
 # 2c) Audit harness
 Copy-Item "$kit/harness/*" "$Target/harness/" -Recurse -Force
-Write-Host "  ok harness -> harness/ (init-run / validate-run / semantic-review)"
+Write-Host "  ok harness -> harness/ (init-run / validate-run / semantic-review / semantic learning recovery)"
 
 # 3) architrave.config.json — scaffold only if absent
 if (-not (Test-Path "$Target/architrave.config.json")) {

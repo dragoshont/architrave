@@ -42,4 +42,5 @@ jobs:
           ./scripts/test-promote-lesson.ps1
           ./scripts/test-promote-lesson-picker.ps1
           ./scripts/test-mark-stale-learning.ps1
+          ./scripts/test-semantic-learning.ps1
           ./scripts/test-gates.ps1

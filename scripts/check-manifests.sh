@@ -237,6 +237,24 @@ else
   echo "  • pwsh not found — skipping PowerShell stale learning fixtures"
 fi
 
+echo "== semantic learning fixtures =="
+if scripts/test-semantic-learning.sh >/dev/null 2>&1; then
+  ok "harness/semantic-learning-review.sh + apply-semantic-learning-findings.sh fixtures"
+else
+  err "semantic learning fixture tests failed"
+  scripts/test-semantic-learning.sh 2>&1 | sed 's/^/      /' | tail -24
+fi
+if command -v pwsh >/dev/null 2>&1; then
+  if pwsh -NoProfile -File scripts/test-semantic-learning.ps1 >/dev/null 2>&1; then
+    ok "harness/semantic-learning-review.ps1 + apply-semantic-learning-findings.ps1 fixtures"
+  else
+    err "PowerShell semantic learning fixture tests failed"
+    pwsh -NoProfile -File scripts/test-semantic-learning.ps1 2>&1 | sed 's/^/      /' | tail -24
+  fi
+else
+  echo "  • pwsh not found — skipping PowerShell semantic learning fixtures"
+fi
+
 echo
 if [ "$fail" -eq 0 ]; then
   echo "PASS — manifests valid, versions in sync ($v)"

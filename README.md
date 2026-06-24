@@ -134,11 +134,13 @@ scripts/test-validate-learning.sh
 scripts/test-promote-lesson.sh
 scripts/test-promote-lesson-picker.sh
 scripts/test-mark-stale-learning.sh
+scripts/test-semantic-learning.sh
 pwsh -NoProfile -File scripts/test-validate-run.ps1   # optional, when pwsh is available
 pwsh -NoProfile -File scripts/test-validate-learning.ps1
 pwsh -NoProfile -File scripts/test-promote-lesson.ps1
 pwsh -NoProfile -File scripts/test-promote-lesson-picker.ps1
 pwsh -NoProfile -File scripts/test-mark-stale-learning.ps1
+pwsh -NoProfile -File scripts/test-semantic-learning.ps1
 pwsh -NoProfile -File scripts/test-gates.ps1
 python3 scripts/bench-architrave.py --scenarios benchmarks/scenarios.json --validate
 python3 scripts/bench-architrave.py --scenarios benchmarks/scenarios.json --list
@@ -227,7 +229,7 @@ AI agents get better in a repo the same way developers do: they remember the sha
 - **Candidate lessons** are a review queue: `.architrave/learning/repo-lessons.md` records repeated observations with evidence and occurrence counts.
 - **Promoted rules** are procedural memory: stable lessons move into `architrave.config.json`, `AGENTS.md`, `.github/instructions/`, docs, or contracts after review.
 
-This keeps memory scoped: config stores stable pointers and policy, profile stores concise repo description, lessons store evidence, and run folders store task history. Secrets are never recorded, and stale facts must be validated against the current branch before use or promotion.
+This keeps memory scoped: config stores stable pointers and policy, profile stores concise repo description, lessons store evidence, and run folders store task history. Secrets are never recorded, and stale facts must be validated against the current branch before use or promotion. Deterministic helpers catch missing files and broken local evidence; `harness/semantic-learning-review.*` asks a judge/provider to compare durable prose claims with current repo evidence, and `harness/apply-semantic-learning-findings.*` safely marks exact reviewed lines as `UNVALIDATED:` when the findings still match the file.
 
 ## The design↔code reconciliation model (the hard part)
 
@@ -357,7 +359,7 @@ agents/                       ← Architrave · Product Research · Operations U
                                  + backend lane: Service Architect · Backend Planner · Backend Implementer · Infra Engineer
                                  + runtime lane: Runtime Observer
 gates/                        ← rubric.md · checks.{sh,ps1} · reconcile.{sh,ps1} · quality-gate.{sh,ps1} · backend-checks.{sh,ps1} · hooks/
-harness/                      ← init-run.{sh,ps1} · validate-run.{sh,ps1} · semantic-review.{sh,ps1} · schemas/
+harness/                      ← init-run.{sh,ps1} · validate-run.{sh,ps1} · semantic-review.{sh,ps1} · semantic learning review/recovery · schemas/
 benchmarks/                   ← scenario dataset + benchmark methodology for agent regression tests
 templates/                    ← AGENTS.stanza.md · copilot-setup-steps.yml (injected by the installer)
 tools/                        ← install.sh · install.ps1 (adopt a repo) · update.sh · update.ps1 (refresh copied assets)

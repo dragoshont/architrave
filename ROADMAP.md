@@ -52,4 +52,4 @@
 - [x] Interactive lesson promotion picker for `.architrave/learning/repo-lessons.md` candidate rows.
 - [x] Deterministic stale-learning guard that validates repo-profile and lessons against current repo files before promotion.
 - [x] Deterministic stale-fact recovery that marks unsupported local-link facts as `UNVALIDATED` before promotion.
-- [ ] Semantic stale-fact recovery that checks prose claims beyond local file references.
+- [x] Semantic stale-fact recovery that checks prose claims beyond local file references via provider-backed JSONL findings plus deterministic exact-line `UNVALIDATED:` recovery.
