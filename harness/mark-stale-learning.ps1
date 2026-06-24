@@ -3,6 +3,7 @@
 param([string]$Repo = (Get-Location).Path, [switch]$Apply)
 $ErrorActionPreference = 'Stop'
 Set-Location $Repo
+$RepoRoot = (Resolve-Path '.').Path
 $Files = @('.architrave/learning/repo-profile.md', '.architrave/learning/repo-lessons.md')
 $Changed = $false
 foreach ($File in $Files) {
@@ -16,12 +17,14 @@ foreach ($File in $Files) {
       $Path = ($Target -split '#', 2)[0].Replace('%20', ' ')
       if (-not $Path) { continue }
       if ([System.IO.Path]::IsPathRooted($Path) -or $Path -match '^[A-Za-z]:[\\/]' -or $Path.StartsWith('\')) { $Stale = $true; continue }
-      $FullPath = [System.IO.Path]::GetFullPath((Join-Path (Resolve-Path '.').Path $Path))
+      $FullPath = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot $Path))
+      $RepoPrefix = $RepoRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+      if (-not ($FullPath.StartsWith($RepoPrefix, [System.StringComparison]::OrdinalIgnoreCase) -or [string]::Equals($FullPath, $RepoRoot, [System.StringComparison]::OrdinalIgnoreCase))) { $Stale = $true; continue }
       if (-not (Test-Path $FullPath)) { $Stale = $true }
     }
     if ($Stale -and $Line -notmatch 'UNVALIDATED:') {
       $Changed = $true
-      if ($Apply) { $Out.Add("UNVALIDATED: $Line") } else { Write-Host "would mark $File: $Line"; $Out.Add($Line) }
+      if ($Apply) { $Out.Add("UNVALIDATED: $Line") } else { Write-Host "would mark ${File}: $Line"; $Out.Add($Line) }
     } else { $Out.Add($Line) }
   }
   if ($Apply) { Set-Content -Path $File -Encoding utf8 -Value $Out }
