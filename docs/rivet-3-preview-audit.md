@@ -246,7 +246,7 @@ git ls-files | wc -l
 git ls-files | xargs wc -l | sort -n | tail -40
 
 # SDD/harness surfaces
-rg -n "SDD|spec-driven|contract|adversarial|tournament|YAGNI|harness" .
+rg -n "SDD|spec-driven|contract|adversarial|tournament|YAGNI|judge|evaluator|eval|TDD|test-driven|characterization|harness" .
 find . -iname '*sdd*' -o -iname '*harness*' -o -iname '*contract*' -o -iname '*adversarial*'
 
 # MCP/tooling surfaces
@@ -274,6 +274,8 @@ These are the current top-level Rivet capabilities to refine into concrete workf
 | NuGet upgrade workflow | Plan, execute, test, and review dependency upgrades with package-specific risk, compatibility, and rollback handling. | Yes |
 | .NET upgrade workflow | Plan, execute, test, and review SDK/runtime/framework upgrades with solution-wide compatibility checks and migration evidence. | Yes |
 | Repository vulnerability and upgrade scanner | Scan for vulnerable packages, package upgrades, deprecated packages, SDK/runtime upgrades, and cross-ecosystem component inventory. | Yes |
+| Judge and evaluator | Evaluate SDD, research, tournament options, implementation plans, and final outputs with explicit rubrics, deterministic evidence, and model-backed review where useful. | Yes |
+| TDD / characterization testing | Make bug investigation and feature work test-driven where possible: reproduce, characterize, implement, and prove with narrow gates. | Yes |
 
 ## Capability Detail Backlog
 
@@ -712,6 +714,93 @@ Questions to answer later:
 - Does Component Governance mean Microsoft Component Detection, an internal governance system, Azure DevOps Advanced Security, or several sources?
 - What scanner findings should block builds versus create backlog items?
 - How should Rivet prevent broad scanner output from becoming a massive risky upgrade PR?
+
+### 8. Judge and Evaluator
+
+Rivet is supposed to evaluate its own research, SDD, tournament options, implementation plans, and final outputs. This is distinct from merely asking another model for an opinion. The evaluator should have an explicit rubric, know which evidence it is judging, distinguish deterministic failures from semantic concerns, and produce actionable findings. The current suspicion is that Rivet claims to have a judge/evaluator but either does not actually run it consistently, runs it too late, or produces output that does not change decisions.
+
+Expected evaluator behavior:
+- Evaluate research sufficiency before design: source coverage, missing tools, contradictions, source quality, and unresolved gaps.
+- Evaluate SDD/design quality before implementation: requirement traceability, contract clarity, YAGNI, risks, rollback, and test plan quality.
+- Evaluate tournament outputs: real option diversity, evidence-backed scoring, bias risks, and whether the chosen option actually follows from the scores.
+- Evaluate implementation readiness: deterministic gates available, TDD/characterization plan present where needed, and blast radius understood.
+- Evaluate final output: acceptance criteria met, tests/builds run, known gaps disclosed, and claims remain capability-honest.
+- Separate deterministic evidence from model judgment. A failed build, missing test, missing artifact, or schema violation should outrank a PASS from a model judge.
+- Emit structured findings with severity, evidence, required fix, and what would change the verdict.
+
+Observed failure modes to look for:
+- Judge/evaluator is only prompt text and is not reliably invoked.
+- Judge runs but does not block or revise anything.
+- Judge sees only a summary, not the actual artifacts/evidence.
+- Same model/context writes the plan and judges the plan, causing self-confirmation.
+- Judge output is generic, unactionable, or not tied to files/artifacts/gates.
+- Judge does not distinguish tool failure, missing evidence, and genuine design correctness.
+- Judge cost is paid for tiny tasks where deterministic validation would be enough.
+
+Measurement plan for the Rivet repo:
+- Find all judge/evaluator prompts, code paths, generated reports, schemas, and CLI invocations.
+- Count how often the evaluator ran across the 70+ harness instances and whether it changed the outcome.
+- Compare evaluator verdicts with deterministic failures: build/test failures, missing artifacts, invalid schemas, missing tools, or incomplete source coverage.
+- Sample PASS results and check whether they were justified by evidence.
+- Sample blockers and check whether the evaluator caught them early enough.
+- Identify whether evaluator outputs are consumed programmatically or only written as decorative artifacts.
+
+3.0-preview direction:
+- Define evaluator stages: research sufficiency, design/SDD readiness, implementation readiness, final review, and optional retrospective learning.
+- Use deterministic validators first; use model judges for semantic quality and ambiguity.
+- Use model-pinned subagents for higher-risk semantic review when available, with CLI fallback only on failure.
+- Require structured evaluator output: verdict, severity findings, evidence references, required fixes, and what would change the verdict.
+- Make `TOOLING_FAILURE` and `INSUFFICIENT_EVIDENCE` valid evaluator outcomes.
+- Add a small evaluator benchmark from historical Rivet harness failures.
+
+Questions to answer later:
+- Where is the evaluator implemented today: prompt, CLI, code module, subagent, or harness artifact?
+- Does it run before decisions, after decisions, or only at the end?
+- Does it have a schema and deterministic consumers?
+- Which evaluator outputs actually changed Rivet behavior in past runs?
+- Should dual-model judging be default, risk-based, or reserved for Rivet 3.0 pilots?
+
+### 9. TDD / Characterization Testing
+
+Rivet should support test-driven work when investigating bugs, adding features, refactoring, upgrading packages, or modernizing .NET projects. This should not mean forcing a full SDD harness for every small task. It means that bug and feature work should start from the narrowest meaningful executable signal whenever possible.
+
+Expected TDD behavior:
+- For a bug, first try to reproduce the failure with a failing test, smoke script, log assertion, diagnostic check, or minimal scenario.
+- For a feature, define at least one executable acceptance check before or alongside implementation.
+- For refactors/upgrades, add characterization tests before changing behavior when feasible.
+- If no test can be written cheaply, record the attempted reproduction and the substitute signal.
+- Use the smallest meaningful gate: unit test, integration test, contract test, Storybook interaction, Playwright flow, CLI smoke, build, analyzer, or log/assertion check.
+- Keep TDD visible but scaled: compact note for small work; full `tdd-plan.md` for medium/high-risk work.
+- Treat tests as evidence for YAGNI and evaluator decisions.
+
+Observed failure modes to look for:
+- Rivet edits first and only tests after the fact.
+- Rivet creates test plans but no executable checks.
+- Full SDD is invoked just to add a small unit test.
+- Bug investigations lack a failing reproduction or a substitute observable signal.
+- Refactors/upgrades proceed without characterization tests or rollback confidence.
+- Generated tests are too broad, brittle, or unrelated to the reported defect.
+
+Measurement plan for the Rivet repo:
+- Search for TDD, test-first, reproduction, characterization, acceptance, and smoke-test prompts or modules.
+- Sample bug-fix harness runs and check whether a failing signal existed before the fix.
+- Sample feature harness runs and check whether acceptance criteria mapped to executable tests.
+- Sample NuGet/.NET upgrade runs and check whether characterization/regression tests were used.
+- Compare tasks where tests were created versus tasks where full SDD was used without meaningful tests.
+- Identify whether TDD artifacts are consumed by evaluator/judge outputs.
+
+3.0-preview direction:
+- Add a TDD router: bug repro, feature acceptance, refactor characterization, upgrade regression, or no-test-with-substitute-signal.
+- Add `tdd-plan.md` only for medium/high-risk work; use inline TDD notes for small work.
+- Make TDD part of the evaluator rubric: no executable or substitute signal means lower confidence.
+- Ensure the task-risk router can choose a lightweight path for unit-test-only and one-class test tasks.
+- Keep deterministic validation cheap and local before model-heavy review.
+
+Questions to answer later:
+- Is TDD implemented today or only implied in prompts?
+- Does Rivet know the repo's test framework and quickest targeted test command?
+- How often did historical bug fixes include a failing reproduction before the fix?
+- How should TDD interact with SDD, YAGNI, evaluator, NuGet upgrades, and .NET upgrades?
 
 ## Dual-Review Operating Model
 
