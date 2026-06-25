@@ -27,6 +27,11 @@ You are Architrave helping improve Rivet, an internal engineering agent. Start w
 Primary goal:
 Understand whether Rivet's SDD harness has become too rigid, too slow, and too token-expensive, then propose a 3.0-preview redesign grounded in evidence.
 
+Core purpose to preserve:
+- Rivet was built to prevent agents from stopping at scaffolding. Preserve that goal.
+- A run is not successful because it created contracts, JSON, plans, or placeholder files. A run is successful only when it follows through to the agreed gate for that task class: proof, implementation, validation, or a clearly blocked state with next action.
+- Treat Rivet's harness JSON files as state and accountability artifacts: they should record intent, phase, evidence, gates, blockers, validation, and completion, not become decorative paperwork.
+
 Run mode:
 - Assume this may run from a high-context model session such as GPT-5.5 extra-high with a large context window, but do not rely on context memory alone.
 - Treat this as a long-running audit, not a single-turn answer.
@@ -99,6 +104,7 @@ Hard rules:
 - Do not propose a 3.0-preview design until you have also refreshed current public guidance from Anthropic, Google, and Microsoft.
 - Do not optimize only prompts if the issue is architecture, routing, or artifact lifecycle.
 - Do not preserve full SDD for tiny/unit-test-only/one-class tasks unless evidence shows risk.
+- Do not accept placeholder/scaffold output as completion. Every run must end in one of: validated implementation, validated analysis/report, explicit blocker with remediation, or deliberately deferred work with owner/reason.
 ```
 
 ### Suggested Long-Running Audit Artifacts
@@ -276,6 +282,7 @@ These are the current top-level Rivet capabilities to refine into concrete workf
 | Repository vulnerability and upgrade scanner | Scan for vulnerable packages, package upgrades, deprecated packages, SDK/runtime upgrades, and cross-ecosystem component inventory. | Yes |
 | Judge and evaluator | Evaluate SDD, research, tournament options, implementation plans, and final outputs with explicit rubrics, deterministic evidence, and model-backed review where useful. | Yes |
 | TDD / characterization testing | Make bug investigation and feature work test-driven where possible: reproduce, characterize, implement, and prove with narrow gates. | Yes |
+| Follow-through harness | Prevent scaffold-only runs by tracking phase state, evidence, blockers, gates, validation, and completion in durable JSON/run artifacts. | Yes |
 
 ## Capability Detail Backlog
 
@@ -801,6 +808,57 @@ Questions to answer later:
 - Does Rivet know the repo's test framework and quickest targeted test command?
 - How often did historical bug fixes include a failing reproduction before the fix?
 - How should TDD interact with SDD, YAGNI, evaluator, NuGet upgrades, and .NET upgrades?
+
+### 10. Follow-Through Harness / Anti-Scaffolding
+
+One of Rivet's core reasons to exist is to prevent the agent from merely scaffolding plans, contracts, JSON files, or placeholder code and then stopping. The harness should force the work to continue until it reaches the correct end state for the task: validated implementation, validated analysis/report, explicit blocker, or deliberately deferred work with owner and reason.
+
+Expected behavior:
+- Track every run with durable state, preferably JSON plus concise markdown summaries.
+- Record the requested goal, task class, current phase, required gates, produced artifacts, validation status, blockers, and next action.
+- Make scaffold-only states visible and non-terminal.
+- Require a terminal state for each run:
+  - `validated_implementation`;
+  - `validated_analysis`;
+  - `blocked_with_remediation`;
+  - `deferred_with_owner_reason`;
+  - `abandoned_superseded`.
+- Prevent `planned`, `scaffolded`, `contract_created`, or `files_generated` from being counted as success without the matching gate.
+- Keep JSON harness files small, structured, and machine-checkable. They should drive behavior, not just document it.
+- Let agents resume from harness state rather than restarting or forgetting why work stopped.
+
+Observed failure modes to look for:
+- Runs that created SDD/contracts/adversarial files but never implemented or validated anything.
+- Generated JSON state that is never read again by the harness.
+- Placeholder source files, TODOs, or empty adapters counted as progress.
+- Plans that say "next step" but no machine-readable state prevents the agent from declaring completion.
+- Blockers recorded in prose but not surfaced as terminal `blocked_with_remediation` states.
+- Agents starting new phases without closing prior phase gates.
+- Harness artifacts growing large enough that they obscure rather than enforce follow-through.
+
+Measurement plan for the Rivet repo:
+- Inventory all JSON harness files and schemas.
+- Determine which JSON files are read by code versus only written.
+- For the 70+ harness instances, classify terminal state: implemented, analyzed, blocked, deferred, abandoned, scaffold-only, unknown.
+- Find runs where scaffolding artifacts exist but no validation gate passed.
+- Check whether blockers have explicit remediation, owner, and next action.
+- Check whether phases can be resumed from JSON state alone.
+- Measure how much artifact footprint is accountability state versus decorative transcript/planning data.
+
+3.0-preview direction:
+- Define a small canonical run-state schema with allowed terminal and non-terminal states.
+- Add a validator that fails scaffold-only terminal states.
+- Add phase-close gates: each phase must have evidence, validation, blocker, or deferral before the next phase starts.
+- Add resume behavior based on JSON state.
+- Add a compact final summary generated from state, not free-form memory.
+- Keep generated state minimal and link large raw evidence by path.
+
+Questions to answer later:
+- Which existing JSON harness files are authoritative today?
+- Which state files are written but never read?
+- How many historical runs ended in scaffold-only state?
+- What should the canonical terminal states be for Rivet 3.0?
+- Which validations should be deterministic, and which require judge/evaluator review?
 
 ## Dual-Review Operating Model
 
