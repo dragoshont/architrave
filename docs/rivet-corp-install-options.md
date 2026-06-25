@@ -19,7 +19,7 @@ Use this when testing a branch or local changes before publishing them.
 ```bash
 git clone https://github.com/dragoshont/architrave.git
 cd architrave
-git checkout <rivet-audit-branch>
+git checkout rivet-3-preview-audit
 
 copilot plugin marketplace add "$PWD"
 copilot plugin install architrave@architrave
@@ -30,7 +30,7 @@ Then reload VS Code / Copilot so the Architrave agent definitions are picked up.
 Use this opening prompt in the corp workspace:
 
 ```text
-Use the Rivet 3.0-preview audit brief from the Architrave branch.
+Use the Rivet 3.0-preview audit brief at docs/rivet-3-preview-audit.md from the Architrave branch.
 You are in a multi-root workspace with Rivet and one daily consumer repo.
 Start read-only.
 Run Phase 0 and Phase 1 only:
@@ -81,7 +81,7 @@ If Architrave is not visible in VS Code after installation, reload the VS Code w
 Do not begin with a refactor. Begin with the read-only audit.
 
 ```text
-Use the Rivet 3.0-preview audit brief.
+Use the Rivet 3.0-preview audit brief at docs/rivet-3-preview-audit.md.
 Run only:
 1. Preflight.
 2. Footprint measurement.
