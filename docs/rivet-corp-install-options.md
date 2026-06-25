@@ -12,6 +12,32 @@ Open a VS Code multi-root workspace with at least:
 
 The Architrave plugin still needs to be installed into Copilot. Merely opening the Architrave repo as a workspace folder lets Copilot read files, but it does not necessarily register Architrave as an agent.
 
+## Fresh Install — Architrave Not Installed Yet
+
+Use this path when the corporate laptop does not already have Architrave installed in Copilot.
+
+```bash
+git clone https://github.com/dragoshont/architrave.git
+cd architrave
+git checkout rivet-3-preview-audit
+
+copilot plugin marketplace add "$PWD"
+copilot plugin install architrave@architrave
+```
+
+Keep this checkout available while testing the local branch. It is the local plugin source you registered with Copilot.
+
+If `copilot plugin marketplace add "$PWD"` says the `architrave` marketplace already exists, refresh it explicitly:
+
+```bash
+copilot plugin uninstall architrave || true
+copilot plugin marketplace remove architrave || true
+copilot plugin marketplace add "$PWD"
+copilot plugin install architrave@architrave
+```
+
+Then reload VS Code. In Copilot Chat, choose the **Architrave** agent and start with the recommended first-run prompt below.
+
 ## Option A — Preferred: Install from a Local Architrave Branch
 
 Use this when testing a branch or local changes before publishing them.
