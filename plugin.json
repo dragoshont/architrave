@@ -1,7 +1,7 @@
 {
   "name": "architrave",
   "description": "Storybook-first, contract-first, YAGNI-gated agent crew for UI, backend, full-stack features, plan-only infrastructure, optional read-only runtime observation, and durable learning/audit artifacts. Grounds UI in Storybook + tokens, backend in architecture docs + contracts, ops in runtime evidence, and gates every change with deterministic checks plus an Adversarial Judge. Retargeted per repo via architrave.config.json.",
-  "version": "0.8.10",
+  "version": "0.8.11",
   "author": {
     "name": "dragoshont"
   },
