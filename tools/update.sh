@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Architrave — refresh an adopted repo's COPIED kit assets (gates + knowledge + harness +
+# Architrave — refresh an adopted repo's COPIED kit assets (gates + knowledge + harness + constitution +
 # the AGENTS.md grounding stanza) to match THIS kit, and re-stamp the version.
 #
 # Why this exists: a plugin update (`copilot plugin update` / `claude plugin
 # marketplace update`) refreshes only the locally installed plugin. But `tools/install.sh`
-# also copies agents, gates, knowledge packs, and harness INTO each repo (so the gates
+# also copies agents, gates, knowledge packs, the platform constitution, and harness INTO each repo (so the gates
 # can execute and the cloud agent — which has no plugin — can read them). Those copies
 # do NOT auto-update, so after you bump the plugin, run this in each adopted repo.
 #
@@ -75,6 +75,9 @@ echo "  ✓ gates refreshed"
 # Knowledge packs — copied so the cloud agent (no plugin) can read them.
 cp "$KIT"/knowledge/*.md "$TARGET/knowledge/"
 echo "  ✓ knowledge refreshed (apple · microsoft · web · backend · operations-ux · design-tokens · learning-loop · yagni)"
+
+# Platform constitution(s) — copied so the cloud agent (no plugin) can read the deep native-app synthesis.
+cp "$KIT"/constitution-*.md "$TARGET/" 2>/dev/null && echo "  ✓ constitution refreshed (constitution-*.md; Apple + Windows native-app synthesis)" || true
 
 # Audit harness.
 cp -R "$KIT"/harness/* "$TARGET/harness/"
