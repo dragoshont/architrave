@@ -4,7 +4,7 @@
 
 Architrave helps you build a full-stack application, or any slice of one, without turning your codebase into an agent experiment. You ask for the feature; Architrave reads the repo, grounds in its Storybook/design map and backend architecture docs, runs the right specialist agents, and ships only the smallest proven change.
 
-It has Apple and Microsoft design language built in, plus web/WCAG guidance, Storybook-first UI, contract-first backend work, plan-only infrastructure, YAGNI, Tournament of Options, durable learning artifacts, and an Adversarial Judge. The point is simple: build the useful thing, in the repo's own patterns, with evidence.
+It has Apple and Microsoft design language built in, plus web/WCAG guidance, Storybook-first UI, contract-first backend work, plan-only infrastructure, YAGNI, Tournament of Options, durable learning artifacts, and two independent adversarial judge families by default. The point is simple: build the useful thing, in the repo's own patterns, with evidence.
 
 ![Architrave — ground in the repo, route to specialists, gate with a judge plus real checks, then ship](assets/overview.png)
 
@@ -45,7 +45,7 @@ It has Apple and Microsoft design language built in, plus web/WCAG guidance, Sto
 | **Backend Implementer** | under the hood | Implements approved backend/service slices and tests against the contract. |
 | **Infra Engineer** | under the hood | Proposes IaC diffs and plan/policy output only. It never applies. |
 | **Runtime Observer** | under the hood | Reads deployment/runtime truth such as Kubernetes health, logs, ingress, Flux, and version drift. Read-only by default. |
-| **Adversarial Judge** | under the hood | Grades proposals and implementations against the rubric: PASS / REVISE / FAIL. |
+| **Adversarial Judge** | under the hood | Grades proposals and implementations against the rubric: PASS / REVISE / FAIL. Full gates use two independent judge families by default: Copilot/GPT and Claude. |
 
 ## Install
 

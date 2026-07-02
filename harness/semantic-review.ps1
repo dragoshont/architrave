@@ -2,7 +2,7 @@
 # Optional semantic review helper. It prepares a judge prompt from run artifacts.
 [CmdletBinding()]
 param(
-  [Parameter(Mandatory=$true)][ValidateSet('copilot','claude')][string]$Provider,
+  [ValidateSet('copilot','claude','both')][string]$Provider = 'both',
   [string]$RunDir,
   [switch]$Execute
 )
@@ -31,11 +31,11 @@ Return PASS / REVISE / FAIL with findings ordered by severity.
 
 Write-Host "semantic-review prompt: $prompt"
 if (-not $Execute) {
-  if ($Provider -eq 'copilot') { Write-Host "suggested command: copilot -C `"$PWD`" --agent `"Adversarial Judge`" -p (Get-Content `"$prompt`" -Raw)" }
-  else { Write-Host "suggested command: claude --agent `"Adversarial Judge`" -p (Get-Content `"$prompt`" -Raw)" }
+  if ($Provider -in @('copilot','both')) { Write-Host "suggested command: copilot -C `"$PWD`" --agent `"Adversarial Judge`" -p (Get-Content `"$prompt`" -Raw)" }
+  if ($Provider -in @('claude','both')) { Write-Host "suggested command: claude --agent `"Adversarial Judge`" -p (Get-Content `"$prompt`" -Raw)" }
   exit 0
 }
 
 $body = Get-Content $prompt -Raw
-if ($Provider -eq 'copilot') { & copilot -C "$PWD" --agent 'Adversarial Judge' -p $body }
-else { & claude --agent 'Adversarial Judge' -p $body }
+if ($Provider -in @('copilot','both')) { & copilot -C "$PWD" --agent 'Adversarial Judge' -p $body; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }
+if ($Provider -in @('claude','both')) { & claude --agent 'Adversarial Judge' -p $body; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }

@@ -4,7 +4,7 @@
 # findings. Mutation is handled separately by apply-semantic-learning-findings.*.
 set -euo pipefail
 
-provider=""
+provider="both"
 execute=0
 repo="$PWD"
 prompt=""
@@ -17,15 +17,14 @@ while [ "$#" -gt 0 ]; do
     --prompt) prompt="${2:-}"; shift 2 ;;
     --output) output="${2:-}"; shift 2 ;;
     -h|--help)
-      echo "Usage: harness/semantic-learning-review.sh --provider copilot|claude [--execute] [--repo DIR] [--prompt FILE] [--output FILE]"
+      echo "Usage: harness/semantic-learning-review.sh [--provider copilot|claude|both] [--execute] [--repo DIR] [--prompt FILE] [--output FILE]"
       exit 0
       ;;
     *) echo "semantic-learning-review: unknown argument $1" >&2; exit 2 ;;
   esac
 done
 
-[ -n "$provider" ] || { echo "semantic-learning-review: --provider required" >&2; exit 2; }
-case "$provider" in copilot|claude) : ;; *) echo "semantic-learning-review: provider must be copilot or claude" >&2; exit 2 ;; esac
+case "$provider" in copilot|claude|both) : ;; *) echo "semantic-learning-review: provider must be copilot, claude, or both" >&2; exit 2 ;; esac
 cd "$repo" 2>/dev/null || { echo "semantic-learning-review: repo dir not found: $repo" >&2; exit 2; }
 
 learning_dir=".architrave/learning"
@@ -74,19 +73,17 @@ EOF
 echo "semantic-learning-review prompt: $prompt"
 echo "semantic-learning-review findings target: $output"
 
-case "$provider" in
-  copilot)
-    cmd=(copilot -C "$PWD" --agent "Adversarial Judge" --allow-tool read --allow-tool search -p "$(cat "$prompt")")
-    ;;
-  claude)
-    cmd=(claude --agent "Adversarial Judge" --allowedTools "Read,Grep,Glob" -p "$(cat "$prompt")")
-    ;;
-esac
+copilot_cmd=(copilot -C "$PWD" --agent "Adversarial Judge" --allow-tool read --allow-tool search -p "$(cat "$prompt")")
+claude_cmd=(claude --agent "Adversarial Judge" --allowedTools "Read,Grep,Glob" -p "$(cat "$prompt")")
 
 if [ "$execute" -eq 1 ]; then
-  "${cmd[@]}" | tee "$output"
+  case "$provider" in
+    copilot) "${copilot_cmd[@]}" | tee "$output.copilot" ;;
+    claude) "${claude_cmd[@]}" | tee "$output.claude" ;;
+    both) "${copilot_cmd[@]}" | tee "$output.copilot" && "${claude_cmd[@]}" | tee "$output.claude" ;;
+  esac
 else
-  printf 'suggested command (review before running):\n  '
-  printf '%q ' "${cmd[@]}"
-  printf '| tee %q\n' "$output"
+  printf 'suggested command(s) (review before running):\n'
+  if [ "$provider" = "copilot" ] || [ "$provider" = "both" ]; then printf '  '; printf '%q ' "${copilot_cmd[@]}"; printf '| tee %q\n' "$output.copilot"; fi
+  if [ "$provider" = "claude" ] || [ "$provider" = "both" ]; then printf '  '; printf '%q ' "${claude_cmd[@]}"; printf '| tee %q\n' "$output.claude"; fi
 fi

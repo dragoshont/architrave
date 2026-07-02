@@ -20,6 +20,7 @@ Make Architrave more native to VS Code/Copilot, more resilient during deep audit
 | Tool / MCP readiness is a first-order failure mode. | Add a generic tool/MCP preflight artifact and harness command. | Applies to Storybook MCP, Mobbin, SearXNG, ops tools, backend tools, and corp MCPs. |
 | Full ceremony is too expensive for tiny tasks. | Add an explicit task-risk router before full intake/tournament/phase-ledger work. | Protects Architrave from becoming the same kind of mandatory harness. |
 | Long-running audits need durable state. | Formalize deep-audit artifacts: source ledger, evidence index, subagent outputs, checkpoints. | Helps context compaction, agent handoff, and multi-hour investigations. |
+| High-risk implementation tasks need knowledge preflight before coding. | Reuse the Phase 5 source ledger and evidence index to capture repo/org/domain constraints before implementation approval. For Rivet pilots, this maps to `rivet research knowledge` outputs feeding the SDD contract/spec. | The GA Stub cleanup dog-food run showed the slow path was late domain discovery, not validator time. |
 | Subagent findings should not be lossy. | Store subagent outputs as files and pass references back to the orchestrator. | Reduces token churn and avoids coordinator summary loss. |
 | YAGNI needs visibility. | Add a visible YAGNI decision block when it materially affects a design; compact note for small work. | Users can accept, challenge, or override minimalism with roadmap evidence. |
 | TDD should guide bug and feature work. | Add a TDD / characterization-test hook to task routing and implementation gates. | Keeps feature/bug work evidence-driven and prevents unverified edits. |
@@ -190,6 +191,8 @@ Template fields:
 ### Phase 5 — Deep-Audit Artifacts
 
 Add durable source/evidence tracking and subagent handoff conventions for external research, organizational research, and deep audits.
+
+For high-risk implementation work, Phase 5 also covers a knowledge preflight: collect known domain constraints, prior run lessons, path-scoped instructions, relevant docs, and prior PR/work-item evidence before the implement gate. In Rivet terms, this is the place for `rivet research knowledge` output to feed SDD `contract.md` and `spec.md`, so sparse prompts do not rediscover domain rules through repair loops.
 
 #### Source Ledger + Evidence Index
 
