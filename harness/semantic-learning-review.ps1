@@ -2,7 +2,7 @@
 # Prepare or run a semantic stale-fact review for Architrave learning artifacts.
 [CmdletBinding()]
 param(
-  [Parameter(Mandatory=$true)][ValidateSet('copilot','claude')][string]$Provider,
+  [ValidateSet('copilot','claude','both')][string]$Provider = 'both',
   [string]$Repo = (Get-Location).Path,
   [string]$Prompt,
   [string]$Output,
@@ -58,12 +58,12 @@ Write-Host "semantic-learning-review prompt: $Prompt"
 Write-Host "semantic-learning-review findings target: $Output"
 
 if (-not $Execute) {
-  if ($Provider -eq 'copilot') { Write-Host "suggested command: copilot -C `"$PWD`" --agent `"Adversarial Judge`" --allow-tool read --allow-tool search -p (Get-Content `"$Prompt`" -Raw) | Tee-Object -FilePath `"$Output`"" }
-  else { Write-Host "suggested command: claude --agent `"Adversarial Judge`" --allowedTools `"Read,Grep,Glob`" -p (Get-Content `"$Prompt`" -Raw) | Tee-Object -FilePath `"$Output`"" }
+  if ($Provider -in @('copilot','both')) { Write-Host "suggested command: copilot -C `"$PWD`" --agent `"Adversarial Judge`" --allow-tool read --allow-tool search -p (Get-Content `"$Prompt`" -Raw) | Tee-Object -FilePath `"$($Output).copilot`"" }
+  if ($Provider -in @('claude','both')) { Write-Host "suggested command: claude --agent `"Adversarial Judge`" --allowedTools `"Read,Grep,Glob`" -p (Get-Content `"$Prompt`" -Raw) | Tee-Object -FilePath `"$($Output).claude`"" }
   exit 0
 }
 
 $Body = Get-Content $Prompt -Raw
-if ($Provider -eq 'copilot') { & copilot -C "$PWD" --agent 'Adversarial Judge' --allow-tool read --allow-tool search -p $Body | Tee-Object -FilePath $Output }
-else { & claude --agent 'Adversarial Judge' --allowedTools 'Read,Grep,Glob' -p $Body | Tee-Object -FilePath $Output }
+if ($Provider -in @('copilot','both')) { & copilot -C "$PWD" --agent 'Adversarial Judge' --allow-tool read --allow-tool search -p $Body | Tee-Object -FilePath "$Output.copilot"; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }
+if ($Provider -in @('claude','both')) { & claude --agent 'Adversarial Judge' --allowedTools 'Read,Grep,Glob' -p $Body | Tee-Object -FilePath "$Output.claude"; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }
 exit $LASTEXITCODE

@@ -9,7 +9,7 @@ Grounded in modern eval practice:
 
 ## Two grading layers (use both)
 1. **Deterministic gates (code‑graded — rule‑based):** `gates/checks.sh` / `gates/checks.ps1` (`config.generate` + `config.build` + `config.test` + `config.designMap` / `config.tokens` JSON valid) and `gates/reconcile.sh` / `gates/reconcile.ps1` (design↔code token drift) and the `.github/hooks` checks; for the backend lane, `gates/backend-checks.sh` (build/test + migration safety + secret scan + IaC plan/policy, **never apply**). Objective ground truth; they **override optimistic claims** and must be green.
-2. **Semantic gate (LLM‑as‑judge):** this rubric, applied adversarially.
+2. **Semantic gate (LLM‑as‑judge):** this rubric, applied adversarially by two independent judge families by default: one Copilot/GPT-family judge and one Claude-family judge. Both must PASS for the semantic gate to pass. A single-family judge result is advisory evidence, not a completed semantic gate.
 
 ## Before grading: derive acceptance criteria (BDD)
 Restate the request + the source‑of‑truth (Storybook + `config.designMap` + the platform pack + `config.tokens`) as a **numbered, testable acceptance‑criteria checklist**. Grade against the checklist, not vibes.
@@ -47,7 +47,7 @@ Score each **Pass / Concern / Fail** with a severity and cite evidence (a spec l
 **Blocker** (ship‑stopper / policy / spec miss) · **Major** (wrong but recoverable) · **Minor** (quality) · **Nit** (polish).
 
 ## Verdict rules
-- **PASS** — all acceptance criteria met, **zero Blockers**, deterministic gates green, design↔code reconciled.
+- **PASS** — all acceptance criteria met, **zero Blockers**, deterministic gates green, design↔code reconciled, and both judge families PASS when a semantic gate is required.
 - **REVISE** — fixable issues (≥ 1 Blocker/Major) with concrete required fixes.
 - **FAIL** — fundamentally off‑spec or off‑pattern (reinvented an existing component, dishonest capability, policy/security violation).
 
