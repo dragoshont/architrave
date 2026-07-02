@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# Architrave - refresh an adopted repo's COPIED kit assets (gates + knowledge + harness +
+# Architrave - refresh an adopted repo's COPIED kit assets (gates + knowledge + harness + constitution +
 # the AGENTS.md grounding stanza) to match THIS kit, and re-stamp the version.
 # PowerShell mirror of tools/update.sh. Never touches architrave.config.json. By default
 # it does not touch .github/agents; pass -Agents to refresh Architrave-managed copied
@@ -45,6 +45,10 @@ Write-Host '  ok gates refreshed'
 # Knowledge packs - copied so the cloud agent (no plugin) can read them.
 Copy-Item "$kit/knowledge/*.md" "$Target/knowledge/" -Force
 Write-Host '  ok knowledge refreshed (apple/microsoft/web/backend/operations-ux/design-tokens/learning-loop/yagni)'
+
+# Platform constitution(s) - deep native-app synthesis (Apple + Windows), for the cloud agent.
+Copy-Item "$kit/constitution-*.md" "$Target/" -Force -ErrorAction SilentlyContinue
+Write-Host '  ok constitution refreshed (constitution-*.md; Apple + Windows native-app synthesis)'
 
 # Audit harness.
 Copy-Item "$kit/harness/*" "$Target/harness/" -Recurse -Force

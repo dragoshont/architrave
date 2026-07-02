@@ -4,7 +4,7 @@
 This repo uses **Architrave**, a config-grounded, judge-gated workflow for UI, backend, full-stack features, plan-only infrastructure, and durable learning artifacts. The retargeting config is **`architrave.config.json`** at the repo root — read it first; it names this repo's `platform`, `stack`, UI source of truth (`designSource`, `designMap`, `tokens`), optional `backend` / `iac` / `ops` lanes, and optional `learning` paths.
 
 **Before any UI change:**
-- **Ground first; reproduce, don't reinvent.** Open the design source of truth named in `architrave.config.json` (the `designSource` Storybook + the `designMap` glossary) and the matching platform knowledge pack. Reproduce the existing component by its glossary name and specify only the deltas. Net-new UI must be mocked in Storybook and confirmed first.
+- **Ground first; reproduce, don't reinvent.** Open the design source of truth named in `architrave.config.json` (the `designSource` Storybook + the `designMap` glossary) and the matching platform knowledge pack. **On a native platform, also load the repo-root constitution — `constitution-apple.md` (Apple) or `constitution-windows.md` (Windows)** — the deep, source-cited native rule base (verbatim type tables/ramp, materials layering, system icons, the native component catalog, and the shared-screenshot conformance-audit protocol). Reproduce the existing component by its glossary name and specify only the deltas. Net-new UI must be mocked in Storybook and confirmed first.
 - **Tokens are the single source of truth.** Take values from `architrave.config.json` → `tokens`; if a value must change, change the **token first**, then regenerate. Never hard-code colors/space/type that a token already owns.
 
 **Before any backend/full-stack change:**

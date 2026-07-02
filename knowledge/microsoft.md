@@ -49,3 +49,5 @@ WCAG 2.x AA contrast; ship **High‑Contrast** themes; full **keyboard** support
 
 ## Citations
 learn.microsoft.com/windows/apps/design/basics (navigation/command/content basics, spacing, type ramp) · fluent2.microsoft.design (components Web‑React / Windows, tokens, materials).
+
+**Deep reference (in‑repo):** `constitution-windows.md` — the full native‑XAML synthesis constitution (verbatim Windows type ramp, Mica/Acrylic/Smoke materials + the two‑layer elevation model, geometry/corner rules, Segoe Fluent Icons usage, the `AppWindow`/`NavigationView`/`CommandBar`/`DataGrid`/inspector architecture, WinUI 3 vs WPF/.NET 9 framework deltas, the reverse‑engineering protocol, and the Fluent 2 grounding). Load it when generating or reverse‑engineering WinUI/WPF so components are reused, not reinvented.

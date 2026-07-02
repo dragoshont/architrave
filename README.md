@@ -176,6 +176,16 @@ Every change starts in **Storybook** — the fastest, most visual place to desig
 
 This is Architrave's clearest wedge: a general coding agent starts in code; Architrave starts by reproducing the repo's design system in Storybook, gets sign-off, then builds the smallest matching native/web slice. For full-stack work the same pattern becomes contract-first: the service shape is approved before UI and backend drift apart.
 
+## Grounded in official design sources
+
+The design knowledge isn't invented — every platform pack and constitution is **cited to the vendor's own documentation**, so the agents reproduce the real system instead of a community approximation:
+
+- **Apple — macOS / iOS · SwiftUI.** Apple **Human Interface Guidelines**, **WWDC** engineering sessions, **SF Symbols**, and **Apple Design Resources**. Distilled into [`knowledge/apple.md`](knowledge/apple.md) (cited) and the deep [`constitution-apple.md`](constitution-apple.md) — verbatim macOS/iOS type tables, Liquid Glass functional‑layer rules, SF Symbols modes, and the native component catalog.
+- **Microsoft — Windows · WinUI 3 / Windows App SDK / WPF.** The **Fluent 2** design system ([fluent2.microsoft.design](https://fluent2.microsoft.design/)), the **Windows apps design** guidance on **Microsoft Learn** ([learn.microsoft.com/windows/apps/design](https://learn.microsoft.com/windows/apps/design/)), the **WinUI / Windows App SDK** reference, **Segoe Fluent Icons**, and **Microsoft Build** sessions. Distilled into [`knowledge/microsoft.md`](knowledge/microsoft.md) (cited) and the deep [`constitution-windows.md`](constitution-windows.md) — the Windows type ramp, Mica/Acrylic/Smoke materials, two‑layer elevation, and the WinUI control catalog.
+- **Web — React · component‑driven.** The **W3C WCAG** accessibility standard plus Fluent React / web‑platform conventions, in [`knowledge/web.md`](knowledge/web.md) (cited).
+
+Each constitution closes with a **Citations** section linking the live source pages, and every pack is marked *cited*. The standing rule is **verify against the source before emitting code** — vendor specs (type ramps, materials, control APIs) evolve every release.
+
 ## What it does
 
 - 🧭 **Designs the UX, not just the pixels.** The *UX Architect* works out information architecture, navigation, and every state (empty / loading / error) — validated in **Storybook** before anything is built.
@@ -210,7 +220,7 @@ The method isn't theoretical — it emerged independently across real apps, **Ph
 1. DESIGN SOURCE OF TRUTH      Storybook (component workbench) + design tokens (.tokens.json, W3C DTCG)
         │  validate / tweak the design here FIRST
         ▼
-2. KNOWLEDGE PACKS             knowledge/apple.md · microsoft.md · web.md · backend.md · operations-ux.md · design-tokens.md
+2. KNOWLEDGE PACKS             knowledge/apple.md · microsoft.md · web.md · backend.md · operations-ux.md · design-tokens.md  (+ constitution-apple.md · constitution-windows.md — deep native-app synthesis, cited)
         │  the Platform Design agent loads the pack named by config.platform
         ▼
 3. AGENTS                      Architrave conductor · UI specialists · backend/infra specialists · Adversarial Judge
@@ -271,9 +281,9 @@ After installing the plugin (above), **adopt/ground a repo** — this is also wh
 pwsh -NoProfile -File /path/to/architrave/tools/install.ps1 .    # Windows
 ```
 
-This copies the agents → `.github/agents/`, the gates → `gates/`, the harness helpers → `harness/`, the knowledge packs → `knowledge/`, scaffolds `architrave.config.json`, injects a grounding stanza into `AGENTS.md` (idempotent), wires the PostToolUse hook, and drops `.github/workflows/copilot-setup-steps.yml`.
+This copies the agents → `.github/agents/`, the gates → `gates/`, the harness helpers → `harness/`, the knowledge packs → `knowledge/`, the platform constitutions → repo root (`constitution-apple.md`, `constitution-windows.md`), scaffolds `architrave.config.json`, injects a grounding stanza into `AGENTS.md` (idempotent), wires the PostToolUse hook, and drops `.github/workflows/copilot-setup-steps.yml`.
 
-**Important update rule:** after every Architrave plugin update, run `tools/update.sh` (macOS/Linux) or `tools/update.ps1` (Windows) in each adopted repo. Plugin updates do not rewrite these copied repo assets. `tools/update.*` refreshes copied gates/harness/knowledge and the managed `AGENTS.md` stanza while leaving `architrave.config.json` and `.github/agents` alone by default; pass `--agents` / `-Agents` only when you deliberately want to refresh copied Architrave agents too.
+**Important update rule:** after every Architrave plugin update, run `tools/update.sh` (macOS/Linux) or `tools/update.ps1` (Windows) in each adopted repo. Plugin updates do not rewrite these copied repo assets. `tools/update.*` refreshes copied gates/harness/knowledge/constitution and the managed `AGENTS.md` stanza while leaving `architrave.config.json` and `.github/agents` alone by default; pass `--agents` / `-Agents` only when you deliberately want to refresh copied Architrave agents too.
 
 Then point it at your repo — edit `architrave.config.json`:
 
@@ -339,6 +349,8 @@ git tag v0.2.0 && git push origin main --tags # release.yml verifies tag==versio
 ```
 README.md                     ← you are here
 ROADMAP.md                    ← what's built vs. ported next
+constitution-apple.md         ← deep Apple native-Swift synthesis (HIG · WWDC · SF Symbols) — cited
+constitution-windows.md       ← deep Windows native-XAML synthesis (Fluent 2 · WinUI · Segoe Fluent Icons) — cited
 plugin.json                   ← agent-plugin manifest (Copilot CLI / app / VS Code)
 .github/plugin/marketplace.json ← Copilot plugin marketplace (self-hosted)
 .github/workflows/            ← validate (gate every push/PR) · release (tag vX.Y.Z → GitHub Release)

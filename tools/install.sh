@@ -45,6 +45,10 @@ mkdir -p "$TARGET/knowledge"
 cp "$KIT"/knowledge/*.md "$TARGET/knowledge/"
 echo "  ✓ knowledge → knowledge/ (apple · microsoft · web · backend · operations-ux · design-tokens · learning-loop · yagni)"
 
+# 2b-ii) Platform constitution(s) — the deep, source-cited native-app synthesis (e.g. Apple SwiftUI),
+# copied to the repo root (beside architrave.config.json) so the cloud agent can read it.
+cp "$KIT"/constitution-*.md "$TARGET/" 2>/dev/null && echo "  ✓ constitution → constitution-*.md (deep native-app synthesis; Apple + Windows)" || true
+
 # 2c) Audit harness — durable run artifacts + optional semantic review helpers.
 cp -R "$KIT"/harness/* "$TARGET/harness/"
 chmod +x "$TARGET"/harness/*.sh 2>/dev/null || true
@@ -139,7 +143,7 @@ Done. Next steps:
          --clients "copilot cli,vscode,claude code"
   6. Run the Architrave agent for a non-trivial UI change.
 
-After you later update the plugin, refresh this repo's copied gates + harness + knowledge
+After you later update the plugin, refresh this repo's copied gates + harness + knowledge + constitution
 (they don't auto-update; leaves architrave.config.json and .github/agents untouched by default):
        "$KIT/tools/update.sh" "$TARGET"
 Use "$KIT/tools/update.sh" --agents "$TARGET" only when you deliberately want

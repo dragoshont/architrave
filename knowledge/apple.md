@@ -52,3 +52,5 @@ What makes an app read as native macOS (Music.app / Apple Music / Mail are the I
 
 ## Citations
 HIG home, Accessibility (sizes/contrast/targets/Reduce Motion), Color, Typography, Layout, Materials, SF Symbols — all under developer.apple.com/design/human-interface-guidelines.
+
+**Deep reference (in‑repo):** `constitution-apple.md` — the full native‑Swift synthesis constitution (verbatim macOS/iOS type tables, Liquid Glass functional‑layer rules, SF Symbols modes/variants/animations, macOS scene/`NavigationSplitView`/toolbar/inspector architecture, the reverse‑engineering protocol, and the WWDC25/26 grounding). Load it when generating or reverse‑engineering SwiftUI so components are reused, not reinvented.

@@ -22,6 +22,15 @@ Before writing code, stop at the first rung that satisfies the acceptance criter
 
 The ladder is a reflex, not a research project. If two rungs work, choose the higher rung and move on. The first correct minimal solution wins.
 
+## Minimal scope is not minimal diagnosis
+
+YAGNI is about **scope** — do not build a speculative future. It is **not** about **diagnosis** — you still have to understand the present failure completely. They are independent axes, and an agent must guard both:
+
+- **Over-engineering:** building capability the task does not need. The ladder above guards this.
+- **Under-diagnosis:** shipping a change that hides the symptom but leaves the cause. The **root-cause & durable-fix discipline** (see `agents/architrave.agent.md`) guards this.
+
+A band-aid is not a small solution; it is a *non-solution that recurs*. For a defect, outage, or recurring/systemic problem, the YAGNI-correct fix is the smallest change that removes the **cause** — never the smallest change that hides the **symptom**. Diagnose first, then minimize the scope of the *durable* fix. "It broke again" is proof the last minimal change was too small in the wrong dimension.
+
 ## What YAGNI does not mean
 
 - Do not cut input validation at trust boundaries.
@@ -30,6 +39,8 @@ The ladder is a reflex, not a research project. If two rungs work, choose the hi
 - Do not cut tests for non-trivial logic. Keep the smallest meaningful check that would catch the failure.
 - Do not use YAGNI to justify sloppy design. Refactoring, design-token reconciliation, contracts, and clear seams are enabling practices that make later changes cheap.
 - Do not argue after the user explicitly asks for the full version; build it, still using repo patterns.
+- Do not use YAGNI to skip **root-cause diagnosis** of a defect, outage, or recurring failure. YAGNI minimizes speculative *scope*; it never minimizes *diagnostic depth*. Patching a symptom because the real fix is "more code" is the under-engineering failure, and it is as wrong as over-engineering.
+- Do not let "minimal" mean "least durable." For a **known-recurring or systemic problem**, the change that makes the symptom disappear is not a solution — the smallest change that removes the *cause* is. A stopgap is allowed only when labeled as such with the durable fix tracked.
 
 ## Ponytail evaluation
 
@@ -61,3 +72,5 @@ Generic development agents are broad and easy to forget. Architrave should posit
 - Wikipedia — *You aren't gonna need it* (XP context and relationship to refactoring/unit tests/CI).
 - DietrichGebert/ponytail — README, `skills/ponytail/SKILL.md`, `skills/ponytail-review/SKILL.md`, and `benchmarks/results/2026-06-18-agentic.md`.
 - JuliusBrussee/caveman — README (terse-output/token-compression comparison).
+- Google SRE — *Postmortem Culture: Learning from Failure* (address the root cause, not the symptom; recurrence as the signal of an incomplete fix).
+- Taiichi Ohno / Toyota Production System — *Five Whys* root-cause analysis (ask "why" until the mechanism, not the symptom, is named).
