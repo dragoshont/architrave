@@ -5,13 +5,13 @@
   },
   "metadata": {
     "description": "Architrave — a Storybook-first, contract-first, YAGNI-gated agent crew with deterministic gates plus two independent judge families.",
-    "version": "0.9.0"
+    "version": "0.9.1"
   },
   "plugins": [
     {
       "name": "architrave",
       "description": "Storybook-first, contract-first, YAGNI-gated agent crew for UI, backend, full-stack features, plan-only infrastructure, optional read-only runtime observation, and durable learning/audit artifacts. Grounds UI in Storybook + tokens, backend in architecture docs + contracts, ops in runtime evidence, and gates every change with deterministic checks plus two independent judge families. Retargeted per repo via architrave.config.json.",
-      "version": "0.9.0",
+      "version": "0.9.1",
       "source": ".",
       "license": "MIT",
       "keywords": [
