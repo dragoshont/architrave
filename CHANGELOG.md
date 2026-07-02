@@ -5,6 +5,20 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## [0.9.1] — 2026-07-02
+
+Dual-judge semantic gates are now packaged as their own release so installed clients refetch the
+updated Architrave instructions instead of staying on the existing v0.9.0 package.
+
+### Changed
+- Full semantic gates now require two independent judge-family passes by default: one Copilot/GPT
+  family judge and one Claude family judge.
+- Semantic review helpers default to running both configured providers, with explicit Copilot and
+  Claude command guidance.
+- Copilot and Claude marketplace manifests describe the dual-judge gate posture consistently.
+
+[0.9.1]: https://github.com/dragoshont/architrave/releases/tag/v0.9.1
+
 ## [0.8.13] — 2026-06-28
 
 Native‑app **constitutions**: deep, source‑cited rule bases that ground Architrave when it builds or
