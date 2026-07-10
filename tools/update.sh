@@ -13,7 +13,7 @@
 # bespoke repo agents to avoid split authority.
 #
 # Usage: tools/update.sh [--agents] [TARGET_REPO_DIR]   (default: current directory)
-set -uo pipefail
+set -euo pipefail
 
 KIT="$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -52,7 +52,7 @@ begin="<!-- architrave:begin -->"
 end="<!-- architrave:end -->"
 
 echo "Architrave → refreshing assets in: $TARGET (kit v${ver:-?})"
-mkdir -p "$TARGET/gates/hooks" "$TARGET/knowledge" "$TARGET/harness"
+mkdir -p "$TARGET/.github/hooks" "$TARGET/gates/hooks" "$TARGET/knowledge" "$TARGET/harness"
 
 if [ "$refresh_agents" -eq 1 ]; then
   mkdir -p "$TARGET/.github/agents"
@@ -71,6 +71,13 @@ cp "$KIT"/gates/checks.sh "$KIT"/gates/checks.ps1 \
 cp "$KIT"/gates/hooks/*.json "$TARGET/gates/hooks/"
 chmod +x "$TARGET"/gates/*.sh "$TARGET"/gates/*.ps1 2>/dev/null || true
 echo "  ✓ gates refreshed"
+
+# Active workspace hook. POSIX updater installs the POSIX command variant.
+cp "$KIT/gates/hooks/design-guard.json" "$TARGET/.github/hooks/design-guard.json" || {
+  echo "update: failed to refresh active workspace hook" >&2
+  exit 1
+}
+echo "  ✓ active workspace hook refreshed"
 
 # Knowledge packs — copied so the cloud agent (no plugin) can read them.
 cp "$KIT"/knowledge/*.md "$TARGET/knowledge/"

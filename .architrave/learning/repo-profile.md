@@ -42,9 +42,10 @@ Architrave is a cross-platform, judge-gated agent kit distributed as a Copilot/C
 |---|---|---|
 | There are 12 packaged agents. | `find agents -maxdepth 1 -name '*.agent.md' | wc -l`; `scripts/check-manifests.sh` frontmatter pass. | 2026-07-10 |
 | Knowledge packs include operations UX, YAGNI, and the learning loop. | `scripts/check-manifests.sh` knowledge-pack pass. | 2026-07-10 |
-| Current released plugin version is 0.9.1; issue #3 changes remain unreleased until Phase 2. | `plugin.json`; manifest version-sync gate; issue #3 phase ledger. | 2026-07-10 |
-| The working tree has a schema-valid `kind: knowledge` profile and explicit installer support. | `kit/examples/knowledge.architrave.json`; `scripts/test-config-profiles.sh`; `scripts/test-installers.sh`. | 2026-07-10 |
+| Current released plugin version is 0.10.2; proposed v0.10.3 adds structured workspace-hook output and updater propagation. | `plugin.json`; v0.10.2 release; issues #3 and #6 run artifacts. | 2026-07-10 |
+| The released kit has a schema-valid `kind: knowledge` profile and explicit installer support. | `kit/examples/knowledge.architrave.json`; `scripts/test-config-profiles.sh`; `scripts/test-installers.sh`; v0.10.2 release. | 2026-07-10 |
+| Codex CLI loads Architrave's repository `AGENTS.md`; first-class Codex crew packaging remains issue #4. | `codex debug prompt-input` smoke; issue #4 evidence comment. | 2026-07-10 |
 
 ## Last Reviewed
 
-2026-07-10 during run `20260710T-issue-3-knowledge-profile`.
+2026-07-10 during runs `20260710T-issue-3-knowledge-profile` and `20260710T-issue-6-hook-json`.

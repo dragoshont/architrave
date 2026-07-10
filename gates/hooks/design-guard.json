@@ -3,7 +3,7 @@
     "PostToolUse": [
       {
         "type": "command",
-        "command": "./gates/checks.sh --quick",
+        "command": "./gates/quality-gate.sh --hook-json",
         "timeout": 20
       }
     ]

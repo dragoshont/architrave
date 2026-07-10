@@ -1,0 +1,40 @@
+{
+  "schema": "architrave.run.v1",
+  "runId": "20260710T-issue-6-hook-json",
+  "status": "in-progress",
+  "startedAt": "2026-07-10T20:56:00Z",
+  "artifacts": {
+    "intake": ".architrave/runs/20260710T-issue-6-hook-json/intake.md",
+    "tournament": ".architrave/runs/20260710T-issue-6-hook-json/tournament.md",
+    "recommendedPlan": ".architrave/runs/20260710T-issue-6-hook-json/recommended-plan.md",
+    "phaseLedger": ".architrave/runs/20260710T-issue-6-hook-json/phase-ledger.md",
+    "deterministicGates": ".architrave/runs/20260710T-issue-6-hook-json/deterministic-gates.md",
+    "judgePre": ".architrave/runs/20260710T-issue-6-hook-json/judge-pre.md",
+    "judgePost": ".architrave/runs/20260710T-issue-6-hook-json/judge-post.md",
+    "runtimeObserver": ".architrave/runs/20260710T-issue-6-hook-json/runtime-observer.md"
+  },
+  "learning": {
+    "repoProfile": ".architrave/learning/repo-profile.md",
+    "repoLessons": ".architrave/learning/repo-lessons.md",
+    "candidateLessons": 0,
+    "promotionsProposed": 0
+  },
+  "phases": [
+    {
+      "phase": 1,
+      "name": "Structured hook delivery",
+      "status": "in-progress",
+      "scope": "Paired quality gates, hook manifests, updater propagation, fixtures, release, and warning-free consumer rerun.",
+      "gate": "Dual-shell suites, dual judges, green release, active-hook identity, and warning-free editor log.",
+      "result": "pending"
+    },
+    {
+      "phase": 2,
+      "name": "Model-aware tournaments and judges",
+      "status": "not-started",
+      "scope": "Intentional subagent and model routing in a separate phase.",
+      "gate": "Separate intake, tournament, availability proof, and dual judges.",
+      "result": "not started"
+    }
+  ]
+}

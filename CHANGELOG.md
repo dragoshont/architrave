@@ -5,6 +5,17 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## [0.10.3] - 2026-07-10
+
+### Fixed
+- PostToolUse design guards now invoke the paired quality gates in structured
+  hook mode, emitting `{"continue":true}` on success and exit 2 with stderr
+  diagnostics on invalid configuration.
+- POSIX and PowerShell fixtures parse the successful hook JSON and verify the
+  blocking failure contract, eliminating VS Code's non-JSON hook warnings.
+
+[0.10.3]: https://github.com/dragoshont/architrave/releases/tag/v0.10.3
+
 ## [0.10.2] - 2026-07-10
 
 ### Fixed

@@ -3,7 +3,7 @@
 | Phase | Name | Status | Scope | Gate | Result |
 |---:|---|---|---|---|---|
 | 1 | Contract and kit fix | completed | Schema, canonical example, paired installers/gates/agents/tests/docs. Release, consumer migration, and social content are out of scope. | Exact schema fixtures, installer E2E, paired gates, manifest suite, dual post judges. | PASS |
-| 2 | Release and consumer migration | in-progress | v0.10.0 release, plugin update, `social-ops` migration, copied-agent refresh, direct VS Code proof. Social content is out of scope. | Linux and Windows release green, consumer gates green, VS Code session/log proof. | pending |
+| 2 | Release and consumer migration | in-progress | v0.10.x release, plugin update, `social-ops` migration, copied-agent/hook refresh, direct VS Code proof. Social content is out of scope. | Linux and Windows release green, consumer gates green, warning-free VS Code session/log proof. | v0.10.2 + rooted routing PASS; structured-hook follow-up pending |
 | 3 | Social structure and product grounding | not-started | Shared social skills and product profiles. Architrave issue #3 work is out of scope. | Separate intake, tournament, phase ledger, and semantic gate. | not started |
 
 ## Phase Transition Log

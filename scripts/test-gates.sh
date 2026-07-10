@@ -22,5 +22,22 @@ grep -q 'profile knowledge: UI design JSON validation not applicable' <<<"$quick
 reconcile="$(cd "$repo" && ./gates/reconcile.sh)"
 grep -q 'UI design reconciliation not applicable for knowledge profile' <<<"$reconcile"
 quality="$(cd "$repo" && ./gates/quality-gate.sh)"
+grep -q 'profile knowledge: UI design JSON validation not applicable' <<<"$quality"
 grep -q 'knowledge profile config valid' <<<"$quality"
+(
+  cd "$repo"
+  ./gates/quality-gate.sh --hook-json >"$tmp/hook-success.out" 2>"$tmp/hook-success.err"
+)
+[ "$(cat "$tmp/hook-success.out")" = '{"continue":true}' ]
+[ "$(wc -c < "$tmp/hook-success.out" | tr -d ' ')" = "17" ]
+[ ! -s "$tmp/hook-success.err" ]
+
+printf '{' > "$repo/architrave.config.json"
+set +e
+(cd "$repo" && ./gates/quality-gate.sh --hook-json) >"$tmp/hook-fail.out" 2>"$tmp/hook-fail.err"
+hook_status=$?
+set -e
+[ "$hook_status" -eq 2 ]
+[ ! -s "$tmp/hook-fail.out" ]
+grep -q 'quality-gate: BLOCKING' "$tmp/hook-fail.err"
 echo "GATES: PASS"

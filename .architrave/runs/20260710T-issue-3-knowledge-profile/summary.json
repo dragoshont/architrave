@@ -32,9 +32,9 @@
       "phase": 2,
       "name": "Release and consumer migration",
       "status": "in-progress",
-      "scope": "Release v0.10.0, migrate social-ops, refresh agents, and prove VS Code chat routing.",
-      "gate": "Linux and Windows release green, consumer gates green, and VS Code proof.",
-      "result": "pending"
+      "scope": "Release v0.10.x, migrate social-ops, refresh agents and hooks, and prove VS Code chat routing.",
+      "gate": "Linux and Windows release green, consumer gates green, and warning-free VS Code proof.",
+      "result": "v0.10.2 and rooted routing PASS; structured-hook follow-up pending"
     },
     {
       "phase": 3,

@@ -69,3 +69,14 @@ reconciliation is not applicable.
 - The exact Windows workflow command list passes locally across config,
 	installer, run, learning, promotion, stale-learning, semantic-learning, and
 	gate fixtures. The correction is queued as v0.10.2.
+- v0.10.2 release run `29122741495` passed POSIX, native Windows, tag/version,
+	and GitHub Release publication. The installed Copilot plugin updated from
+	v0.9.0 to v0.10.2.
+- A rooted VS Code editor session in `/Users/dragoshont/Repo/social-ops`
+	returned `KIND=knowledge UI=not-configured` from the repo-local Architrave
+	agent. Its log also exposed issue #6: PostToolUse success output was plain text
+	and triggered `Hook command returned non-JSON output`.
+- The paired quality gates now provide `--hook-json` / `-HookJson`, emit exactly
+	`{"continue":true}` on success, and preserve exit-2 stderr diagnostics on
+	failure. Both POSIX and PowerShell hook success/failure fixtures and the full
+	dual-shell suites pass locally. The fix is queued as v0.10.3.

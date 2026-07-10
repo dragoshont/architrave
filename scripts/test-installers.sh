@@ -22,6 +22,7 @@ echo "ok    installer default application profile"
 git -C "$tmp/knowledge" init -q
 tools/install.sh --profile knowledge "$tmp/knowledge" >/dev/null
 cmp -s kit/examples/knowledge.architrave.json "$tmp/knowledge/architrave.config.json" || { echo "FAIL knowledge scaffold differs from canonical example" >&2; exit 1; }
+cmp -s gates/hooks/design-guard.json "$tmp/knowledge/.github/hooks/design-guard.json" || { echo "FAIL installer did not create active POSIX hook" >&2; exit 1; }
 npx --yes ajv-cli@5 validate --spec=draft7 -s kit/architrave.config.schema.json -d "$tmp/knowledge/architrave.config.json" >/dev/null
 git -C "$tmp/knowledge" add .
 (cd "$tmp/knowledge" && ./gates/checks.sh >/dev/null)
@@ -32,6 +33,18 @@ tools/install.sh --profile knowledge "$tmp/knowledge" >/dev/null
 after="$(shasum -a 256 "$tmp/knowledge/architrave.config.json" | awk '{print $1}')"
 [ "$before" = "$after" ] || { echo "FAIL installer clobbered existing knowledge config" >&2; exit 1; }
 echo "ok    installer knowledge profile idempotent"
+
+tools/update.sh --agents "$tmp/knowledge" >/dev/null
+cmp -s gates/hooks/design-guard.json "$tmp/knowledge/.github/hooks/design-guard.json" || { echo "FAIL updater did not refresh active POSIX hook" >&2; exit 1; }
+git -C "$tmp/knowledge" diff --check
+echo "ok    updater refreshes active POSIX hook"
+
+mkdir "$tmp/update-failure"
+printf '%s\n' '{"kind":"knowledge","build":"true","test":"true"}' > "$tmp/update-failure/architrave.config.json"
+mkdir -p "$tmp/update-failure/.github"
+printf '%s\n' 'not-a-directory' > "$tmp/update-failure/.github/hooks"
+expect_code 1 tools/update.sh "$tmp/update-failure"
+echo "ok    updater hook delivery fails closed"
 
 printf '%s\n' '{"sentinel":true}' > "$tmp/preserved/architrave.config.json"
 tools/install.sh --profile knowledge "$tmp/preserved" >/dev/null

@@ -27,7 +27,7 @@ $begin = '<!-- architrave:begin -->'
 $end   = '<!-- architrave:end -->'
 
 Write-Host "Architrave -> refreshing assets in: $Target (kit v$ver)"
-New-Item -ItemType Directory -Force -Path "$Target/gates/hooks","$Target/knowledge","$Target/harness" | Out-Null
+New-Item -ItemType Directory -Force -Path "$Target/.github/hooks","$Target/gates/hooks","$Target/knowledge","$Target/harness" | Out-Null
 
 if ($Agents) {
   New-Item -ItemType Directory -Force -Path "$Target/.github/agents" | Out-Null
@@ -41,6 +41,10 @@ if ($Agents) {
 Copy-Item "$kit/gates/checks.sh","$kit/gates/checks.ps1","$kit/gates/reconcile.sh","$kit/gates/reconcile.ps1","$kit/gates/quality-gate.sh","$kit/gates/quality-gate.ps1","$kit/gates/backend-checks.sh","$kit/gates/backend-checks.ps1","$kit/gates/rubric.md" "$Target/gates/" -Force
 Copy-Item "$kit/gates/hooks/*.json" "$Target/gates/hooks/" -Force
 Write-Host '  ok gates refreshed'
+
+# Active workspace hook. PowerShell updater installs the Windows command variant.
+Copy-Item "$kit/gates/hooks/design-guard.windows.json" "$Target/.github/hooks/design-guard.json" -Force
+Write-Host '  ok active workspace hook refreshed'
 
 # Knowledge packs - copied so the cloud agent (no plugin) can read them.
 Copy-Item "$kit/knowledge/*.md" "$Target/knowledge/" -Force
