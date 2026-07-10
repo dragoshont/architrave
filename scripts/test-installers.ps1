@@ -43,6 +43,12 @@ try {
   if ($Before -ne $After) { throw 'installer clobbered existing knowledge config' }
   Write-Host 'ok    installer knowledge profile idempotent'
 
+  & pwsh -NoProfile -File (Join-Path $Root 'tools/update.ps1') $Knowledge -Agents *> $null
+  if ($LASTEXITCODE -ne 0) { throw 'knowledge updater failed' }
+  $UpdateDiff = (& git -C $Knowledge diff --check *>&1 | Out-String)
+  if ($LASTEXITCODE -ne 0) { throw "knowledge updater produced whitespace errors:`n$UpdateDiff" }
+  Write-Host 'ok    updater agent refresh remains whitespace-clean'
+
   '{"sentinel":true}' | Set-Content (Join-Path $Preserved 'architrave.config.json') -Encoding utf8
   if ((Invoke-Installer @($Preserved, '-Profile', 'knowledge')) -ne 0) { throw 'preserve-existing install failed' }
   if (-not (Get-Content (Join-Path $Preserved 'architrave.config.json') -Raw | ConvertFrom-Json).sentinel) { throw 'existing config was clobbered' }

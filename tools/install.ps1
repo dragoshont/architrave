@@ -96,7 +96,7 @@ foreach ($pair in @(@($begin, $end))) {
 }
 $content = $content.TrimEnd()
 $content = $content + "`n`n$begin`n$stanza`n$end`n"
-Set-Content -Path $ag -Value $content -Encoding utf8
+Set-Content -Path $ag -Value $content -Encoding utf8 -NoNewline
 Write-Host "  ok AGENTS.md stanza injected/refreshed"
 
 # 5) PostToolUse hook (Windows variant -> the canonical hook name)

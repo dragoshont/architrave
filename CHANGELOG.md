@@ -5,6 +5,17 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## [0.10.2] - 2026-07-10
+
+### Fixed
+- PowerShell install and update paths no longer append a second newline to the
+  managed `AGENTS.md` block, so freshly adopted repositories pass
+  `git diff --check` on Windows.
+- The PowerShell installer fixture now validates the full generated repo and an
+  `update.ps1 -Agents` refresh with actionable captured output.
+
+[0.10.2]: https://github.com/dragoshont/architrave/releases/tag/v0.10.2
+
 ## [0.10.1] - 2026-07-10
 
 ### Fixed

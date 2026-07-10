@@ -61,3 +61,11 @@ reconciliation is not applicable.
 	repo's copied full gate. The fixture had discarded that gate output. A
 	main-only diagnostic commit now captures the direct staged-diff preflight and
 	full gate output before any further release tag.
+- Local PowerShell 7.6.3 was installed after that run. It reproduced the exact
+	generated `AGENTS.md` blank-line failure. `install.ps1` and `update.ps1` now
+	use `Set-Content -NoNewline` for their already newline-terminated managed
+	block. `test-installers.ps1` passes install, copied gates, idempotency,
+	existing-config preservation, and `update.ps1 -Agents` whitespace checks.
+- The exact Windows workflow command list passes locally across config,
+	installer, run, learning, promotion, stale-learning, semantic-learning, and
+	gate fixtures. The correction is queued as v0.10.2.
