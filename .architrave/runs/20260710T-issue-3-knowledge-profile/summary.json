@@ -1,7 +1,7 @@
 {
   "schema": "architrave.run.v1",
   "runId": "20260710T-issue-3-knowledge-profile",
-  "status": "in-progress",
+  "status": "completed",
   "startedAt": "2026-07-10T20:00:00Z",
   "artifacts": {
     "intake": ".architrave/runs/20260710T-issue-3-knowledge-profile/intake.md",
@@ -31,10 +31,10 @@
     {
       "phase": 2,
       "name": "Release and consumer migration",
-      "status": "in-progress",
+      "status": "completed",
       "scope": "Release v0.10.x, migrate social-ops, refresh agents and hooks, and prove VS Code chat routing.",
       "gate": "Linux and Windows release green, consumer gates green, and warning-free VS Code proof.",
-      "result": "v0.10.2 and rooted routing PASS; structured-hook follow-up pending"
+      "result": "PASS on v0.10.3"
     },
     {
       "phase": 3,

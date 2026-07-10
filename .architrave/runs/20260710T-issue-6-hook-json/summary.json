@@ -1,7 +1,7 @@
 {
   "schema": "architrave.run.v1",
   "runId": "20260710T-issue-6-hook-json",
-  "status": "in-progress",
+  "status": "completed",
   "startedAt": "2026-07-10T20:56:00Z",
   "artifacts": {
     "intake": ".architrave/runs/20260710T-issue-6-hook-json/intake.md",
@@ -23,10 +23,10 @@
     {
       "phase": 1,
       "name": "Structured hook delivery",
-      "status": "in-progress",
+      "status": "completed",
       "scope": "Paired quality gates, hook manifests, updater propagation, fixtures, release, and warning-free consumer rerun.",
       "gate": "Dual-shell suites, dual judges, green release, active-hook identity, and warning-free editor log.",
-      "result": "pending"
+      "result": "PASS on v0.10.3"
     },
     {
       "phase": 2,

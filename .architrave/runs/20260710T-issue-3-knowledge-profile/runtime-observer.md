@@ -18,9 +18,13 @@
 ## Mismatches
 
 - Agent routing is correct.
-- Hook success output is not structured in v0.10.2. The v0.10.3 candidate fixes
-	and tests structured output plus updater propagation; a warning-free rerun is
-	pending release.
+- Hook success output was not structured in v0.10.2.
+- After v0.10.3 re-copy, session `c09003b2-4da6-4953-a0a5-c99cee17ca49` was
+	rooted at Social Ops and returned `KIND=knowledge UI=not-configured
+	HOOK=structured`.
+- The Social Ops workspace hook log ran `quality-gate.sh --hook-json` three
+	times, recorded `Output: {"continue":true}`, and contained zero non-JSON
+	warnings.
 
 ## Human Approval Items
 

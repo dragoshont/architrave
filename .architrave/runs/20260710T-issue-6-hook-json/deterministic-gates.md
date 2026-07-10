@@ -35,4 +35,10 @@ Not applicable to hook contract.
 	refreshed: PASS.
 - Both issue #3 and issue #6 run validators: PASS.
 - Final full POSIX and exact Windows-workflow PowerShell suites: PASS.
-- Semantic gates, release, active-hook re-copy, and warning-free rerun: pending.
+- GPT-5.6 Sol and Claude Opus 4.6 final judges: PASS.
+- v0.10.3 main validation and release workflows: PASS on POSIX and native
+	Windows; GitHub Release published.
+- Installed plugin, Social Ops copied agents/gates, kit stamp, and active hook
+	updated to v0.10.3: PASS.
+- Rooted Social Ops editor session and structured hook log: PASS; three
+	`{"continue":true}` outputs and zero non-JSON warnings.
