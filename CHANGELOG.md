@@ -5,6 +5,15 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## [0.10.1] - 2026-07-10
+
+### Fixed
+- PowerShell profile-aware gate fixtures now capture the information stream
+  emitted by `Write-Host`, so Linux and Windows CI can assert the messages that
+  were already visible in job output.
+
+[0.10.1]: https://github.com/dragoshont/architrave/releases/tag/v0.10.1
+
 ## [0.10.0] - 2026-07-10
 
 ### Added

@@ -49,13 +49,13 @@ try {
 '@
   Push-Location $KnowledgeRepo
   try {
-    $QuickOutput = (& ./gates/checks.ps1 -Quick 2>&1 | Out-String)
+    $QuickOutput = (& ./gates/checks.ps1 -Quick *>&1 | Out-String)
     if ($LASTEXITCODE -ne 0 -or $QuickOutput -notmatch 'profile knowledge: UI design JSON validation not applicable') { throw 'knowledge quick gate failed' }
     & ./gates/checks.ps1 *> $null
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path build.ran) -or -not (Test-Path test.ran)) { throw 'knowledge full gate did not execute build/test' }
-    $ReconcileOutput = (& ./gates/reconcile.ps1 2>&1 | Out-String)
+    $ReconcileOutput = (& ./gates/reconcile.ps1 *>&1 | Out-String)
     if ($LASTEXITCODE -ne 0 -or $ReconcileOutput -notmatch 'UI design reconciliation not applicable for knowledge profile') { throw 'knowledge reconcile message failed' }
-    $QualityOutput = (& ./gates/quality-gate.ps1 2>&1 | Out-String)
+    $QualityOutput = (& ./gates/quality-gate.ps1 *>&1 | Out-String)
     if ($LASTEXITCODE -ne 0 -or $QualityOutput -notmatch 'knowledge profile config valid') { throw 'knowledge quality gate failed' }
     Write-Host 'ok   knowledge-profile-gates'
   } finally { Pop-Location }

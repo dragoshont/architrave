@@ -50,3 +50,9 @@ reconciliation is not applicable.
 	stale v0.7.0 fact to current v0.9.1 and issue #3 working-tree evidence.
 - Release workflow, plugin update, consumer migration, and direct VS Code chat
 	proof belong to Phase 2 and have not started.
+- Initial v0.10.0 main validation run `29121656406` exposed a PowerShell fixture
+	oracle defect: `Write-Host` output was visible but not captured by `2>&1`.
+	Product gates passed up to that assertion. The fixture now captures all streams
+	with `*>&1`; v0.10.0 remains an immutable failed tag and the correction is
+	queued as v0.10.1. Local PowerShell execution remains unavailable, so CI is the
+	executable proof.
