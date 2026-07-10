@@ -28,8 +28,13 @@ try {
   & npx --yes ajv-cli@5 validate --spec=draft7 -s (Join-Path $Root 'kit/architrave.config.schema.json') -d (Join-Path $Knowledge 'architrave.config.json') *> $null
   if ($LASTEXITCODE -ne 0) { throw 'knowledge scaffold schema validation failed' }
   git -C $Knowledge add .
+  $DiffOutput = (& git -C $Knowledge diff --check --cached *>&1 | Out-String)
+  if ($LASTEXITCODE -ne 0) { throw "knowledge scaffold staged diff failed:`n$DiffOutput" }
   Push-Location $Knowledge
-  try { ./gates/checks.ps1 *> $null; if ($LASTEXITCODE -ne 0) { throw 'knowledge scaffold gates failed' } } finally { Pop-Location }
+  try {
+    $GateOutput = (& ./gates/checks.ps1 *>&1 | Out-String)
+    if ($LASTEXITCODE -ne 0) { throw "knowledge scaffold gates failed:`n$GateOutput" }
+  } finally { Pop-Location }
   Write-Host 'ok    installer knowledge scaffold validates and passes gates'
 
   $Before = (Get-FileHash (Join-Path $Knowledge 'architrave.config.json') -Algorithm SHA256).Hash

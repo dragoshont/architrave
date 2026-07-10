@@ -56,3 +56,8 @@ reconciliation is not applicable.
 	with `*>&1`; v0.10.0 remains an immutable failed tag and the correction is
 	queued as v0.10.1. Local PowerShell execution remains unavailable, so CI is the
 	executable proof.
+- v0.10.1 run `29121855261` made POSIX green and advanced native Windows through
+	the complete schema-profile suite, then failed inside the generated knowledge
+	repo's copied full gate. The fixture had discarded that gate output. A
+	main-only diagnostic commit now captures the direct staged-diff preflight and
+	full gate output before any further release tag.
