@@ -1,12 +1,26 @@
 #!/usr/bin/env pwsh
 # Architrave installer (PowerShell / Windows). Mirror of tools/install.sh.
-# Usage: pwsh -NoProfile -File tools/install.ps1 [TargetRepoDir]   (default: CWD)
+# Usage: pwsh -NoProfile -File tools/install.ps1 [TargetRepoDir] [-Profile application|knowledge]
 # For local agents you ALSO install the plugin once:
 #   copilot plugin marketplace add dragoshont/architrave
 #   copilot plugin install architrave@architrave
 [CmdletBinding()]
-param([string]$Target = "$PWD")
+param(
+  [Parameter(Position = 0)]
+  [string]$Target = "$PWD",
+  [string]$Profile = 'application',
+  [switch]$Help
+)
 $ErrorActionPreference = 'Stop'
+
+if ($Help) {
+  Write-Host 'Usage: tools/install.ps1 [TargetRepoDir] [-Profile application|knowledge]'
+  exit 0
+}
+if ($Profile -notin @('application', 'knowledge')) {
+  [Console]::Error.WriteLine("install: unknown profile '$Profile' (expected application or knowledge)")
+  exit 2
+}
 
 $kit = Split-Path (Split-Path $MyInvocation.MyCommand.Path -Parent) -Parent
 $Target = (Resolve-Path $Target).Path
@@ -42,6 +56,9 @@ Write-Host "  ok harness -> harness/ (init-run / validate-run / semantic-review 
 
 # 3) architrave.config.json — scaffold only if absent
 if (-not (Test-Path "$Target/architrave.config.json")) {
+if ($Profile -eq 'knowledge') {
+  Copy-Item "$kit/kit/examples/knowledge.architrave.json" "$Target/architrave.config.json" -Force
+} else {
 @'
 {
   "platform": "web",
@@ -65,7 +82,8 @@ if (-not (Test-Path "$Target/architrave.config.json")) {
   }
 }
 '@ | Set-Content -Path "$Target/architrave.config.json" -Encoding utf8
-  Write-Host "  ok scaffolded architrave.config.json  <- EDIT to match this repo"
+}
+  Write-Host "  ok scaffolded architrave.config.json (profile: $Profile)  <- EDIT build/test and paths to match this repo"
 } else { Write-Host "  - architrave.config.json present - left as-is" }
 
 # 4) AGENTS.md stanza — idempotent
@@ -100,18 +118,23 @@ Write-Host "  ok stamped gates/.kit-version = $ver"
 
 Write-Host ""
 Write-Host "Done. Next steps:"
-Write-Host "  1. Edit architrave.config.json to match this repo."
+Write-Host "  1. Edit architrave.config.json to match this repo (profile: $Profile)."
 Write-Host "  2. Install the agents for local Copilot surfaces:"
 Write-Host "       copilot plugin marketplace add dragoshont/architrave"
 Write-Host "       copilot plugin install architrave@architrave"
-Write-Host "  3. (Optional, React Storybook) Wire the live Storybook MCP, then set designSource.mcp:"
-Write-Host "       npx storybook add @storybook/addon-mcp"
-Write-Host "       npx mcp-add --type http --url ""http://localhost:6006/mcp"" --scope project"
-Write-Host "  4. (Optional, real product/UI references) Wire Mobbin MCP (browser OAuth, no API key) as a local client config:"
-Write-Host "       npx mcp-add --name mobbin --type http --url ""https://api.mobbin.com/mcp"" --scope global --clients ""copilot cli,vscode,claude code"""
-Write-Host "  5. (Optional, self-hosted web search) Wire SearXNG MCP pointed at your own instance; keep private instance URLs/credentials out of Git and architrave.config.json:"
-Write-Host "       npx mcp-add --name searxng --type stdio --command npx --args ""-y,mcp-searxng"" --env ""SEARXNG_URL=https://searxng.your-host.example"" --scope global --clients ""copilot cli,vscode,claude code"""
-Write-Host "  6. Run the Architrave agent for a non-trivial UI change."
+if ($Profile -eq 'application') {
+  Write-Host "  3. (Optional, React Storybook) Wire the live Storybook MCP, then set designSource.mcp:"
+  Write-Host "       npx storybook add @storybook/addon-mcp"
+  Write-Host "       npx mcp-add --type http --url ""http://localhost:6006/mcp"" --scope project"
+  Write-Host "  4. (Optional, real product/UI references) Wire Mobbin MCP (browser OAuth, no API key) as a local client config:"
+  Write-Host "       npx mcp-add --name mobbin --type http --url ""https://api.mobbin.com/mcp"" --scope global --clients ""copilot cli,vscode,claude code"""
+  Write-Host "  5. (Optional, self-hosted web search) Wire SearXNG MCP pointed at your own instance; keep private instance URLs/credentials out of Git and architrave.config.json:"
+  Write-Host "       npx mcp-add --name searxng --type stdio --command npx --args ""-y,mcp-searxng"" --env ""SEARXNG_URL=https://searxng.your-host.example"" --scope global --clients ""copilot cli,vscode,claude code"""
+  Write-Host "  6. Run the Architrave agent for a non-trivial change."
+} else {
+  Write-Host "  3. Run gates/checks.ps1 and edit the knowledge profile's build/test commands if needed."
+  Write-Host "  4. Start a new agent session and ask Architrave to summarize the configured repository profile."
+}
 Write-Host ""
 Write-Host "After you later update the plugin, refresh this repo's copied gates + harness + knowledge:"
 Write-Host "       pwsh -NoProfile -File `"$kit/tools/update.ps1`" `"$Target`""

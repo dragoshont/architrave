@@ -53,3 +53,9 @@
 - [x] Deterministic stale-learning guard that validates repo-profile and lessons against current repo files before promotion.
 - [x] Deterministic stale-fact recovery that marks unsupported local-link facts as `UNVALIDATED` before promotion.
 - [x] Semantic stale-fact recovery that checks prose claims beyond local file references via provider-backed JSONL findings plus deterministic exact-line `UNVALIDATED:` recovery.
+
+## Milestone 6 - Repository Profiles
+- [x] First-class `kind: knowledge` schema contract with no synthetic UI fields.
+- [x] Explicit POSIX and PowerShell knowledge installer profiles.
+- [x] Profile-aware gates, agent routing, examples, and cross-platform fixtures.
+- [ ] First-class Codex CLI packaging and role routing (tracked in issue #4).

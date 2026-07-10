@@ -1,6 +1,6 @@
 # AGENTS.md — Architrave
 
-Architrave is a **cross-platform, judge-gated agent kit** for UI, backend, full-stack features, plan-only infrastructure, optional runtime observation, and durable learning/audit artifacts, distributed as a Copilot / Claude **agent plugin** plus a per-repo **installer**. UI grounds in Storybook + design tokens; backend grounds in architecture docs + contracts; IaC is proposal/plan-only.
+Architrave is a **cross-platform, judge-gated agent kit** for knowledge/automation repositories, UI, backend, full-stack features, plan-only infrastructure, optional runtime observation, and durable learning/audit artifacts, distributed as a Copilot / Claude **agent plugin** plus a per-repo **installer**. Knowledge profiles ground in repository sources without inventing UI; UI grounds in Storybook + design tokens; backend grounds in architecture docs + contracts; IaC is proposal/plan-only.
 
 ## What's here
 - `agents/` — the twelve agents: **Architrave**, **Product Research**, **Operations UX**, **UX Architect**, **UI Visual**, **Platform Design**, **Service Architect**, **Backend Planner**, **Backend Implementer**, **Infra Engineer**, **Runtime Observer**, and **Adversarial Judge**. Shared `.agent.md` format across VS Code / Copilot CLI / the Copilot app / Claude Code.
@@ -24,4 +24,5 @@ Architrave is a **cross-platform, judge-gated agent kit** for UI, backend, full-
 - Validate harness schemas: `jq empty harness/schemas/*.json`.
 - Validate agent YAML frontmatter with `ruby -ryaml` (PyYAML is not installed on the dev Mac).
 - Smoke-test the gates against a config with `gates/checks.sh --quick`.
+- Test repository profiles and installers with `scripts/test-config-profiles.sh` and `scripts/test-installers.sh`.
 - Test plugin load: `copilot plugin install "$PWD"` → `copilot plugin list` → `copilot plugin uninstall architrave`.

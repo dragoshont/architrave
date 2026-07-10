@@ -74,6 +74,15 @@ pwsh -NoProfile -File /path/to/architrave/tools/install.ps1 .    # Windows
 
 Edit `architrave.config.json` to point at the repo's Storybook/design source, build/test commands, optional backend, optional IaC, optional runtime observation, and optional learning paths. Then ask the **Architrave** agent to build a feature.
 
+For a repository that contains knowledge, skills, schemas, and automation but no product UI or service lane, use the explicit knowledge profile:
+
+```bash
+/path/to/architrave/tools/install.sh --profile knowledge .
+pwsh -NoProfile -File /path/to/architrave/tools/install.ps1 . -Profile knowledge
+```
+
+The generated config is the canonical [`kit/examples/knowledge.architrave.json`](kit/examples/knowledge.architrave.json). It requires real build/test commands while deliberately omitting platform, Storybook, tokens, backend, IaC, and runtime fields. The default installer profile remains the existing application scaffold.
+
 **Updating.** Releases bump the plugin version, so a plain update pulls them:
 
 ```bash
@@ -107,6 +116,8 @@ Architrave starts with visible intake: understanding, acceptance criteria, groun
 For UI, Architrave starts in **Storybook** or the configured design source, not in random app code. For backend/full-stack, it starts with the **contract** so UI and backend do not drift. For infrastructure, it stops at **plan/policy output** and leaves apply to a human. For non-trivial work, it writes run artifacts under `.architrave/runs/` so future agents can resume from evidence instead of chat memory.
 
 **Full-stack is built in.** Set a `backend` and/or `iac` block in `architrave.config.json` and the same conductor extends past UI. Repos without a service, infra, or runtime lane simply omit those blocks.
+
+**Knowledge repositories are first-class.** Set `kind: "knowledge"` through the installer profile and Architrave grounds in repository docs, scripts, skills, schemas, tests, and learning artifacts. It does not invent a UI lane or demand Storybook sign-off.
 
 **Learning is explicit.** Set the optional `learning` block and Architrave keeps per-run evidence, a concise repo profile, and candidate repeated lessons. Lessons only become standing repo guidance after validation and review.
 

@@ -11,6 +11,9 @@ Set-Location $root
 $cfg = Get-Content 'architrave.config.json' -Raw | ConvertFrom-Json
 function Get-Field($n) { if ($cfg.PSObject.Properties.Name -contains $n) { return [string]$cfg.$n }; return '' }
 
+if ((Get-Field 'kind') -eq 'knowledge') {
+  Write-Host 'reconcile: UI design reconciliation not applicable for knowledge profile; skipping (PASS)'; exit 0
+}
 $tokens = Get-Field 'tokens'; $tokenBuild = Get-Field 'tokenBuild'
 if ([string]::IsNullOrWhiteSpace($tokens) -or [string]::IsNullOrWhiteSpace($tokenBuild)) {
   Write-Host 'reconcile: tokens/tokenBuild not configured — design<->code SSOT not wired yet; skipping (PASS)'; exit 0

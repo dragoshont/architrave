@@ -63,8 +63,13 @@ validate_json() {
 
 echo "== Architrave checks (root: $root) =="
 validate_json "architrave.config.json" "config   "
-validate_json "$(cfg designMap)"  "designMap"
-validate_json "$(cfg tokens)"     "tokens   "
+kind="$(cfg kind)"
+if [ "$kind" = "knowledge" ]; then
+  echo "info  profile knowledge: UI design JSON validation not applicable"
+else
+  validate_json "$(cfg designMap)"  "designMap"
+  validate_json "$(cfg tokens)"     "tokens   "
+fi
 
 if [ "$quick" -eq 1 ]; then
   if [ "$fail" -eq 0 ]; then echo "CHECKS (quick): PASS"; else echo "CHECKS (quick): FAIL"; fi

@@ -4,13 +4,65 @@
 # every consumer instantly — this is the gate that stops that. Runs locally and in CI
 # (.github/workflows/validate.yml). Needs: jq, ruby (frontmatter), npx (ajv, optional).
 #
-# Usage: scripts/check-manifests.sh
+# Usage: scripts/check-manifests.sh [--scan-only]
 set -uo pipefail
 cd "$(dirname "$0")/.."
+
+scan_only=0
+case "${1:-}" in
+  "") ;;
+  --scan-only) scan_only=1 ;;
+  *) echo "usage: scripts/check-manifests.sh [--scan-only]" >&2; exit 2 ;;
+esac
 
 fail=0
 err() { printf '  \033[31m✗\033[0m %s\n' "$*" >&2; fail=1; }
 ok()  { printf '  \033[32m✓\033[0m %s\n' "$*"; }
+scan_repo() { # <pattern> <output-file>
+  local pattern="$1" output="$2" scan_status
+  if [ "${ARCHITRAVE_FORCE_GREP:-0}" != "1" ] && command -v rg >/dev/null 2>&1; then
+    rg --hidden -n "$pattern" --glob '!node_modules' --glob '!.git' --glob '!assets/*.png' . >"$output" 2>"$output.error"
+  else
+    grep -R -n -E --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=.architrave \
+      --exclude='*.png' --exclude='*.jpg' --exclude='*.jpeg' --exclude='*.webp' \
+      "$pattern" . >"$output" 2>"$output.error"
+  fi
+  scan_status=$?
+  if [ "$scan_status" -gt 1 ]; then
+    sed 's/^/      /' "$output.error" >&2
+  fi
+  rm -f "$output.error"
+  return "$scan_status"
+}
+run_repo_scans() {
+  local legacy_tmp mcp_secret_tmp legacy_name legacy_plugin
+  legacy_tmp="$(mktemp)"
+  legacy_name="ui""kit"
+  legacy_plugin="architrave""-ui"
+  echo "== no legacy config name references =="
+  scan_repo "${legacy_name}[.]config|[.]${legacy_name}[.]json|${legacy_name} config|${legacy_plugin}" "$legacy_tmp"
+  case "$?" in
+    0) err "legacy config name references remain"; sed 's/^/      /' "$legacy_tmp" | head -20 ;;
+    1) ok "no legacy config references" ;;
+    *) err "legacy config scan failed" ;;
+  esac
+  rm -f "$legacy_tmp"
+
+  mcp_secret_tmp="$(mktemp)"
+  echo "== no MCP bearer/auth material committed =="
+  scan_repo 'mcp-[A-Za-z0-9_-]{12,}|Authorization[=:]Bearer[[:space:]]+mcp-' "$mcp_secret_tmp"
+  case "$?" in
+    0) err "possible MCP bearer token/auth material committed"; sed 's/^/      /' "$mcp_secret_tmp" | head -20 ;;
+    1) ok "no MCP-looking bearer tokens or auth headers" ;;
+    *) err "MCP bearer/auth scan failed" ;;
+  esac
+  rm -f "$mcp_secret_tmp"
+}
+
+if [ "$scan_only" -eq 1 ]; then
+  run_repo_scans
+  exit "$fail"
+fi
 
 echo "== JSON well-formed =="
 json_files=(
@@ -19,6 +71,7 @@ json_files=(
   .claude-plugin/plugin.json
   .claude-plugin/marketplace.json
   kit/architrave.config.schema.json
+  kit/examples/knowledge.architrave.json
   kit/examples/phonodeck.architrave.json
   kit/examples/sideport.architrave.json
   kit/examples/tessera.architrave.json
@@ -86,29 +139,33 @@ else
   echo "  • npx not found — skipping benchmark scenario schema check"
 fi
 
-echo "== no legacy config name references =="
-legacy_tmp="$(mktemp)"
-legacy_name="ui""kit"
-legacy_plugin="architrave""-ui"
-if rg --hidden -n "${legacy_name}[.]config|[.]${legacy_name}[.]json|${legacy_name} config|${legacy_plugin}" \
-    --glob '!node_modules' --glob '!.git' --glob '!assets/*.png' . >"$legacy_tmp" 2>/dev/null; then
-  err "legacy config name references remain"
-  sed 's/^/      /' "$legacy_tmp" | head -20
+echo "== repository profile fixtures =="
+if scripts/test-config-profiles.sh >/dev/null 2>&1; then
+  ok "knowledge and legacy schema profiles"
 else
-  ok "no legacy config references"
+  err "config profile fixtures failed"
+  scripts/test-config-profiles.sh 2>&1 | sed 's/^/      /' | tail -24
 fi
-rm -f "$legacy_tmp"
+if scripts/test-installers.sh >/dev/null 2>&1; then
+  ok "application and knowledge installer profiles"
+else
+  err "installer profile fixtures failed"
+  scripts/test-installers.sh 2>&1 | sed 's/^/      /' | tail -24
+fi
+if scripts/test-gates.sh >/dev/null 2>&1; then
+  ok "knowledge profile gate messages and execution"
+else
+  err "POSIX gate profile fixtures failed"
+  scripts/test-gates.sh 2>&1 | sed 's/^/      /' | tail -24
+fi
+if scripts/test-manifest-scanner.sh >/dev/null 2>&1; then
+  ok "manifest scanner clean and positive grep-fallback paths"
+else
+  err "manifest scanner fixtures failed"
+  scripts/test-manifest-scanner.sh 2>&1 | sed 's/^/      /' | tail -24
+fi
 
-echo "== no MCP bearer/auth material committed =="
-mcp_secret_tmp="$(mktemp)"
-if rg --hidden -n 'mcp-[A-Za-z0-9_-]{12,}|Authorization[=:]Bearer[[:space:]]+mcp-' \
-    --glob '!node_modules' --glob '!.git' --glob '!assets/*.png' . >"$mcp_secret_tmp" 2>/dev/null; then
-  err "possible MCP bearer token/auth material committed"
-  sed 's/^/      /' "$mcp_secret_tmp" | head -20
-else
-  ok "no MCP-looking bearer tokens or auth headers"
-fi
-rm -f "$mcp_secret_tmp"
+run_repo_scans
 
 echo "== agent frontmatter (YAML parses + has name/description) =="
 if command -v ruby >/dev/null 2>&1; then

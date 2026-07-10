@@ -2,11 +2,15 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://architrave/architrave.config.schema.json",
   "title": "Architrave per-repo config",
-  "description": "Declares how Architrave retargets its agents, gates, and knowledge for one repo. Lives at the repo root as architrave.config.json. UI, backend, full-stack, and infrastructure lanes are configured here; infra is always plan-only.",
+  "description": "Declares how Architrave retargets its agents, gates, and knowledge for one repo. Lives at the repo root as architrave.config.json. Application repositories keep the legacy UI-shaped contract. Knowledge repositories opt in with kind=knowledge and do not declare UI, backend, infrastructure, or runtime lanes.",
   "type": "object",
-  "required": ["platform", "stack", "designSource", "applyTo", "build", "test"],
   "additionalProperties": false,
   "properties": {
+    "kind": {
+      "type": "string",
+      "description": "Optional repository profile discriminator. Omit for the legacy application/UI contract. Use knowledge for Markdown, skills, and automation repositories with no product UI or service lane.",
+      "enum": ["knowledge"]
+    },
     "platform": {
       "type": "string",
       "description": "Selects the knowledge pack the Platform Design agent loads.",
@@ -111,5 +115,38 @@
         "promoteTargets": { "type": "array", "description": "Allowed durable destinations for promoted lessons.", "items": { "type": "string", "enum": ["architrave.config.json", "AGENTS.md", ".github/instructions", "docs"] } }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": ["kind"],
+        "properties": {
+          "kind": { "const": "knowledge" }
+        }
+      },
+      "then": {
+        "required": ["kind", "build", "test"],
+        "not": {
+          "anyOf": [
+            { "required": ["platform"] },
+            { "required": ["stack"] },
+            { "required": ["designSource"] },
+            { "required": ["designMap"] },
+            { "required": ["tokens"] },
+            { "required": ["tokenBuild"] },
+            { "required": ["knowledgePack"] },
+            { "required": ["applyTo"] },
+            { "required": ["generate"] },
+            { "required": ["screenshot"] },
+            { "required": ["backend"] },
+            { "required": ["iac"] },
+            { "required": ["ops"] }
+          ]
+        }
+      },
+      "else": {
+        "required": ["platform", "stack", "designSource", "applyTo", "build", "test"]
+      }
+    }
+  ]
 }

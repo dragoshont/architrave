@@ -9,15 +9,53 @@
 #   • drops .github/workflows/copilot-setup-steps.yml (cloud-agent gate deps)
 #   • wires the POSIX PostToolUse hook into .github/hooks/
 #
-# Usage: tools/install.sh [TARGET_REPO_DIR]      (default: current directory)
+# Usage: tools/install.sh [--profile application|knowledge] [TARGET_REPO_DIR]
+#        default profile: application; default target: current directory
 # For local agents you ALSO install the plugin once:
 #   copilot plugin marketplace add dragoshont/architrave
 #   copilot plugin install architrave@architrave
 set -uo pipefail
 
 KIT="$(cd "$(dirname "$0")/.." && pwd)"
-TARGET="${1:-$PWD}"
-TARGET="$(cd "$TARGET" 2>/dev/null && pwd)" || { echo "install: target dir not found: ${1:-$PWD}" >&2; exit 1; }
+profile="application"
+target_arg=""
+usage() {
+  echo "Usage: tools/install.sh [--profile application|knowledge] [TARGET_REPO_DIR]"
+}
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --profile)
+      shift
+      [ "$#" -gt 0 ] || { echo "install: --profile requires application or knowledge" >&2; exit 2; }
+      profile="$1"
+      ;;
+    --profile=*)
+      profile="${1#--profile=}"
+      [ -n "$profile" ] || { echo "install: --profile requires application or knowledge" >&2; exit 2; }
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --*)
+      echo "install: unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+    *)
+      [ -z "$target_arg" ] || { echo "install: unexpected extra argument: $1" >&2; usage >&2; exit 2; }
+      target_arg="$1"
+      ;;
+  esac
+  shift
+done
+case "$profile" in
+  application|knowledge) ;;
+  *) echo "install: unknown profile '$profile' (expected application or knowledge)" >&2; exit 2 ;;
+esac
+
+TARGET="${target_arg:-$PWD}"
+TARGET="$(cd "$TARGET" 2>/dev/null && pwd)" || { echo "install: target dir not found: ${target_arg:-$PWD}" >&2; exit 1; }
 [ "$TARGET" = "$KIT" ] && { echo "install: refusing to install the kit into itself" >&2; exit 1; }
 
 begin="<!-- architrave:begin -->"
@@ -56,7 +94,10 @@ echo "  ✓ harness → harness/ (init-run · validate-run · semantic-review ·
 
 # 3) architrave.config.json — scaffold only if absent (never clobber).
 if [ ! -f "$TARGET/architrave.config.json" ]; then
-  cat > "$TARGET/architrave.config.json" <<'JSON'
+  if [ "$profile" = "knowledge" ]; then
+    cp "$KIT/kit/examples/knowledge.architrave.json" "$TARGET/architrave.config.json"
+  else
+    cat > "$TARGET/architrave.config.json" <<'JSON'
 {
   "platform": "web",
   "stack": "react",
@@ -79,7 +120,8 @@ if [ ! -f "$TARGET/architrave.config.json" ]; then
   }
 }
 JSON
-  echo "  ✓ scaffolded architrave.config.json  ← EDIT to match this repo"
+  fi
+  echo "  ✓ scaffolded architrave.config.json (profile: $profile)  ← EDIT build/test and paths to match this repo"
 else
   echo "  • architrave.config.json already present — left as-is"
 fi
@@ -124,10 +166,13 @@ echo "  ✓ stamped gates/.kit-version = ${ver:-0.0.0}"
 cat <<EOF
 
 Done. Next steps:
-  1. Edit architrave.config.json to match this repo (platform/stack/designSource/tokens/build/test/learning).
+  1. Edit architrave.config.json to match this repo (profile: $profile).
   2. Install the agents for local Copilot surfaces (CLI + app + VS Code):
       copilot plugin marketplace add dragoshont/architrave
       copilot plugin install architrave@architrave
+EOF
+if [ "$profile" = "application" ]; then
+cat <<EOF
   3. (Optional, React Storybook) Wire the live Storybook MCP so agents reuse real
      components instead of reinventing — then set designSource.mcp to the URL:
        npx storybook add @storybook/addon-mcp
@@ -141,7 +186,15 @@ Done. Next steps:
        npx mcp-add --name searxng --type stdio --command npx --args "-y,mcp-searxng" \
          --env "SEARXNG_URL=https://searxng.your-host.example" --scope global \
          --clients "copilot cli,vscode,claude code"
-  6. Run the Architrave agent for a non-trivial UI change.
+  6. Run the Architrave agent for a non-trivial change.
+EOF
+else
+cat <<EOF
+  3. Run gates/checks.sh and edit the knowledge profile's build/test commands if needed.
+  4. Start a new agent session and ask Architrave to summarize the configured repository profile.
+EOF
+fi
+cat <<EOF
 
 After you later update the plugin, refresh this repo's copied gates + harness + knowledge + constitution
 (they don't auto-update; leaves architrave.config.json and .github/agents untouched by default):

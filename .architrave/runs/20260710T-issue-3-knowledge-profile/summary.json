@@ -1,0 +1,48 @@
+{
+  "schema": "architrave.run.v1",
+  "runId": "20260710T-issue-3-knowledge-profile",
+  "status": "in-progress",
+  "startedAt": "2026-07-10T20:00:00Z",
+  "artifacts": {
+    "intake": ".architrave/runs/20260710T-issue-3-knowledge-profile/intake.md",
+    "tournament": ".architrave/runs/20260710T-issue-3-knowledge-profile/tournament.md",
+    "recommendedPlan": ".architrave/runs/20260710T-issue-3-knowledge-profile/recommended-plan.md",
+    "phaseLedger": ".architrave/runs/20260710T-issue-3-knowledge-profile/phase-ledger.md",
+    "deterministicGates": ".architrave/runs/20260710T-issue-3-knowledge-profile/deterministic-gates.md",
+    "judgePre": ".architrave/runs/20260710T-issue-3-knowledge-profile/judge-pre.md",
+    "judgePost": ".architrave/runs/20260710T-issue-3-knowledge-profile/judge-post.md",
+    "runtimeObserver": ".architrave/runs/20260710T-issue-3-knowledge-profile/runtime-observer.md"
+  },
+  "learning": {
+    "repoProfile": ".architrave/learning/repo-profile.md",
+    "repoLessons": ".architrave/learning/repo-lessons.md",
+    "candidateLessons": 0,
+    "promotionsProposed": 0
+  },
+  "phases": [
+    {
+      "phase": 1,
+      "name": "Contract and kit fix",
+      "status": "completed",
+      "scope": "Schema, canonical example, paired installers, gates, agents, tests, and docs.",
+      "gate": "Exact fixtures, installer E2E, paired gates, manifest suite, and dual post judges.",
+      "result": "PASS"
+    },
+    {
+      "phase": 2,
+      "name": "Release and consumer migration",
+      "status": "in-progress",
+      "scope": "Release v0.10.0, migrate social-ops, refresh agents, and prove VS Code chat routing.",
+      "gate": "Linux and Windows release green, consumer gates green, and VS Code proof.",
+      "result": "pending"
+    },
+    {
+      "phase": 3,
+      "name": "Social structure and product grounding",
+      "status": "not-started",
+      "scope": "Shared social skills and source-backed product profiles in a separate run.",
+      "gate": "Separate intake, tournament, phase ledger, and semantic gate.",
+      "result": "not started"
+    }
+  ]
+}

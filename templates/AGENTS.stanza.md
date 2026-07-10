@@ -1,9 +1,16 @@
 <!-- This block is managed by Architrave (tools/install.sh / install.ps1). Edit the kit, not this copy. -->
 ## Delivery Workflow — Architrave
 
-This repo uses **Architrave**, a config-grounded, judge-gated workflow for UI, backend, full-stack features, plan-only infrastructure, and durable learning artifacts. The retargeting config is **`architrave.config.json`** at the repo root — read it first; it names this repo's `platform`, `stack`, UI source of truth (`designSource`, `designMap`, `tokens`), optional `backend` / `iac` / `ops` lanes, and optional `learning` paths.
+This repo uses **Architrave**, a config-grounded, judge-gated workflow for knowledge/automation, UI, backend, full-stack features, plan-only infrastructure, and durable learning artifacts. Read root **`architrave.config.json`** first.
 
-**Before any UI change:**
+**When `kind` is `knowledge`:**
+- Ground in repository docs, scripts, skills, schemas, tests, existing instructions, and learning artifacts.
+- Run configured `build` and `test` commands.
+- Do not infer or request a UI platform, Storybook, design map, tokens, backend, IaC, or runtime lane. UI reconciliation is not applicable.
+
+When `kind` is absent, use the legacy application fields: `platform`, `stack`, UI source of truth (`designSource`, `designMap`, `tokens`), optional `backend` / `iac` / `ops`, and optional `learning` paths.
+
+**Before any UI change in an application-profile repo:**
 - **Ground first; reproduce, don't reinvent.** Open the design source of truth named in `architrave.config.json` (the `designSource` Storybook + the `designMap` glossary) and the matching platform knowledge pack. **On a native platform, also load the repo-root constitution — `constitution-apple.md` (Apple) or `constitution-windows.md` (Windows)** — the deep, source-cited native rule base (verbatim type tables/ramp, materials layering, system icons, the native component catalog, and the shared-screenshot conformance-audit protocol). Reproduce the existing component by its glossary name and specify only the deltas. Net-new UI must be mocked in Storybook and confirmed first.
 - **Tokens are the single source of truth.** Take values from `architrave.config.json` → `tokens`; if a value must change, change the **token first**, then regenerate. Never hard-code colors/space/type that a token already owns.
 
@@ -16,9 +23,9 @@ This repo uses **Architrave**, a config-grounded, judge-gated workflow for UI, b
 - **Phase ledger.** For non-trivial SDD/backend/full-stack/multi-slice work, keep a visible phase ledger before implementation. Mark exactly one phase `in-progress`, state each phase's scope/out-of-scope/gate, and explicitly separate completed phases from phases that are `not-started`. Do not silently begin the next phase.
 
 **Gates — must be green before a change is "done":**
-- Deterministic: `gates/checks.sh` (POSIX) or `gates/checks.ps1` (Windows) → runs the configured generate/build/test + validates the designMap/tokens JSON. `gates/reconcile.sh` / `.ps1` → reports design↔code token drift. `gates/backend-checks.sh` / `.ps1` covers backend build/test plus plan-only IaC checks when configured.
+- Deterministic: `gates/checks.sh` (POSIX) or `gates/checks.ps1` (Windows) runs configured generate/build/test and profile-appropriate JSON checks. `gates/reconcile.*` reports UI token drift when configured and is not applicable to knowledge profiles. `gates/backend-checks.*` covers backend plus plan-only IaC when configured.
 - Semantic: for non-trivial features, use the **Architrave** agent (the judge-gated harness); the **Adversarial Judge** grades against `gates/rubric.md` and must return PASS.
 
 **Learning loop:** For non-trivial work, keep the run artifacts under `.architrave/runs/` (or `learning.runArtifactsPath`), maintain the concise repo profile at `.architrave/learning/repo-profile.md` (or `learning.repoProfilePath`), and record repeated lessons in `.architrave/learning/repo-lessons.md` (or `learning.lessonsPath`). Validate persisted facts against the current branch before using/promoting them, never store secrets, and promote stable lessons into config, `AGENTS.md`, `.github/instructions/`, or docs only after review.
 
-**Never:** introduce platform-foreign UI, raw values where a token exists, parallel backend abstractions, secret materialization, apply-shaped IaC commands, or any UI/API claim the product cannot truthfully perform.
+**Never:** invent an unconfigured lane, introduce platform-foreign UI, use raw values where a token exists, create parallel backend abstractions, materialize secrets, run apply-shaped IaC commands, or claim a capability the repository cannot truthfully perform.

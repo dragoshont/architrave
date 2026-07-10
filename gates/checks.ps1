@@ -68,8 +68,13 @@ function Show-KitDriftNudge {
 
 Write-Host "== Architrave checks (root: $root) =="
 Test-JsonFile 'architrave.config.json' 'config   '
-Test-JsonFile (Get-Field 'designMap') 'designMap'
-Test-JsonFile (Get-Field 'tokens') 'tokens   '
+$kind = Get-Field 'kind'
+if ($kind -eq 'knowledge') {
+  Write-Host 'info  profile knowledge: UI design JSON validation not applicable'
+} else {
+  Test-JsonFile (Get-Field 'designMap') 'designMap'
+  Test-JsonFile (Get-Field 'tokens') 'tokens   '
+}
 
 if ($Quick) {
   if ($script:fail -eq 0) { Write-Host 'CHECKS (quick): PASS' } else { Write-Host 'CHECKS (quick): FAIL' }

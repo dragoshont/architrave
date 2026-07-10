@@ -34,9 +34,14 @@ jobs:
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
       - name: Validate PowerShell run-artifact fixtures
         shell: pwsh
         run: |
+          ./scripts/test-config-profiles.ps1
+          ./scripts/test-installers.ps1
           ./scripts/test-validate-run.ps1
           ./scripts/test-validate-learning.ps1
           ./scripts/test-promote-lesson.ps1

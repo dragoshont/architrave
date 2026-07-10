@@ -5,6 +5,19 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## [0.10.0] - 2026-07-10
+
+### Added
+- First-class `kind: knowledge` configuration for repositories with docs, skills, schemas, and automation but no UI or service lane.
+- Explicit `--profile knowledge` / `-Profile knowledge` installer support backed by a canonical example.
+- Paired POSIX and PowerShell regression fixtures for schema profiles, installers, and profile-aware gates.
+
+### Changed
+- The lead agent, Adversarial Judge, managed `AGENTS.md` stanza, checks, reconciliation, and quick quality gate now classify the repository profile before applying UI rules.
+- Linux and Windows validation/release workflows exercise knowledge-profile installation end to end.
+
+[0.10.0]: https://github.com/dragoshont/architrave/releases/tag/v0.10.0
+
 ## [0.9.1] — 2026-07-02
 
 Dual-judge semantic gates are now packaged as their own release so installed clients refetch the

@@ -10,6 +10,9 @@ root="$(find_root)" || { echo "reconcile: architrave.config.json not found" >&2;
 cd "$root"
 cfg() { jq -r --arg k "$1" '.[$k] // ""' architrave.config.json; }
 
+if [ "$(cfg kind)" = "knowledge" ]; then
+  echo "reconcile: UI design reconciliation not applicable for knowledge profile; skipping (PASS)"; exit 0
+fi
 tokens="$(cfg tokens)"; tokenBuild="$(cfg tokenBuild)"
 if [ -z "$tokens" ] || [ -z "$tokenBuild" ]; then
   echo "reconcile: tokens/tokenBuild not configured — design<->code SSOT not wired yet; skipping (PASS)"; exit 0

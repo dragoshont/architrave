@@ -18,6 +18,8 @@ try {
 {
   "platform": "web",
   "stack": "react",
+  "designSource": { "type": "design-doc", "path": "README.md" },
+  "applyTo": ["src/**"],
   "build": "pwsh -NoProfile -Command \"Write-Output build-ok\"",
   "test": "pwsh -NoProfile -Command \"Write-Output test-ok\""
 }
@@ -36,6 +38,27 @@ try {
   Expect-Code 'quality-gate' $Repo { ./gates/quality-gate.ps1 } 0
   Expect-Code 'reconcile-skip' $Repo { ./gates/reconcile.ps1 } 0
   Expect-Code 'backend-checks-skip' $Repo { ./gates/backend-checks.ps1 } 0
+
+  $KnowledgeRepo = Join-Path $Tmp 'knowledge'; Make-Repo $KnowledgeRepo
+  Set-Content -Path (Join-Path $KnowledgeRepo 'architrave.config.json') -Encoding utf8 -Value @'
+{
+  "kind": "knowledge",
+  "build": "Set-Content -Path build.ran -Value build",
+  "test": "Set-Content -Path test.ran -Value test"
+}
+'@
+  Push-Location $KnowledgeRepo
+  try {
+    $QuickOutput = (& ./gates/checks.ps1 -Quick 2>&1 | Out-String)
+    if ($LASTEXITCODE -ne 0 -or $QuickOutput -notmatch 'profile knowledge: UI design JSON validation not applicable') { throw 'knowledge quick gate failed' }
+    & ./gates/checks.ps1 *> $null
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path build.ran) -or -not (Test-Path test.ran)) { throw 'knowledge full gate did not execute build/test' }
+    $ReconcileOutput = (& ./gates/reconcile.ps1 2>&1 | Out-String)
+    if ($LASTEXITCODE -ne 0 -or $ReconcileOutput -notmatch 'UI design reconciliation not applicable for knowledge profile') { throw 'knowledge reconcile message failed' }
+    $QualityOutput = (& ./gates/quality-gate.ps1 2>&1 | Out-String)
+    if ($LASTEXITCODE -ne 0 -or $QualityOutput -notmatch 'knowledge profile config valid') { throw 'knowledge quality gate failed' }
+    Write-Host 'ok   knowledge-profile-gates'
+  } finally { Pop-Location }
 }
 finally { Remove-Item -Recurse -Force $Tmp -ErrorAction SilentlyContinue }
 exit 0
