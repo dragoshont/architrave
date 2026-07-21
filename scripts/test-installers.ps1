@@ -18,7 +18,10 @@ try {
   if ((Invoke-Installer @($Application)) -ne 0) { throw 'default installer failed' }
   $AppConfig = Get-Content (Join-Path $Application 'architrave.config.json') -Raw | ConvertFrom-Json
   if ($AppConfig.platform -ne 'web' -or $AppConfig.stack -ne 'react') { throw 'default application profile changed' }
-  Write-Host 'ok    installer default application profile'
+  if (-not (Test-Path (Join-Path $Application '.github/agents/ui-visual.agent.md'))) { throw 'application profile missing UI agents' }
+  if (-not (Test-Path (Join-Path $Application '.github/agents/backend-planner.agent.md'))) { throw 'application profile missing backend agents' }
+  if (-not (Get-ChildItem (Join-Path $Application 'constitution-*.md') -ErrorAction SilentlyContinue)) { throw 'application profile missing constitutions' }
+  Write-Host 'ok    installer default application profile (full crew + constitutions)'
 
   git -C $Knowledge init -q
   if ((Invoke-Installer @($Knowledge, '-Profile', 'knowledge')) -ne 0) { throw 'knowledge installer failed' }
@@ -40,6 +43,14 @@ try {
   } finally { Pop-Location }
   Write-Host 'ok    installer knowledge scaffold validates and passes gates'
 
+  if (-not (Test-Path (Join-Path $Knowledge '.github/agents/architrave.agent.md'))) { throw 'knowledge missing orchestrator agent' }
+  if (-not (Test-Path (Join-Path $Knowledge '.github/agents/adversarial-judge.agent.md'))) { throw 'knowledge missing judge agent' }
+  if (Test-Path (Join-Path $Knowledge '.github/agents/ui-visual.agent.md')) { throw 'knowledge should not install UI agents' }
+  if (Test-Path (Join-Path $Knowledge '.github/agents/backend-planner.agent.md')) { throw 'knowledge should not install backend agents' }
+  if (Get-ChildItem (Join-Path $Knowledge 'constitution-*.md') -ErrorAction SilentlyContinue) { throw 'knowledge should not install constitutions' }
+  if (-not ((Get-Content (Join-Path $Knowledge '.gitignore')) -contains '.architrave/runs/')) { throw 'knowledge should gitignore .architrave/runs/' }
+  Write-Host 'ok    installer knowledge profile is lean (crew trimmed, no constitutions, runs ignored)'
+
   $Before = (Get-FileHash (Join-Path $Knowledge 'architrave.config.json') -Algorithm SHA256).Hash
   if ((Invoke-Installer @($Knowledge, '-Profile', 'knowledge')) -ne 0) { throw 'knowledge reinstall failed' }
   $After = (Get-FileHash (Join-Path $Knowledge 'architrave.config.json') -Algorithm SHA256).Hash
@@ -53,7 +64,8 @@ try {
   $ActiveHook = Get-Content (Join-Path $Knowledge '.github/hooks/design-guard.json') -Raw
   $WindowsHook = Get-Content (Join-Path $Root 'gates/hooks/design-guard.windows.json') -Raw
   if ($ActiveHook -ne $WindowsHook) { throw 'updater did not refresh active Windows hook' }
-  Write-Host 'ok    updater refreshes active Windows hook and remains whitespace-clean'
+  if (Test-Path (Join-Path $Knowledge '.github/agents/ui-visual.agent.md')) { throw 'updater -Agents re-bloated knowledge repo with UI agents' }
+  Write-Host 'ok    updater refreshes active Windows hook, keeps repo lean and whitespace-clean'
 
   $UpdateFailure = Join-Path $Tmp 'update-failure'
   New-Item -ItemType Directory -Force -Path (Join-Path $UpdateFailure '.github') | Out-Null

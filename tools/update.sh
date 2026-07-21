@@ -43,6 +43,14 @@ TARGET="$(cd "$TARGET" 2>/dev/null && pwd)" || { echo "update: target dir not fo
 [ "$TARGET" = "$KIT" ] && { echo "update: refusing to update the kit into itself" >&2; exit 1; }
 [ -f "$TARGET/architrave.config.json" ] || { echo "update: $TARGET has no architrave.config.json — run tools/install.sh first" >&2; exit 1; }
 
+# Profile is inferred from the adopted repo's config: knowledge repos keep the lean crew.
+if command -v jq >/dev/null 2>&1; then
+  kind="$(jq -r '.kind // "application"' "$TARGET/architrave.config.json")"
+else
+  kind="$(grep -m1 '"kind"' "$TARGET/architrave.config.json" | sed -E 's/.*"kind"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')"
+fi
+[ -n "$kind" ] || kind="application"
+
 if command -v jq >/dev/null 2>&1; then
   ver="$(jq -r '.version // "0.0.0"' "$KIT/plugin.json")"
 else
@@ -56,8 +64,15 @@ mkdir -p "$TARGET/.github/hooks" "$TARGET/gates/hooks" "$TARGET/knowledge" "$TAR
 
 if [ "$refresh_agents" -eq 1 ]; then
   mkdir -p "$TARGET/.github/agents"
-  cp "$KIT"/agents/*.agent.md "$TARGET/.github/agents/"
-  echo "  ✓ agents refreshed ($(ls "$KIT"/agents/*.agent.md | wc -l | tr -d ' ') files)"
+  if [ "$kind" = "knowledge" ]; then
+    for a in architrave adversarial-judge product-research runtime-observer; do
+      [ -f "$KIT/agents/$a.agent.md" ] && cp "$KIT/agents/$a.agent.md" "$TARGET/.github/agents/"
+    done
+    echo "  ✓ agents refreshed (knowledge crew: architrave · adversarial-judge · product-research · runtime-observer)"
+  else
+    cp "$KIT"/agents/*.agent.md "$TARGET/.github/agents/"
+    echo "  ✓ agents refreshed ($(ls "$KIT"/agents/*.agent.md | wc -l | tr -d ' ') files)"
+  fi
 else
   echo "  • agents left unchanged (use --agents to refresh .github/agents/)"
 fi
@@ -83,8 +98,13 @@ echo "  ✓ active workspace hook refreshed"
 cp "$KIT"/knowledge/*.md "$TARGET/knowledge/"
 echo "  ✓ knowledge refreshed (apple · microsoft · web · backend · operations-ux · design-tokens · learning-loop · yagni)"
 
-# Platform constitution(s) — copied so the cloud agent (no plugin) can read the deep native-app synthesis.
-cp "$KIT"/constitution-*.md "$TARGET/" 2>/dev/null && echo "  ✓ constitution refreshed (constitution-*.md; Apple + Windows native-app synthesis)" || true
+# Platform constitution(s) — copied so the cloud agent can read the native-app synthesis.
+# Application profile only; a knowledge repo has no native-app surface.
+if [ "$kind" = "knowledge" ]; then
+  echo "  • constitution left unchanged (knowledge profile: no native-app UI)"
+else
+  cp "$KIT"/constitution-*.md "$TARGET/" 2>/dev/null && echo "  ✓ constitution refreshed (constitution-*.md; Apple + Windows native-app synthesis)" || true
+fi
 
 # Audit harness.
 cp -R "$KIT"/harness/* "$TARGET/harness/"

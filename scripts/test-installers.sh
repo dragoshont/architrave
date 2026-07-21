@@ -17,7 +17,10 @@ expect_code() {
 mkdir "$tmp/application" "$tmp/knowledge" "$tmp/preserved"
 tools/install.sh "$tmp/application" >/dev/null
 jq -e '.platform == "web" and .stack == "react" and (.kind | not)' "$tmp/application/architrave.config.json" >/dev/null
-echo "ok    installer default application profile"
+[ -f "$tmp/application/.github/agents/ui-visual.agent.md" ] || { echo "FAIL application profile missing UI agents" >&2; exit 1; }
+[ -f "$tmp/application/.github/agents/backend-planner.agent.md" ] || { echo "FAIL application profile missing backend agents" >&2; exit 1; }
+ls "$tmp/application"/constitution-*.md >/dev/null 2>&1 || { echo "FAIL application profile missing constitutions" >&2; exit 1; }
+echo "ok    installer default application profile (full crew + constitutions)"
 
 git -C "$tmp/knowledge" init -q
 tools/install.sh --profile knowledge "$tmp/knowledge" >/dev/null
@@ -28,6 +31,16 @@ git -C "$tmp/knowledge" add .
 (cd "$tmp/knowledge" && ./gates/checks.sh >/dev/null)
 echo "ok    installer knowledge scaffold validates and passes gates"
 
+# knowledge profile is lean: orchestrator + judge present; UI/backend agents + constitutions absent; runs ignored
+[ -f "$tmp/knowledge/.github/agents/architrave.agent.md" ] || { echo "FAIL knowledge missing orchestrator agent" >&2; exit 1; }
+[ -f "$tmp/knowledge/.github/agents/adversarial-judge.agent.md" ] || { echo "FAIL knowledge missing judge agent" >&2; exit 1; }
+[ ! -f "$tmp/knowledge/.github/agents/ui-visual.agent.md" ] || { echo "FAIL knowledge should not install UI agents" >&2; exit 1; }
+[ ! -f "$tmp/knowledge/.github/agents/backend-planner.agent.md" ] || { echo "FAIL knowledge should not install backend agents" >&2; exit 1; }
+[ ! -f "$tmp/knowledge/.github/agents/infra-engineer.agent.md" ] || { echo "FAIL knowledge should not install infra agents" >&2; exit 1; }
+if ls "$tmp/knowledge"/constitution-*.md >/dev/null 2>&1; then echo "FAIL knowledge should not install constitutions" >&2; exit 1; fi
+grep -qxF '.architrave/runs/' "$tmp/knowledge/.gitignore" || { echo "FAIL knowledge should gitignore .architrave/runs/" >&2; exit 1; }
+echo "ok    installer knowledge profile is lean (crew trimmed, no constitutions, runs ignored)"
+
 before="$(shasum -a 256 "$tmp/knowledge/architrave.config.json" | awk '{print $1}')"
 tools/install.sh --profile knowledge "$tmp/knowledge" >/dev/null
 after="$(shasum -a 256 "$tmp/knowledge/architrave.config.json" | awk '{print $1}')"
@@ -36,8 +49,9 @@ echo "ok    installer knowledge profile idempotent"
 
 tools/update.sh --agents "$tmp/knowledge" >/dev/null
 cmp -s gates/hooks/design-guard.json "$tmp/knowledge/.github/hooks/design-guard.json" || { echo "FAIL updater did not refresh active POSIX hook" >&2; exit 1; }
+[ ! -f "$tmp/knowledge/.github/agents/ui-visual.agent.md" ] || { echo "FAIL updater --agents re-bloated knowledge repo with UI agents" >&2; exit 1; }
 git -C "$tmp/knowledge" diff --check
-echo "ok    updater refreshes active POSIX hook"
+echo "ok    updater refreshes active POSIX hook and keeps knowledge repo lean"
 
 mkdir "$tmp/update-failure"
 printf '%s\n' '{"kind":"knowledge","build":"true","test":"true"}' > "$tmp/update-failure/architrave.config.json"

@@ -5,6 +5,20 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## [Unreleased]
+
+### Changed
+- The `knowledge` install profile is now lean. `tools/install.sh --profile knowledge`
+  (and `tools/update.sh` / `update.ps1` when `architrave.config.json` has
+  `kind: knowledge`) installs only the knowledge crew — `architrave`,
+  `adversarial-judge`, `product-research`, `runtime-observer` — and skips the
+  native-app constitutions and the UI/backend agents a knowledge repo never uses.
+
+### Added
+- Installers ignore `.architrave/runs/` in the adopted repo by default so agent
+  session run artifacts stay local (they can capture repo content); the
+  `.architrave/learning/` profile and lessons remain tracked.
+
 ## [0.10.3] - 2026-07-10
 
 ### Fixed

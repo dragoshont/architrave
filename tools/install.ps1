@@ -32,9 +32,17 @@ $end   = '<!-- architrave:end -->'
 Write-Host "Architrave -> installing into: $Target"
 New-Item -ItemType Directory -Force -Path "$Target/.github/agents","$Target/.github/hooks","$Target/.github/workflows","$Target/gates/hooks","$Target/harness" | Out-Null
 
-# 1) Agents
-Copy-Item "$kit/agents/*.agent.md" "$Target/.github/agents/" -Force
-Write-Host "  ok agents -> .github/agents/"
+# 1) Agents — knowledge repos get only the crew their lane uses; application repos get all.
+if ($Profile -eq 'knowledge') {
+  foreach ($a in 'architrave','adversarial-judge','product-research','runtime-observer') {
+    $src = "$kit/agents/$a.agent.md"
+    if (Test-Path $src) { Copy-Item $src "$Target/.github/agents/" -Force }
+  }
+  Write-Host "  ok agents -> .github/agents/ (knowledge crew: architrave/adversarial-judge/product-research/runtime-observer)"
+} else {
+  Copy-Item "$kit/agents/*.agent.md" "$Target/.github/agents/" -Force
+  Write-Host "  ok agents -> .github/agents/"
+}
 
 # 2) Gates
 Copy-Item "$kit/gates/checks.sh","$kit/gates/checks.ps1","$kit/gates/reconcile.sh","$kit/gates/reconcile.ps1","$kit/gates/quality-gate.sh","$kit/gates/quality-gate.ps1","$kit/gates/backend-checks.sh","$kit/gates/backend-checks.ps1","$kit/gates/rubric.md" "$Target/gates/" -Force
@@ -46,9 +54,14 @@ New-Item -ItemType Directory -Force -Path "$Target/knowledge" | Out-Null
 Copy-Item "$kit/knowledge/*.md" "$Target/knowledge/" -Force
 Write-Host "  ok knowledge -> knowledge/ (apple/microsoft/web/backend/operations-ux/design-tokens/learning-loop/yagni)"
 
-# 2b-ii) Platform constitution(s) - deep native-app synthesis (e.g. Apple SwiftUI), copied to the repo root.
-Copy-Item "$kit/constitution-*.md" "$Target/" -Force -ErrorAction SilentlyContinue
-Write-Host "  ok constitution -> constitution-*.md (deep native-app synthesis; Apple + Windows)"
+# 2b-ii) Platform constitution(s) - native-app synthesis, repo root. Application profile only;
+# a knowledge repo has no native-app surface, so these are skipped to keep the install lean.
+if ($Profile -eq 'knowledge') {
+  Write-Host "  - constitution-*.md skipped (knowledge profile: no native-app UI)"
+} else {
+  Copy-Item "$kit/constitution-*.md" "$Target/" -Force -ErrorAction SilentlyContinue
+  Write-Host "  ok constitution -> constitution-*.md (deep native-app synthesis; Apple + Windows)"
+}
 
 # 2c) Audit harness
 Copy-Item "$kit/harness/*" "$Target/harness/" -Recurse -Force
@@ -85,6 +98,22 @@ if ($Profile -eq 'knowledge') {
 }
   Write-Host "  ok scaffolded architrave.config.json (profile: $Profile)  <- EDIT build/test and paths to match this repo"
 } else { Write-Host "  - architrave.config.json present - left as-is" }
+
+# 3b) .gitignore — agent session run artifacts are local by default (they can capture repo
+#     content); the durable .architrave/learning/ profile + lessons stay tracked.
+$gi = "$Target/.gitignore"
+$hasRule = (Test-Path $gi) -and ((Get-Content $gi) -contains '.architrave/runs/')
+if ($hasRule) {
+  Write-Host "  - .gitignore already ignores .architrave/runs/"
+} else {
+  Add-Content -Path $gi -Encoding utf8 -Value @(
+    '',
+    '# Architrave: agent session run artifacts are local by default (may capture repo content).',
+    '# Delete the next line to version the audit trail instead (.architrave/learning/ stays tracked).',
+    '.architrave/runs/'
+  )
+  Write-Host "  ok .gitignore -> ignoring .architrave/runs/ (session logs local by default)"
+}
 
 # 4) AGENTS.md stanza — idempotent
 $ag = "$Target/AGENTS.md"

@@ -21,6 +21,10 @@ if (-not (Test-Path (Join-Path $Target 'architrave.config.json'))) {
   [Console]::Error.WriteLine("update: $Target has no architrave.config.json - run tools/install.ps1 first"); exit 1
 }
 
+# Profile is inferred from the adopted repo's config: knowledge repos keep the lean crew.
+$kind = (Get-Content (Join-Path $Target 'architrave.config.json') -Raw | ConvertFrom-Json).kind
+if (-not $kind) { $kind = 'application' }
+
 $ver = (Get-Content (Join-Path $kit 'plugin.json') -Raw | ConvertFrom-Json).version
 if (-not $ver) { $ver = '0.0.0' }
 $begin = '<!-- architrave:begin -->'
@@ -31,8 +35,16 @@ New-Item -ItemType Directory -Force -Path "$Target/.github/hooks","$Target/gates
 
 if ($Agents) {
   New-Item -ItemType Directory -Force -Path "$Target/.github/agents" | Out-Null
-  Copy-Item "$kit/agents/*.agent.md" "$Target/.github/agents/" -Force
-  Write-Host '  ok agents refreshed'
+  if ($kind -eq 'knowledge') {
+    foreach ($a in 'architrave','adversarial-judge','product-research','runtime-observer') {
+      $src = "$kit/agents/$a.agent.md"
+      if (Test-Path $src) { Copy-Item $src "$Target/.github/agents/" -Force }
+    }
+    Write-Host '  ok agents refreshed (knowledge crew: architrave/adversarial-judge/product-research/runtime-observer)'
+  } else {
+    Copy-Item "$kit/agents/*.agent.md" "$Target/.github/agents/" -Force
+    Write-Host '  ok agents refreshed'
+  }
 } else {
   Write-Host '  - agents left unchanged (use -Agents to refresh .github/agents/)'
 }
@@ -50,9 +62,14 @@ Write-Host '  ok active workspace hook refreshed'
 Copy-Item "$kit/knowledge/*.md" "$Target/knowledge/" -Force
 Write-Host '  ok knowledge refreshed (apple/microsoft/web/backend/operations-ux/design-tokens/learning-loop/yagni)'
 
-# Platform constitution(s) - deep native-app synthesis (Apple + Windows), for the cloud agent.
-Copy-Item "$kit/constitution-*.md" "$Target/" -Force -ErrorAction SilentlyContinue
-Write-Host '  ok constitution refreshed (constitution-*.md; Apple + Windows native-app synthesis)'
+# Platform constitution(s) - native-app synthesis (Apple + Windows). Application profile only;
+# a knowledge repo has no native-app surface.
+if ($kind -eq 'knowledge') {
+  Write-Host '  - constitution left unchanged (knowledge profile: no native-app UI)'
+} else {
+  Copy-Item "$kit/constitution-*.md" "$Target/" -Force -ErrorAction SilentlyContinue
+  Write-Host '  ok constitution refreshed (constitution-*.md; Apple + Windows native-app synthesis)'
+}
 
 # Audit harness.
 Copy-Item "$kit/harness/*" "$Target/harness/" -Recurse -Force

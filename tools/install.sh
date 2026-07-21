@@ -65,8 +65,16 @@ echo "Architrave → installing into: $TARGET"
 mkdir -p "$TARGET/.github/agents" "$TARGET/.github/hooks" "$TARGET/.github/workflows" "$TARGET/gates/hooks" "$TARGET/harness"
 
 # 1) Agents — the discovery location read by CLI / app / VS Code / cloud agent.
-cp "$KIT"/agents/*.agent.md "$TARGET/.github/agents/"
-echo "  ✓ agents → .github/agents/ ($(ls "$KIT"/agents/*.agent.md | wc -l | tr -d ' ') files)"
+#    Knowledge repos get only the crew their lane uses; application repos get the full crew.
+if [ "$profile" = "knowledge" ]; then
+  for a in architrave adversarial-judge product-research runtime-observer; do
+    [ -f "$KIT/agents/$a.agent.md" ] && cp "$KIT/agents/$a.agent.md" "$TARGET/.github/agents/"
+  done
+  echo "  ✓ agents → .github/agents/ (knowledge crew: architrave · adversarial-judge · product-research · runtime-observer)"
+else
+  cp "$KIT"/agents/*.agent.md "$TARGET/.github/agents/"
+  echo "  ✓ agents → .github/agents/ ($(ls "$KIT"/agents/*.agent.md | wc -l | tr -d ' ') files)"
+fi
 
 # 2) Gates — sh + ps1 pairs, rubric, and hook configs (run repo-relative).
 cp "$KIT"/gates/checks.sh "$KIT"/gates/checks.ps1 \
@@ -84,8 +92,13 @@ cp "$KIT"/knowledge/*.md "$TARGET/knowledge/"
 echo "  ✓ knowledge → knowledge/ (apple · microsoft · web · backend · operations-ux · design-tokens · learning-loop · yagni)"
 
 # 2b-ii) Platform constitution(s) — the deep, source-cited native-app synthesis (e.g. Apple SwiftUI),
-# copied to the repo root (beside architrave.config.json) so the cloud agent can read it.
-cp "$KIT"/constitution-*.md "$TARGET/" 2>/dev/null && echo "  ✓ constitution → constitution-*.md (deep native-app synthesis; Apple + Windows)" || true
+# copied to the repo root so the cloud agent can read it. Application profile only — a
+# knowledge repo has no native-app surface, so these are skipped to keep the install lean.
+if [ "$profile" = "knowledge" ]; then
+  echo "  • constitution-*.md skipped (knowledge profile: no native-app UI)"
+else
+  cp "$KIT"/constitution-*.md "$TARGET/" 2>/dev/null && echo "  ✓ constitution → constitution-*.md (deep native-app synthesis; Apple + Windows)" || true
+fi
 
 # 2c) Audit harness — durable run artifacts + optional semantic review helpers.
 cp -R "$KIT"/harness/* "$TARGET/harness/"
@@ -124,6 +137,18 @@ JSON
   echo "  ✓ scaffolded architrave.config.json (profile: $profile)  ← EDIT build/test and paths to match this repo"
 else
   echo "  • architrave.config.json already present — left as-is"
+fi
+
+# 3b) .gitignore — agent session run artifacts are local by default (they can capture
+#     repo content); the durable .architrave/learning/ profile + lessons stay tracked.
+gi="$TARGET/.gitignore"
+if [ -f "$gi" ] && grep -qxF '.architrave/runs/' "$gi"; then
+  echo "  • .gitignore already ignores .architrave/runs/"
+else
+  { printf '\n# Architrave: agent session run artifacts are local by default (may capture repo content).\n'
+    printf '# Delete the next line to version the audit trail instead (.architrave/learning/ stays tracked).\n'
+    printf '.architrave/runs/\n'; } >> "$gi"
+  echo "  ✓ .gitignore → ignoring .architrave/runs/ (session logs local by default)"
 fi
 
 # 4) AGENTS.md stanza — idempotent (replace the managed block, else append).
