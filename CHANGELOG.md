@@ -5,6 +5,16 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## [Unreleased]
+
+### Added
+- Provider-neutral adaptive execution intent across model class, reasoning, context, and verification dimensions, with provisional FAST/BALANCED/DEEP/CRITICAL presets and host-native subagent delegation.
+- Backward-compatible routing benchmark treatments, model/effort/context requests, observed execution telemetry, control-honor status, and four model-neutral routing scenarios.
+- Optional run-summary execution evidence with paired POSIX/PowerShell validation of preset consistency, evidence-bearing escalation/fallback, and verified independent/cross-family acceptance.
+
+### Security
+- Benchmark judging is now fail-closed and tool-free, nonce-delimits untrusted evidence, blinds producer identity, verifies observed judge family, and prevents stale verdict reuse across judge configurations.
+
 ## [0.10.3] - 2026-07-10
 
 ### Fixed

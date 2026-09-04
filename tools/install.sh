@@ -81,7 +81,7 @@ echo "  ✓ gates → gates/ (checks · reconcile · quality-gate · backend-che
 # 2b) Knowledge packs — platform, backend, operations UX, token, learning, and YAGNI rule bases.
 mkdir -p "$TARGET/knowledge"
 cp "$KIT"/knowledge/*.md "$TARGET/knowledge/"
-echo "  ✓ knowledge → knowledge/ (apple · microsoft · web · backend · operations-ux · design-tokens · learning-loop · yagni)"
+echo "  ✓ knowledge → knowledge/ (apple · microsoft · web · backend · operations-ux · design-tokens · execution-policy · learning-loop · yagni)"
 
 # 2b-ii) Platform constitution(s) — the deep, source-cited native-app synthesis (e.g. Apple SwiftUI),
 # copied to the repo root (beside architrave.config.json) so the cloud agent can read it.

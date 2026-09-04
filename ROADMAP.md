@@ -59,3 +59,13 @@
 - [x] Explicit POSIX and PowerShell knowledge installer profiles.
 - [x] Profile-aware gates, agent routing, examples, and cross-platform fixtures.
 - [ ] First-class Codex CLI packaging and role routing (tracked in issue #4).
+
+## Milestone 7 - Adaptive Execution Policy
+- [x] Provider-neutral `modelClass`, `reasoning`, `context`, and `verification` intent with provisional FAST/BALANCED/DEEP/CRITICAL presets.
+- [x] Host-native custom-agent/subagent delegation policy with user-local concrete bindings and clean inheritance.
+- [x] Backward-compatible benchmark arms for semantic treatment plus observable model/reasoning controls and control-honor evidence.
+- [x] Model-neutral FAST/BALANCED/DEEP/CRITICAL routing scenarios pinned to repository evidence.
+- [x] Tool-free, prompt-injection-resistant, family-verifiable benchmark judging.
+- [x] Optional strict run-summary execution evidence with POSIX/PowerShell validation parity.
+- [ ] Publish concrete model/effort recommendations only after repeated, honored-control benchmark evidence.
+- [ ] Evaluate learned routing against the deterministic semantic baseline before adopting it.

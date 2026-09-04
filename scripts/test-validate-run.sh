@@ -103,6 +103,28 @@ expect_fail() {
   fi
 }
 
+make_adaptive_terminal() {
+  local repo="$1" summary="$1/.architrave/runs/test-run/summary.json"
+  jq '
+    .status = "passed" |
+    .phases[1].status = "completed" |
+    .execution = {
+      profile: "CRITICAL",
+      intent: {modelClass:"strong", reasoning:"high", context:"default", verification:"cross-family"},
+      effectiveVerification: "cross-family",
+      selectionReason: "Security-sensitive acceptance requires verified cross-family review.",
+      requested: {hostProvider:"copilot", model:null, reasoningEffort:null, contextTier:null},
+      observed: {models:[], modelReasoning:[]},
+      events: [],
+      judgePasses: [
+        {stage:"post", hostProvider:"copilot", declaredFamily:"gpt", requestedModel:null, requestedEffort:null, observedModels:["gpt-model"], observedVendors:["openai"], familyEvidence:"observed-vendor", independent:true, verdict:"PASS", promptVersion:"1", rubricSha256:("a" * 64)},
+        {stage:"post", hostProvider:"copilot", declaredFamily:"claude", requestedModel:null, requestedEffort:null, observedModels:["claude-model"], observedVendors:["anthropic"], familyEvidence:"observed-vendor", independent:true, verdict:"PASS", promptVersion:"1", rubricSha256:("a" * 64)}
+      ]
+    }
+  ' "$summary" > "$summary.tmp" && mv "$summary.tmp" "$summary"
+  perl -0pi -e 's/\| 2 \| Implementation \| in-progress \|/| 2 | Implementation | completed |/' "$repo/.architrave/runs/test-run/phase-ledger.md"
+}
+
 valid="$tmp/valid"
 make_repo "$valid"
 expect_pass valid-run "$valid"
@@ -137,3 +159,80 @@ make_repo "$progress_no_active"
 jq '.phases[1].status = "completed"' "$progress_no_active/.architrave/runs/test-run/summary.json" > "$progress_no_active/.architrave/runs/test-run/summary.tmp" && mv "$progress_no_active/.architrave/runs/test-run/summary.tmp" "$progress_no_active/.architrave/runs/test-run/summary.json"
 perl -0pi -e 's/\| 2 \| Implementation \| in-progress \|/| 2 | Implementation | completed |/' "$progress_no_active/.architrave/runs/test-run/phase-ledger.md"
 expect_fail in-progress-summary-no-active-phase "$progress_no_active"
+
+adaptive="$tmp/adaptive"
+make_repo "$adaptive"
+make_adaptive_terminal "$adaptive"
+expect_pass adaptive-cross-family-run "$adaptive"
+
+bad_preset="$tmp/bad-preset"
+make_repo "$bad_preset"
+make_adaptive_terminal "$bad_preset"
+jq '.execution.intent.reasoning = "max"' "$bad_preset/.architrave/runs/test-run/summary.json" > "$bad_preset/.architrave/runs/test-run/summary.tmp" && mv "$bad_preset/.architrave/runs/test-run/summary.tmp" "$bad_preset/.architrave/runs/test-run/summary.json"
+expect_fail adaptive-preset-mismatch "$bad_preset"
+
+unverified_family="$tmp/unverified-family"
+make_repo "$unverified_family"
+make_adaptive_terminal "$unverified_family"
+jq '.execution.judgePasses[1].familyEvidence = "unverified"' "$unverified_family/.architrave/runs/test-run/summary.json" > "$unverified_family/.architrave/runs/test-run/summary.tmp" && mv "$unverified_family/.architrave/runs/test-run/summary.tmp" "$unverified_family/.architrave/runs/test-run/summary.json"
+expect_fail adaptive-unverified-cross-family "$unverified_family"
+
+bad_event="$tmp/bad-event"
+make_repo "$bad_event"
+make_adaptive_terminal "$bad_event"
+jq '.execution.events = [{type:"escalation", from:"BALANCED", to:"DEEP", evidence:""}]' "$bad_event/.architrave/runs/test-run/summary.json" > "$bad_event/.architrave/runs/test-run/summary.tmp" && mv "$bad_event/.architrave/runs/test-run/summary.tmp" "$bad_event/.architrave/runs/test-run/summary.json"
+expect_fail adaptive-event-needs-evidence "$bad_event"
+
+no_reason="$tmp/no-reason"
+make_repo "$no_reason"
+make_adaptive_terminal "$no_reason"
+jq '.execution.selectionReason = null' "$no_reason/.architrave/runs/test-run/summary.json" > "$no_reason/.architrave/runs/test-run/summary.tmp" && mv "$no_reason/.architrave/runs/test-run/summary.tmp" "$no_reason/.architrave/runs/test-run/summary.json"
+expect_fail adaptive-terminal-needs-reason "$no_reason"
+
+weaker_verification="$tmp/weaker-verification"
+make_repo "$weaker_verification"
+make_adaptive_terminal "$weaker_verification"
+jq '.execution.profile = null | .execution.effectiveVerification = "default"' "$weaker_verification/.architrave/runs/test-run/summary.json" > "$weaker_verification/.architrave/runs/test-run/summary.tmp" && mv "$weaker_verification/.architrave/runs/test-run/summary.tmp" "$weaker_verification/.architrave/runs/test-run/summary.json"
+expect_fail adaptive-verification-cannot-weaken "$weaker_verification"
+
+contradictory_family="$tmp/contradictory-family"
+make_repo "$contradictory_family"
+make_adaptive_terminal "$contradictory_family"
+jq '.execution.judgePasses[1].observedVendors = ["openai"]' "$contradictory_family/.architrave/runs/test-run/summary.json" > "$contradictory_family/.architrave/runs/test-run/summary.tmp" && mv "$contradictory_family/.architrave/runs/test-run/summary.tmp" "$contradictory_family/.architrave/runs/test-run/summary.json"
+expect_fail adaptive-family-evidence-must-match "$contradictory_family"
+
+scalar_collections="$tmp/scalar-collections"
+make_repo "$scalar_collections"
+make_adaptive_terminal "$scalar_collections"
+jq '.execution.observed.models = "gpt-model"' "$scalar_collections/.architrave/runs/test-run/summary.json" > "$scalar_collections/.architrave/runs/test-run/summary.tmp" && mv "$scalar_collections/.architrave/runs/test-run/summary.tmp" "$scalar_collections/.architrave/runs/test-run/summary.json"
+expect_fail adaptive-collections-must-be-arrays "$scalar_collections"
+
+pre_only="$tmp/pre-only"
+make_repo "$pre_only"
+make_adaptive_terminal "$pre_only"
+jq '.execution.judgePasses |= map(.stage = "pre")' "$pre_only/.architrave/runs/test-run/summary.json" > "$pre_only/.architrave/runs/test-run/summary.tmp" && mv "$pre_only/.architrave/runs/test-run/summary.tmp" "$pre_only/.architrave/runs/test-run/summary.json"
+expect_fail adaptive-terminal-needs-post-judges "$pre_only"
+
+valid_metrics="$tmp/valid-metrics"
+make_repo "$valid_metrics"
+make_adaptive_terminal "$valid_metrics"
+jq '.execution.metrics = {durationMs:10, outputTokens:20, toolCalls:3}' "$valid_metrics/.architrave/runs/test-run/summary.json" > "$valid_metrics/.architrave/runs/test-run/summary.tmp" && mv "$valid_metrics/.architrave/runs/test-run/summary.tmp" "$valid_metrics/.architrave/runs/test-run/summary.json"
+expect_pass adaptive-valid-metrics "$valid_metrics"
+
+bad_metrics="$tmp/bad-metrics"
+make_repo "$bad_metrics"
+make_adaptive_terminal "$bad_metrics"
+jq '.execution.metrics = {durationMs:"ten"}' "$bad_metrics/.architrave/runs/test-run/summary.json" > "$bad_metrics/.architrave/runs/test-run/summary.tmp" && mv "$bad_metrics/.architrave/runs/test-run/summary.tmp" "$bad_metrics/.architrave/runs/test-run/summary.json"
+expect_fail adaptive-invalid-metrics "$bad_metrics"
+
+fractional_metrics="$tmp/fractional-metrics"
+make_repo "$fractional_metrics"
+make_adaptive_terminal "$fractional_metrics"
+jq '.execution.metrics = {durationMs:1.5}' "$fractional_metrics/.architrave/runs/test-run/summary.json" > "$fractional_metrics/.architrave/runs/test-run/summary.tmp" && mv "$fractional_metrics/.architrave/runs/test-run/summary.tmp" "$fractional_metrics/.architrave/runs/test-run/summary.json"
+expect_fail adaptive-fractional-metrics "$fractional_metrics"
+
+unknown_metrics="$tmp/unknown-metrics"
+make_repo "$unknown_metrics"
+make_adaptive_terminal "$unknown_metrics"
+jq '.execution.metrics = {latencyMs:10}' "$unknown_metrics/.architrave/runs/test-run/summary.json" > "$unknown_metrics/.architrave/runs/test-run/summary.tmp" && mv "$unknown_metrics/.architrave/runs/test-run/summary.tmp" "$unknown_metrics/.architrave/runs/test-run/summary.json"
+expect_fail adaptive-unknown-metrics "$unknown_metrics"

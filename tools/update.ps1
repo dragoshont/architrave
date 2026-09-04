@@ -48,7 +48,7 @@ Write-Host '  ok active workspace hook refreshed'
 
 # Knowledge packs - copied so the cloud agent (no plugin) can read them.
 Copy-Item "$kit/knowledge/*.md" "$Target/knowledge/" -Force
-Write-Host '  ok knowledge refreshed (apple/microsoft/web/backend/operations-ux/design-tokens/learning-loop/yagni)'
+Write-Host '  ok knowledge refreshed (apple/microsoft/web/backend/operations-ux/design-tokens/execution-policy/learning-loop/yagni)'
 
 # Platform constitution(s) - deep native-app synthesis (Apple + Windows), for the cloud agent.
 Copy-Item "$kit/constitution-*.md" "$Target/" -Force -ErrorAction SilentlyContinue

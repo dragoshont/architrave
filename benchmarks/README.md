@@ -42,9 +42,12 @@ Each benchmark run emits one JSONL row per `(scenario, arm, repeat)`.
 
 **Efficiency**
 - wall-clock time;
-- model identity;
+- requested semantic execution treatment and concrete local binding;
+- producer-reported intent, kept separate from host-observed model identity and reasoning effort;
 - output tokens and tool-call counts from CLI JSON events when exposed;
 - raw session JSONL/transcripts for later trace grading.
+
+Context tier is recorded as requested-only unless the host emits observable context telemetry. Do not claim that a context treatment was honored when it cannot be observed.
 
 ## Primary Arms
 
@@ -58,19 +61,25 @@ Later arms can add `claude`, `opencode`, `kilo`, or other external-agent command
 
 Supported runner types today are `copilot` and `shell`. Add new runner types in both `benchmarks/scenarios.schema.json` and `scripts/bench-architrave.py` in the same change.
 
+Adaptive routing is not implemented by the runner. `arm.execution` stores provider-neutral treatment metadata; optional Copilot arm fields `model`, `reasoningEffort`, and `contextTier` are local experiment bindings translated only at this existing adapter boundary. Shell arms reject those controls rather than pretending to support them. Controlled effort requires an explicit non-`auto` model. Canonical agents and published routing scenarios contain no concrete model IDs.
+
 ## Dataset Shape
 
 Use existing repositories, but never mutate their real working trees. Each scenario declares:
 
 - `repo`: local repository path;
 - `baseRef`: pinned commit SHA to check out in a detached benchmark worktree;
-- `lane`: `ui`, `ux`, `backend`, `full-stack`, `infra`, `ops`, `learning`, or `yagni`;
+- `lane`: `ui`, `ux`, `backend`, `full-stack`, `infra`, `ops`, `learning`, `yagni`, or `knowledge`;
 - `prompt`: the benchmark task;
 - `validation`: shell commands run after the agent finishes;
 - `expectedArtifacts`: files/directories that should exist after the run;
 - `scoring`: rubric notes for human/LLM review.
 
 The runner creates `.architrave/bench/runs/<run-id>/<scenario>/<arm>/worktree` using `git worktree add --detach`. This makes it cheap to go back to older changesets, replay old product work, and compare agent variants against the same starting point.
+
+Validation commands may use `{python}` to invoke the exact interpreter running the benchmark, which avoids `python` versus `python3` portability drift.
+
+`benchmarks/routing-scenarios.json` is the compact adaptive set. Its `expectedExecution` is a provisional classification hypothesis and never changes base pass/fail. Result rows keep four layers distinct: scenario expectation, arm request, producer-reported selection from a valid run summary, and observed host telemetry. `controlStatus` marks requested controls as `honored`, `mismatch`, `unobserved`, or `not-requested`; exclude mismatched and unobserved controls from concrete binding recommendations.
 
 Use full commit SHAs, not moving branch names, for published scenarios. Branch names are acceptable for private exploratory smoke tests only.
 
@@ -133,6 +142,10 @@ Optional LLM judging through Copilot CLI:
 python3 scripts/judge-bench.py --results .architrave/bench/runs/<run-id>/results.jsonl --out .architrave/bench/runs/<run-id>/judged.jsonl
 ```
 
+The benchmark judge is fail-closed and tool-free. It receives nonce-delimited untrusted evidence, blinds producer arm/model/profile and expected-routing labels, verifies zero tool requests, records observed judge model/vendor telemetry, and keys resumability by family/model/effort/prompt/rubric configuration. Run separate `--judge-family gpt` and `--judge-family claude` passes with locally available models; a declared family without matching observed telemetry is `unverified`, sets `gate_eligible=false`, and cannot satisfy cross-family acceptance.
+
+Create concrete experiment arms only in an ignored local copy, for example `.architrave/bench/routing.local.json`. Vary one useful dimension at a time, use at least three repeats, and retain `controlsHonored=true` rows for model/effort conclusions. Long-context results remain inconclusive while context application is unobservable.
+
 ## Safety Rules
 
 - Use detached worktrees or temp clones only.
@@ -167,6 +180,6 @@ Timeouts are intentionally row-level data. If an agent exceeds `--agent-timeout`
 
 ## Tooling Caveats
 
-- Copilot CLI minimum tested version: `1.0.64-1`; the runner relies on non-interactive `-p`, `--output-format json`, `--share`, `--no-ask-user`, and `--secret-env-vars`.
+- Copilot CLI minimum for legacy scenarios remains `1.0.64-1`; adaptive arms additionally require native effort/context flags exposed by the installed host. The fail-closed judge verifies its required no-tools and structured-output options before invocation.
 - `copilot-architrave` uses the fully qualified agent id `architrave:architrave`.
 - On Windows, timeout cleanup uses normal process termination rather than POSIX process groups; prefer short smoke tests before long runs.

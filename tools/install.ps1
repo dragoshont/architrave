@@ -44,7 +44,7 @@ Write-Host "  ok gates -> gates/ (checks/reconcile/quality-gate .sh + .ps1 + rub
 # 2b) Knowledge packs
 New-Item -ItemType Directory -Force -Path "$Target/knowledge" | Out-Null
 Copy-Item "$kit/knowledge/*.md" "$Target/knowledge/" -Force
-Write-Host "  ok knowledge -> knowledge/ (apple/microsoft/web/backend/operations-ux/design-tokens/learning-loop/yagni)"
+Write-Host "  ok knowledge -> knowledge/ (apple/microsoft/web/backend/operations-ux/design-tokens/execution-policy/learning-loop/yagni)"
 
 # 2b-ii) Platform constitution(s) - deep native-app synthesis (e.g. Apple SwiftUI), copied to the repo root.
 Copy-Item "$kit/constitution-*.md" "$Target/" -Force -ErrorAction SilentlyContinue

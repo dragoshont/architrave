@@ -119,6 +119,10 @@ For UI, Architrave starts in **Storybook** or the configured design source, not 
 
 **Knowledge repositories are first-class.** Set `kind: "knowledge"` through the installer profile and Architrave grounds in repository docs, scripts, skills, schemas, tests, and learning artifacts. It does not invent a UI lane or demand Storybook sign-off.
 
+**Execution adapts to the task.** Architrave expresses provider-neutral `modelClass`, `reasoning`, `context`, and `verification` intent. `FAST`, `BALANCED`, `DEEP`, and `CRITICAL` are convenience presets, not concrete model tiers. Task characteristics override provisional role hints, and `inherit/default` remains preferred when specialization is unproved. Architrave uses the current host's structured custom-agent/subagent invocation when useful; it never shells out to another agent harness or requires a provider SDK. Your local host settings map semantic intent to the models currently available on that machine.
+
+Verification adapts too, without weakening safety. Low-risk FAST/BALANCED knowledge or mechanical work can close on deterministic evidence when every criterion is machine-checked. Semantic, UI, contract, architecture, migration, security/trust, IaC, and high-blast-radius work raises the floor to an independent reviewer or the full cross-family gate. A full semantic gate still means verified GPT/Copilot-family and Claude-family PASS records.
+
 **Learning is explicit.** Set the optional `learning` block and Architrave keeps per-run evidence, a concise repo profile, and candidate repeated lessons. Lessons only become standing repo guidance after validation and review.
 
 **YAGNI is enforced.** Architrave uses a minimum-sufficient-change ladder grounded in `knowledge/yagni.md`. It blocks speculative abstractions, unused config, new dependencies, and wrapper layers until the task proves they are needed. It still keeps the practices that make YAGNI safe: refactoring, contracts, tests, validation, security, accessibility, and design-token reconciliation.
@@ -127,7 +131,9 @@ For UI, Architrave starts in **Storybook** or the configured design source, not 
 
 ## Benchmarks
 
-Architrave now ships a benchmark harness because agent quality has to be measured against real work, not vibes. The suite in `benchmarks/` runs frozen tasks against real local repos in detached worktrees, compares agent arms such as `copilot-baseline` and `copilot-architrave`, and records JSONL rows with validation results, diff size, output tokens, wall time, artifacts, and optional Copilot LLM-judge scores.
+Architrave now ships a benchmark harness because agent quality has to be measured against real work, not vibes. The suite in `benchmarks/` runs frozen tasks against real local repos in detached worktrees, compares agent arms such as `copilot-baseline` and `copilot-architrave`, and records JSONL rows with validation results, diff size, output tokens, wall time, artifacts, requested execution treatment, observed model/effort telemetry, and optional blinded LLM-judge scores.
+
+`benchmarks/routing-scenarios.json` adds four model-neutral routing cases for FAST, BALANCED, DEEP, and CRITICAL hypotheses. Concrete model/effort bindings belong in an ignored local scenario file. A single run is smoke evidence; a local binding recommendation requires at least three representative repeats, an honored observable control, deterministic validation, and independent judging.
 
 The first smoke benchmark is intentionally small: a PhonoDeck learning-loop task that asks the agent to capture a real build/relaunch gotcha as durable repo knowledge without touching product code. It proves the harness path end to end.
 
@@ -155,6 +161,8 @@ pwsh -NoProfile -File scripts/test-semantic-learning.ps1
 pwsh -NoProfile -File scripts/test-gates.ps1
 python3 scripts/bench-architrave.py --scenarios benchmarks/scenarios.json --validate
 python3 scripts/bench-architrave.py --scenarios benchmarks/scenarios.json --list
+python3 scripts/bench-architrave.py --scenarios benchmarks/routing-scenarios.json --validate
+python3 scripts/test-benchmark-tools.py
 ```
 
 Run one scenario when you are ready to spend Copilot credits:
@@ -231,7 +239,7 @@ The method isn't theoretical — it emerged independently across real apps, **Ph
 1. DESIGN SOURCE OF TRUTH      Storybook (component workbench) + design tokens (.tokens.json, W3C DTCG)
         │  validate / tweak the design here FIRST
         ▼
-2. KNOWLEDGE PACKS             knowledge/apple.md · microsoft.md · web.md · backend.md · operations-ux.md · design-tokens.md  (+ constitution-apple.md · constitution-windows.md — deep native-app synthesis, cited)
+2. KNOWLEDGE PACKS             knowledge/apple.md · microsoft.md · web.md · backend.md · operations-ux.md · design-tokens.md · execution-policy.md  (+ native constitutions)
         │  the Platform Design agent loads the pack named by config.platform
         ▼
 3. AGENTS                      Architrave conductor · UI specialists · backend/infra specialists · Adversarial Judge
@@ -240,6 +248,10 @@ The method isn't theoretical — it emerged independently across real apps, **Ph
 ```
 
 Everything in layers 2–4 is **retargeted per repo by one config file** (`architrave.config.json`). The agents never hard‑code a stack; they read the config and the matching knowledge pack.
+
+Adaptive execution is deliberately outside repository stack config. Canonical agents state semantic intent; the active VS Code/Copilot/Claude host invokes the bounded subagent and applies any user-local model/effort override it supports. If it cannot honor an override, the subagent inherits and the run records the limitation. This keeps the same Architrave release portable across machines and future hosts.
+
+For VS Code/Copilot, use the structured subagent call's model preference or a user-local custom agent with local `model` / `reasoning-effort` fields; otherwise the subagent inherits its parent. For Claude Code, use the native per-invocation preference or user-local `model` / `effort` fields; otherwise it falls through to the local subagent default and parent model. Keep values such as `<fast-model>` and `<strong-model>` in user-local configuration only. The canonical crew intentionally has no model fields.
 
 ## The learning loop
 

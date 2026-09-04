@@ -5,12 +5,113 @@
   "type": "object",
   "required": ["schema", "runId", "status", "artifacts"],
   "additionalProperties": true,
+  "definitions": {
+    "executionIntent": {
+      "type": "object",
+      "required": ["modelClass", "reasoning", "context", "verification"],
+      "additionalProperties": false,
+      "properties": {
+        "modelClass": { "type": "string", "enum": ["inherit", "fast", "default", "strong"] },
+        "reasoning": { "type": "string", "enum": ["low", "default", "high", "max"] },
+        "context": { "type": "string", "enum": ["narrow", "default", "long"] },
+        "verification": { "type": "string", "enum": ["default", "independent", "cross-family"] }
+      }
+    }
+  },
   "properties": {
     "schema": { "const": "architrave.run.v1" },
     "runId": { "type": "string", "minLength": 1 },
     "status": { "type": "string", "enum": ["in-progress", "blocked", "passed", "revised", "failed"] },
     "startedAt": { "type": "string" },
     "completedAt": { "type": "string" },
+    "execution": {
+      "type": "object",
+      "required": ["profile", "intent", "effectiveVerification", "selectionReason", "requested", "observed", "events", "judgePasses"],
+      "additionalProperties": false,
+      "properties": {
+        "profile": { "type": ["string", "null"], "enum": [null, "FAST", "BALANCED", "DEEP", "CRITICAL"] },
+        "intent": { "$ref": "#/definitions/executionIntent" },
+        "effectiveVerification": { "type": "string", "enum": ["default", "independent", "cross-family"] },
+        "selectionReason": { "type": ["string", "null"] },
+        "requested": {
+          "type": "object",
+          "required": ["hostProvider", "model", "reasoningEffort", "contextTier"],
+          "additionalProperties": false,
+          "properties": {
+            "hostProvider": { "type": ["string", "null"] },
+            "model": { "type": ["string", "null"] },
+            "reasoningEffort": { "type": ["string", "null"] },
+            "contextTier": { "type": ["string", "null"] }
+          }
+        },
+        "observed": {
+          "type": "object",
+          "required": ["models", "modelReasoning"],
+          "additionalProperties": false,
+          "properties": {
+            "models": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+            "modelReasoning": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["model", "vendor", "reasoningEffort"],
+                "additionalProperties": false,
+                "properties": {
+                  "model": { "type": "string", "minLength": 1 },
+                  "vendor": { "type": ["string", "null"] },
+                  "reasoningEffort": { "type": ["string", "null"] }
+                }
+              }
+            }
+          }
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["type", "from", "to", "evidence"],
+            "additionalProperties": false,
+            "properties": {
+              "type": { "type": "string", "enum": ["fallback", "escalation"] },
+              "from": { "type": "string", "minLength": 1 },
+              "to": { "type": "string", "minLength": 1 },
+              "evidence": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "judgePasses": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["stage", "hostProvider", "declaredFamily", "requestedModel", "requestedEffort", "observedModels", "observedVendors", "familyEvidence", "independent", "verdict", "promptVersion", "rubricSha256"],
+            "additionalProperties": false,
+            "properties": {
+              "stage": { "type": "string", "enum": ["pre", "post"] },
+              "hostProvider": { "type": "string", "minLength": 1 },
+              "declaredFamily": { "type": "string", "enum": ["gpt", "claude"] },
+              "requestedModel": { "type": ["string", "null"] },
+              "requestedEffort": { "type": ["string", "null"] },
+              "observedModels": { "type": "array", "items": { "type": "string" } },
+              "observedVendors": { "type": "array", "items": { "type": "string" } },
+              "familyEvidence": { "type": "string", "enum": ["observed-vendor", "observed-model", "unverified"] },
+              "independent": { "type": "boolean" },
+              "verdict": { "type": "string", "enum": ["PASS", "REVISE", "FAIL"] },
+              "promptVersion": { "type": "string", "minLength": 1 },
+              "rubricSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+            }
+          }
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "durationMs": { "type": "integer", "minimum": 0 },
+            "outputTokens": { "type": "integer", "minimum": 0 },
+            "toolCalls": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
     "artifacts": {
       "type": "object",
       "required": ["intake", "tournament", "recommendedPlan", "phaseLedger", "deterministicGates"],

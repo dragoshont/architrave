@@ -31,14 +31,19 @@ def fmt(value: float | int | None, digits: int = 1) -> str:
     return f"{value:.{digits}f}"
 
 
+def group_values(group: list[dict[str, Any]], getter) -> str:
+    values = {str(value) for row in group if (value := getter(row)) not in (None, "")}
+    return ", ".join(sorted(values)) or "inherit"
+
+
 def summarize(items: list[dict[str, Any]]) -> str:
     groups: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     for row in items:
         groups[(row.get("scenario", ""), row.get("arm", ""))].append(row)
 
     lines = ["# Architrave Benchmark Summary", ""]
-    lines.append("| Scenario | Arm | n | pass % | avg ms | avg net LOC | avg files | avg output tokens | timeouts |")
-    lines.append("|---|---|---:|---:|---:|---:|---:|---:|---:|")
+    lines.append("| Scenario | Arm | Profile | Requested binding | Controls honored | n | pass % | avg ms | avg net LOC | avg files | avg output tokens | timeouts |")
+    lines.append("|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|")
     for (scenario, arm), group in sorted(groups.items()):
         n = len(group)
         pass_rate = 100 * sum(1 for row in group if row.get("passed")) / n if n else 0
@@ -48,12 +53,29 @@ def summarize(items: list[dict[str, Any]]) -> str:
         files = [row.get("diff", {}).get("changed_files") for row in group if row.get("diff", {}).get("changed_files") is not None]
         output_tokens = [agent.get("output_tokens") for agent in agents if agent.get("output_tokens") is not None]
         timeouts = sum(1 for agent in agents if agent.get("timed_out"))
+        profile = group_values(group, lambda row: ((((row.get("execution") or {}).get("requested") or {}).get("semantic") or {}).get("profile")))
+        binding = group_values(
+            group,
+            lambda row: "/".join(
+                str(value)
+                for value in (
+                    ((row.get("execution") or {}).get("requested") or {}).get("model"),
+                    ((row.get("execution") or {}).get("requested") or {}).get("reasoningEffort"),
+                    ((row.get("execution") or {}).get("requested") or {}).get("contextTier"),
+                )
+                if value
+            ),
+        )
+        honored = group_values(group, lambda row: ((row.get("execution") or {}).get("controlStatus") or {}).get("controlsHonored"))
         lines.append(
             "| "
             + " | ".join(
                 [
                     scenario,
                     arm,
+                    profile,
+                    binding,
+                    honored,
                     str(n),
                     fmt(pass_rate),
                     fmt(mean(durations) if durations else None, 0),

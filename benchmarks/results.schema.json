@@ -20,6 +20,40 @@
     "started_at": { "type": "string" },
     "finished_at": { "type": "string" },
     "passed": { "type": "boolean" },
+    "producer_prompt_version": { "type": "integer", "minimum": 1 },
+    "execution": {
+      "type": "object",
+      "required": ["expected", "requested", "reportedSelection", "controlStatus"],
+      "additionalProperties": false,
+      "properties": {
+        "expected": { "type": ["object", "null"], "additionalProperties": true },
+        "requested": {
+          "type": "object",
+          "required": ["semantic", "runner", "agent", "model", "reasoningEffort", "contextTier"],
+          "additionalProperties": false,
+          "properties": {
+            "semantic": { "type": ["object", "null"], "additionalProperties": true },
+            "runner": { "type": "string" },
+            "agent": { "type": ["string", "null"] },
+            "model": { "type": ["string", "null"] },
+            "reasoningEffort": { "type": ["string", "null"] },
+            "contextTier": { "type": ["string", "null"] }
+          }
+        },
+        "reportedSelection": { "type": ["object", "null"], "additionalProperties": true },
+        "controlStatus": {
+          "type": "object",
+          "required": ["model", "reasoningEffort", "contextTier", "controlsHonored"],
+          "additionalProperties": false,
+          "properties": {
+            "model": { "type": "string", "enum": ["not-requested", "honored", "mismatch", "unobserved"] },
+            "reasoningEffort": { "type": "string", "enum": ["not-requested", "honored", "mismatch", "unobserved"] },
+            "contextTier": { "type": "string", "enum": ["not-requested", "honored", "mismatch", "unobserved"] },
+            "controlsHonored": { "type": ["boolean", "null"] }
+          }
+        }
+      }
+    },
     "failure_mode": {
       "type": ["string", "null"],
       "enum": [null, "timeout", "agent_error", "setup_error", "validation_timeout", "validation_failed", "artifact_missing", "unknown"]
@@ -33,7 +67,20 @@
         "timed_out": { "type": "boolean" },
         "duration_ms": { "type": "integer", "minimum": 0 },
         "models": { "type": "array", "items": { "type": "string" } },
-        "output_tokens": { "type": "integer", "minimum": 0 },
+        "model_reasoning": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["model", "vendor", "reasoningEffort"],
+            "additionalProperties": false,
+            "properties": {
+              "model": { "type": "string" },
+              "vendor": { "type": ["string", "null"] },
+              "reasoningEffort": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "output_tokens": { "type": ["integer", "null"], "minimum": 0 },
         "tool_requests": { "type": "integer", "minimum": 0 },
         "result_usage": { "type": "object", "additionalProperties": true }
       }

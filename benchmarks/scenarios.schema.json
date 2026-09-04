@@ -5,6 +5,20 @@
   "type": "object",
   "required": ["version", "arms", "scenarios"],
   "additionalProperties": false,
+  "definitions": {
+    "executionIntent": {
+      "type": "object",
+      "required": ["modelClass", "reasoning", "context", "verification"],
+      "additionalProperties": false,
+      "properties": {
+        "profile": { "type": ["string", "null"], "enum": [null, "FAST", "BALANCED", "DEEP", "CRITICAL"] },
+        "modelClass": { "type": "string", "enum": ["inherit", "fast", "default", "strong"] },
+        "reasoning": { "type": "string", "enum": ["low", "default", "high", "max"] },
+        "context": { "type": "string", "enum": ["narrow", "default", "long"] },
+        "verification": { "type": "string", "enum": ["default", "independent", "cross-family"] }
+      }
+    }
+  },
   "properties": {
     "version": { "type": "integer", "minimum": 1 },
     "arms": {
@@ -19,6 +33,9 @@
           "runner": { "type": "string", "enum": ["copilot", "shell"] },
           "agent": { "type": "string" },
           "model": { "type": "string" },
+          "reasoningEffort": { "type": "string", "enum": ["none", "minimal", "low", "medium", "high", "xhigh", "max"] },
+          "contextTier": { "type": "string", "enum": ["default", "long_context"] },
+          "execution": { "$ref": "#/definitions/executionIntent" },
           "customInstructions": { "type": "boolean" },
           "allowAll": { "type": "boolean" },
           "noAskUser": { "type": "boolean" },
@@ -39,8 +56,9 @@
           "enabled": { "type": "boolean" },
           "repo": { "type": "string" },
           "baseRef": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
-          "lane": { "type": "string", "enum": ["ui", "ux", "backend", "full-stack", "infra", "ops", "learning", "yagni"] },
+          "lane": { "type": "string", "enum": ["ui", "ux", "backend", "full-stack", "infra", "ops", "learning", "yagni", "knowledge"] },
           "prompt": { "type": "string", "minLength": 1 },
+          "expectedExecution": { "$ref": "#/definitions/executionIntent" },
           "validation": { "type": "array", "items": { "type": "string" } },
           "validationByArm": {
             "type": "object",

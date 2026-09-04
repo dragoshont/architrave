@@ -83,6 +83,7 @@ json_files=(
   benchmarks/scenarios.schema.json
   benchmarks/results.schema.json
   benchmarks/scenarios.json
+  benchmarks/routing-scenarios.json
 )
 for f in "${json_files[@]}"; do
   if jq -e . "$f" >/dev/null 2>&1; then ok "$f"; else err "invalid JSON: $f"; fi
@@ -131,12 +132,14 @@ fi
 
 echo "== benchmark scenarios conform to schema (ajv) =="
 if command -v npx >/dev/null 2>&1; then
-  if npx --yes ajv-cli@5 validate -s benchmarks/scenarios.schema.json -d benchmarks/scenarios.json >/dev/null 2>&1; then
-    ok "schema: benchmarks/scenarios.json"
-  else
-    err "schema violation: benchmarks/scenarios.json"
-    npx --yes ajv-cli@5 validate -s benchmarks/scenarios.schema.json -d benchmarks/scenarios.json 2>&1 | sed 's/^/      /' | tail -8
-  fi
+  for scenarios in benchmarks/scenarios.json benchmarks/routing-scenarios.json; do
+    if npx --yes ajv-cli@5 validate -s benchmarks/scenarios.schema.json -d "$scenarios" >/dev/null 2>&1; then
+      ok "schema: $scenarios"
+    else
+      err "schema violation: $scenarios"
+      npx --yes ajv-cli@5 validate -s benchmarks/scenarios.schema.json -d "$scenarios" 2>&1 | sed 's/^/      /' | tail -8
+    fi
+  done
 else
   echo "  • npx not found — skipping benchmark scenario schema check"
 fi
@@ -184,16 +187,22 @@ else
 fi
 
 echo "== knowledge packs present =="
-for k in apple microsoft web backend operations-ux design-tokens learning-loop yagni; do
+for k in apple microsoft web backend operations-ux design-tokens execution-policy learning-loop yagni; do
   [ -s "knowledge/$k.md" ] && ok "knowledge/$k.md" || err "missing knowledge/$k.md"
 done
 
 echo "== python syntax =="
-if python3 -m py_compile scripts/bench-architrave.py scripts/judge-bench.py scripts/summarize-bench.py >/dev/null 2>&1; then
+if python3 -m py_compile scripts/bench-architrave.py scripts/judge-bench.py scripts/summarize-bench.py scripts/test-benchmark-tools.py >/dev/null 2>&1; then
   ok "benchmark python scripts"
 else
   err "python syntax problem in benchmark scripts"
-  python3 -m py_compile scripts/bench-architrave.py scripts/judge-bench.py scripts/summarize-bench.py 2>&1 | sed 's/^/      /' | tail -12
+  python3 -m py_compile scripts/bench-architrave.py scripts/judge-bench.py scripts/summarize-bench.py scripts/test-benchmark-tools.py 2>&1 | sed 's/^/      /' | tail -12
+fi
+if python3 scripts/test-benchmark-tools.py >/dev/null 2>&1; then
+  ok "adaptive benchmark fixtures"
+else
+  err "adaptive benchmark fixtures failed"
+  python3 scripts/test-benchmark-tools.py 2>&1 | sed 's/^/      /' | tail -24
 fi
 
 echo "== harness validator fixtures =="

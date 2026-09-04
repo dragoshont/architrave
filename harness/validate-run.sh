@@ -77,13 +77,55 @@ if [ -s ".architrave/learning/repo-profile.md" ]; then echo "ok    repo profile 
 if [ -s ".architrave/learning/repo-lessons.md" ]; then echo "ok    repo lessons .architrave/learning/repo-lessons.md"; else echo "FAIL  missing/empty repo lessons .architrave/learning/repo-lessons.md"; fail=1; fi
 
 if jq -e '
+  def intent_valid:
+    (.modelClass | IN("inherit", "fast", "default", "strong")) and
+    (.reasoning | IN("low", "default", "high", "max")) and
+    (.context | IN("narrow", "default", "long")) and
+    (.verification | IN("default", "independent", "cross-family"));
+  def profile_valid:
+    .profile == null or
+    (.profile == "FAST" and .intent == {"modelClass":"fast","reasoning":"low","context":"narrow","verification":"default"}) or
+    (.profile == "BALANCED" and .intent == {"modelClass":"default","reasoning":"default","context":"default","verification":"default"}) or
+    (.profile == "DEEP" and .intent == {"modelClass":"strong","reasoning":"high","context":"default","verification":"independent"}) or
+    (.profile == "CRITICAL" and .intent == {"modelClass":"strong","reasoning":"high","context":"default","verification":"cross-family"});
+  def execution_valid:
+    .execution == null or
+    ((.execution | has("profile") and has("intent") and has("effectiveVerification") and has("selectionReason") and has("requested") and has("observed") and has("events") and has("judgePasses")) and
+     (.execution.intent | intent_valid) and
+     (.execution | profile_valid) and
+     (.execution.effectiveVerification | IN("default", "independent", "cross-family")) and
+    ({"default":0,"independent":1,"cross-family":2}[.execution.effectiveVerification] >= {"default":0,"independent":1,"cross-family":2}[.execution.intent.verification]) and
+     (.execution.requested | has("hostProvider") and has("model") and has("reasoningEffort") and has("contextTier")) and
+     (.execution.observed | has("models") and has("modelReasoning")) and
+     (.execution.observed.models | type == "array") and
+     all(.execution.observed.modelReasoning[]; (.model | type == "string" and length > 0) and has("vendor") and has("reasoningEffort")) and
+     all(.execution.events[]; (.type | IN("fallback", "escalation")) and (.from | type == "string" and length > 0) and (.to | type == "string" and length > 0) and (.evidence | type == "string" and length > 0)) and
+     all(.execution.judgePasses[];
+       ((.declaredFamily) as $declaredFamily |
+        ([.observedVendors[] | ascii_downcase | if test("anthropic|claude") then "claude" elif test("openai") then "gpt" else empty end] | unique) as $vendorFamilies |
+        ([.observedModels[] | ascii_downcase | if test("claude|anthropic") then "claude" elif test("^(gpt-|openai/|o1|o3|o4)") then "gpt" else empty end] | unique) as $modelFamilies |
+        (.stage | IN("pre", "post")) and (.hostProvider | type == "string" and length > 0) and (.declaredFamily | IN("gpt", "claude")) and has("requestedModel") and has("requestedEffort") and (.observedModels | type == "array") and (.observedVendors | type == "array") and (.familyEvidence | IN("observed-vendor", "observed-model", "unverified")) and (.independent | type == "boolean") and (.verdict | IN("PASS", "REVISE", "FAIL")) and (.promptVersion | type == "string" and length > 0) and (.rubricSha256 | test("^[0-9a-f]{64}$")) and
+        (if .familyEvidence == "observed-vendor" then ($vendorFamilies | index($declaredFamily)) != null elif .familyEvidence == "observed-model" then ($modelFamilies | index($declaredFamily)) != null else true end))) and
+     (if .execution.metrics == null then true else
+       ((.execution.metrics | keys_unsorted - ["durationMs", "outputTokens", "toolCalls"] | length) == 0) and
+       all(.execution.metrics[]; type == "number" and . >= 0 and floor == .)
+      end) and
+     (if .status == "in-progress" then true else
+       (.execution.selectionReason | type == "string" and length > 0) and
+      ([.execution.judgePasses[] | select(.stage == "post" and .independent == true and .verdict == "PASS" and .familyEvidence != "unverified") | .declaredFamily] | unique) as $families |
+      (if .status != "passed" then true
+       elif .execution.effectiveVerification == "independent" then ($families | length >= 1)
+       elif .execution.effectiveVerification == "cross-family" then (($families | index("gpt")) != null and ($families | index("claude")) != null)
+       else true end)
+      end));
   .schema == "architrave.run.v1" and
   (.runId | type == "string") and
   (.status | type == "string") and
   ((.phases // []) | type == "array") and
   ((.phases // []) | length >= 1) and
   (if .status == "in-progress" then ([ (.phases // [])[] | select(.status == "in-progress") ] | length == 1) else ([ (.phases // [])[] | select(.status == "in-progress") ] | length == 0) end) and
-  all((.phases // [])[]; (.phase | type == "number") and (.name | type == "string" and length > 0) and (.status | IN("not-started", "in-progress", "blocked", "completed", "skipped")) and (.scope | type == "string") and (.gate | type == "string"))
+  all((.phases // [])[]; (.phase | type == "number") and (.name | type == "string" and length > 0) and (.status | IN("not-started", "in-progress", "blocked", "completed", "skipped")) and (.scope | type == "string") and (.gate | type == "string")) and
+  execution_valid
 ' "$run_dir/summary.json" >/dev/null; then
   echo "ok    summary schema"
 else

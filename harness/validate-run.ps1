@@ -81,6 +81,65 @@ try {
   if ($activeSummary -gt 1) { throw 'too many active phases' }
   if ($summary.status -eq 'in-progress' -and $activeSummary -ne 1) { throw 'in-progress summary requires exactly one active phase' }
   if ($summary.status -ne 'in-progress' -and $activeSummary -ne 0) { throw 'terminal summary cannot have active phases' }
+  if ($summary.PSObject.Properties.Name -contains 'execution') {
+    $execution = $summary.execution
+    $required = @('profile','intent','effectiveVerification','selectionReason','requested','observed','events','judgePasses')
+    foreach ($name in $required) { if ($execution.PSObject.Properties.Name -notcontains $name) { throw "missing execution.$name" } }
+    if ($execution.intent.modelClass -notin @('inherit','fast','default','strong')) { throw 'invalid execution modelClass' }
+    if ($execution.intent.reasoning -notin @('low','default','high','max')) { throw 'invalid execution reasoning' }
+    if ($execution.intent.context -notin @('narrow','default','long')) { throw 'invalid execution context' }
+    if ($execution.intent.verification -notin @('default','independent','cross-family')) { throw 'invalid execution verification' }
+    if ($execution.effectiveVerification -notin @('default','independent','cross-family')) { throw 'invalid effective verification' }
+    $verificationRank = @{ default = 0; independent = 1; 'cross-family' = 2 }
+    if ($verificationRank[$execution.effectiveVerification] -lt $verificationRank[$execution.intent.verification]) { throw 'effective verification cannot weaken selected intent' }
+    $presets = @{
+      FAST = @('fast','low','narrow','default')
+      BALANCED = @('default','default','default','default')
+      DEEP = @('strong','high','default','independent')
+      CRITICAL = @('strong','high','default','cross-family')
+    }
+    if ($null -ne $execution.profile) {
+      if (-not $presets.ContainsKey([string]$execution.profile)) { throw 'invalid execution profile' }
+      $actual = @($execution.intent.modelClass,$execution.intent.reasoning,$execution.intent.context,$execution.intent.verification)
+      if ((Compare-Object $actual $presets[[string]$execution.profile] -SyncWindow 0).Count -ne 0) { throw 'execution profile does not match intent' }
+    }
+    foreach ($name in @('hostProvider','model','reasoningEffort','contextTier')) { if ($execution.requested.PSObject.Properties.Name -notcontains $name) { throw "missing execution.requested.$name" } }
+    foreach ($name in @('models','modelReasoning')) { if ($execution.observed.PSObject.Properties.Name -notcontains $name) { throw "missing execution.observed.$name" } }
+    if ($execution.observed.models -isnot [System.Array] -or $execution.observed.modelReasoning -isnot [System.Array] -or $execution.events -isnot [System.Array] -or $execution.judgePasses -isnot [System.Array]) { throw 'execution collections must be arrays' }
+    foreach ($item in @($execution.observed.modelReasoning)) {
+      if (-not $item.model -or $item.PSObject.Properties.Name -notcontains 'vendor' -or $item.PSObject.Properties.Name -notcontains 'reasoningEffort') { throw 'invalid observed model reasoning' }
+    }
+    foreach ($event in @($execution.events)) {
+      if ($event.type -notin @('fallback','escalation') -or -not $event.from -or -not $event.to -or -not $event.evidence) { throw 'invalid execution event' }
+    }
+    $postVerifiedFamilies = @()
+    foreach ($judge in @($execution.judgePasses)) {
+      $judgeRequired = @('stage','hostProvider','declaredFamily','requestedModel','requestedEffort','observedModels','observedVendors','familyEvidence','independent','verdict','promptVersion','rubricSha256')
+      foreach ($name in $judgeRequired) { if ($judge.PSObject.Properties.Name -notcontains $name) { throw "missing judge pass field $name" } }
+      if ($judge.stage -notin @('pre','post') -or -not $judge.hostProvider -or $judge.declaredFamily -notin @('gpt','claude') -or $judge.familyEvidence -notin @('observed-vendor','observed-model','unverified') -or $judge.verdict -notin @('PASS','REVISE','FAIL') -or -not $judge.promptVersion -or $judge.rubricSha256 -notmatch '^[0-9a-f]{64}$') { throw 'invalid judge pass' }
+      if ($judge.observedModels -isnot [System.Array] -or $judge.observedVendors -isnot [System.Array]) { throw 'judge observations must be arrays' }
+      $vendorFamilies = @($judge.observedVendors | ForEach-Object { if ($_ -match '(?i)anthropic|claude') { 'claude' } elseif ($_ -match '(?i)openai') { 'gpt' } } | Sort-Object -Unique)
+      $modelFamilies = @($judge.observedModels | ForEach-Object { if ($_ -match '(?i)claude|anthropic') { 'claude' } elseif ($_ -match '(?i)^(gpt-|openai/|o1|o3|o4)') { 'gpt' } } | Sort-Object -Unique)
+      if ($judge.familyEvidence -eq 'observed-vendor' -and $vendorFamilies -notcontains $judge.declaredFamily) { throw 'judge vendor contradicts declared family' }
+      if ($judge.familyEvidence -eq 'observed-model' -and $modelFamilies -notcontains $judge.declaredFamily) { throw 'judge model contradicts declared family' }
+      if ($judge.stage -eq 'post' -and $judge.independent -eq $true -and $judge.verdict -eq 'PASS' -and $judge.familyEvidence -ne 'unverified') { $postVerifiedFamilies += $judge.declaredFamily }
+    }
+    if ($execution.PSObject.Properties.Name -contains 'metrics') {
+      $metricNames = @($execution.metrics.PSObject.Properties.Name)
+      if (@($metricNames | Where-Object { $_ -notin @('durationMs','outputTokens','toolCalls') }).Count -gt 0) { throw 'unknown execution metric' }
+      foreach ($name in @('durationMs','outputTokens','toolCalls')) {
+        if ($execution.metrics.PSObject.Properties.Name -contains $name) {
+          $value = $execution.metrics.$name
+          if ($value -is [bool] -or ($value -isnot [int] -and $value -isnot [long]) -or $value -lt 0) { throw 'invalid execution metric' }
+        }
+      }
+    }
+    if ($summary.status -ne 'in-progress') {
+      if ([string]::IsNullOrWhiteSpace([string]$execution.selectionReason)) { throw 'terminal execution summary requires selection reason' }
+      if ($summary.status -eq 'passed' -and $execution.effectiveVerification -eq 'independent' -and $postVerifiedFamilies.Count -lt 1) { throw 'post-implementation independent verification is unproven' }
+      if ($summary.status -eq 'passed' -and $execution.effectiveVerification -eq 'cross-family' -and (@($postVerifiedFamilies | Sort-Object -Unique) -notcontains 'gpt' -or @($postVerifiedFamilies | Sort-Object -Unique) -notcontains 'claude')) { throw 'post-implementation cross-family verification is unproven' }
+    }
+  }
   Write-Host 'ok    summary schema'
 } catch {
   Write-Host 'FAIL  invalid summary.json'; $fail = 1

@@ -15,7 +15,7 @@ Grounded in current practice:
 
 Architrave uses four different stores because each has a different job:
 
-1. **Run artifacts (episodic memory):** `.architrave/runs/<run-id>/` records what happened in one task: intake, tournament, plan, gates, judge verdicts, runtime evidence, final status. It is auditable and can resume after context loss, but it is not automatically treated as future instruction.
+1. **Run artifacts (episodic memory):** `.architrave/runs/<run-id>/` records what happened in one task: intake, tournament, plan, gates, judge verdicts, runtime evidence, final status, and optional adaptive execution evidence. It is auditable and can resume after context loss, but it is not automatically treated as future instruction.
 2. **Repo profile (semantic memory):** `.architrave/learning/repo-profile.md` is the concise, validated description of the repository: purpose, surfaces, architecture lanes, source-of-truth paths, build/test commands, recurring gotchas, and last-reviewed evidence.
 3. **Candidate lessons (semantic/episodic bridge):** `.architrave/learning/repo-lessons.md` tracks repeated observations with evidence and occurrence counts. It is a review queue, not a command file.
 4. **Promoted rules (procedural memory):** stable lessons move into `architrave.config.json`, `AGENTS.md`, `.github/instructions/*.instructions.md`, docs, or contracts after review. These are the places future agents are allowed to treat as standing guidance.
@@ -29,6 +29,7 @@ Architrave uses four different stores because each has a different job:
 - For prose claims that cannot be proven by local link existence alone, run the semantic learning review helper. The provider-backed review emits JSONL findings for unsupported claims; the deterministic apply helper only marks exact matching learning lines as `UNVALIDATED:` so stale review output cannot mutate changed text.
 - Keep always-loaded instruction files short and scoped. Use path-specific `.github/instructions/*.instructions.md` or docs for local rules instead of stuffing every detail into `AGENTS.md`.
 - Redact secrets. Learning artifacts may say a secret reference exists or a config file is required; they must not contain secret values, tokens, private keys, cookies, or credentials.
+- Keep adaptive evidence concise: semantic intent and selection reason, requested binding, observed model/vendor/effort, fallback/escalation evidence, judge provenance, and available duration/token/tool metrics. Never store hidden reasoning or treat a producer's self-report as host observation.
 
 ## Repo profile shape
 

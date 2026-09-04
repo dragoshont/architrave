@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "arms": [
+    {
+      "id": "copilot-architrave-inherit",
+      "runner": "copilot",
+      "agent": "architrave:architrave",
+      "execution": {
+        "profile": null,
+        "modelClass": "inherit",
+        "reasoning": "default",
+        "context": "default",
+        "verification": "default"
+      },
+      "customInstructions": true,
+      "allowAll": true,
+      "noAskUser": true
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "architrave-fast-agent-count",
+      "enabled": true,
+      "repo": "..",
+      "baseRef": "2638741ce78954ecc0eccb4216ea130f7167724c",
+      "lane": "knowledge",
+      "tags": ["routing", "fast", "extraction", "deterministic"],
+      "expectedExecution": {
+        "profile": "FAST",
+        "modelClass": "fast",
+        "reasoning": "low",
+        "context": "narrow",
+        "verification": "default"
+      },
+      "prompt": "Count the canonical agent definition files directly under agents/ and write only the decimal count plus a newline to benchmarks/outputs/agent-count.txt. Do not modify any other tracked file. Use targeted repository inspection and verify the count against the directory contents.",
+      "validation": [
+        "{python} -c \"from pathlib import Path; expected=len(list(Path('agents').glob('*.agent.md'))); actual=int(Path('benchmarks/outputs/agent-count.txt').read_text().strip()); assert actual == expected\""
+      ],
+      "expectedArtifacts": ["benchmarks/outputs/agent-count.txt"],
+      "scoring": {
+        "mustShow": ["correct count", "no unrelated changes"],
+        "failureModes": ["broad refactor", "guessed count", "extra tracked output"]
+      }
+    },
+    {
+      "id": "architrave-balanced-diff-metrics",
+      "enabled": true,
+      "repo": "..",
+      "baseRef": "2638741ce78954ecc0eccb4216ea130f7167724c",
+      "lane": "knowledge",
+      "tags": ["routing", "balanced", "debugging", "python"],
+      "expectedExecution": {
+        "profile": "BALANCED",
+        "modelClass": "default",
+        "reasoning": "default",
+        "context": "default",
+        "verification": "default"
+      },
+      "prompt": "Fix scripts/bench-architrave.py diff metrics so an empty diff never leaves dependency metrics undefined and binary numstat entries still count as changed files without inventing line counts. Add a focused Python stdlib test at scripts/test-benchmark-tools.py that proves both cases. Keep the change local and run that test.",
+      "validation": ["{python} scripts/test-benchmark-tools.py"],
+      "expectedArtifacts": ["scripts/test-benchmark-tools.py"],
+      "scoring": {
+        "mustShow": ["root cause", "empty diff test", "binary diff test", "no dependency"],
+        "failureModes": ["catches exception without fixing initialization", "counts binary bytes as LOC", "adds test framework"]
+      }
+    },
+    {
+      "id": "architrave-deep-execution-policy-decision",
+      "enabled": true,
+      "repo": "..",
+      "baseRef": "2638741ce78954ecc0eccb4216ea130f7167724c",
+      "lane": "knowledge",
+      "tags": ["routing", "deep", "architecture", "policy"],
+      "expectedExecution": {
+        "profile": "DEEP",
+        "modelClass": "strong",
+        "reasoning": "high",
+        "context": "default",
+        "verification": "independent"
+      },
+      "prompt": "Design, but do not implement, a provider-neutral adaptive execution policy for Architrave. Write benchmarks/outputs/adaptive-policy-decision.md. Compare canonical model fields, host-local overrides, generated overlays, and semantic intent plus native subagent bindings. Define orthogonal modelClass/reasoning/context/verification dimensions, optional presets, task-over-role precedence, context and delegation policy, fallback versus bounded escalation, and verification floors. Preserve the thin conductor and keep concrete model IDs and new runtimes out.",
+      "validation": [
+        "{python} -c \"from pathlib import Path; text=Path('benchmarks/outputs/adaptive-policy-decision.md').read_text().lower(); required=['modelclass','reasoning','context','verification','subagent','fallback','escalation','concrete model']; assert all(item in text for item in required)\""
+      ],
+      "expectedArtifacts": ["benchmarks/outputs/adaptive-policy-decision.md"],
+      "scoring": {
+        "mustShow": ["four options", "orthogonal dimensions", "task overrides role", "host owns invocation", "no concrete IDs"],
+        "failureModes": ["new runtime", "model gateway", "canonical model pin", "role-only routing"]
+      }
+    },
+    {
+      "id": "architrave-critical-judge-trust-review",
+      "enabled": true,
+      "repo": "..",
+      "baseRef": "2638741ce78954ecc0eccb4216ea130f7167724c",
+      "lane": "knowledge",
+      "tags": ["routing", "critical", "security", "judge"],
+      "expectedExecution": {
+        "profile": "CRITICAL",
+        "modelClass": "strong",
+        "reasoning": "high",
+        "context": "default",
+        "verification": "cross-family"
+      },
+      "prompt": "Adversarially review scripts/judge-bench.py as a trust boundary and write benchmarks/outputs/judge-security-review.md without changing product code. Determine whether untrusted patches/stdout can prompt-inject the judge, whether the judge can use tools, whether resumability can confuse judge families/configurations, and what evidence is needed before claiming cross-family independence. Recommend the smallest fail-closed fixes and preserve deterministic validation.",
+      "validation": [
+        "{python} -c \"from pathlib import Path; text=Path('benchmarks/outputs/judge-security-review.md').read_text().lower(); required=['allow-all-tools','prompt injection','resume','family','tool-free','fail closed']; assert all(item in text for item in required)\""
+      ],
+      "expectedArtifacts": ["benchmarks/outputs/judge-security-review.md"],
+      "scoring": {
+        "mustShow": ["untrusted evidence boundary", "zero tools", "family-aware resume identity", "verified model family"],
+        "failureModes": ["rubber stamp", "model self-attestation", "new evaluator framework", "mutation during review"]
+      }
+    }
+  ]
+}
