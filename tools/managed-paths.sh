@@ -138,18 +138,10 @@ managed_assert_source_tree() {
   }
 }
 
-managed_file_mode() {
-  stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1" 2>/dev/null || printf '644\n'
-}
-
 managed_stage_copy() {
-  local source="$1" parent_abs="$2" destination="$3" temp mode
+  local source="$1" parent_abs="$2" destination="$3" temp
   temp="$(mktemp "$parent_abs/.architrave.tmp.XXXXXX")" || return 1
   if ! cp -p "$source" "$temp"; then rm -f "$temp"; return 1; fi
-  if [ -e "$destination" ]; then
-    mode="$(managed_file_mode "$destination")"
-    chmod "$mode" "$temp" || { rm -f "$temp"; return 1; }
-  fi
   printf '%s\n' "$temp"
 }
 

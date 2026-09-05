@@ -32,7 +32,12 @@ cmd[${#cmd[@]}-1]="$body
 Read $nonce_file and include EVIDENCE_NONCE: <value>; the value is absent from this prompt."
 exit_code=0; "${cmd[@]}" >"$output" 2>&1 || exit_code=$?; cat "$output"
 nonce="$(cat "$nonce_file")"
-nonce_count="$(grep -Ec "^EVIDENCE_NONCE: $nonce\r?$" "$output" || true)"
-completion_count="$(grep -Ec '^TOURNAMENT: COMPLETE\r?$' "$output" || true)"
-last_line="$(awk 'NF { line=$0 } END { sub(/\r$/, "", line); print line }' "$output")"
+result="$(cat "$output")"
+# Bash command substitution retains a terminal CR from CRLF output. Normalize
+# line endings before matching: GNU grep ERE does not portably treat \r as CR.
+result="${result//$'\r\n'/$'\n'}"
+result="${result%$'\r'}"
+nonce_count="$(printf '%s\n' "$result" | grep -Ec "^EVIDENCE_NONCE: $nonce$" || true)"
+completion_count="$(printf '%s\n' "$result" | grep -Ec '^TOURNAMENT: COMPLETE$' || true)"
+last_line="$(printf '%s\n' "$result" | awk 'NF { line=$0 } END { print line }')"
 [ "$exit_code" -eq 0 ] && [ "$nonce_count" -eq 1 ] && [ "$completion_count" -eq 1 ] && [ "$last_line" = 'TOURNAMENT: COMPLETE' ] || { echo "tournament-review: unverified result" >&2; exit 1; }

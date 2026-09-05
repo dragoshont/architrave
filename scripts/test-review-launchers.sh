@@ -151,13 +151,32 @@ grep -q -- '--available-tools view\\,grep\\,glob' "$FAKE_AGENT_LOG"
 grep -q -- '--append-system-prompt-file agents/adversarial-judge.agent.md' "$FAKE_AGENT_LOG"
 echo "ok    PowerShell semantic and tournament launchers"
 
+# GNU grep ERE does not interpret \r as a carriage return. Reject that
+# nonportable expression here so the CRLF fixture covers Ubuntu semantics even
+# when this suite is run on macOS.
+gnu_grep_bin="$tmp/gnu-grep-bin"
+mkdir "$gnu_grep_bin"
+real_grep="$(command -v grep)"
+cat >"$gnu_grep_bin/grep" <<'EOF'
+#!/usr/bin/env bash
+for argument in "$@"; do
+  case "$argument" in *'\r'*) exit 1 ;; esac
+done
+exec "$REAL_GREP" "$@"
+EOF
+chmod +x "$gnu_grep_bin/grep"
+export REAL_GREP="$real_grep"
+
 export FAKE_TOURNAMENT_MODE=crlf
-harness/semantic-review.sh --provider both --run "$run_dir" --execute >/dev/null
+PATH="$gnu_grep_bin:$PATH" harness/semantic-review.sh --provider both --run "$run_dir" --execute >/dev/null
+echo "ok    POSIX semantic launcher accepts JSON-embedded CRLF evidence under GNU grep semantics"
 pwsh -NoProfile -File harness/semantic-review.ps1 -Provider both -RunDir "$run_dir" -Execute >/dev/null
-harness/tournament-review.sh --run "$run_dir" --execute >/dev/null
+PATH="$gnu_grep_bin:$PATH" harness/tournament-review.sh --run "$run_dir" --execute >/dev/null
+echo "ok    POSIX tournament launcher accepts CRLF evidence under GNU grep semantics"
 pwsh -NoProfile -File harness/tournament-review.ps1 -RunDir "$run_dir" -Execute >/dev/null
 unset FAKE_TOURNAMENT_MODE
-echo "ok    POSIX and PowerShell semantic/tournament launchers accept exact CRLF evidence"
+unset REAL_GREP
+echo "ok    PowerShell semantic/tournament launchers accept exact CRLF evidence"
 
 for mode in missing duplicate missing-nonce duplicate-nonce; do
   export FAKE_TOURNAMENT_MODE="$mode"

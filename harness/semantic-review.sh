@@ -139,10 +139,14 @@ run_judge() {
   [ -s "$stderr_output" ] && cat "$stderr_output" >&2
   nonce="$(cat "$nonce_file")"
   content="$(extract_content "$label" "$output")"
+  # Bash command substitution retains a terminal CR from CRLF output. Normalize
+  # line endings before matching: GNU grep ERE does not portably treat \r as CR.
+  content="${content//$'\r\n'/$'\n'}"
+  content="${content%$'\r'}"
   printf '%s\n' "$content"
-  nonce_count="$(printf '%s\n' "$content" | grep -Ec "^EVIDENCE_NONCE: $nonce\r?$" || true)"
-  verdict_count="$(printf '%s\n' "$content" | grep -Ec '^VERDICT: (PASS|REVISE|FAIL)\r?$' || true)"
-  last_line="$(printf '%s\n' "$content" | awk 'NF { line=$0 } END { sub(/\r$/, "", line); print line }')"
+  nonce_count="$(printf '%s\n' "$content" | grep -Ec "^EVIDENCE_NONCE: $nonce$" || true)"
+  verdict_count="$(printf '%s\n' "$content" | grep -Ec '^VERDICT: (PASS|REVISE|FAIL)$' || true)"
+  last_line="$(printf '%s\n' "$content" | awk 'NF { line=$0 } END { print line }')"
   if [ "$exit_code" -ne 0 ] || [ "$nonce_count" -ne 1 ] || [ "$verdict_count" -ne 1 ] || [ "$last_line" != 'VERDICT: PASS' ]; then
     echo "semantic-review: $label judge did not return a verified PASS" >&2
     rm -f "$output" "$stderr_output"
