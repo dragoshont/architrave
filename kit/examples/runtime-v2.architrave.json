@@ -1,0 +1,77 @@
+{
+  "platform": "web",
+  "stack": "react",
+  "designSource": {
+    "type": "storybook",
+    "path": ".storybook",
+    "url": "http://localhost:6006"
+  },
+  "applyTo": ["src/**"],
+  "build": "npm run build",
+  "test": "npm test",
+  "autonomy": {
+    "scope": "current-task",
+    "mutationPolicy": {
+      "default": "deny",
+      "allow": [
+        {
+          "scope": "repository",
+          "operations": ["edit", "build", "test"]
+        }
+      ],
+      "confirmationRequired": []
+    }
+  },
+  "workers": {
+    "defaultAdapter": "copilot",
+    "maxParallel": 2,
+    "worktreeRoot": ".architrave/worktrees",
+    "cleanupCompletedWorktrees": true,
+    "enabledAdapters": ["copilot", "claude", "codex", "shell"]
+  },
+  "runtime": {
+    "boot": "npm run dev",
+    "health": "curl -fsS http://localhost:3000/health",
+    "stop": "npm run dev:stop",
+    "web": {
+      "url": "http://localhost:3000",
+      "e2e": "npx playwright test",
+      "screenshot": "npx playwright test tests/screenshot.spec.ts"
+    },
+    "deployment": {
+      "target": "sandbox:example",
+      "current": "scripts/deployment-current.sh",
+      "diff": "scripts/deployment-diff.sh",
+      "apply": "scripts/deployment-apply.sh",
+      "health": "scripts/deployment-health.sh",
+      "rollback": "scripts/deployment-rollback.sh",
+      "version": "scripts/deployment-version.sh",
+      "digest": "scripts/deployment-digest.sh"
+    }
+  },
+  "invariants": {
+    "requiredFiles": ["README.md"],
+    "forbiddenPatterns": [
+      {
+        "pattern": "href=\\\"#\\\"",
+        "paths": ["src/**/*.tsx"]
+      }
+    ],
+    "forbiddenDependencies": [
+      {
+        "from": "src/core/**",
+        "to": "src/providers/**"
+      }
+    ]
+  },
+  "evaluation": {
+    "defaultRisk": "R2",
+    "realityGate": true,
+    "controlAudit": true,
+    "riskPolicy": {
+      "R0": ["deterministic"],
+      "R2": ["deterministic", "semantic-gpt"],
+      "R3": ["deterministic", "e2e", "semantic-gpt", "semantic-claude", "reality"]
+    }
+  }
+}

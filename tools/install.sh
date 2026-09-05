@@ -9,7 +9,7 @@
 #   • drops .github/workflows/copilot-setup-steps.yml (cloud-agent gate deps)
 #   • wires the POSIX PostToolUse hook into .github/hooks/
 #
-# Usage: tools/install.sh [--profile application|knowledge] [TARGET_REPO_DIR]
+# Usage: tools/install.sh [--profile application|knowledge] [--codex] [TARGET_REPO_DIR]
 #        default profile: application; default target: current directory
 # For local agents you ALSO install the plugin once:
 #   copilot plugin marketplace add dragoshont/architrave
@@ -17,10 +17,12 @@
 set -uo pipefail
 
 KIT="$(cd "$(dirname "$0")/.." && pwd)"
+. "$KIT/tools/managed-paths.sh" || exit 1
 profile="application"
+install_codex=0
 target_arg=""
 usage() {
-  echo "Usage: tools/install.sh [--profile application|knowledge] [TARGET_REPO_DIR]"
+  echo "Usage: tools/install.sh [--profile application|knowledge] [--codex] [TARGET_REPO_DIR]"
 }
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -32,6 +34,9 @@ while [ "$#" -gt 0 ]; do
     --profile=*)
       profile="${1#--profile=}"
       [ -n "$profile" ] || { echo "install: --profile requires application or knowledge" >&2; exit 2; }
+      ;;
+    --codex)
+      install_codex=1
       ;;
     -h|--help)
       usage
@@ -55,49 +60,89 @@ case "$profile" in
 esac
 
 TARGET="${target_arg:-$PWD}"
-TARGET="$(cd "$TARGET" 2>/dev/null && pwd)" || { echo "install: target dir not found: ${target_arg:-$PWD}" >&2; exit 1; }
+TARGET="$(cd "$TARGET" 2>/dev/null && pwd -P)" || { echo "install: target dir not found: ${target_arg:-$PWD}" >&2; exit 1; }
 [ "$TARGET" = "$KIT" ] && { echo "install: refusing to install the kit into itself" >&2; exit 1; }
+managed_paths_init "$TARGET" install || exit 1
+
+if [ "$install_codex" -eq 1 ]; then
+  command -v python3 >/dev/null 2>&1 || { echo "install: --codex requires Python 3.11+" >&2; exit 2; }
+  python3 "$KIT/tools/codex-roles.py" --kit "$KIT" --target "$TARGET" --preflight || exit $?
+fi
 
 begin="<!-- architrave:begin -->"
 end="<!-- architrave:end -->"
 
-echo "Architrave → installing into: $TARGET"
-mkdir -p "$TARGET/.github/agents" "$TARGET/.github/hooks" "$TARGET/.github/workflows" "$TARGET/gates/hooks" "$TARGET/harness"
+for source_tree in agents gates knowledge harness; do
+  managed_assert_source_tree "$KIT/$source_tree" || exit 1
+done
+for source_file in templates/AGENTS.stanza.md templates/copilot-setup-steps.yml plugin.json; do
+  managed_assert_source_file "$KIT/$source_file" || exit 1
+done
+if [ "$profile" = "application" ]; then
+  for source_file in "$KIT"/constitution-*.md; do managed_assert_source_file "$source_file" || exit 1; done
+else
+  managed_assert_source_file "$KIT/kit/examples/knowledge.architrave.json" || exit 1
+fi
 
-# 1) Agents — the discovery location read by CLI / app / VS Code / cloud agent.
-cp "$KIT"/agents/*.agent.md "$TARGET/.github/agents/"
-echo "  ✓ agents → .github/agents/ ($(ls "$KIT"/agents/*.agent.md | wc -l | tr -d ' ') files)"
+for tree in .github/agents .github/hooks .github/workflows gates gates/hooks knowledge harness; do
+  managed_preflight_tree "$tree" || exit 1
+done
+for file in architrave.config.json .gitignore AGENTS.md constitution-apple.md constitution-windows.md \
+  .github/hooks/design-guard.json .github/workflows/copilot-setup-steps.yml gates/.kit-version; do
+  managed_preflight_file "$file" || exit 1
+done
+
+echo "Architrave → installing into: $TARGET"
+for directory in .github/agents .github/hooks .github/workflows gates/hooks knowledge harness; do
+  managed_ensure_dir "$directory" || exit 1
+done
+
+# 1) Agents — knowledge repos get only the crew their lane uses; applications get all.
+if [ "$profile" = "knowledge" ]; then
+  for a in architrave adversarial-judge tournament-analyst product-research runtime-observer; do
+    managed_safe_replace "$KIT/agents/$a.agent.md" ".github/agents/$a.agent.md" || exit 1
+  done
+  echo "  ✓ agents → .github/agents/ (knowledge crew: architrave · adversarial-judge · tournament-analyst · product-research · runtime-observer)"
+else
+  for source_file in "$KIT"/agents/*.agent.md; do
+    managed_safe_replace "$source_file" ".github/agents/${source_file##*/}" || exit 1
+  done
+  echo "  ✓ agents → .github/agents/ ($(ls "$KIT"/agents/*.agent.md | wc -l | tr -d ' ') files)"
+fi
 
 # 2) Gates — sh + ps1 pairs, rubric, and hook configs (run repo-relative).
-cp "$KIT"/gates/checks.sh "$KIT"/gates/checks.ps1 \
-   "$KIT"/gates/reconcile.sh "$KIT"/gates/reconcile.ps1 \
-   "$KIT"/gates/quality-gate.sh "$KIT"/gates/quality-gate.ps1 \
-   "$KIT"/gates/backend-checks.sh "$KIT"/gates/backend-checks.ps1 \
-   "$KIT"/gates/rubric.md "$TARGET/gates/"
-cp "$KIT"/gates/hooks/*.json "$TARGET/gates/hooks/"
-chmod +x "$TARGET"/gates/*.sh "$TARGET"/gates/*.ps1 2>/dev/null || true
+for source_file in checks.sh checks.ps1 reconcile.sh reconcile.ps1 quality-gate.sh quality-gate.ps1 \
+  backend-checks.sh backend-checks.ps1 rubric.md; do
+  managed_safe_replace "$KIT/gates/$source_file" "gates/$source_file" || exit 1
+done
+managed_copy_tree "$KIT/gates/hooks" gates/hooks || exit 1
 echo "  ✓ gates → gates/ (checks · reconcile · quality-gate · backend-checks, .sh + .ps1, + rubric)"
 
 # 2b) Knowledge packs — platform, backend, operations UX, token, learning, and YAGNI rule bases.
-mkdir -p "$TARGET/knowledge"
-cp "$KIT"/knowledge/*.md "$TARGET/knowledge/"
-echo "  ✓ knowledge → knowledge/ (apple · microsoft · web · backend · operations-ux · design-tokens · execution-policy · learning-loop · yagni)"
+managed_copy_tree "$KIT/knowledge" knowledge || exit 1
+echo "  ✓ knowledge → knowledge/ (apple · microsoft · web · backend · operations-ux · design-tokens · execution-policy · learning-loop · yagni · runtime-v2)"
 
-# 2b-ii) Platform constitution(s) — the deep, source-cited native-app synthesis (e.g. Apple SwiftUI),
-# copied to the repo root (beside architrave.config.json) so the cloud agent can read it.
-cp "$KIT"/constitution-*.md "$TARGET/" 2>/dev/null && echo "  ✓ constitution → constitution-*.md (deep native-app synthesis; Apple + Windows)" || true
+# 2b-ii) Platform constitution(s) — application profile only.
+if [ "$profile" = "knowledge" ]; then
+  echo "  • constitution-*.md skipped (knowledge profile: no native-app UI)"
+else
+  for source_file in "$KIT"/constitution-*.md; do
+    managed_safe_replace "$source_file" "${source_file##*/}" || exit 1
+  done
+  echo "  ✓ constitution → constitution-*.md (deep native-app synthesis; Apple + Windows)"
+fi
 
 # 2c) Audit harness — durable run artifacts + optional semantic review helpers.
-cp -R "$KIT"/harness/* "$TARGET/harness/"
-chmod +x "$TARGET"/harness/*.sh 2>/dev/null || true
+managed_copy_tree "$KIT/harness" harness || exit 1
 echo "  ✓ harness → harness/ (init-run · validate-run · semantic-review · semantic learning recovery)"
 
 # 3) architrave.config.json — scaffold only if absent (never clobber).
 if [ ! -f "$TARGET/architrave.config.json" ]; then
   if [ "$profile" = "knowledge" ]; then
-    cp "$KIT/kit/examples/knowledge.architrave.json" "$TARGET/architrave.config.json"
+    managed_safe_create "$KIT/kit/examples/knowledge.architrave.json" architrave.config.json || exit 1
   else
-    cat > "$TARGET/architrave.config.json" <<'JSON'
+    config_stage="$(mktemp)" || exit 1
+    cat > "$config_stage" <<'JSON'
 {
   "platform": "web",
   "stack": "react",
@@ -120,16 +165,42 @@ if [ ! -f "$TARGET/architrave.config.json" ]; then
   }
 }
 JSON
+    chmod 644 "$config_stage"
+    managed_safe_create "$config_stage" architrave.config.json || { rm -f "$config_stage"; exit 1; }
+    rm -f "$config_stage"
   fi
   echo "  ✓ scaffolded architrave.config.json (profile: $profile)  ← EDIT build/test and paths to match this repo"
 else
   echo "  • architrave.config.json already present — left as-is"
 fi
 
+# 3b) Agent session run artifacts are local by default; learning files stay tracked.
+gi="$TARGET/.gitignore"
+missing_ignore=0
+for ignore_rule in .architrave/runs/ .architrave/worktrees/ .architrave/runtime.key .architrave/resources.lock; do
+  if [ ! -f "$gi" ] || ! grep -qxF "$ignore_rule" "$gi"; then missing_ignore=1; fi
+done
+if [ "$missing_ignore" -eq 0 ]; then
+  echo "  • .gitignore already ignores Architrave private runtime files"
+else
+  gi_stage="$(mktemp)" || exit 1
+  if [ -f "$gi" ]; then managed_require_file .gitignore || { rm -f "$gi_stage"; exit 1; }; cat "$gi" > "$gi_stage"; fi
+  printf '\n# Architrave: private run evidence and isolated worker trees stay local.\n' >> "$gi_stage"
+  for ignore_rule in .architrave/runs/ .architrave/worktrees/ .architrave/runtime.key .architrave/resources.lock; do
+    grep -qxF "$ignore_rule" "$gi_stage" || printf '%s\n' "$ignore_rule" >> "$gi_stage"
+  done
+  chmod 644 "$gi_stage"
+  managed_safe_replace "$gi_stage" .gitignore || { rm -f "$gi_stage"; exit 1; }
+  rm -f "$gi_stage"
+  echo "  ✓ .gitignore → ignoring runs, worktrees, and runtime key"
+fi
+
 # 4) AGENTS.md stanza — idempotent (replace the managed block, else append).
 ag="$TARGET/AGENTS.md"
 tmp="$(mktemp)"
+managed_preflight_file AGENTS.md || { rm -f "$tmp"; exit 1; }
 if [ -f "$ag" ]; then
+  managed_require_file AGENTS.md || { rm -f "$tmp"; exit 1; }
   cat "$ag" > "$tmp"
 else
   printf '# AGENTS.md\n' > "$tmp"
@@ -142,25 +213,35 @@ awk -v b="$begin" -v e="$end" '
 ' "$tmp" > "$tmp2"
 mv "$tmp2" "$tmp"
 { printf '\n%s\n' "$begin"; cat "$KIT/templates/AGENTS.stanza.md"; printf '%s\n' "$end"; } >> "$tmp"
-mv "$tmp" "$ag"
+chmod 644 "$tmp"
+managed_safe_replace "$tmp" AGENTS.md || { rm -f "$tmp"; exit 1; }
+rm -f "$tmp"
 echo "  ✓ AGENTS.md stanza injected/refreshed"
 
 # 5) PostToolUse hook (POSIX). On Windows, install.ps1 wires the .ps1 variant.
-cp "$KIT/gates/hooks/design-guard.json" "$TARGET/.github/hooks/design-guard.json"
+managed_safe_replace "$KIT/gates/hooks/design-guard.json" .github/hooks/design-guard.json || exit 1
 echo "  ✓ .github/hooks/design-guard.json (PostToolUse JSON guard)"
 
 # 6) copilot-setup-steps.yml — only if absent (so the cloud agent can run gates).
 setup="$TARGET/.github/workflows/copilot-setup-steps.yml"
 if [ ! -f "$setup" ]; then
-  cp "$KIT/templates/copilot-setup-steps.yml" "$setup"
+  managed_safe_create "$KIT/templates/copilot-setup-steps.yml" .github/workflows/copilot-setup-steps.yml || exit 1
   echo "  ✓ .github/workflows/copilot-setup-steps.yml"
 else
   echo "  • copilot-setup-steps.yml present — merge jq install manually"
 fi
 
 # 7) Version stamp — lets gates/checks.sh detect when these copied assets go stale.
+if [ "$install_codex" -eq 1 ]; then
+  python3 "$KIT/tools/codex-roles.py" --kit "$KIT" --target "$TARGET" || exit $?
+fi
+
 if command -v jq >/dev/null 2>&1; then ver="$(jq -r '.version // "0.0.0"' "$KIT/plugin.json")"; else ver="$(grep -m1 '"version"' "$KIT/plugin.json" | sed -E 's/.*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/')"; fi
-printf '%s\n' "${ver:-0.0.0}" > "$TARGET/gates/.kit-version"
+version_stage="$(mktemp)" || exit 1
+printf '%s\n' "${ver:-0.0.0}" > "$version_stage"
+chmod 644 "$version_stage"
+managed_safe_replace "$version_stage" gates/.kit-version || { rm -f "$version_stage"; exit 1; }
+rm -f "$version_stage"
 echo "  ✓ stamped gates/.kit-version = ${ver:-0.0.0}"
 
 cat <<EOF
@@ -201,4 +282,6 @@ After you later update the plugin, refresh this repo's copied gates + harness + 
        "$KIT/tools/update.sh" "$TARGET"
 Use "$KIT/tools/update.sh" --agents "$TARGET" only when you deliberately want
 to refresh copied Architrave agents after archiving bespoke repo agents.
+Use "$KIT/tools/update.sh" --codex "$TARGET" to refresh only the generated
+Codex roles and managed role registrations. Skills come from the plugin only.
 EOF

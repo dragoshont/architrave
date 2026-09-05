@@ -13,4 +13,7 @@ __pycache__/
 *.pyc
 .architrave/learning/
 .architrave/runs/
+.architrave/worktrees/
+.architrave/runtime.key
+.architrave/resources.lock
 .architrave/bench/

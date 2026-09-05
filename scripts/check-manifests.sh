@@ -67,6 +67,7 @@ fi
 echo "== JSON well-formed =="
 json_files=(
   plugin.json
+  .codex-plugin/plugin.json
   .github/plugin/marketplace.json
   .claude-plugin/plugin.json
   .claude-plugin/marketplace.json
@@ -80,10 +81,17 @@ json_files=(
   gates/hooks/design-guard.json
   gates/hooks/design-guard.windows.json
   harness/schemas/run-summary.schema.json
+  harness/schemas/run-v2.schema.json
+  harness/schemas/event-v2.schema.json
   benchmarks/scenarios.schema.json
   benchmarks/results.schema.json
   benchmarks/scenarios.json
   benchmarks/routing-scenarios.json
+  kit/examples/runtime-v2.architrave.json
+  benchmarks/fixtures/tessera-shaped/architrave.config.json
+  benchmarks/fixtures/tessera-shaped/runtime/release-state.json
+  benchmarks/fixtures/tessera-shaped/deploy/release.json
+  benchmarks/fixtures/tessera-shaped/deploy/live.json
 )
 for f in "${json_files[@]}"; do
   if jq -e . "$f" >/dev/null 2>&1; then ok "$f"; else err "invalid JSON: $f"; fi
@@ -91,7 +99,7 @@ done
 
 echo "== version in sync (the Claude pin footgun) =="
 # Version resolves plugin.json -> marketplace entry -> git SHA; a stale/differing
-# value silently masks updates, so all six fields must be identical.
+# value silently masks updates, so all seven fields must be identical.
 v=$(jq -r '.version // "MISSING"' plugin.json)
 check_v() { # <file> <jq-path>
   local got; got=$(jq -r "$2 // \"MISSING\"" "$1")
@@ -99,16 +107,20 @@ check_v() { # <file> <jq-path>
 }
 [ "$v" != "MISSING" ] || err "plugin.json .version is missing"
 check_v .claude-plugin/plugin.json '.version'
+check_v .codex-plugin/plugin.json '.version'
 check_v .github/plugin/marketplace.json '.metadata.version'
 check_v .github/plugin/marketplace.json '.plugins[0].version'
 check_v .claude-plugin/marketplace.json '.metadata.version'
 check_v .claude-plugin/marketplace.json '.plugins[0].version'
-[ "$fail" -eq 0 ] && ok "all 6 version fields = $v"
+[ "$fail" -eq 0 ] && ok "all 7 version fields = $v"
 
 echo "== name consistency =="
 nb=$fail
 [ "$(jq -r '.name' plugin.json)" = "architrave" ] || err "plugin.json name != architrave"
 [ "$(jq -r '.name' .claude-plugin/plugin.json)" = "architrave" ] || err ".claude-plugin/plugin.json name != architrave"
+[ "$(jq -r '.name' .codex-plugin/plugin.json)" = "architrave" ] || err ".codex-plugin/plugin.json name != architrave"
+[ "$(jq -r '.skills' .codex-plugin/plugin.json)" = "./skills/" ] || err ".codex-plugin/plugin.json skills != './skills/'"
+[ "$(jq -r 'has("agents")' .codex-plugin/plugin.json)" = "false" ] || err ".codex-plugin/plugin.json must not contain unsupported agents field"
 for mf in .github/plugin/marketplace.json .claude-plugin/marketplace.json; do
   [ "$(jq -r '.name' "$mf")" = "architrave" ] || err "$mf marketplace name != architrave"
   [ "$(jq -r '.plugins[0].name' "$mf")" = "architrave" ] || err "$mf plugin entry name != architrave"
@@ -142,6 +154,64 @@ if command -v npx >/dev/null 2>&1; then
   done
 else
   echo "  • npx not found — skipping benchmark scenario schema check"
+fi
+
+echo "== LongBuild fixture config and scenario references =="
+if command -v npx >/dev/null 2>&1 &&
+   npx --yes ajv-cli@5 validate -s kit/architrave.config.schema.json -d benchmarks/fixtures/tessera-shaped/architrave.config.json >/dev/null 2>&1; then
+  ok "schema: Tessera-shaped fixture config"
+else
+  err "Tessera-shaped fixture config schema violation"
+fi
+
+echo "== generated Run v2 and event schema conformance =="
+if command -v npx >/dev/null 2>&1; then
+  runtime_schema_tmp="$(mktemp -d)"
+  git -C "$runtime_schema_tmp" init -q
+  git -C "$runtime_schema_tmp" config user.email architrave@example.invalid
+  git -C "$runtime_schema_tmp" config user.name 'Architrave Schema Test'
+  printf '# schema fixture\n' > "$runtime_schema_tmp/README.md"
+  git -C "$runtime_schema_tmp" add README.md
+  git -C "$runtime_schema_tmp" commit -qm fixture
+  if python3 harness/architrave_runtime.py --repo "$runtime_schema_tmp" run \
+      --run-id schema-fixture --goal 'Validate schema.' --outcome 'Generated state conforms.' >/dev/null 2>&1 &&
+     npx --yes ajv-cli@5 validate -s harness/schemas/run-v2.schema.json \
+      -d "$runtime_schema_tmp/.architrave/runs/schema-fixture/run.json" --strict=false >/dev/null 2>&1; then
+    jq -c . "$runtime_schema_tmp/.architrave/runs/schema-fixture/events.jsonl" > "$runtime_schema_tmp/event.json"
+    if npx --yes ajv-cli@5 validate -s harness/schemas/event-v2.schema.json \
+        -d "$runtime_schema_tmp/event.json" --strict=false >/dev/null 2>&1; then
+      ok "runtime-generated Run and event conform to v2 schemas"
+    else
+      err "runtime-generated event violates event-v2.schema.json"
+    fi
+  else
+    err "runtime-generated Run violates run-v2.schema.json"
+  fi
+  rm -rf "$runtime_schema_tmp"
+else
+  echo "  • npx not found — skipping generated Run v2 schema conformance"
+fi
+if python3 scripts/bench-architrave.py --validate >/dev/null 2>&1; then
+  ok "pinned repositories and frozen LongBuild fixtures"
+else
+  err "benchmark repository/fixture references failed"
+  python3 scripts/bench-architrave.py --validate 2>&1 | sed 's/^/      /' | tail -16
+fi
+if (cd benchmarks/fixtures/tessera-shaped && python3 tests/verify.py >/dev/null 2>&1); then
+  err "Tessera-shaped fixture baseline unexpectedly passes"
+else
+  ok "Tessera-shaped fixture baseline is intentionally unresolved"
+fi
+
+echo "== managed installer path safety =="
+if [ -f tools/managed-paths.sh ] && [ -f tools/ManagedPaths.ps1 ] &&
+  [ -f scripts/test-managed-paths.ps1 ] &&
+   bash -n tools/managed-paths.sh tools/install.sh tools/update.sh &&
+   grep -q 'managed_paths_init' tools/install.sh && grep -q 'managed_paths_init' tools/update.sh &&
+   grep -q 'Initialize-ManagedPaths' tools/install.ps1 && grep -q 'Initialize-ManagedPaths' tools/update.ps1; then
+  ok "paired managed-path helpers wired into install/update"
+else
+  err "managed-path helper pair missing, invalid, or not wired into every installer/updater"
 fi
 
 echo "== repository profile fixtures =="
@@ -186,17 +256,65 @@ else
   echo "  • ruby not found — skipping frontmatter check"
 fi
 
+echo "== Codex skills and generated roles =="
+if command -v ruby >/dev/null 2>&1; then
+  for skill in skills/*/SKILL.md; do
+    if ruby -ryaml -e '
+      parts = File.read(ARGV[0]).split("---", 3)
+      abort "no frontmatter" if parts.length < 3
+      d = YAML.safe_load(parts[1])
+      %w[name description].each { |k| abort "missing #{k}" if d[k].to_s.strip.empty? }
+    ' "$skill" 2>/dev/null; then ok "$skill"; else err "skill frontmatter problem: $skill"; fi
+  done
+  for metadata in skills/*/agents/openai.yaml; do
+    if ruby -ryaml -e 'd=YAML.safe_load(File.read(ARGV[0])); abort "missing interface" unless d["interface"].is_a?(Hash); abort "missing policy" unless d["policy"].is_a?(Hash)' "$metadata" 2>/dev/null; then ok "$metadata"; else err "skill metadata problem: $metadata"; fi
+  done
+else
+  echo "  • ruby not found — skipping skill YAML checks"
+fi
+if python3 - <<'PY' >/dev/null 2>&1
+from pathlib import Path
+import tomllib
+config = tomllib.loads(Path('.codex/config.toml').read_text())
+assert set(config['agents']) == {'architrave_tournament', 'architrave_judge'}
+roles = sorted(Path('.codex/agents').glob('*.toml'))
+assert len(roles) == 2
+for path in roles:
+    data = tomllib.loads(path.read_text())
+    assert data['model'] == 'gpt-5.6-sol'
+    assert data['model_reasoning_effort'] == 'max'
+    assert data['sandbox_mode'] == 'read-only'
+    assert not ({'model_provider', 'model_providers', 'mcp_servers', 'skills', 'approval_policy'} & data.keys())
+PY
+then ok "Codex registration and two advisory read-only roles"; else err "Codex TOML contract failed"; fi
+if python3 scripts/generate-codex-agents.py --check >/dev/null 2>&1; then ok "generated Codex roles match canonical agents"; else err "generated Codex role drift"; fi
+if [ -e .agents/skills ]; then err "project skill copies must not exist; skills are plugin-only"; else ok "no duplicate project skill source"; fi
+
+echo "== Codex adapter fixtures =="
+if python3 scripts/test-codex-roles.py >/dev/null 2>&1; then ok "Codex role transaction fixtures"; else err "Codex role transaction fixtures failed"; fi
+if scripts/test-review-launchers.sh >/dev/null 2>&1; then ok "bounded semantic/tournament launcher fixtures"; else err "review launcher fixtures failed"; fi
+if python3 scripts/test-codex-runtime.py >/dev/null 2>&1; then ok "disposable plugin/role/MCP structural runtime"; else err "Codex structural runtime fixtures failed"; fi
+
 echo "== knowledge packs present =="
-for k in apple microsoft web backend operations-ux design-tokens execution-policy learning-loop yagni; do
+for k in apple microsoft web backend operations-ux design-tokens execution-policy learning-loop yagni runtime-v2; do
   [ -s "knowledge/$k.md" ] && ok "knowledge/$k.md" || err "missing knowledge/$k.md"
 done
 
 echo "== python syntax =="
-if python3 -m py_compile scripts/bench-architrave.py scripts/judge-bench.py scripts/summarize-bench.py scripts/test-benchmark-tools.py >/dev/null 2>&1; then
-  ok "benchmark python scripts"
+if python3 -m py_compile \
+  harness/architrave_runtime.py harness/worker_adapters.py harness/invariant_engine.py \
+  harness/legibility.py harness/workspaces.py harness/validate_run_v2.py \
+  scripts/bench-architrave.py scripts/judge-bench.py scripts/summarize-bench.py \
+  scripts/test-benchmark-tools.py \
+  scripts/test-codex-runtime.py scripts/fixtures/codex_fake.py \
+  scripts/test-runtime-v2.py scripts/test-worker-adapters.py scripts/test-invariant-engine.py \
+  scripts/test-legibility.py scripts/test-workspaces.py scripts/test-longbuild-runtime.py \
+  scripts/test-benchmark-runtime.py \
+  benchmarks/fixtures/tessera-shaped/server/*.py benchmarks/fixtures/tessera-shaped/plugin/*.py \
+  benchmarks/fixtures/tessera-shaped/scripts/*.py benchmarks/fixtures/tessera-shaped/tests/*.py >/dev/null 2>&1; then
+  ok "runtime, benchmark, fixture, and test Python scripts"
 else
-  err "python syntax problem in benchmark scripts"
-  python3 -m py_compile scripts/bench-architrave.py scripts/judge-bench.py scripts/summarize-bench.py scripts/test-benchmark-tools.py 2>&1 | sed 's/^/      /' | tail -12
+  err "python syntax problem in runtime/benchmark scripts"
 fi
 if python3 scripts/test-benchmark-tools.py >/dev/null 2>&1; then
   ok "adaptive benchmark fixtures"
@@ -204,6 +322,23 @@ else
   err "adaptive benchmark fixtures failed"
   python3 scripts/test-benchmark-tools.py 2>&1 | sed 's/^/      /' | tail -24
 fi
+
+echo "== durable Run v2 control-plane fixtures =="
+for test_script in \
+  scripts/test-runtime-v2.py \
+  scripts/test-worker-adapters.py \
+  scripts/test-invariant-engine.py \
+  scripts/test-legibility.py \
+  scripts/test-workspaces.py \
+  scripts/test-longbuild-runtime.py \
+  scripts/test-benchmark-runtime.py; do
+  if python3 "$test_script" >/dev/null 2>&1; then
+    ok "$test_script"
+  else
+    err "$test_script failed"
+    python3 "$test_script" 2>&1 | sed 's/^/      /' | tail -20
+  fi
+done
 
 echo "== harness validator fixtures =="
 if scripts/test-validate-run.sh >/dev/null 2>&1; then

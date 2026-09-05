@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://architrave/event-v2.schema.json",
+  "title": "Architrave durable run event v2",
+  "type": "object",
+  "required": [
+    "eventId",
+    "runId",
+    "taskId",
+    "timestamp",
+    "type",
+    "actor",
+    "payload",
+    "evidenceRefs",
+    "sequence",
+    "previousHash",
+    "hash"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "taskId": { "type": ["string", "null"] },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "type": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]+$" },
+    "actor": { "type": "string", "minLength": 1 },
+    "payload": { "type": "object" },
+    "evidenceRefs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "previousHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

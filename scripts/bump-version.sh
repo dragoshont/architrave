@@ -30,6 +30,8 @@ set_field .github/plugin/marketplace.json '.plugins[0].version'
 set_field .claude-plugin/plugin.json '.version'
 set_field .claude-plugin/marketplace.json '.metadata.version'
 set_field .claude-plugin/marketplace.json '.plugins[0].version'
+# Codex/ChatGPT manifest
+set_field .codex-plugin/plugin.json '.version'
 
 echo
 echo "Bumped to $new. Next:"

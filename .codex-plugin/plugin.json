@@ -1,0 +1,35 @@
+{
+  "name": "architrave",
+  "version": "0.11.0",
+  "description": "Config-first, YAGNI-gated repository workflow with phased delivery, deterministic checks, option analysis, and independent semantic review.",
+  "author": {
+    "name": "dragoshont"
+  },
+  "repository": "https://github.com/dragoshont/architrave",
+  "license": "MIT",
+  "keywords": [
+    "agents",
+    "codex",
+    "repository-workflow",
+    "review",
+    "software-delivery"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Architrave",
+    "shortDescription": "Config-first repository delivery and review",
+    "longDescription": "Plan, implement, and verify repository changes with focused option analysis, deterministic gates, and independent semantic review.",
+    "developerName": "dragoshont",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Read",
+      "Review",
+      "Plan"
+    ],
+    "websiteURL": "https://github.com/dragoshont/architrave",
+    "defaultPrompt": [
+      "Use Architrave to plan, implement, and verify this repository change.",
+      "Use Architrave Review to evaluate this frozen proposal against the repository rubric."
+    ]
+  }
+}

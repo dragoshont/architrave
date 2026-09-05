@@ -1,0 +1,103 @@
+{
+  "platform": "web",
+  "stack": "react",
+  "designSource": {
+    "type": "design-doc",
+    "path": "docs/product-contract.md"
+  },
+  "applyTo": ["web/**", "electron/**", "ios/**"],
+  "build": "python3 -m py_compile server/*.py plugin/*.py scripts/*.py tests/*.py",
+  "test": "python3 tests/verify.py",
+  "backend": {
+    "stack": "python",
+    "solution": "server",
+    "architectureDocs": ["docs/product-contract.md"],
+    "contracts": "docs/product-contract.md",
+    "applyTo": ["server/**", "plugin/**"],
+    "build": "python3 -m py_compile server/*.py plugin/*.py",
+    "test": "python3 tests/verify.py --surface backend"
+  },
+  "iac": {
+    "kind": "compose",
+    "path": "deploy",
+    "plan": "python3 scripts/deployment_diff.py",
+    "policy": "python3 -m json.tool deploy/release.json",
+    "applyTo": ["deploy/**"]
+  },
+  "autonomy": {
+    "scope": "approved-program",
+    "mutationPolicy": {
+      "default": "deny",
+      "allow": [
+        {
+          "scope": "repository",
+          "operations": ["edit", "build", "test"]
+        },
+        {
+          "scope": "sandbox:fixture",
+          "operations": ["deploy", "rollback"]
+        }
+      ],
+      "confirmationRequired": []
+    }
+  },
+  "workers": {
+    "defaultAdapter": "copilot",
+    "maxParallel": 3,
+    "worktreeRoot": ".architrave/worktrees",
+    "cleanupCompletedWorktrees": true,
+    "enabledAdapters": ["copilot", "claude", "codex", "shell"]
+  },
+  "runtime": {
+    "health": "python3 scripts/health.py",
+    "web": {
+      "url": "http://fixture.invalid",
+      "e2e": "python3 scripts/legibility_evidence.py web",
+      "screenshot": "python3 tests/verify.py --surface web"
+    },
+    "electron": {
+      "launch": "python3 scripts/legibility_evidence.py electron",
+      "health": "python3 scripts/health.py",
+      "logs": "printf electron-log-ok",
+      "screenshot": "python3 scripts/legibility_evidence.py electron-screenshot"
+    },
+    "ios": {
+      "bundleId": "example.architrave.fixture",
+      "build": "python3 tests/verify.py --surface ios",
+      "install": "printf simulator-install-ok",
+      "launch": "python3 scripts/legibility_evidence.py ios",
+      "logs": "printf simulator-log-ok",
+      "screenshot": "python3 scripts/legibility_evidence.py ios-screenshot",
+      "screenshotPath": "runtime/ios.png"
+    },
+    "deployment": {
+      "target": "sandbox:fixture",
+      "current": "python3 scripts/deployment_current.py",
+      "diff": "python3 scripts/deployment_diff.py",
+      "apply": "python3 scripts/deployment_apply.py",
+      "health": "python3 scripts/health.py",
+      "version": "python3 scripts/deployment_current.py --field releaseId",
+      "digest": "python3 scripts/deployment_current.py --field digest"
+    }
+  },
+  "invariants": {
+    "requiredFiles": ["docs/product-contract.md", "runtime/release-state.json", "deploy/release.json"],
+    "forbiddenPatterns": [
+      {
+        "pattern": "href=\\\"#\\\"",
+        "paths": ["web/**"]
+      }
+    ]
+  },
+  "evaluation": {
+    "defaultRisk": "R3",
+    "realityGate": true,
+    "controlAudit": true,
+    "riskPolicy": {
+      "R0": ["deterministic"],
+      "R2": ["deterministic", "semantic-gpt"],
+      "R3": ["deterministic", "e2e", "semantic-gpt", "semantic-claude", "reality"],
+      "R4": ["deterministic", "e2e", "semantic-gpt", "semantic-claude", "reality", "security"]
+    }
+  }
+}

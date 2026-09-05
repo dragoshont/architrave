@@ -14,6 +14,7 @@
 - [x] `agents/platform-design.agent.md` — **pluggable**: reads `config.platform` and the matching `knowledge/*.md` (Apple HIG / Fluent / Web).
 - [x] `agents/architrave.agent.md` — the config‑driven, judge‑gated harness (understand → propose → judge → implement → reconcile → tests → judge → verify).
 - [x] `agents/adversarial-judge.agent.md` — LLM‑as‑judge against `gates/rubric.md` (cross‑platform).
+- [x] `agents/tournament-analyst.agent.md` — isolated, read-only option comparison for materially risky decisions.
 
 ## Milestone 3 — Gates (DONE)
 - [x] `gates/rubric.md` — cross‑platform evaluation rubric (spec / design‑language / platform / adversarial / security / a11y / reconcile / tests / verification).
@@ -27,6 +28,7 @@
 
 ## Milestone 4 — Distribution
 - [x] **Plugin packaging** — `plugin.json` + `.github/plugin/marketplace.json`. Verified end‑to‑end with the real Copilot CLI (v1.0.64): both `copilot plugin install <path>` and the future‑proof `copilot plugin marketplace add dragoshont/architrave` + `copilot plugin install architrave@architrave` load the agent crew. The shared `~/.copilot` runtime ⇒ also reaches the Copilot app + VS Code.
+- [x] **Codex / ChatGPT packaging** — `.codex-plugin/plugin.json`, three plugin-only Agent Skills, two generated project roles, opt-in role installation/update, bounded dual-family launchers, and disposable plugin/role/MCP runtime smokes. Normal roles inherit parent MCP/skills/permissions and are documented as advisory contexts, not mandatory security gates.
 - [x] `tools/install.sh` (+ `install.ps1`) — per‑repo grounding: copies agents → `.github/agents/`, gates → `gates/`, scaffolds `architrave.config.json`, injects the `AGENTS.md` stanza (idempotent), wires the per‑OS PostToolUse hook, drops `copilot-setup-steps.yml`. Both variants tested on throwaway repos.
 - [x] `AGENTS.md` (kit) + a per‑repo `AGENTS.md` stanza template (`templates/AGENTS.stanza.md`) — the cloud‑agent reach.
 - [x] Prove on Sideport (web) — adopted on an isolated worktree (branch `architrave-adoption`, based on the UI branch's committed HEAD). The installer wired the gates to Sideport's real `tsc -b && vite build` + `eslint`; baseline gate green; ran the Feature‑Builder harness for a grounded a11y change (`aria-current` on the primary nav + the onboarding step‑tabs — WCAG 2.2 / web pack), with a consistency sweep; post‑change gate green. The config was corrected to the repo's real scripts (`test`→`lint`, `screenshot`→`test:screens`).
@@ -58,9 +60,39 @@
 - [x] First-class `kind: knowledge` schema contract with no synthetic UI fields.
 - [x] Explicit POSIX and PowerShell knowledge installer profiles.
 - [x] Profile-aware gates, agent routing, examples, and cross-platform fixtures.
-- [ ] First-class Codex CLI packaging and role routing (tracked in issue #4).
+- [x] First-class Codex CLI packaging and role routing (issue #4; release/rollout follows the gated phase ledger).
 
-## Milestone 7 - Adaptive Execution Policy
+## Milestone 7 - Durable Outcome Runtime
+
+- [x] `architrave.run.v2` schema with Outcome, Acceptance Matrix, TaskGraph,
+	WorkPackets, policy, checkpoints, external checkpoints, artifacts, workers,
+	gate results, and explicit Run/task states.
+- [x] Atomic Python runtime with hash-chained typed events, interrupted-append
+	recovery, repository drift checks, leases, resume, and v1 migration.
+- [x] `current-task`, `approved-program`, and `advisory-only` autonomy separated
+	from the Phase Ledger projection.
+- [x] Default-deny scoped mutation policy, trusted external-checkpoint resolution,
+	uncertain-side-effect reconciliation, and deployment receipts.
+- [x] Copilot/Claude/Codex/shell worker adapters with bounded/redacted output and
+	coordinator-only task completion.
+- [x] Isolated git worktrees, mutable-path validation, candidate patch artifacts,
+	and coordinator integration.
+- [x] Mechanical invariant/dead-control engine and risk-based R0-R4 evaluation.
+- [x] Web/Electron/iOS/deployment legibility and compile-only false-PASS tests.
+- [x] LongBuild fixture/scenarios, recovery/external/parallel/deployment-policy
+	dogfood, repeat metrics, false-PASS and intervention reporting.
+- [x] Existing config/plugin/install paths remain compatible; v1 and v2 validators
+	run through paired POSIX/PowerShell entrypoints.
+
+### Release-readiness evidence still external
+
+- [ ] Provider-backed live Codex/Copilot/Claude LongBuild repeats and independent
+	human mergeability review.
+- [ ] Real iOS simulator/product repository legibility dogfood beyond the
+	deterministic fixture.
+- [ ] Safe-target live deployment dogfood beyond the sandbox fixture.
+
+## Milestone 8 - Adaptive Execution Policy
 - [x] Provider-neutral `modelClass`, `reasoning`, `context`, and `verification` intent with provisional FAST/BALANCED/DEEP/CRITICAL presets.
 - [x] Host-native custom-agent/subagent delegation policy with user-local concrete bindings and clean inheritance.
 - [x] Backward-compatible benchmark arms for semantic treatment plus observable model/reasoning controls and control-honor evidence.

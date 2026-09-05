@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import sys
 import time
+import math
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -37,10 +38,23 @@ CONTEXT_INTENTS = {"narrow", "default", "long"}
 VERIFICATION_INTENTS = {"default", "independent", "cross-family"}
 COPILOT_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh", "max"}
 COPILOT_CONTEXT_TIERS = {"default", "long_context"}
+RUNNER_CONTROL_FIELDS = {
+    "copilot": {"agent", "model", "reasoningEffort", "contextTier", "customInstructions", "allowAll", "noAskUser", "pluginDir"},
+    "claude": {"model"},
+    "codex": {"model"},
+    "shell": set(),
+}
 
 
 def utc_stamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def positive_seconds(value: str) -> int:
+    seconds = int(value)
+    if seconds < 1:
+        raise argparse.ArgumentTypeError("must be at least one second")
+    return seconds
 
 
 def run(cmd: list[str], cwd: Path | None = None, env: dict[str, str] | None = None, timeout: int | None = None, capture: bool = True) -> subprocess.CompletedProcess[str]:
@@ -109,9 +123,17 @@ def normalize_git_path(path: str) -> str:
     return path.replace("\\", "/")
 
 
-def run_to_files(cmd: list[str], cwd: Path, env: dict[str, str], timeout: int, stdout_path: Path, stderr_path: Path) -> tuple[int, bool, int]:
+def run_to_files(
+    cmd: list[str],
+    cwd: Path,
+    env: dict[str, str],
+    timeout: float,
+    stdout_path: Path,
+    stderr_path: Path,
+    heartbeat_interval: float = 60,
+) -> tuple[int, bool, int]:
     stdout_path.parent.mkdir(parents=True, exist_ok=True)
-    start = time.time()
+    start = time.monotonic()
     timed_out = False
     with stdout_path.open("w", encoding="utf-8") as stdout, stderr_path.open("w", encoding="utf-8") as stderr:
         proc = subprocess.Popen(
@@ -124,7 +146,21 @@ def run_to_files(cmd: list[str], cwd: Path, env: dict[str, str], timeout: int, s
             start_new_session=True,
         )
         try:
-            returncode = proc.wait(timeout=timeout)
+            deadline = start + timeout
+            next_heartbeat = start + heartbeat_interval
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(cmd, timeout)
+                try:
+                    returncode = proc.wait(timeout=min(remaining, max(0.01, next_heartbeat - time.monotonic())))
+                    break
+                except subprocess.TimeoutExpired:
+                    now = time.monotonic()
+                    if now >= next_heartbeat:
+                        elapsed = int(now - start)
+                        print(f"ARCHITRAVE_BENCH_HEARTBEAT agent running {elapsed}s/{math.ceil(timeout)}s", flush=True)
+                        next_heartbeat = now + heartbeat_interval
         except subprocess.TimeoutExpired:
             timed_out = True
             if os.name == "posix" and hasattr(os, "killpg"):
@@ -144,8 +180,8 @@ def run_to_files(cmd: list[str], cwd: Path, env: dict[str, str], timeout: int, s
                 except subprocess.TimeoutExpired:
                     proc.kill()
                     returncode = proc.wait(timeout=10)
-            stderr.write(f"\nARCHITRAVE_BENCH_TIMEOUT after {timeout}s\n")
-    duration_ms = int((time.time() - start) * 1000)
+            stderr.write(f"\nARCHITRAVE_BENCH_TIMEOUT after {math.ceil(timeout)}s\n")
+    duration_ms = int((time.monotonic() - start) * 1000)
     return returncode, timed_out, duration_ms
 
 
@@ -197,18 +233,21 @@ def benchmark_config_errors(config: object) -> list[str]:
             continue
         label = f"arm {arm.get('id', '<missing>')}"
         runner = arm.get("runner")
+        if runner not in RUNNER_CONTROL_FIELDS:
+            errors.append(f"{label}.runner is invalid")
+            continue
+        unsupported_controls = sorted(set(RUNNER_CONTROL_FIELDS["copilot"]).difference(RUNNER_CONTROL_FIELDS[runner]).intersection(arm))
+        if unsupported_controls:
+            errors.append(f"{label} {runner} runner cannot set unsupported control(s): {', '.join(unsupported_controls)}")
         if runner == "copilot":
             if "command" in arm:
                 errors.append(f"{label} cannot set command for the Copilot runner")
+        elif runner in {"claude", "codex"}:
+            if "command" in arm:
+                errors.append(f"{label} cannot set command for the {runner} runner")
         elif runner == "shell":
             if not isinstance(arm.get("command"), list) or not arm.get("command"):
                 errors.append(f"{label} requires a nonempty command")
-            copilot_only = {"agent", "model", "reasoningEffort", "contextTier", "customInstructions", "allowAll", "noAskUser", "pluginDir"}
-            present = sorted(copilot_only.intersection(arm))
-            if present:
-                errors.append(f"{label} shell runner cannot set Copilot control(s): {', '.join(present)}")
-        else:
-            errors.append(f"{label}.runner is invalid")
         effort = arm.get("reasoningEffort")
         if effort is not None and effort not in COPILOT_EFFORTS:
             errors.append(f"{label}.reasoningEffort is invalid")
@@ -267,6 +306,25 @@ def create_worktree(repo: Path, base_ref: str, worktree: Path) -> str:
     if proc.returncode != 0:
         raise RuntimeError(proc.stderr.strip() or proc.stdout.strip())
     return commit
+
+
+def create_fixture_worktree(fixture: Path, worktree: Path, *, install_kit: bool = False) -> str:
+    if worktree.exists():
+        shutil.rmtree(worktree)
+    shutil.copytree(fixture, worktree)
+    if install_kit:
+        kit_root = Path(__file__).resolve().parents[1]
+        installed = run([str(kit_root / "tools" / "install.sh"), str(worktree)], cwd=kit_root)
+        if installed.returncode != 0:
+            raise RuntimeError(installed.stderr.strip() or installed.stdout.strip() or "fixture kit install failed")
+    run(["git", "init", "-q"], cwd=worktree)
+    run(["git", "config", "user.email", "architrave-bench@example.invalid"], cwd=worktree)
+    run(["git", "config", "user.name", "Architrave Benchmark"], cwd=worktree)
+    run(["git", "add", "."], cwd=worktree)
+    commit = run(["git", "commit", "-qm", "frozen fixture"], cwd=worktree)
+    if commit.returncode != 0:
+        raise RuntimeError(commit.stderr.strip() or "fixture commit failed")
+    return git_output(worktree, ["rev-parse", "HEAD"])
 
 
 def cleanup_worktree(repo: Path, worktree: Path) -> None:
@@ -334,7 +392,14 @@ def copilot_command(arm: dict[str, Any], worktree: Path, prompt: str, session_md
     return cmd
 
 
-def run_arm(arm: dict[str, Any], worktree: Path, prompt: str, run_dir: Path, timeout: int) -> dict[str, Any]:
+def run_arm(
+    arm: dict[str, Any],
+    worktree: Path,
+    prompt: str,
+    run_dir: Path,
+    timeout: float,
+    heartbeat_interval: float,
+) -> dict[str, Any]:
     raw_stdout = run_dir / "agent.stdout"
     raw_stderr = run_dir / "agent.stderr"
     session_md = run_dir / "session.md"
@@ -348,14 +413,30 @@ def run_arm(arm: dict[str, Any], worktree: Path, prompt: str, run_dir: Path, tim
         }
     )
     if arm["runner"] == "copilot":
-        returncode, timed_out, duration_ms = run_to_files(copilot_command(arm, worktree, prompt, session_md), worktree, env, timeout, raw_stdout, raw_stderr)
+        returncode, timed_out, duration_ms = run_to_files(
+            copilot_command(arm, worktree, prompt, session_md), worktree, env, timeout, raw_stdout, raw_stderr, heartbeat_interval
+        )
+    elif arm["runner"] == "claude":
+        command = ["claude", "-p", prompt, "--output-format", "json"]
+        if arm.get("model"):
+            command.extend(["--model", arm["model"]])
+        returncode, timed_out, duration_ms = run_to_files(command, worktree, env, timeout, raw_stdout, raw_stderr, heartbeat_interval)
+    elif arm["runner"] == "codex":
+        command = ["codex", "-C", str(worktree), "-s", "workspace-write", "-a", "never", "exec", "--json", prompt]
+        if arm.get("model"):
+            command[1:1] = ["-m", arm["model"]]
+        returncode, timed_out, duration_ms = run_to_files(command, worktree, env, timeout, raw_stdout, raw_stderr, heartbeat_interval)
     elif arm["runner"] == "shell":
-        returncode, timed_out, duration_ms = run_to_files(arm["command"], worktree, env, timeout, raw_stdout, raw_stderr)
+        returncode, timed_out, duration_ms = run_to_files(arm["command"], worktree, env, timeout, raw_stdout, raw_stderr, heartbeat_interval)
     else:
         raise RuntimeError(f"unknown runner: {arm['runner']}")
     redact_file(raw_stdout, env)
     redact_file(raw_stderr, env)
     metrics = parse_copilot_events(raw_stdout) if arm["runner"] == "copilot" else {}
+    output_text = raw_stdout.read_text(encoding="utf-8", errors="replace")
+    metrics["unnecessary_questions"] = len(
+        re.findall(r"(?i)(?:ask[_ -]?user|please confirm|could you clarify|should I proceed)", output_text)
+    )
     metrics.update({"returncode": returncode, "timed_out": timed_out, "duration_ms": duration_ms})
     return metrics
 
@@ -478,15 +559,35 @@ def save_diff_artifacts(worktree: Path, out_dir: Path, env: dict[str, str] | Non
     }
 
 
-def run_validation(worktree: Path, commands: list[str], out_dir: Path, timeout: int) -> list[dict[str, Any]]:
+def run_validation(
+    worktree: Path,
+    commands: list[str],
+    out_dir: Path,
+    timeout: int,
+    deadline: float | None = None,
+) -> list[dict[str, Any]]:
     results = []
     for index, command in enumerate(commands, start=1):
         python_command = subprocess.list2cmdline([sys.executable]) if os.name == "nt" else shlex.quote(sys.executable)
         resolved_command = command.replace("{python}", python_command)
+        remaining = (deadline - time.monotonic()) if deadline is not None else None
+        if remaining is not None and remaining <= 0:
+            results.append(
+                {
+                    "command": resolved_command,
+                    "returncode": 124,
+                    "timed_out": True,
+                    "duration_ms": 0,
+                    "budget_exhausted": True,
+                }
+            )
+            break
         start = time.time()
         env = os.environ.copy()
+        command_timeout = min(timeout, remaining) if remaining is not None else timeout
+        budget_limited = remaining is not None and remaining < timeout
         try:
-            proc = run_shell(resolved_command, cwd=worktree, env=env, timeout=timeout)
+            proc = run_shell(resolved_command, cwd=worktree, env=env, timeout=command_timeout)
             timed_out = False
         except subprocess.TimeoutExpired as exc:
             proc = subprocess.CompletedProcess(resolved_command, 124, as_text(exc.stdout), as_text(exc.stderr))
@@ -497,7 +598,15 @@ def run_validation(worktree: Path, commands: list[str], out_dir: Path, timeout: 
         duration_ms = int((time.time() - start) * 1000)
         write(out_dir / f"validation-{index}.stdout", redact_text(proc.stdout or "", env))
         write(out_dir / f"validation-{index}.stderr", redact_text(proc.stderr or "", env))
-        results.append({"command": resolved_command, "returncode": proc.returncode, "timed_out": timed_out, "duration_ms": duration_ms})
+        results.append(
+            {
+                "command": resolved_command,
+                "returncode": proc.returncode,
+                "timed_out": timed_out,
+                "duration_ms": duration_ms,
+                "budget_exhausted": bool(timed_out and budget_limited),
+            }
+        )
     return results
 
 
@@ -605,8 +714,15 @@ def control_status(requested: dict[str, Any], agent: dict[str, Any]) -> dict[str
     return {"model": model_status, "reasoningEffort": effort_status, "contextTier": context_status, "controlsHonored": honored}
 
 
+def controls_allow_pass(status: dict[str, Any]) -> bool:
+    """Require telemetry confirmation for requested model and reasoning controls."""
+    return all(status.get(control) in {"not-requested", "honored"} for control in ("model", "reasoningEffort"))
+
+
 def failure_mode(row: dict[str, Any]) -> str | None:
     agent = row.get("agent") or {}
+    if row.get("budget_exhausted"):
+        return "run_budget_exhausted"
     if agent.get("timed_out"):
         return "timeout"
     if agent and agent.get("returncode") != 0:
@@ -619,6 +735,9 @@ def failure_mode(row: dict[str, Any]) -> str | None:
         return "validation_failed"
     if any(not item.get("exists") for item in row.get("artifacts", [])):
         return "artifact_missing"
+    control_status = ((row.get("execution") or {}).get("controlStatus") or {})
+    if not controls_allow_pass(control_status):
+        return "control_unhonored"
     if row.get("passed") is False:
         return "unknown"
     return None
@@ -635,6 +754,14 @@ def append_jsonl(path: Path, row: dict[str, Any]) -> None:
 def validate_scenarios(config: dict[str, Any], config_dir: Path) -> int:
     failures = 0
     for scenario in config.get("scenarios", []):
+        if scenario.get("fixture"):
+            fixture = resolve_repo(scenario["fixture"], config_dir)
+            if fixture.is_dir():
+                print(f"ok   {scenario['id']}: fixture {fixture}")
+            else:
+                failures += 1
+                print(f"FAIL {scenario['id']}: fixture not found: {fixture}")
+            continue
         repo = resolve_repo(scenario["repo"], config_dir)
         proc = run(["git", "-C", str(repo), "rev-parse", "--verify", scenario["baseRef"]])
         if proc.returncode != 0:
@@ -643,6 +770,62 @@ def validate_scenarios(config: dict[str, Any], config_dir: Path) -> int:
         else:
             print(f"ok   {scenario['id']}: {scenario['baseRef']} -> {proc.stdout.strip()}")
     return failures
+
+
+def durable_run_metrics(worktree: Path, duration_ms: int, row_passed: bool) -> dict[str, Any] | None:
+    run_files = sorted(
+        worktree.glob(".architrave/runs/*/run.json"),
+        key=lambda path: path.stat().st_mtime,
+    )
+    if not run_files:
+        return None
+    state = json.loads(run_files[-1].read_text(encoding="utf-8"))
+    if state.get("schema") != "architrave.run.v2":
+        return {"schema": state.get("schema"), "status": state.get("status"), "outcome_pass": False, "false_pass": bool(row_passed)}
+    required = [item for item in state.get("acceptanceCriteria", []) if item.get("blocking")]
+    passed = [item for item in required if item.get("status") in {"PASS", "NOT_APPLICABLE"}]
+    checkpoints = state.get("externalCheckpoints", [])
+    human_interventions = sum(1 for item in checkpoints if item.get("status") == "RESOLVED")
+    ready = [task for task in state.get("tasks", []) if task.get("status") == "READY"]
+    false_external_blockers = int(state.get("status") == "WAITING_EXTERNAL" and bool(ready))
+    repeated_work = sum(max(0, int(task.get("attempts", 0)) - 1) for task in state.get("tasks", []))
+    events_path = run_files[-1].parent / "events.jsonl"
+    active: set[str] = set()
+    peak = 0
+    if events_path.is_file():
+        for line in events_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            task_id = event.get("taskId")
+            if event.get("type") == "task.started" and task_id:
+                active.add(task_id)
+                peak = max(peak, len(active))
+            elif event.get("type") in {"worker.finished", "task.failed", "task.completed"} and task_id:
+                active.discard(task_id)
+    gates = state.get("gateResults", [])
+    deployment_verified = any(
+        gate.get("type") == "reality" and gate.get("status") == "PASS" and str(gate.get("id", "")).startswith("deployment-")
+        for gate in gates
+    )
+    e2e_failures = sum(1 for gate in gates if gate.get("type") in {"e2e", "reality"} and gate.get("status") == "FAIL")
+    outcome_pass = state.get("status") == "COMPLETED" and len(passed) == len(required)
+    return {
+        "schema": state.get("schema"),
+        "status": state.get("status"),
+        "outcome_pass": outcome_pass,
+        "acceptance_required": len(required),
+        "acceptance_passed": len(passed),
+        "false_pass": bool(row_passed and not outcome_pass),
+        "human_interventions": human_interventions,
+        "false_external_blockers": false_external_blockers,
+        "repeated_work_after_resume": repeated_work,
+        "peak_parallel_workers": peak,
+        "deployment_verified": deployment_verified,
+        "product_e2e_failures": e2e_failures,
+        "time_to_verified_outcome_per_intervention_ms": duration_ms / max(1, human_interventions) if outcome_pass else None,
+    }
 
 
 def bench(args: argparse.Namespace) -> int:
@@ -660,7 +843,9 @@ def bench(args: argparse.Namespace) -> int:
     if args.list or not args.execute:
         print("Scenarios:")
         for scenario in scenarios:
-            print(f"  {scenario['id']} ({scenario['lane']}) repo={scenario['repo']} base={scenario['baseRef']}")
+            source = scenario.get("repo") or scenario.get("fixture")
+            base = scenario.get("baseRef") or "frozen-fixture"
+            print(f"  {scenario['id']} ({scenario['lane']}) source={source} base={base}")
         print("Arms:")
         for arm in arms:
             print(f"  {arm['id']} runner={arm['runner']} agent={arm.get('agent', '')}")
@@ -673,10 +858,22 @@ def bench(args: argparse.Namespace) -> int:
     root.mkdir(parents=True, exist_ok=True)
     results_path = root / "results.jsonl"
     failures = 0
+    run_started = time.monotonic()
+    run_deadline = run_started + args.run_timeout
+    budget_exhausted = False
+    print(
+        f"run budget={args.run_timeout}s; per-cell agent timeout={args.agent_timeout}s; "
+        f"heartbeat interval={args.heartbeat_interval}s"
+    )
     for scenario in scenarios:
-        repo = resolve_repo(scenario["repo"], scenarios_path.parent)
+        repo = resolve_repo(scenario.get("repo") or scenario.get("fixture"), scenarios_path.parent)
         for repeat in range(args.repeats):
             for arm in arms:
+                remaining = run_deadline - time.monotonic()
+                if remaining <= 0:
+                    budget_exhausted = True
+                    print("ARCHITRAVE_BENCH_BUDGET_EXHAUSTED: no additional cells will be launched.", file=sys.stderr)
+                    break
                 cell_dir = root / scenario["id"] / arm["id"] / f"rep-{repeat}"
                 worktree = cell_dir / "worktree"
                 cell_dir.mkdir(parents=True, exist_ok=True)
@@ -685,48 +882,104 @@ def bench(args: argparse.Namespace) -> int:
                 row: dict[str, Any] = {
                     "run_id": run_id,
                     "scenario": scenario["id"],
+                    "category": scenario.get("category", "feature"),
                     "lane": scenario["lane"],
                     "arm": arm["id"],
                     "repeat": repeat,
                     "repo": str(repo),
-                    "base_ref": scenario["baseRef"],
+                    "base_ref": scenario.get("baseRef") or f"fixture:{scenario.get('fixture')}",
                     "cell_dir": str(cell_dir),
                     "worktree": str(worktree),
                     "prompt_file": str(cell_dir / "prompt.md"),
                     "producer_prompt_version": PRODUCER_PROMPT_VERSION,
                     "execution": execution_snapshot(scenario, arm),
+                    "run_budget_seconds": args.run_timeout,
+                    "budget_remaining_at_start_ms": max(0, int(remaining * 1000)),
                     "started_at": datetime.now(timezone.utc).isoformat(),
                 }
                 try:
-                    row["base_commit"] = create_worktree(repo, scenario["baseRef"], worktree)
+                    if scenario.get("fixture"):
+                        row["base_commit"] = create_fixture_worktree(
+                            repo,
+                            worktree,
+                            install_kit=bool(scenario.get("installKit")),
+                        )
+                    else:
+                        row["base_commit"] = create_worktree(repo, scenario["baseRef"], worktree)
                     preexisting_summaries = run_summary_paths(worktree)
-                    row["agent"] = run_arm(arm, worktree, prompt, cell_dir, args.agent_timeout)
+                    agent_timeout = min(args.agent_timeout, remaining)
+                    agent_budget_limited = remaining < args.agent_timeout
+                    row["agent"] = run_arm(
+                        arm,
+                        worktree,
+                        prompt,
+                        cell_dir,
+                        agent_timeout,
+                        args.heartbeat_interval,
+                    )
+                    if row["agent"].get("timed_out") and agent_budget_limited:
+                        row["budget_exhausted"] = True
+                        row["agent"]["timeout_reason"] = "run_budget"
+                    elif row["agent"].get("timed_out"):
+                        row["agent"]["timeout_reason"] = "cell_timeout"
                     row["execution"]["reportedSelection"] = reported_execution(worktree, preexisting_summaries)
                     row["execution"]["controlStatus"] = control_status(row["execution"]["requested"], row["agent"])
                     row["diff"] = diff_metrics(worktree)
                     row["diff_artifacts"] = save_diff_artifacts(worktree, cell_dir, os.environ.copy())
-                    row["validation"] = run_validation(worktree, arm_values(scenario, "validation", arm["id"]), cell_dir, args.validation_timeout)
+                    row["validation"] = run_validation(
+                        worktree,
+                        arm_values(scenario, "validation", arm["id"]),
+                        cell_dir,
+                        args.validation_timeout,
+                        run_deadline,
+                    )
+                    if any(item.get("budget_exhausted") for item in row["validation"]):
+                        row["budget_exhausted"] = True
                     row["artifacts"] = artifact_results(worktree, arm_values(scenario, "expectedArtifacts", arm["id"]))
                     row["passed"] = (
                         row["agent"].get("returncode") == 0
                         and not row["agent"].get("timed_out")
                         and all(item["returncode"] == 0 for item in row["validation"])
                         and all(item["exists"] for item in row["artifacts"])
+                        and controls_allow_pass(row["execution"]["controlStatus"])
+                    )
+                    row["durable_run"] = durable_run_metrics(
+                        worktree,
+                        int((row.get("agent") or {}).get("duration_ms") or 0),
+                        row["passed"],
                     )
                 except Exception as exc:  # keep batch moving; DNF is data
-                    failures += 1
                     row["passed"] = False
                     row["error"] = repr(exc)
                 finally:
                     row["failure_mode"] = failure_mode(row)
                     row["finished_at"] = datetime.now(timezone.utc).isoformat()
                     append_jsonl(results_path, row)
+                    if not row.get("passed"):
+                        failures += 1
                     if args.cleanup_worktrees and worktree.exists():
                         try:
-                            cleanup_worktree(repo, worktree)
+                            if scenario.get("fixture"):
+                                shutil.rmtree(worktree)
+                            else:
+                                cleanup_worktree(repo, worktree)
                         except Exception as exc:
                             print(f"warn cleanup failed for {worktree}: {exc}", file=sys.stderr)
-                    print(f"{scenario['id']} {arm['id']} rep={repeat} passed={row.get('passed')} -> {cell_dir}")
+                    print(
+                        f"{scenario['id']} {arm['id']} rep={repeat} passed={row.get('passed')} "
+                        f"failure_mode={row.get('failure_mode')} -> {cell_dir}"
+                    )
+                    if row.get("budget_exhausted"):
+                        budget_exhausted = True
+                        print(
+                            f"ARCHITRAVE_BENCH_BUDGET_EXHAUSTED: {scenario['id']} {arm['id']} "
+                            "used the remaining run budget; no additional cells will be launched.",
+                            file=sys.stderr,
+                        )
+            if budget_exhausted:
+                break
+        if budget_exhausted:
+            break
     print(f"results: {results_path}")
     return 1 if failures else 0
 
@@ -740,8 +993,10 @@ def main() -> int:
     parser.add_argument("--arm", action="append", default=[])
     parser.add_argument("--all-enabled", action="store_true")
     parser.add_argument("--repeats", type=int, default=1)
-    parser.add_argument("--agent-timeout", type=int, default=1800)
-    parser.add_argument("--validation-timeout", type=int, default=900)
+    parser.add_argument("--agent-timeout", type=positive_seconds, default=600, help="maximum seconds per agent cell (default: 600)")
+    parser.add_argument("--validation-timeout", type=positive_seconds, default=900)
+    parser.add_argument("--run-timeout", type=positive_seconds, default=1200, help="total benchmark wall-time budget in seconds (default: 1200)")
+    parser.add_argument("--heartbeat-interval", type=positive_seconds, default=60, help="agent progress heartbeat interval in seconds (default: 60)")
     parser.add_argument("--cleanup-worktrees", action="store_true")
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--execute", action="store_true")

@@ -205,6 +205,30 @@ ok
   $UnknownMetrics = Join-Path $Tmp 'unknown-metrics'; Make-Repo $UnknownMetrics; Make-AdaptiveTerminal $UnknownMetrics
   $SummaryPath = Join-Path $UnknownMetrics '.architrave/runs/test-run/summary.json'; $Summary = Get-Content $SummaryPath -Raw | ConvertFrom-Json; Add-Member -InputObject $Summary.execution -NotePropertyName metrics -NotePropertyValue ([pscustomobject]@{ latencyMs = 10 }); $Summary | ConvertTo-Json -Depth 15 | Set-Content $SummaryPath -Encoding utf8
   Expect-Fail 'adaptive-unknown-metrics' $UnknownMetrics
+  function Make-V2Repo([string]$Repo) {
+    New-Item -ItemType Directory -Force -Path $Repo | Out-Null
+    Copy-Item -Recurse -Path 'harness' -Destination (Join-Path $Repo 'harness')
+    Set-Content -Path (Join-Path $Repo 'architrave.config.json') -Value '{}' -Encoding utf8
+    & git -C $Repo init -q
+    & git -C $Repo config user.email architrave@example.invalid
+    & git -C $Repo config user.name 'Architrave Test'
+    & git -C $Repo add architrave.config.json harness
+    & git -C $Repo commit -qm fixture
+    $Python = Get-Command python3 -ErrorAction SilentlyContinue
+    if (-not $Python) { $Python = Get-Command python -ErrorAction Stop }
+    Push-Location $Repo
+    try {
+      & $Python.Source harness/architrave_runtime.py run --run-id test-run --goal 'Validate Run v2.' --outcome 'Run v2 remains readable and tamper-evident.' *> $null
+      if ($LASTEXITCODE -ne 0) { throw 'Run v2 fixture creation failed' }
+    } finally { Pop-Location }
+  }
+
+  $V2Valid = Join-Path $Tmp 'v2-valid'; Make-V2Repo $V2Valid; Expect-Pass 'valid-v2-run' $V2Valid
+
+  $V2Tampered = Join-Path $Tmp 'v2-tampered'; Make-V2Repo $V2Tampered
+  $EventsPath = Join-Path $V2Tampered '.architrave/runs/test-run/events.jsonl'
+  (Get-Content $EventsPath -Raw).Replace('run.created', 'run.forged') | Set-Content -Path $EventsPath -Encoding utf8
+  Expect-Fail 'tampered-v2-events' $V2Tampered
 }
 finally {
   Remove-Item -Recurse -Force $Tmp -ErrorAction SilentlyContinue

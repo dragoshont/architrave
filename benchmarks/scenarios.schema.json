@@ -30,7 +30,8 @@
         "additionalProperties": false,
         "properties": {
           "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
-          "runner": { "type": "string", "enum": ["copilot", "shell"] },
+          "enabled": { "type": "boolean" },
+          "runner": { "type": "string", "enum": ["copilot", "claude", "codex", "shell"] },
           "agent": { "type": "string" },
           "model": { "type": "string" },
           "reasoningEffort": { "type": "string", "enum": ["none", "minimal", "low", "medium", "high", "xhigh", "max"] },
@@ -40,23 +41,90 @@
           "allowAll": { "type": "boolean" },
           "noAskUser": { "type": "boolean" },
           "pluginDir": { "type": "string" },
-          "command": { "type": "array", "items": { "type": "string" } },
+          "command": { "type": "array", "minItems": 1, "items": { "type": "string" } },
           "env": { "type": "object", "additionalProperties": { "type": "string" } }
-        }
+        },
+        "allOf": [
+          {
+            "if": { "required": ["runner"], "properties": { "runner": { "const": "copilot" } } },
+            "then": { "not": { "required": ["command"] } }
+          },
+          {
+            "if": { "required": ["runner"], "properties": { "runner": { "const": "claude" } } },
+            "then": {
+              "not": {
+                "anyOf": [
+                  { "required": ["command"] },
+                  { "required": ["agent"] },
+                  { "required": ["reasoningEffort"] },
+                  { "required": ["contextTier"] },
+                  { "required": ["customInstructions"] },
+                  { "required": ["allowAll"] },
+                  { "required": ["noAskUser"] },
+                  { "required": ["pluginDir"] }
+                ]
+              }
+            }
+          },
+          {
+            "if": { "required": ["runner"], "properties": { "runner": { "const": "codex" } } },
+            "then": {
+              "not": {
+                "anyOf": [
+                  { "required": ["command"] },
+                  { "required": ["agent"] },
+                  { "required": ["reasoningEffort"] },
+                  { "required": ["contextTier"] },
+                  { "required": ["customInstructions"] },
+                  { "required": ["allowAll"] },
+                  { "required": ["noAskUser"] },
+                  { "required": ["pluginDir"] }
+                ]
+              }
+            }
+          },
+          {
+            "if": { "required": ["runner"], "properties": { "runner": { "const": "shell" } } },
+            "then": {
+              "required": ["command"],
+              "not": {
+                "anyOf": [
+                  { "required": ["agent"] },
+                  { "required": ["model"] },
+                  { "required": ["reasoningEffort"] },
+                  { "required": ["contextTier"] },
+                  { "required": ["customInstructions"] },
+                  { "required": ["allowAll"] },
+                  { "required": ["noAskUser"] },
+                  { "required": ["pluginDir"] }
+                ]
+              }
+            }
+          }
+        ]
       }
     },
     "scenarios": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "repo", "baseRef", "lane", "prompt", "validation"],
+        "required": ["id", "lane", "prompt", "validation"],
         "additionalProperties": false,
+        "oneOf": [
+          { "required": ["repo", "baseRef"] },
+          { "required": ["fixture"] }
+        ],
         "properties": {
           "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
           "enabled": { "type": "boolean" },
           "repo": { "type": "string" },
           "baseRef": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
-          "lane": { "type": "string", "enum": ["ui", "ux", "backend", "full-stack", "infra", "ops", "learning", "yagni", "knowledge"] },
+          "fixture": { "type": "string" },
+          "installKit": { "type": "boolean" },
+          "category": { "type": "string", "enum": ["short-mechanical", "feature", "multi-surface", "longbuild"] },
+          "durationClass": { "type": "string", "enum": ["minutes", "hours", "overnight"] },
+          "expectedHumanInterventions": { "type": "integer", "minimum": 0 },
+          "lane": { "type": "string", "enum": ["ui", "ux", "backend", "full-stack", "infra", "ops", "learning", "yagni", "knowledge", "runtime", "security"] },
           "prompt": { "type": "string", "minLength": 1 },
           "expectedExecution": { "$ref": "#/definitions/executionIntent" },
           "validation": { "type": "array", "items": { "type": "string" } },

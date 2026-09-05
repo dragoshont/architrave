@@ -1,0 +1,591 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://architrave/run-v2.schema.json",
+  "title": "Architrave durable run v2",
+  "type": "object",
+  "required": [
+    "schema",
+    "revision",
+    "runId",
+    "createdAt",
+    "updatedAt",
+    "goal",
+    "status",
+    "autonomy",
+    "policy",
+    "outcome",
+    "acceptanceCriteria",
+    "baseline",
+    "tasks",
+    "checkpoints",
+    "externalCheckpoints",
+    "artifacts",
+    "workers",
+    "gateResults",
+    "eventLog",
+    "eventCursor",
+    "pendingEvent"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "architrave.run.v2" },
+    "revision": { "type": "integer", "minimum": 0 },
+    "runId": { "$ref": "#/definitions/id" },
+    "createdAt": { "$ref": "#/definitions/timestamp" },
+    "updatedAt": { "$ref": "#/definitions/timestamp" },
+    "goal": { "type": "string", "minLength": 1 },
+    "status": { "$ref": "#/definitions/runStatus" },
+    "autonomy": {
+      "type": "object",
+      "required": ["scope"],
+      "additionalProperties": false,
+      "properties": {
+        "scope": {
+          "type": "string",
+          "enum": ["current-task", "approved-program", "advisory-only"]
+        }
+      }
+    },
+    "policy": { "$ref": "#/definitions/mutationPolicy" },
+    "outcome": {
+      "type": "object",
+      "required": ["description", "requiredCriteria"],
+      "additionalProperties": false,
+      "properties": {
+        "description": { "type": "string", "minLength": 1 },
+        "requiredCriteria": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/outcomeCriterion" },
+          "minItems": 1
+        }
+      }
+    },
+    "acceptanceCriteria": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/acceptanceCriterion" },
+      "minItems": 1
+    },
+    "baseline": {
+      "type": "object",
+      "required": ["repository", "commit", "branch"],
+      "additionalProperties": false,
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "commit": { "type": "string", "pattern": "^[0-9a-fA-F]{40}$" },
+        "branch": { "type": "string", "minLength": 1 },
+        "deployment": { "type": ["string", "null"] }
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/task" }
+    },
+    "checkpoints": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/checkpoint" }
+    },
+    "externalCheckpoints": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/externalCheckpoint" }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/artifact" }
+    },
+    "workers": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/worker" }
+    },
+    "gateResults": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/gateResult" }
+    },
+    "eventLog": { "type": "string", "pattern": "(^|/)events\\.jsonl$" },
+    "eventCursor": {
+      "type": "object",
+      "required": ["sequence", "lastHash"],
+      "additionalProperties": false,
+      "properties": {
+        "sequence": { "type": "integer", "minimum": 0 },
+        "lastHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "pendingEvent": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/definitions/event" }
+      ]
+    }
+  },
+  "definitions": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "runStatus": {
+      "type": "string",
+      "enum": [
+        "CREATED",
+        "PLANNING",
+        "RUNNING",
+        "WAITING_EXTERNAL",
+        "WAITING_RESOURCE",
+        "WAITING_WORKER",
+        "PAUSED",
+        "RECOVERING",
+        "VERIFYING",
+        "COMPLETED",
+        "FAILED",
+        "CANCELLED"
+      ]
+    },
+    "risk": {
+      "type": "string",
+      "enum": ["R0", "R1", "R2", "R3", "R4"]
+    },
+    "evidenceRefs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "event": {
+      "type": "object",
+      "required": [
+        "eventId",
+        "runId",
+        "taskId",
+        "timestamp",
+        "type",
+        "actor",
+        "payload",
+        "evidenceRefs",
+        "sequence",
+        "previousHash",
+        "hash"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "eventId": { "$ref": "#/definitions/id" },
+        "runId": { "$ref": "#/definitions/id" },
+        "taskId": { "type": ["string", "null"] },
+        "timestamp": { "$ref": "#/definitions/timestamp" },
+        "type": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]+$" },
+        "actor": { "type": "string", "minLength": 1 },
+        "payload": { "type": "object" },
+        "evidenceRefs": { "$ref": "#/definitions/evidenceRefs" },
+        "sequence": { "type": "integer", "minimum": 1 },
+        "previousHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "outcomeCriterion": {
+      "type": "object",
+      "required": ["id", "description", "verification", "required"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/id" },
+        "description": { "type": "string", "minLength": 1 },
+        "verification": { "type": "string", "minLength": 1 },
+        "required": { "type": "boolean" }
+      }
+    },
+    "acceptanceCriterion": {
+      "type": "object",
+      "required": [
+        "id",
+        "description",
+        "scope",
+        "risk",
+        "verificationType",
+        "status",
+        "evidenceRefs",
+        "blocking"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/id" },
+        "description": { "type": "string", "minLength": 1 },
+        "scope": { "type": "string", "minLength": 1 },
+        "risk": { "$ref": "#/definitions/risk" },
+        "verificationType": {
+          "type": "string",
+          "enum": ["deterministic", "e2e", "semantic", "reality", "external"]
+        },
+        "surface": {
+          "description": "The product surface a reality/e2e criterion owns and expects evidence to prove (web, electron, ios, deployment, runtime). Absent/null for non-reality/e2e criteria and for historical runs predating this field.",
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "enum": ["web", "electron", "ios", "deployment", "runtime"] }
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["UNTESTED", "PASS", "FAIL", "BLOCKED_EXTERNAL", "NOT_APPLICABLE"]
+        },
+        "evidenceRefs": { "$ref": "#/definitions/evidenceRefs" },
+        "blocking": { "type": "boolean" }
+      }
+    },
+    "mutationPolicy": {
+      "type": "object",
+      "required": ["default", "allow", "confirmationRequired"],
+      "additionalProperties": false,
+      "properties": {
+        "default": { "const": "deny" },
+        "allow": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["scope", "operations"],
+            "additionalProperties": false,
+            "properties": {
+              "scope": { "type": "string", "minLength": 1 },
+              "operations": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 },
+                "minItems": 1,
+                "uniqueItems": true
+              }
+            }
+          }
+        },
+        "confirmationRequired": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    },
+    "retryPolicy": {
+      "type": "object",
+      "required": ["maxAttempts", "backoffSeconds"],
+      "additionalProperties": false,
+      "properties": {
+        "maxAttempts": { "type": "integer", "minimum": 1 },
+        "backoffSeconds": { "type": "number", "minimum": 0 },
+        "retryable": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        }
+      }
+    },
+    "checkpointPolicy": {
+      "type": "object",
+      "required": ["beforeSideEffect", "afterCompletion"],
+      "additionalProperties": false,
+      "properties": {
+        "beforeSideEffect": { "type": "boolean" },
+        "afterCompletion": { "type": "boolean" }
+      }
+    },
+    "workPacket": {
+      "type": "object",
+      "required": [
+        "workPacketId",
+        "taskId",
+        "objective",
+        "acceptanceCriteria",
+        "contextBundle",
+        "repoScope",
+        "mutablePaths",
+        "tools",
+        "worker",
+        "model",
+        "risk",
+        "expectedArtifacts",
+        "budget"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "workPacketId": { "$ref": "#/definitions/id" },
+        "taskId": { "$ref": "#/definitions/id" },
+        "objective": { "type": "string", "minLength": 1 },
+        "acceptanceCriteria": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/id" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "contextBundle": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "repoScope": { "type": "string", "minLength": 1 },
+        "mutablePaths": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "tools": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "worker": { "type": "string", "minLength": 1 },
+        "model": { "type": ["string", "null"] },
+        "risk": { "$ref": "#/definitions/risk" },
+        "expectedArtifacts": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "timeoutSeconds": { "type": "integer", "minimum": 1 },
+            "maxOutputBytes": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "execution": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["command", "cwd", "environment"],
+              "additionalProperties": false,
+              "properties": {
+                "command": {
+                  "type": "array",
+                  "items": { "type": "string", "minLength": 1 },
+                  "minItems": 1
+                },
+                "cwd": { "type": ["string", "null"] },
+                "environment": {
+                  "type": "array",
+                  "items": { "type": "string", "pattern": "^[A-Z_][A-Z0-9_]*$" },
+                  "uniqueItems": true
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "task": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "objective",
+        "status",
+        "dependencies",
+        "workerProfile",
+        "workspace",
+        "mutablePaths",
+        "tools",
+        "risk",
+        "acceptanceCriteria",
+        "requiredArtifacts",
+        "gate",
+        "retryPolicy",
+        "checkpointPolicy",
+        "attempts"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/id" },
+        "title": { "type": "string", "minLength": 1 },
+        "objective": { "type": "string", "minLength": 1 },
+        "status": {
+          "type": "string",
+          "enum": [
+            "NOT_READY",
+            "READY",
+            "RUNNING",
+            "WAITING_EXTERNAL",
+            "WAITING_RESOURCE",
+            "COMPLETED",
+            "FAILED",
+            "SKIPPED",
+            "CANCELLED"
+          ]
+        },
+        "dependencies": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/id" },
+          "uniqueItems": true
+        },
+        "workerProfile": { "type": "string", "minLength": 1 },
+        "workspace": { "type": ["string", "null"] },
+        "mutablePaths": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "tools": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "risk": { "$ref": "#/definitions/risk" },
+        "acceptanceCriteria": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/id" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "requiredArtifacts": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "gate": { "type": ["string", "null"] },
+        "retryPolicy": { "$ref": "#/definitions/retryPolicy" },
+        "checkpointPolicy": { "$ref": "#/definitions/checkpointPolicy" },
+        "attempts": { "type": "integer", "minimum": 0 },
+        "lease": {
+          "type": ["object", "null"],
+          "required": ["owner", "acquiredAt", "expiresAt"],
+          "additionalProperties": false,
+          "properties": {
+            "owner": { "type": "string", "minLength": 1 },
+            "acquiredAt": { "$ref": "#/definitions/timestamp" },
+            "expiresAt": { "$ref": "#/definitions/timestamp" }
+          }
+        },
+        "workPacket": { "$ref": "#/definitions/workPacket" },
+        "sideEffect": {
+          "type": ["object", "null"],
+          "required": ["operation", "target", "state", "reconciliation"],
+          "additionalProperties": false,
+          "properties": {
+            "operation": { "type": "string", "minLength": 1 },
+            "target": { "type": "string", "minLength": 1 },
+            "state": {
+              "type": "string",
+              "enum": ["NONE", "PENDING", "UNCERTAIN", "CONFIRMED"]
+            },
+            "reconciliation": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+    "checkpoint": {
+      "type": "object",
+      "required": ["id", "taskId", "kind", "createdAt", "revision", "stateHash"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/id" },
+        "taskId": { "type": ["string", "null"] },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "TASK_START",
+            "TASK_COMPLETION",
+            "WORKER_COMPLETION",
+            "GATE_COMPLETION",
+            "EXTERNAL_WAIT",
+            "DEPLOYMENT_MUTATION",
+            "SIDE_EFFECT_AMBIGUITY"
+          ]
+        },
+        "createdAt": { "$ref": "#/definitions/timestamp" },
+        "revision": { "type": "integer", "minimum": 0 },
+        "stateHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "externalCheckpoint": {
+      "type": "object",
+      "required": [
+        "id",
+        "taskId",
+        "type",
+        "principal",
+        "provider",
+        "reason",
+        "createdAt",
+        "status",
+        "resumeTask",
+        "challengeHash"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/id" },
+        "taskId": { "$ref": "#/definitions/id" },
+        "type": {
+          "type": "string",
+          "enum": [
+            "AUTH_REQUIRED",
+            "MFA_REQUIRED",
+            "CONSENT_REQUIRED",
+            "SAFE_WRITE_TARGET_REQUIRED",
+            "SIGNING_REQUIRED",
+            "HUMAN_JUDGMENT_REQUIRED"
+          ]
+        },
+        "principal": { "type": "string", "minLength": 1 },
+        "provider": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 },
+        "createdAt": { "$ref": "#/definitions/timestamp" },
+        "resolvedAt": { "$ref": "#/definitions/timestamp" },
+        "status": { "type": "string", "enum": ["PENDING", "RESOLVED", "CANCELLED"] },
+        "resumeTask": { "$ref": "#/definitions/id" },
+        "challengeHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "resolvedBy": { "type": "string", "minLength": 1 },
+        "resolutionRef": { "type": ["string", "null"] }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "required": ["id", "kind", "producer", "path", "createdAt", "sha256", "evidenceRefs", "attestation"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/id" },
+        "kind": { "type": "string", "minLength": 1 },
+        "producer": {
+          "type": "string",
+          "enum": ["coordinator", "deterministic", "invariant", "workspace", "worker", "legibility", "mutation", "reconciliation", "semantic-judge", "security-review", "policy-engine", "external-proof"]
+        },
+        "path": { "type": "string", "minLength": 1 },
+        "createdAt": { "$ref": "#/definitions/timestamp" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "evidenceRefs": { "$ref": "#/definitions/evidenceRefs" },
+        "attestation": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "consumedByTask": { "type": ["string", "null"] }
+      }
+    },
+    "worker": {
+      "type": "object",
+      "required": ["id", "adapter", "status", "workspace", "mutablePaths"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/id" },
+        "adapter": { "type": "string", "enum": ["copilot", "claude", "codex", "shell"] },
+        "status": { "type": "string", "enum": ["IDLE", "RUNNING", "FINISHED", "FAILED"] },
+        "workspace": { "type": ["string", "null"] },
+        "mutablePaths": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    },
+    "gateResult": {
+      "type": "object",
+      "required": ["id", "taskId", "criteria", "type", "family", "status", "startedAt", "finishedAt", "evidenceRefs"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/id" },
+        "taskId": { "type": ["string", "null"] },
+        "criteria": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/id" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "type": { "type": "string", "enum": ["deterministic", "e2e", "semantic", "reality", "policy", "security"] },
+        "family": { "type": ["string", "null"], "enum": [null, "gpt", "claude", "security"] },
+        "status": { "type": "string", "enum": ["PASS", "FAIL", "BLOCKED", "SKIPPED"] },
+        "startedAt": { "$ref": "#/definitions/timestamp" },
+        "finishedAt": { "$ref": "#/definitions/timestamp" },
+        "evidenceRefs": { "$ref": "#/definitions/evidenceRefs" }
+      }
+    }
+  }
+}

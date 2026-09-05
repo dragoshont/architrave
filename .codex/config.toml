@@ -1,0 +1,9 @@
+# BEGIN ARCHITRAVE MANAGED CODEX ROLES
+[agents.architrave_tournament]
+description = "Read-only option analyst for high-risk Architrave decisions."
+config_file = "agents/architrave-tournament.toml"
+
+[agents.architrave_judge]
+description = "Read-only Architrave rubric judge for advisory semantic review."
+config_file = "agents/architrave-judge.toml"
+# END ARCHITRAVE MANAGED CODEX ROLES

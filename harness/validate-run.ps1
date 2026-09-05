@@ -10,6 +10,14 @@ if (-not $RunDir) {
 }
 if (-not $RunDir -or -not (Test-Path $RunDir -PathType Container)) { [Console]::Error.WriteLine('validate-run: run dir not found'); exit 2 }
 
+if (Test-Path (Join-Path $RunDir 'run.json') -PathType Leaf) {
+  $Python = Get-Command python3 -ErrorAction SilentlyContinue
+  if (-not $Python) { $Python = Get-Command python -ErrorAction SilentlyContinue }
+  if (-not $Python) { [Console]::Error.WriteLine('validate-run: Python 3 is required for Run v2'); exit 2 }
+  & $Python.Source (Join-Path $PSScriptRoot 'validate_run_v2.py') $RunDir
+  exit $LASTEXITCODE
+}
+
 $fail = 0
 function Require-File($Name, $Label) {
   $file = Join-Path $RunDir $Name

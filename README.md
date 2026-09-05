@@ -1,10 +1,14 @@
 # Architrave
 
-**An AI agent that runs a full-stack specialist crew inside GitHub Copilot or Claude Code.**
+**An AI agent that runs a full-stack specialist crew inside GitHub Copilot, Claude Code, Codex, or ChatGPT.**
 
 Architrave helps you build a full-stack application, or any slice of one, without turning your codebase into an agent experiment. You ask for the feature; Architrave reads the repo, grounds in its Storybook/design map and backend architecture docs, runs the right specialist agents, and ships only the smallest proven change.
 
-It has Apple and Microsoft design language built in, plus web/WCAG guidance, Storybook-first UI, contract-first backend work, plan-only infrastructure, YAGNI, Tournament of Options, durable learning artifacts, and two independent adversarial judge families by default. The point is simple: build the useful thing, in the repo's own patterns, with evidence.
+It has Apple and Microsoft design language built in, plus web/WCAG guidance,
+Storybook-first UI, contract-first backend work, default-deny scoped deployment,
+YAGNI, durable Run v2 state, product reality gates, and risk-based independent
+judges. The point is simple: build the useful thing, survive interruptions, and
+prove the requested product outcome actually occurred.
 
 ![Architrave — ground in the repo, route to specialists, gate with a judge plus real checks, then ship](assets/overview.png)
 
@@ -34,7 +38,7 @@ It has Apple and Microsoft design language built in, plus web/WCAG guidance, Sto
 
 | Agent | Invoke | What it owns |
 |---|---|---|
-| **Architrave** | directly | Leads the whole run: intake, tournament, YAGNI ladder, Storybook/contract sign-off, implementation, gates, and final summary. |
+| **Architrave** | directly | Leads the durable Run: Outcome, Acceptance Matrix, TaskGraph, policy, bounded workers, resume, gates, and final status. |
 | **Product Research** | under the hood | Finds shipped product/workflow patterns, competitor references, and domain-specific traps before planning. |
 | **Operations UX** | under the hood | Turns admin/operations research into setup, offboarding, inventory, catalog/upload, RBAC, health, diagnostics, queue/job, and audit patterns with contract requirements. |
 | **UX Architect** | directly | Information architecture, navigation, flows, interaction model, keyboard/input behavior, and empty/loading/error states. |
@@ -43,8 +47,9 @@ It has Apple and Microsoft design language built in, plus web/WCAG guidance, Sto
 | **Service Architect** | under the hood | Backend boundaries, API/data contracts, ADR fit, auth surfaces, and source-of-truth architecture decisions. |
 | **Backend Planner** | under the hood | Turns the backend contract into ordered slices, migration/rollback notes, risk, and human sign-off checklist. |
 | **Backend Implementer** | under the hood | Implements approved backend/service slices and tests against the contract. |
-| **Infra Engineer** | under the hood | Proposes IaC diffs and plan/policy output only. It never applies. |
-| **Runtime Observer** | under the hood | Reads deployment/runtime truth such as Kubernetes health, logs, ingress, Flux, and version drift. Read-only by default. |
+| **Infra Engineer** | under the hood | Plans by default; applies only through an explicit scoped Run grant, then records a receipt and verifies live state. |
+| **Runtime Observer** | under the hood | Establishes deployed/product truth. Read-only by default; scoped mutation follows Run policy. |
+| **Tournament Analyst** | under the hood | Independently compares high-risk implementation options on Claude Opus 4.8 MAX; advisory and read-only. |
 | **Adversarial Judge** | under the hood | Grades proposals and implementations against the rubric: PASS / REVISE / FAIL. Full gates use two independent judge families by default: Copilot/GPT and Claude. |
 
 ## Install
@@ -65,12 +70,41 @@ claude plugin marketplace add dragoshont/architrave
 claude plugin install architrave@architrave
 ```
 
+Or with **Codex CLI / ChatGPT Codex mode**:
+
+```bash
+codex plugin marketplace add /path/to/architrave
+codex plugin add architrave@architrave
+```
+
+The Codex plugin owns three skills: `architrave` (implicit lead workflow), plus
+explicit-only `architrave-tournament` and `architrave-review`. Do not copy those
+same names into `.agents/skills`; Codex does not merge duplicate skill names.
+
 Then **adopt/ground each repository** so local agents, cloud agents, and deterministic gates all see the same source of truth. This is a per-repo step: run the shell script on macOS/Linux, or the PowerShell script on Windows:
 
 ```bash
 /path/to/architrave/tools/install.sh .                          # macOS / Linux
 pwsh -NoProfile -File /path/to/architrave/tools/install.ps1 .    # Windows
 ```
+
+To add the two project-scoped Codex roles as well, opt in explicitly:
+
+```bash
+/path/to/architrave/tools/install.sh --codex .
+pwsh -NoProfile -File /path/to/architrave/tools/install.ps1 . -Codex
+```
+
+This writes only generated Tournament Analyst / Adversarial Judge role files
+under `.codex/agents/` and one managed registration block in
+`.codex/config.toml`. It never writes provider, auth, trust, MCP, plugin, skill,
+or credential settings. Python 3.11+ is required only for this opt-in role path.
+
+Codex roles are specialized contexts, not mandatory security gates: their
+`sandbox_mode = "read-only"` constrains command filesystem/network access, while
+the parent permission mode, skills, and MCP servers still apply. Architrave's
+mandatory semantic gate uses bounded external launchers: GPT-5.6 Sol MAX through
+Copilot CLI and Claude Opus 4.8 MAX through Claude Code.
 
 Edit `architrave.config.json` to point at the repo's Storybook/design source, build/test commands, optional backend, optional IaC, optional runtime observation, and optional learning paths. Then ask the **Architrave** agent to build a feature.
 
@@ -83,6 +117,12 @@ pwsh -NoProfile -File /path/to/architrave/tools/install.ps1 . -Profile knowledge
 
 The generated config is the canonical [`kit/examples/knowledge.architrave.json`](kit/examples/knowledge.architrave.json). It requires real build/test commands while deliberately omitting platform, Storybook, tokens, backend, IaC, and runtime fields. The default installer profile remains the existing application scaffold.
 
+The knowledge profile installs only `architrave`, `adversarial-judge`,
+`tournament-analyst`, `product-research`, and `runtime-observer`; it omits the
+UI/backend crew and native-app constitutions. All profiles ignore
+`.architrave/runs/`, `.architrave/worktrees/`, and `.architrave/runtime.key`
+while leaving `.architrave/learning/` trackable.
+
 **Updating.** Releases bump the plugin version, so a plain update pulls them:
 
 ```bash
@@ -91,18 +131,26 @@ claude plugin marketplace update architrave
 claude plugin update architrave@architrave
 ```
 
-After updating the plugin, users **must also refresh each adopted repo's copied kit assets**. A plugin update refreshes the locally installed agent package only; it does not change copied gates, the active `.github/hooks/design-guard.json`, harness, knowledge, constitutions, or the managed `AGENTS.md` stanza. Run the matching repo script in every adopted repo. This leaves `architrave.config.json` and copied `.github/agents` untouched by default:
+After updating the plugin, users **must also refresh each adopted repo's copied kit assets**. A plugin update refreshes the locally installed agent package only; it does not change copied gates, the active `.github/hooks/design-guard.json`, harness, knowledge, profile-appropriate constitutions, or the managed `AGENTS.md` stanza. Run the matching repo script in every adopted repo. This leaves `architrave.config.json` and copied `.github/agents` untouched by default:
 
 ```bash
 /path/to/architrave/tools/update.sh .
 pwsh -NoProfile -File /path/to/architrave/tools/update.ps1 .
 ```
 
-When the Architrave crew itself changes and you want to refresh the copied repo agents too, opt in explicitly after archiving any bespoke repo agents:
+When the Architrave crew itself changes and you want to refresh the copied repo agents too, opt in explicitly. Application repos receive the full packaged crew. Knowledge repos converge to the five-agent crew above: only non-crew basenames packaged by Architrave are removed, so target-only custom agents remain untouched.
 
 ```bash
 /path/to/architrave/tools/update.sh --agents .
 pwsh -NoProfile -File /path/to/architrave/tools/update.ps1 . -Agents
+```
+
+Refresh generated Codex roles separately (plugin skills update through the
+native plugin command):
+
+```bash
+/path/to/architrave/tools/update.sh --codex .
+pwsh -NoProfile -File /path/to/architrave/tools/update.ps1 . -Codex
 ```
 
 ## How It Works
@@ -113,13 +161,56 @@ Open your assistant, pick the **Architrave** agent, and describe the change in p
 
 Architrave starts with visible intake: understanding, acceptance criteria, grounding sources, assumptions, and blocking questions. Then it runs a **Tournament of Options** plus the **YAGNI ladder**: skip/delete, reuse existing repo source of truth, platform/native feature, standard library, installed dependency, tiny local implementation, and only then new abstraction/dependency/config when the current task proves it. The recommended plan must explain why it beats the alternatives before implementation starts.
 
-For UI, Architrave starts in **Storybook** or the configured design source, not in random app code. For backend/full-stack, it starts with the **contract** so UI and backend do not drift. For infrastructure, it stops at **plan/policy output** and leaves apply to a human. For non-trivial work, it writes run artifacts under `.architrave/runs/` so future agents can resume from evidence instead of chat memory.
+For UI, Architrave starts in **Storybook** or the configured design source. For
+backend/full-stack, it starts with the **contract**. Infrastructure is plan-only
+unless the user mandate produces an exact target/operation grant; authorized
+apply is checkpointed, receipted, and verified. Non-trivial work uses canonical
+Run state under `.architrave/runs/` so interruption resumes from state, not chat.
+
+## Durable Run v2
+
+The next-generation harness is a dependency-free Python control plane:
+
+```text
+Goal → Outcome → Acceptance Matrix → TaskGraph → WorkPackets
+                 → policy/checkpoints/events → deterministic/E2E/semantic gates
+                 → verified product outcome
+```
+
+- `run.json` is atomic canonical state; `events.jsonl` is typed and
+        HMAC-authenticated with an ignored local runtime key.
+- `current-task`, `approved-program`, and `advisory-only` separate autonomy from
+        phase observability. The Phase Ledger is generated from TaskGraph state.
+- Copilot, Claude, Codex, and deterministic shell adapters return bounded
+        candidate results. Mutating parallel work uses isolated git worktrees.
+- Repository-wide leases serialize overlapping mutable scopes across Runs;
+        mutation receipts are task-bound, outcome-bound, and single-use.
+- Typed external checkpoints pause OAuth/MFA/consent/signing/human judgment
+        without failing or restarting the program; independent work continues.
+- Unknown side effects reconcile against remote/live truth before retry.
+- Web, Electron, iOS, runtime, and deployment evidence prevent compile-only or
+        stale-deployment false success.
+- Evidence is executor-produced, HMAC-attested, digest-checked, and bound to the
+        exact criterion/gate; arbitrary registered files cannot manufacture PASS.
+- Risk class scales evaluation cost from deterministic-only R0 to R4 security,
+        policy, E2E/reality, and both judge families.
+
+See [`docs/runtime-v2.md`](docs/runtime-v2.md),
+[`docs/application-legibility.md`](docs/application-legibility.md), and
+[`docs/migration-run-v1-v2.md`](docs/migration-run-v1-v2.md).
 
 **Full-stack is built in.** Set a `backend` and/or `iac` block in `architrave.config.json` and the same conductor extends past UI. Repos without a service, infra, or runtime lane simply omit those blocks.
 
 **Knowledge repositories are first-class.** Set `kind: "knowledge"` through the installer profile and Architrave grounds in repository docs, scripts, skills, schemas, tests, and learning artifacts. It does not invent a UI lane or demand Storybook sign-off.
 
 **Execution adapts to the task.** Architrave expresses provider-neutral `modelClass`, `reasoning`, `context`, and `verification` intent. `FAST`, `BALANCED`, `DEEP`, and `CRITICAL` are convenience presets, not concrete model tiers. Task characteristics override provisional role hints, and `inherit/default` remains preferred when specialization is unproved. Architrave uses the current host's structured custom-agent/subagent invocation when useful; it never shells out to another agent harness or requires a provider SDK. Your local host settings map semantic intent to the models currently available on that machine.
+
+This adaptive routing prevents Architrave from sending every task to the same
+heavyweight model or maximum reasoning level. It starts with the cheapest
+adequate execution intent for the task, preserves deterministic verification,
+and escalates model strength, reasoning, context, or review only when risk or
+observed evidence requires it. Concrete model recommendations remain provisional
+until repeated benchmarks show a meaningful advantage.
 
 Verification adapts too, without weakening safety. Low-risk FAST/BALANCED knowledge or mechanical work can close on deterministic evidence when every criterion is machine-checked. Semantic, UI, contract, architecture, migration, security/trust, IaC, and high-blast-radius work raises the floor to an independent reviewer or the full cross-family gate. A full semantic gate still means verified GPT/Copilot-family and Claude-family PASS records.
 
@@ -131,9 +222,24 @@ Verification adapts too, without weakening safety. Low-risk FAST/BALANCED knowle
 
 ## Benchmarks
 
-Architrave now ships a benchmark harness because agent quality has to be measured against real work, not vibes. The suite in `benchmarks/` runs frozen tasks against real local repos in detached worktrees, compares agent arms such as `copilot-baseline` and `copilot-architrave`, and records JSONL rows with validation results, diff size, output tokens, wall time, artifacts, requested execution treatment, observed model/effort telemetry, and optional blinded LLM-judge scores.
+Architrave ships a benchmark harness because agent quality has to be measured
+against real work, not vibes. The suite in `benchmarks/` runs frozen tasks against
+real local repos in detached worktrees, compares agent arms such as
+`copilot-baseline` and `copilot-architrave`, and records JSONL rows with
+validation results, diff size, output tokens, wall time, artifacts, requested
+execution treatment, observed model/effort telemetry, and optional blinded
+LLM-judge scores.
 
-`benchmarks/routing-scenarios.json` adds four model-neutral routing cases for FAST, BALANCED, DEEP, and CRITICAL hypotheses. Concrete model/effort bindings belong in an ignored local scenario file. A single run is smoke evidence; a local binding recommendation requires at least three representative repeats, an honored observable control, deterministic validation, and independent judging.
+`benchmarks/routing-scenarios.json` adds four model-neutral routing cases for
+FAST, BALANCED, DEEP, and CRITICAL hypotheses. Concrete model/effort bindings
+belong in an ignored local scenario file. A single run is smoke evidence; a
+local binding recommendation requires at least three representative repeats,
+an honored observable control, deterministic validation, and independent
+judging.
+
+It now also includes **Architrave LongBuild** categories, disabled
+Claude/Codex arms, recovery/external-checkpoint/parallel/deployment-policy cases,
+and a frozen Tessera-shaped fixture with no private code or data.
 
 The first smoke benchmark is intentionally small: a PhonoDeck learning-loop task that asks the agent to capture a real build/relaunch gotcha as durable repo knowledge without touching product code. It proves the harness path end to end.
 
@@ -142,6 +248,12 @@ The first smoke benchmark is intentionally small: a PhonoDeck learning-loop task
 | `pilot-architrave-learning-20260622T073711Z` | `copilot-architrave` | **PASS** | `checks.sh --quick` + `validate-run.sh` PASS | PASS, 5/5 across correctness / clarity / YAGNI / process / repo fit | 3,893 | 393.9s | +117 LOC / 10 artifact files |
 
 Read that honestly: it is a verified smoke, not a leaderboard. A generic baseline run on the same learning scenario timed out before producing the required run artifacts, which is useful failure data, but we are not publishing a broad win claim until the full curated suite runs with repeats and human review. The important part is the shape of the evidence: every claim is tied to a scenario, a pinned commit, a worktree, deterministic gates, a patch, and an optional judge row.
+
+LongBuild adds Outcome/acceptance PASS, false PASS, human interventions,
+unnecessary-question heuristics, false external blockers, repeated work after
+resume, peak parallel workers, deployment verification, E2E failures, median,
+p90, and variance. The north-star measure is time to verified product outcome
+per required human intervention. See [`docs/longbuild.md`](docs/longbuild.md).
 
 Reproduce the harness checks:
 
@@ -163,6 +275,12 @@ python3 scripts/bench-architrave.py --scenarios benchmarks/scenarios.json --vali
 python3 scripts/bench-architrave.py --scenarios benchmarks/scenarios.json --list
 python3 scripts/bench-architrave.py --scenarios benchmarks/routing-scenarios.json --validate
 python3 scripts/test-benchmark-tools.py
+python3 scripts/test-runtime-v2.py
+python3 scripts/test-worker-adapters.py
+python3 scripts/test-invariant-engine.py
+python3 scripts/test-legibility.py
+python3 scripts/test-workspaces.py
+python3 scripts/test-longbuild-runtime.py
 ```
 
 Run one scenario when you are ready to spend Copilot credits:
@@ -175,6 +293,13 @@ ARCHITRAVE_BENCH_SECRET_ENV_VARS='GITHUB_TOKEN,GH_TOKEN,ANTHROPIC_API_KEY,OPENAI
                 --arm copilot-architrave \
                 --execute --cleanup-worktrees
 ```
+
+Benchmarks are bounded experiments, not open-ended release jobs. Each agent cell
+defaults to a 10-minute timeout, the complete invocation defaults to a 20-minute
+wall-time budget, and periodic heartbeats make active work visible. Explicit
+flags can raise either limit for a deliberate long-form experiment; once the run
+budget is exhausted, Architrave records that result and starts no additional
+cells.
 
 The benchmark design follows the same lesson Ponytail surfaced well: the persuasive metric is not "the agent said it used YAGNI." It is the resulting diff, the gates, the token/time trace, and whether a reviewer would accept the change.
 
@@ -212,7 +337,8 @@ Each constitution closes with a **Citations** section linking the live source pa
 - 🏗️ **Builds the real thing.** *Architrave* turns the approved design or contract into native/web UI, backend/service code, and tests — driven by your repo's actual build + test commands.
 - ✂️ **Builds less, on purpose.** The YAGNI ladder blocks speculative abstractions, unused config, new dependencies, and wrapper layers until the task proves they are needed.
 - 🔌 **Keeps full-stack work contract-first.** *Service Architect* and *Backend Planner* define the API/data handshake, migration/rollback plan, and approval checklist before implementation.
-- 🛡️ **Keeps infrastructure plan-only.** *Infra Engineer* can propose IaC diffs and run `plan` / policy checks, but never applies changes or materializes secrets.
+- 🛡️ **Keeps infrastructure default-deny.** *Infra Engineer* plans by default;
+        scoped authorized deployment records a receipt and must match live state.
 - 🎯 **Follows your system, never reinvents.** Every change starts from your Storybook/component map, architecture docs/contracts, and existing repo seams; agents touch only the deltas.
 - ✅ **Won't ship slop.** An *Adversarial Judge* (LLM‑as‑judge) plus deterministic gates (your real build + tests + token lint + backend/IaC checks) must *both* be green — and design tokens stay reconciled with code.
 - 🧩 **One method, every surface.** The same kit runs in the Copilot CLI, the Copilot desktop app, VS Code, **Claude Code**, and the cloud coding agent.
@@ -244,7 +370,7 @@ The method isn't theoretical — it emerged independently across real apps, **Ph
         ▼
 3. AGENTS                      Architrave conductor · UI specialists · backend/infra specialists · Adversarial Judge
         ▼
-4. GATES + HARNESS             deterministic (build/test/token-lint/backend-checks) + semantic (judge) + reconcile + run artifacts
+4. RUN + GATES                TaskGraph/EventLog/policy/workers + deterministic/E2E/reality/semantic gates
 ```
 
 Everything in layers 2–4 is **retargeted per repo by one config file** (`architrave.config.json`). The agents never hard‑code a stack; they read the config and the matching knowledge pack.
@@ -257,7 +383,8 @@ For VS Code/Copilot, use the structured subagent call's model preference or a us
 
 AI agents get better in a repo the same way developers do: they remember the shape of the system, which commands actually work, which assumptions caused mistakes, and which rules are stable enough to teach the next run. Architrave makes that learning visible and reviewable instead of relying on hidden chat context.
 
-- **Run artifacts** are episodic memory: `.architrave/runs/<run-id>/intake.md`, `tournament.md`, `recommended-plan.md`, gate output, judge verdicts, runtime evidence, and `summary.json`.
+- **Run state and artifacts** are episodic memory: canonical `run.json`,
+  hash-chained events, projections, gate/judge/runtime evidence, and receipts.
 - **Repo profile** is semantic memory: `.architrave/learning/repo-profile.md` captures the repo description and validated operational facts future agents should read first.
 - **Candidate lessons** are a review queue: `.architrave/learning/repo-lessons.md` records repeated observations with evidence and occurrence counts.
 - **Promoted rules** are procedural memory: stable lessons move into `architrave.config.json`, `AGENTS.md`, `.github/instructions/`, docs, or contracts after review.
@@ -287,11 +414,12 @@ The kit is just Markdown + small scripts; the only hard dependencies are for the
 | Tool | Why it's needed | Install |
 |---|---|---|
 | **GitHub Copilot** (CLI, desktop app, or VS Code) **or Claude Code** | runs the agents | [github.com/features/copilot](https://github.com/features/copilot) |
-| **`jq`** | the POSIX (`.sh`) gates read `architrave.config.json` | macOS: `brew install jq` · Ubuntu/Debian: `sudo apt-get install -y jq` · Windows: `winget install jqlang.jq` |
+| **`jq`** | the POSIX (`.sh`) gates and updater parse `architrave.config.json` | macOS: `brew install jq` · Ubuntu/Debian: `sudo apt-get install -y jq` · Windows: `winget install jqlang.jq` |
 | **PowerShell 7+** | only for the Windows (`.ps1`) gates — built in on Windows | macOS: `brew install --cask powershell` · [releases](https://github.com/PowerShell/PowerShell/releases) |
 | **git** | the reconcile gate diffs generated vs committed code | already installed on most systems |
+| **Python 3** | Run v2, worker/workspace adapters, legibility, invariants, and benchmarks | use Python 3.11+ for Codex role tooling |
 
-> On **Windows you don't need `jq`** — the `.ps1` gates use PowerShell's built‑in `ConvertFrom-Json`. On **macOS/Linux you don't need PowerShell** — the `.sh` gates use `jq`.
+> On **Windows you don't need `jq`** — the `.ps1` gates and updater use PowerShell's built‑in `ConvertFrom-Json`. On **macOS/Linux you don't need PowerShell** — the `.sh` gates and updater use `jq`.
 
 Your repo's own build/test toolchain (Node for web, Xcode for Apple, .NET for WinUI, …) is whatever your `architrave.config.json` `build`/`test` commands invoke — the gates just run those.
 
@@ -304,16 +432,31 @@ After installing the plugin (above), **adopt/ground a repo** — this is also wh
 pwsh -NoProfile -File /path/to/architrave/tools/install.ps1 .    # Windows
 ```
 
-This copies the agents → `.github/agents/`, the gates → `gates/`, the harness helpers → `harness/`, the knowledge packs → `knowledge/`, the platform constitutions → repo root (`constitution-apple.md`, `constitution-windows.md`), scaffolds `architrave.config.json`, injects a grounding stanza into `AGENTS.md` (idempotent), wires the PostToolUse hook, and drops `.github/workflows/copilot-setup-steps.yml`.
+This copies agents, gates, the complete harness, and knowledge packs; scaffolds
+config; ignores private Runs and worktrees; injects the grounding stanza; wires
+the hook; and drops cloud setup. Existing configs remain valid. The application
+profile also copies native constitutions; the knowledge profile omits them.
 
-**Important update rule:** after every Architrave plugin update, run `tools/update.sh` (macOS/Linux) or `tools/update.ps1` (Windows) in each adopted repo. Plugin updates do not rewrite these copied repo assets. `tools/update.*` refreshes copied gates, the active platform-specific workspace hook, harness, knowledge, constitutions, and the managed `AGENTS.md` stanza while leaving `architrave.config.json` and `.github/agents` alone by default; pass `--agents` / `-Agents` only when you deliberately want to refresh copied Architrave agents too.
+**Important update rule:** after every Architrave plugin update, run `tools/update.sh` (macOS/Linux) or `tools/update.ps1` (Windows) in each adopted repo. Plugin updates do not rewrite these copied repo assets. `tools/update.*` refreshes copied gates, the active platform-specific workspace hook, harness, knowledge, profile-appropriate constitutions, the run-artifact ignore, and the managed `AGENTS.md` stanza while leaving `architrave.config.json` and `.github/agents` alone by default; pass `--agents` / `-Agents` only when you deliberately want to refresh copied Architrave agents too.
+
+Install and update fail closed when a managed destination is a symbolic link,
+junction, reparse point, or wrong path type. Managed files are staged and
+replaced instead of overwritten in place, so a target hard link cannot mutate
+external content. POSIX update requires valid object JSON and accepts only an
+absent `kind` (application profile) or `"kind": "knowledge"`; PowerShell uses
+the same contract.
 
 Then point it at your repo — edit `architrave.config.json`:
 
 - For **UI/app work**, set `platform`, `stack`, `designSource` (your Storybook), `designMap`, `tokens`, and the normal `generate` / `build` / `test` commands.
 - For **backend/service work**, add `backend` with the solution path, architecture docs, contract location if you have one, backend `applyTo` globs, and backend build/test commands.
-- For **infrastructure**, add `iac` with the IaC kind, path, plan/what-if/diff command, policy command, and apply globs. Keep it plan-only; the human applies.
-- For **runtime verification**, optionally add `ops` with `kind`, `mode: "read-only"`, `mcpServer` (for example `homelab`), observation purposes, and operations that require approval. This lets Architrave use Homelab MCP or similar tools when present without making them a hard dependency.
+- For **infrastructure**, add `iac`; plan is the default. Add `autonomy` policy
+        only for explicit bounded operations.
+- For **runtime/product verification**, add optional `runtime` Web/Electron/iOS/
+        deployment commands and `ops` observation settings.
+- Add optional `workers`, `invariants`, and `evaluation` blocks for routing,
+        mechanical boundaries, and risk policy. See
+        [`kit/examples/runtime-v2.architrave.json`](kit/examples/runtime-v2.architrave.json).
 - For **learning**, add `learning` with `runArtifactsPath`, `repoProfilePath`, `lessonsPath`, `capture`, `redactionPolicy: "no-secrets"`, `staleFactPolicy: "validate-before-use"`, `promotionPolicy`, and promotion targets. The installer scaffolds this block for new repos.
 
 For early UI work, `designMap` and `tokens` can start empty while Storybook + specs are the source of truth. As the design system matures, copy `kit/examples/design-map.stub.json` and `kit/examples/tokens.web-shadcn.tokens.json` into your app and wire them in; that unlocks stronger grounding and design↔code reconciliation.
@@ -357,11 +500,11 @@ Architrave, Product Research, UX Architect, UI Visual, and Adversarial Judge can
 
 `main` *is* the published plugin — both marketplaces use `"source": "."`, so there's no build step and a push to `main` is the release. Two safeguards keep that honest:
 
-- **Gate** — [`.github/workflows/validate.yml`](.github/workflows/validate.yml) runs [`scripts/check-manifests.sh`](scripts/check-manifests.sh) on every push and PR: all manifests + kit JSON parse, examples conform to the schema, agent frontmatter is valid, and the version is in sync across all six fields.
+- **Gate** — [`.github/workflows/validate.yml`](.github/workflows/validate.yml) runs [`scripts/check-manifests.sh`](scripts/check-manifests.sh) on every push and PR: all manifests + kit JSON parse, examples conform to the schema, agent/skill frontmatter and Codex TOML are valid, generated roles are current, and the version is in sync across all seven fields.
 - **Versioned release** — a *static* version means installed users never re-fetch, so cut releases by bumping the version, then tagging:
 
 ```bash
-scripts/bump-version.sh 0.2.0                 # writes the version into all 6 manifest fields
+scripts/bump-version.sh 0.2.0                 # writes the version into all 7 manifest fields
 scripts/check-manifests.sh                    # confirm green
 git commit -am "Release v0.2.0"
 git tag v0.2.0 && git push origin main --tags # release.yml verifies tag==version, then publishes a GitHub Release
@@ -378,6 +521,9 @@ plugin.json                   ← agent-plugin manifest (Copilot CLI / app / VS 
 .github/plugin/marketplace.json ← Copilot plugin marketplace (self-hosted)
 .github/workflows/            ← validate (gate every push/PR) · release (tag vX.Y.Z → GitHub Release)
 .claude-plugin/               ← Claude Code plugin + marketplace manifests
+.codex-plugin/plugin.json     ← Codex / ChatGPT plugin manifest
+.codex/                       ← project role registrations + two generated role configs
+skills/                       ← plugin-only Architrave / Tournament / Review skills
 kit/
         MIGRATION.md                  ← how to replace bespoke repo agents with Architrave
   architrave.config.schema.json    ← per-repo config schema (the keystone)
@@ -390,14 +536,16 @@ knowledge/
   design-tokens.md            ← 3-tier tokens + design↔code reconciliation — cited
         learning-loop.md            ← durable run artifacts + repo profile + lesson promotion — cited
         yagni.md                    ← minimum-sufficient-change ladder + Ponytail/Caveman research — cited
-agents/                       ← Architrave · Product Research · Operations UX · UX Architect · UI Visual · Platform Design · Adversarial Judge
+        runtime-v2.md               ← durable Run/TaskGraph/EventLog/policy/worker semantics
+agents/                       ← Architrave · Product Research · Operations UX · UX Architect · UI Visual · Platform Design · Tournament Analyst · Adversarial Judge
                                  + backend lane: Service Architect · Backend Planner · Backend Implementer · Infra Engineer
                                  + runtime lane: Runtime Observer
 gates/                        ← rubric.md · checks.{sh,ps1} · reconcile.{sh,ps1} · quality-gate.{sh,ps1} · backend-checks.{sh,ps1} · hooks/
-harness/                      ← init-run.{sh,ps1} · validate-run.{sh,ps1} · semantic-review.{sh,ps1} · semantic learning review/recovery · schemas/
-benchmarks/                   ← scenario dataset + benchmark methodology for agent regression tests
+harness/                      ← Run v2 runtime · workers/workspaces · invariants · legibility · v1/v2 validators · schemas
+benchmarks/                   ← short/feature/multi-surface/LongBuild scenarios + frozen fixture
+docs/                         ← runtime, legibility, LongBuild, and v1→v2 migration guides
 templates/                    ← AGENTS.stanza.md · copilot-setup-steps.yml (injected by the installer)
-tools/                        ← install.sh · install.ps1 (adopt a repo) · update.sh · update.ps1 (refresh copied assets)
+tools/                        ← install/update scripts + managed-path helpers (`managed-paths.sh` / `ManagedPaths.ps1`) + Codex role transaction helper
 scripts/                      ← check-manifests.sh (the gate) · bump-version.sh (one-command release bump)
 assets/                       ← README screenshots (drop PNGs here)
 AGENTS.md                     ← kit-level agent instructions

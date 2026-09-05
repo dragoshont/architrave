@@ -1,0 +1,7 @@
+{
+  "releaseId": "fixture-2026.08.13",
+  "status": "blocked_external",
+  "reason": "provider_auth_required",
+  "provider": "fixture-mail",
+  "updatedAt": "2026-08-13T00:00:00Z"
+}

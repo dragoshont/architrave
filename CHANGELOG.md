@@ -5,15 +5,76 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
-## [Unreleased]
+## [0.11.0] - 2026-09-05
 
 ### Added
 - Provider-neutral adaptive execution intent across model class, reasoning, context, and verification dimensions, with provisional FAST/BALANCED/DEEP/CRITICAL presets and host-native subagent delegation.
 - Backward-compatible routing benchmark treatments, model/effort/context requests, observed execution telemetry, control-honor status, and four model-neutral routing scenarios.
 - Optional run-summary execution evidence with paired POSIX/PowerShell validation of preset consistency, evidence-bearing escalation/fallback, and verified independent/cross-family acceptance.
+- Durable `architrave.run.v2` control plane with Outcome, Acceptance Matrix,
+  TaskGraph, typed HMAC-authenticated EventLog, checkpoints, resume,
+  challenge-bound external waits,
+  default-deny mutation policy, and v1 migration.
+- Bounded Copilot/Claude/Codex/shell workers, isolated worktree management,
+  mechanical invariants, product/deployment legibility, risk-based evaluation,
+  registered evidence binding, PNG blank-screen analysis, and mutation receipts.
+- Architrave LongBuild benchmark categories, frozen Tessera-shaped fixture,
+  recovery/external-checkpoint/parallel/deployment-policy scenarios, and durable
+  outcome/intervention metrics.
+- First-class Codex/ChatGPT plugin manifest with three plugin-only Agent Skills.
+- Project-scoped Tournament Analyst and Adversarial Judge roles generated from
+  canonical agents, with opt-in POSIX/PowerShell install and update support.
+- Claude Opus 4.8 MAX Tournament launcher and bounded, nonce-verified dual-family
+  semantic launchers using GPT-5.6 Sol MAX and Opus 4.8 MAX.
+- Disposable Codex runtime fixtures for plugin skill discovery, role routing,
+  exactly-one MCP invocation, and hostile-output resistance.
+- Installers and updaters ignore `.architrave/runs/` and
+  `.architrave/worktrees/` by default while learning remains tracked.
+
+### Changed
+- Adaptive-routing benchmarks now emit periodic progress heartbeats, cap each
+  agent cell at 10 minutes and each invocation at 20 minutes by default, and
+  stop launching cells when the configurable run budget is exhausted.
+- The lead agent is materially smaller and delegates lane detail to retrievable
+  knowledge. Phase Ledger is now a Run projection rather than an autonomy wall.
+- Infrastructure/runtime remains plan/read-only by default but explicit bounded
+  Run policy can authorize a target/operation with receipt and verification.
+- Manifest validation and version bumping now synchronize seven version fields
+  and enforce Codex JSON/YAML/TOML, generator, transaction, launcher, and
+  structural runtime checks.
+- Codex role documentation explicitly distinguishes the read-only command
+  sandbox override from inherited parent permission, skill, and MCP authority.
+- The `knowledge` profile now installs only its five-agent crew (`architrave`,
+  `adversarial-judge`, `tournament-analyst`, `product-research`, and
+  `runtime-observer`) without native-app constitutions. Explicit agent refresh
+  migrates existing knowledge repos by removing only non-crew agent basenames
+  packaged by the kit, preserving target-only custom agents and Codex roles.
+
+### Fixed
+- Benchmark validation now accepts the already-supported Claude and Codex
+  runners, and frozen fixture paths resolve consistently relative to their
+  scenario file.
+- POSIX updates now require `jq` and fail before writes on malformed,
+  non-object, or unsupported-profile configuration instead of falling back to
+  application behavior. PowerShell enforces the same `kind` contract.
+- Tournament review verification now supports nonce generation without
+  `uuidgen`, accepts exact CRLF evidence lines, and rejects missing or duplicate
+  completion markers consistently across POSIX and PowerShell.
 
 ### Security
 - Benchmark judging is now fail-closed and tool-free, nonce-delimits untrusted evidence, blinds producer identity, verifies observed judge family, and prevents stale verdict reuse across judge configurations.
+- Installers and updaters now validate every managed destination, reject
+  symbolic links, junctions, reparse points, and unsupported path types, and
+  revalidate immediately before each write or deletion. Per-file staged
+  replacement also prevents target hard links from mutating external content.
+- Cross-platform adversarial fixtures verify external directory/file sentinels
+  and target snapshots remain unchanged when managed paths or configuration are
+  unsafe.
+- Focused managed-path tests now run on Windows plus Linux x64 and arm64 during
+  validation and release, covering Unicode paths, FIFOs, links, device nodes,
+  hard links, and containment behavior.
+
+[0.11.0]: https://github.com/dragoshont/architrave/releases/tag/v0.11.0
 
 ## [0.10.3] - 2026-07-10
 

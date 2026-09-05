@@ -1,0 +1,4 @@
+.architrave/runs/
+.architrave/worktrees/
+__pycache__/
+*.pyc

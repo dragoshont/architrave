@@ -77,7 +77,7 @@
     },
     "iac": {
       "type": "object",
-      "description": "Optional infrastructure-as-code lane. The Infra Engineer is PLAN-ONLY by charter: it proposes diffs + plan/policy output and NEVER applies - apply stays a human action. Highest-blast-radius lane (secrets, identity, network).",
+      "description": "Optional infrastructure-as-code lane. Plan-only is the default. A durable Run may apply only when its machine-readable policy contains explicit bounded authorization for the target and operation.",
       "additionalProperties": false,
       "properties": {
         "kind": { "type": "string", "description": "IaC technology.", "enum": ["kubernetes", "bicep", "terraform", "pulumi", "compose", "mixed"] },
@@ -87,13 +87,217 @@
         "applyTo": { "type": "array", "description": "Globs where the IaC lives.", "items": { "type": "string" } }
       }
     },
+    "autonomy": {
+      "type": "object",
+      "description": "Optional default autonomy and mutation policy for durable Runs. A controlling user mandate may narrow or explicitly extend these grants for one Run; policy always defaults to deny.",
+      "required": ["scope", "mutationPolicy"],
+      "additionalProperties": false,
+      "properties": {
+        "scope": {
+          "type": "string",
+          "enum": ["current-task", "approved-program", "advisory-only"]
+        },
+        "mutationPolicy": {
+          "type": "object",
+          "required": ["default", "allow", "confirmationRequired"],
+          "additionalProperties": false,
+          "properties": {
+            "default": { "const": "deny" },
+            "allow": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["scope", "operations"],
+                "additionalProperties": false,
+                "properties": {
+                  "scope": { "type": "string", "minLength": 1 },
+                  "operations": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  }
+                }
+              }
+            },
+            "confirmationRequired": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "uniqueItems": true
+            }
+          }
+        }
+      }
+    },
+    "workers": {
+      "type": "object",
+      "description": "Optional worker routing and isolated workspace defaults. The runtime remains usable with built-in defaults when omitted.",
+      "additionalProperties": false,
+      "properties": {
+        "defaultAdapter": { "type": "string", "enum": ["copilot", "claude", "codex", "shell"] },
+        "maxParallel": { "type": "integer", "minimum": 1 },
+        "worktreeRoot": { "type": "string", "minLength": 1 },
+        "cleanupCompletedWorktrees": { "type": "boolean" },
+        "enabledAdapters": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["copilot", "claude", "codex", "shell"] },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "description": "Optional product and deployment legibility commands. Commands wrap existing repo tooling; Architrave does not replace the app or deployment platform.",
+      "additionalProperties": false,
+      "properties": {
+        "boot": { "type": "string" },
+        "health": { "type": "string" },
+        "stop": { "type": "string" },
+        "reset": { "type": "string" },
+        "logs": { "type": "string" },
+        "web": {
+          "type": "object",
+          "required": ["url", "e2e"],
+          "additionalProperties": false,
+          "properties": {
+            "url": { "type": "string", "minLength": 1 },
+            "e2e": { "type": "string" },
+            "dom": { "type": "string" },
+            "accessibility": { "type": "string" },
+            "screenshot": { "type": "string" },
+            "console": { "type": "string" },
+            "network": { "type": "string" }
+          }
+        },
+        "electron": {
+          "type": "object",
+          "required": ["launch", "health", "screenshot"],
+          "additionalProperties": false,
+          "properties": {
+            "launch": { "type": "string" },
+            "health": { "type": "string" },
+            "logs": { "type": "string" },
+            "screenshot": { "type": "string" }
+          }
+        },
+        "ios": {
+          "type": "object",
+          "required": ["build", "install", "launch", "screenshot", "screenshotPath", "bundleId"],
+          "additionalProperties": false,
+          "properties": {
+            "build": { "type": "string" },
+            "install": { "type": "string" },
+            "launch": { "type": "string" },
+            "terminate": { "type": "string" },
+            "logs": { "type": "string" },
+            "screenshot": { "type": "string" },
+            "screenshotPath": { "type": "string" },
+            "bundleId": { "type": "string", "minLength": 1 },
+            "blankScreenCheck": { "type": "string" }
+          }
+        },
+        "deployment": {
+          "type": "object",
+          "required": ["target", "current", "health", "version", "digest"],
+          "additionalProperties": false,
+          "properties": {
+            "target": { "type": "string", "minLength": 1 },
+            "current": { "type": "string" },
+            "diff": { "type": "string" },
+            "apply": { "type": "string" },
+            "health": { "type": "string" },
+            "rollback": { "type": "string" },
+            "version": { "type": "string" },
+            "digest": { "type": "string" }
+          }
+        }
+      }
+    },
+    "invariants": {
+      "type": "object",
+      "description": "Optional simple mechanical architecture invariants. This is intentionally a bounded declaration, not a workflow DSL.",
+      "additionalProperties": false,
+      "properties": {
+        "requiredFiles": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "forbiddenPatterns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["pattern", "paths"],
+            "additionalProperties": false,
+            "properties": {
+              "pattern": { "type": "string", "minLength": 1 },
+              "paths": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 },
+                "minItems": 1
+              }
+            }
+          }
+        },
+        "forbiddenDependencies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["from", "to"],
+            "additionalProperties": false,
+            "properties": {
+              "from": { "type": "string", "minLength": 1 },
+              "to": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "requiredBoundaries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "allowedImports"],
+            "additionalProperties": false,
+            "properties": {
+              "path": { "type": "string", "minLength": 1 },
+              "allowedImports": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 },
+                "uniqueItems": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "evaluation": {
+      "type": "object",
+      "description": "Optional risk-based evaluation defaults. Deterministic failures always override semantic verdicts.",
+      "additionalProperties": false,
+      "properties": {
+        "defaultRisk": { "type": "string", "enum": ["R0", "R1", "R2", "R3", "R4"] },
+        "realityGate": { "type": "boolean" },
+        "controlAudit": { "type": "boolean" },
+        "riskPolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "patternProperties": {
+            "^R[0-4]$": {
+              "type": "array",
+              "items": { "type": "string", "enum": ["deterministic", "e2e", "semantic-gpt", "semantic-claude", "reality", "security"] },
+              "uniqueItems": true
+            }
+          }
+        }
+      }
+    },
     "ops": {
       "type": "object",
       "description": "Optional runtime/operations observation lane. Used by Runtime Observer for read-only deployment/runtime evidence (for example Homelab MCP, Kubernetes health, logs, ingress, Flux state). Runtime mutations require explicit human approval.",
       "additionalProperties": false,
       "properties": {
         "kind": { "type": "string", "description": "Runtime/ops provider type.", "enum": ["homelab-mcp", "kubernetes", "custom", "other"] },
-        "mode": { "type": "string", "description": "Default access mode. Use read-only unless the repo intentionally supports approval-gated operations.", "enum": ["read-only", "approval-required"] },
+        "mode": { "type": "string", "description": "Default access mode. Scoped-mutation is effective only when the Run policy independently authorizes the target and operation.", "enum": ["read-only", "approval-required", "scoped-mutation"] },
         "mcpServer": { "type": "string", "description": "Optional MCP server name, e.g. homelab. Agents use it only if available in the client." },
         "purpose": { "type": "array", "description": "Allowed observation purposes such as runtime-health, logs, deployment-verification, version-drift.", "items": { "type": "string" } },
         "requiresApprovalFor": { "type": "array", "description": "Operations that require explicit human approval, e.g. mutations, reconcile, restart, secret-access, network-change.", "items": { "type": "string" } }
@@ -140,7 +344,8 @@
             { "required": ["screenshot"] },
             { "required": ["backend"] },
             { "required": ["iac"] },
-            { "required": ["ops"] }
+            { "required": ["ops"] },
+            { "required": ["runtime"] }
           ]
         }
       },

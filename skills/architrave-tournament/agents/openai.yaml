@@ -1,0 +1,6 @@
+interface:
+  display_name: "Architrave Tournament"
+  short_description: "Compare high-risk implementation options"
+  default_prompt: "Run an Architrave Tournament of Options for this decision."
+policy:
+  allow_implicit_invocation: false

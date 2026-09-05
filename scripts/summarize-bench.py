@@ -6,7 +6,7 @@ import argparse
 import json
 from collections import defaultdict
 from pathlib import Path
-from statistics import mean
+from statistics import mean, median, pvariance
 from typing import Any
 
 
@@ -36,22 +36,46 @@ def group_values(group: list[dict[str, Any]], getter) -> str:
     return ", ".join(sorted(values)) or "inherit"
 
 
+def control_observability(row: dict[str, Any]) -> str:
+    status = ((row.get("execution") or {}).get("controlStatus") or {})
+    return "; ".join(
+        [
+            f"honored={status.get('controlsHonored')}",
+            f"model={status.get('model', 'unreported')}",
+            f"reasoning={status.get('reasoningEffort', 'unreported')}",
+            f"context={status.get('contextTier', 'unreported')}",
+        ]
+    )
+
+
+def percentile(values: list[float | int], fraction: float) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    index = max(0, min(len(ordered) - 1, int((len(ordered) - 1) * fraction + 0.5)))
+    return float(ordered[index])
+
+
 def summarize(items: list[dict[str, Any]]) -> str:
     groups: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     for row in items:
         groups[(row.get("scenario", ""), row.get("arm", ""))].append(row)
 
     lines = ["# Architrave Benchmark Summary", ""]
-    lines.append("| Scenario | Arm | Profile | Requested binding | Controls honored | n | pass % | avg ms | avg net LOC | avg files | avg output tokens | timeouts |")
-    lines.append("|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|")
+    lines.append("| Scenario | Arm | Profile | Requested binding | Control observability | n | pass % | median ms | p90 ms | variance ms | durable evidence | outcome % (all rows) | human interventions | false PASS | repeated work | timeouts |")
+    lines.append("|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     for (scenario, arm), group in sorted(groups.items()):
         n = len(group)
         pass_rate = 100 * sum(1 for row in group if row.get("passed")) / n if n else 0
         agents = [row.get("agent") or {} for row in group]
         durations = [agent.get("duration_ms") for agent in agents if agent.get("duration_ms") is not None]
-        net_locs = [row.get("diff", {}).get("net_loc") for row in group if row.get("diff", {}).get("net_loc") is not None]
-        files = [row.get("diff", {}).get("changed_files") for row in group if row.get("diff", {}).get("changed_files") is not None]
-        output_tokens = [agent.get("output_tokens") for agent in agents if agent.get("output_tokens") is not None]
+        durable = [row.get("durable_run") or {} for row in group]
+        outcomes = [item for item in durable if item]
+        outcome_rate = 100 * sum(1 for item in outcomes if item.get("outcome_pass")) / n if n else 0
+        evidence_coverage = f"{len(outcomes)}/{n} ({100 * len(outcomes) / n:.1f}%)" if n else "0/0"
+        interventions = sum(int(item.get("human_interventions") or 0) for item in outcomes)
+        false_passes = sum(1 for item in outcomes if item.get("false_pass"))
+        repeated_work = sum(int(item.get("repeated_work_after_resume") or 0) for item in outcomes)
         timeouts = sum(1 for agent in agents if agent.get("timed_out"))
         profile = group_values(group, lambda row: ((((row.get("execution") or {}).get("requested") or {}).get("semantic") or {}).get("profile")))
         binding = group_values(
@@ -66,7 +90,7 @@ def summarize(items: list[dict[str, Any]]) -> str:
                 if value
             ),
         )
-        honored = group_values(group, lambda row: ((row.get("execution") or {}).get("controlStatus") or {}).get("controlsHonored"))
+        controls = group_values(group, control_observability)
         lines.append(
             "| "
             + " | ".join(
@@ -75,13 +99,17 @@ def summarize(items: list[dict[str, Any]]) -> str:
                     arm,
                     profile,
                     binding,
-                    honored,
+                    controls,
                     str(n),
                     fmt(pass_rate),
-                    fmt(mean(durations) if durations else None, 0),
-                    fmt(mean(net_locs) if net_locs else None),
-                    fmt(mean(files) if files else None),
-                    fmt(mean(output_tokens) if output_tokens else None),
+                    fmt(median(durations) if durations else None, 0),
+                    fmt(percentile(durations, 0.90), 0),
+                    fmt(pvariance(durations) if len(durations) > 1 else 0, 0),
+                    evidence_coverage,
+                    fmt(outcome_rate),
+                    str(interventions),
+                    str(false_passes),
+                    str(repeated_work),
                     str(timeouts),
                 ]
             )

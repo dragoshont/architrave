@@ -44,6 +44,7 @@ jobs:
       - name: Validate PowerShell run-artifact fixtures
         shell: pwsh
         run: |
+          ./scripts/test-managed-paths.ps1
           ./scripts/test-config-profiles.ps1
           ./scripts/test-installers.ps1
           ./scripts/test-validate-run.ps1
@@ -54,8 +55,21 @@ jobs:
           ./scripts/test-semantic-learning.ps1
           ./scripts/test-gates.ps1
 
+  powershell-unix-paths:
+    name: PowerShell managed paths (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Validate Unix managed-path ABI and filesystem types
+        shell: pwsh
+        run: ./scripts/test-managed-paths.ps1
+
   release:
-    needs: [validate, powershell-harness]
+    needs: [validate, powershell-harness, powershell-unix-paths]
     runs-on: ubuntu-latest
     permissions:
       contents: write

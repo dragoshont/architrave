@@ -154,13 +154,62 @@ class BenchmarkExecutionTests(unittest.TestCase):
         }
         self.assertEqual(BENCH.benchmark_config_errors(config), [])
 
+    def test_supported_external_runners_remain_valid(self) -> None:
+        config = {
+            "arms": [
+                {"id": "claude", "runner": "claude"},
+                {"id": "codex", "runner": "codex"},
+            ],
+            "scenarios": [],
+        }
+        self.assertEqual(BENCH.benchmark_config_errors(config), [])
+
     def test_controlled_effort_requires_concrete_model(self) -> None:
         config = {"arms": [{"id": "bad", "runner": "copilot", "model": "auto", "reasoningEffort": "low"}], "scenarios": []}
         self.assertIn("explicit non-auto model", "\n".join(BENCH.benchmark_config_errors(config)))
 
+    def test_time_budgets_require_positive_seconds(self) -> None:
+        self.assertEqual(BENCH.positive_seconds("600"), 600)
+        with self.assertRaisesRegex(Exception, "at least one second"):
+            BENCH.positive_seconds("0")
+
     def test_shell_runner_rejects_copilot_controls(self) -> None:
         config = {"arms": [{"id": "bad", "runner": "shell", "command": ["echo"], "model": "local"}], "scenarios": []}
-        self.assertIn("shell runner cannot set", "\n".join(BENCH.benchmark_config_errors(config)))
+        self.assertIn("shell runner cannot set unsupported control(s): model", "\n".join(BENCH.benchmark_config_errors(config)))
+
+    def test_external_runners_reject_unenforced_controls(self) -> None:
+        for runner, control in (("claude", "reasoningEffort"), ("codex", "contextTier")):
+            with self.subTest(runner=runner, control=control):
+                config = {"arms": [{"id": "bad", "runner": runner, control: "high"}], "scenarios": []}
+                errors = "\n".join(BENCH.benchmark_config_errors(config))
+                self.assertIn(f"{runner} runner cannot set unsupported control(s): {control}", errors)
+
+    def test_only_observable_model_and_reasoning_controls_gate_pass(self) -> None:
+        self.assertTrue(
+            BENCH.controls_allow_pass(
+                {"model": "honored", "reasoningEffort": "not-requested", "contextTier": "unobserved"}
+            )
+        )
+        self.assertFalse(
+            BENCH.controls_allow_pass(
+                {"model": "unobserved", "reasoningEffort": "not-requested", "contextTier": "unobserved"}
+            )
+        )
+        self.assertFalse(
+            BENCH.controls_allow_pass(
+                {"model": "honored", "reasoningEffort": "mismatch", "contextTier": "not-requested"}
+            )
+        )
+
+    def test_unhonored_control_has_distinct_failure_mode(self) -> None:
+        row = {
+            "passed": False,
+            "agent": {"returncode": 0, "timed_out": False},
+            "validation": [],
+            "artifacts": [],
+            "execution": {"controlStatus": {"model": "unobserved", "reasoningEffort": "not-requested"}},
+        }
+        self.assertEqual(BENCH.failure_mode(row), "control_unhonored")
 
     def test_profile_must_match_dimensions(self) -> None:
         intent = {"profile": "FAST", "modelClass": "fast", "reasoning": "high", "context": "narrow", "verification": "default"}
@@ -278,6 +327,32 @@ class BenchmarkExecutionTests(unittest.TestCase):
             "diff": {},
         }
         self.assertIn("inherit", SUMMARY.summarize([row]))
+
+    def test_summary_uses_all_rows_for_outcome_and_reports_evidence_coverage(self) -> None:
+        rows = [
+            {
+                "scenario": "task",
+                "arm": "arm",
+                "repeat": 0,
+                "passed": True,
+                "execution": {"requested": {}, "controlStatus": {}},
+                "agent": {},
+                "durable_run": {"outcome_pass": True},
+            },
+            {
+                "scenario": "task",
+                "arm": "arm",
+                "repeat": 1,
+                "passed": True,
+                "execution": {"requested": {}, "controlStatus": {}},
+                "agent": {},
+                "durable_run": None,
+            },
+        ]
+        summary = SUMMARY.summarize(rows)
+        self.assertIn("durable evidence", summary)
+        self.assertIn("1/2 (50.0%)", summary)
+        self.assertIn("| 50.0 |", summary)
 
 
 if __name__ == "__main__":

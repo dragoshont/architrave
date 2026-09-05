@@ -236,3 +236,28 @@ make_repo "$unknown_metrics"
 make_adaptive_terminal "$unknown_metrics"
 jq '.execution.metrics = {latencyMs:10}' "$unknown_metrics/.architrave/runs/test-run/summary.json" > "$unknown_metrics/.architrave/runs/test-run/summary.tmp" && mv "$unknown_metrics/.architrave/runs/test-run/summary.tmp" "$unknown_metrics/.architrave/runs/test-run/summary.json"
 expect_fail adaptive-unknown-metrics "$unknown_metrics"
+make_v2_repo() {
+  local repo="$1"
+  mkdir -p "$repo"
+  cp -R harness "$repo/harness"
+  chmod +x "$repo"/harness/*.sh 2>/dev/null || true
+  printf '{}\n' > "$repo/architrave.config.json"
+  git -C "$repo" init -q
+  git -C "$repo" config user.email architrave@example.invalid
+  git -C "$repo" config user.name 'Architrave Test'
+  git -C "$repo" add architrave.config.json harness
+  git -C "$repo" commit -qm fixture
+  (cd "$repo" && python3 harness/architrave_runtime.py run \
+    --run-id test-run \
+    --goal 'Validate Run v2.' \
+    --outcome 'Run v2 remains readable and tamper-evident.' >/dev/null)
+}
+
+v2_valid="$tmp/v2-valid"
+make_v2_repo "$v2_valid"
+expect_pass valid-v2-run "$v2_valid"
+
+v2_tampered="$tmp/v2-tampered"
+make_v2_repo "$v2_tampered"
+perl -0pi -e 's/run[.]created/run.forged/' "$v2_tampered/.architrave/runs/test-run/events.jsonl"
+expect_fail tampered-v2-events "$v2_tampered"
