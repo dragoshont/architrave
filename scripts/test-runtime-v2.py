@@ -1627,7 +1627,7 @@ class RuntimeV2Tests(unittest.TestCase):
         self.assertEqual("RUNNING", task["status"])
         self.assertEqual(2, task["attempts"])
 
-    def test_subsecond_backoff_is_ceiled_and_cannot_be_bypassed_by_immediate_retry(self) -> None:
+    def test_fractional_backoff_is_ceiled_and_cannot_be_bypassed_by_immediate_retry(self) -> None:
         # Regression: isoformat(timespec="seconds") truncates any fractional-second backoff,
         # which could round the persisted retryNotBefore *down* to "now" (or earlier) and let
         # an immediate retry slip through the declared backoff window undetected.
@@ -1638,20 +1638,21 @@ class RuntimeV2Tests(unittest.TestCase):
             {
                 "id": "flaky-fast",
                 "title": "flaky-fast",
-                "objective": "Retry after a sub-second backoff.",
+                "objective": "Retry after a fractional backoff.",
                 "workerProfile": "shell",
                 "acceptanceCriteria": ["OUTCOME-001"],
                 "maxAttempts": 2,
-                "backoffSeconds": 0.2,
+                "backoffSeconds": 5.2,
             },
         )
         self.store.start_task(run_id, "flaky-fast", worker_id="worker-1")
+        before_failure = dt.datetime.now(dt.timezone.utc)
         self.store.finish_worker(run_id, "flaky-fast", worker_id="worker-1", status="FAILED")
         task = next(t for t in self.store.load(run_id)["tasks"] if t["id"] == "flaky-fast")
         retry_not_before = parse_iso(task["retryNotBefore"])
-        # The stored deadline must remain strictly in the future immediately after failure;
-        # truncating sub-second precision could previously round it down to "now" or earlier.
-        self.assertGreater(retry_not_before, dt.datetime.now(dt.timezone.utc))
+        # Compare against a captured lower bound rather than the wall clock after several
+        # filesystem operations, which can legitimately exceed tiny backoffs on loaded CI.
+        self.assertGreaterEqual(retry_not_before, before_failure + dt.timedelta(seconds=5.2))
         with self.assertRaisesRegex(RuntimeFailure, "backoff"):
             self.store.start_task(run_id, "flaky-fast", worker_id="worker-2")
 

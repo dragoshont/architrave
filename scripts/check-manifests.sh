@@ -331,6 +331,7 @@ else
 fi
 
 echo "== durable Run v2 control-plane fixtures =="
+runtime_test_output="$(mktemp)"
 for test_script in \
   scripts/test-runtime-v2.py \
   scripts/test-worker-adapters.py \
@@ -339,13 +340,14 @@ for test_script in \
   scripts/test-workspaces.py \
   scripts/test-longbuild-runtime.py \
   scripts/test-benchmark-runtime.py; do
-  if python3 "$test_script" >/dev/null 2>&1; then
+  if python3 "$test_script" >"$runtime_test_output" 2>&1; then
     ok "$test_script"
   else
     err "$test_script failed"
-    python3 "$test_script" 2>&1 | sed 's/^/      /' | tail -20
+    sed 's/^/      /' "$runtime_test_output" | tail -20
   fi
 done
+rm -f "$runtime_test_output"
 
 echo "== harness validator fixtures =="
 if scripts/test-validate-run.sh >/dev/null 2>&1; then
