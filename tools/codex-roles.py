@@ -277,13 +277,17 @@ def marker_indices(text: str) -> tuple[list[str], list[int], list[int]]:
 
 
 def read_regular_file(path: Path, expected: Fingerprint, parent: Fingerprint) -> bytes:
-    flags = os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0)
     parent_fd: int | None = None
     descriptor: int | None = None
     try:
         if os.name == "nt":
+            # os.O_NONBLOCK does not exist on Windows (no FIFO semantics to
+            # guard against there), so it must not be referenced in this
+            # branch's flags.
+            flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
             descriptor = os.open(path, flags)
         else:
+            flags = os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0)
             parent_fd = os.open(
                 path.parent,
                 os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
@@ -578,7 +582,11 @@ def main() -> int:
         print(f"codex-roles: {error}", file=sys.stderr)
         return 1
     if not args.preflight:
-        print("  ✓ Codex roles installed")
+        # Plain ASCII only: Windows stdout falls back to the legacy ANSI
+        # codepage (e.g. cp1252) once redirected, which cannot encode
+        # non-ASCII symbols such as U+2713 and would crash after the
+        # transaction already succeeded.
+        print("  ok Codex roles installed")
     return 0
 
 

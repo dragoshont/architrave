@@ -119,7 +119,11 @@ chmod +x "$tmp/bin/fake-agent"
 ln -s fake-agent "$tmp/bin/copilot"
 ln -s fake-agent "$tmp/bin/claude"
 
-run_dir=".architrave/runs/20260711T-codex-chatgpt-adapter-r3"
+# Run artifacts are intentionally gitignored. Build the minimal run directory
+# this launcher fixture needs so a fresh Linux checkout does not rely on a
+# developer's persisted .architrave state.
+run_dir="$tmp/run"
+mkdir "$run_dir"
 export PATH="$tmp/bin:$PATH"
 export FAKE_AGENT_LOG="$tmp/args.log"
 

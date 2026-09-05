@@ -292,7 +292,14 @@ if [ -e .agents/skills ]; then err "project skill copies must not exist; skills 
 
 echo "== Codex adapter fixtures =="
 if python3 scripts/test-codex-roles.py >/dev/null 2>&1; then ok "Codex role transaction fixtures"; else err "Codex role transaction fixtures failed"; fi
-if scripts/test-review-launchers.sh >/dev/null 2>&1; then ok "bounded semantic/tournament launcher fixtures"; else err "review launcher fixtures failed"; fi
+review_launcher_log="$(mktemp)"
+if scripts/test-review-launchers.sh >"$review_launcher_log" 2>&1; then
+  ok "bounded semantic/tournament launcher fixtures"
+else
+  err "review launcher fixtures failed"
+  sed 's/^/      /' "$review_launcher_log" >&2
+fi
+rm -f "$review_launcher_log"
 if python3 scripts/test-codex-runtime.py >/dev/null 2>&1; then ok "disposable plugin/role/MCP structural runtime"; else err "Codex structural runtime fixtures failed"; fi
 
 echo "== knowledge packs present =="

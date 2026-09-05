@@ -3,14 +3,19 @@
 
 from __future__ import annotations
 
+import contextlib
+import ctypes
 import hashlib
+import importlib.util
 import os
 import subprocess
 import sys
 import tempfile
 import time
 import tomllib
+import types
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -59,6 +64,113 @@ def config(target: Path, content: bytes) -> Path:
     return path
 
 
+def load_helper_module():
+    """Import tools/codex-roles.py in-process so Windows-only branches can
+    be exercised (and monkeypatched) on any OS, without touching the real
+    ``sys.modules['os']`` shape used by the rest of this test script."""
+    spec = importlib.util.spec_from_file_location("codex_roles_windows_probe", str(HELPER))
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+@contextlib.contextmanager
+def simulated_windows_kernel32():
+    """Fake ctypes.windll.kernel32 so apply_outputs_windows' directory
+    locking (CreateFileW/CloseHandle) runs its real control flow without a
+    real Win32 API. Handles are just unique opaque ints; no filesystem
+    locking semantics are needed to exercise the transaction logic."""
+    next_handle = [1000]
+
+    def fake_create_file_w(_path, _access, _share, _security, _disposition, _flags, _template):
+        next_handle[0] += 1
+        return next_handle[0]
+
+    def fake_close_handle(_handle):
+        return 1
+
+    fake_kernel32 = types.SimpleNamespace(CreateFileW=fake_create_file_w, CloseHandle=fake_close_handle)
+    with mock.patch.object(ctypes, "windll", types.SimpleNamespace(kernel32=fake_kernel32), create=True):
+        yield
+
+
+@contextlib.contextmanager
+def simulated_windows_os(module):
+    """Make ``module``'s ``os.name == "nt"`` branches run, on an ``os``
+    module that genuinely lacks ``O_NONBLOCK`` -- exactly the shape of a
+    real Windows Python interpreter (no FIFO semantics there). Only the
+    module's own view of ``os`` is patched; pathlib is left alone so
+    existing Path objects keep working, matching how genuine Windows-only
+    code paths in codex-roles.py are actually reached (no new bare
+    ``Path(...)`` construction happens while this is active in the callers
+    below)."""
+    had_o_nonblock = hasattr(os, "O_NONBLOCK")
+    saved_o_nonblock = getattr(os, "O_NONBLOCK", None)
+    if had_o_nonblock:
+        del os.O_NONBLOCK
+    try:
+        with mock.patch.object(module.os, "name", "nt"):
+            yield
+    finally:
+        if had_o_nonblock:
+            os.O_NONBLOCK = saved_o_nonblock
+
+
+def run_simulated_windows_checks(base: Path) -> None:
+    """Exercise apply_outputs_windows end to end (fresh install, idempotent
+    re-install, and rollback-on-failure) without a real Windows machine.
+
+    This is regression coverage for two Windows-only bugs that otherwise
+    only surfaced on Windows CI: (1) ``read_regular_file`` referencing the
+    POSIX-only ``os.O_NONBLOCK`` unconditionally, which crashes with
+    AttributeError as soon as a *second* run reads an existing
+    ``config.toml`` on Windows; and (2) is covered separately by the
+    ASCII-stdout check below. planned_outputs() only calls
+    read_regular_file when config.toml already exists, so the idempotent
+    re-install step below is what actually exercises the fixed branch.
+    """
+    module = load_helper_module()
+    kit = ROOT.resolve()
+
+    with simulated_windows_kernel32():
+        target = base / "windows-fresh"
+        target.mkdir()
+        with simulated_windows_os(module):
+            outputs = module.planned_outputs(kit, target)
+        module.apply_outputs_windows(outputs, target)
+        for path, _content in outputs:
+            assert path.exists(), path
+
+        before = digest(target)
+        with simulated_windows_os(module):
+            outputs = module.planned_outputs(kit, target)
+        module.apply_outputs_windows(outputs, target)
+        assert digest(target) == before, "simulated windows re-install changed content"
+
+        rollback = base / "windows-rollback"
+        rollback.mkdir()
+        config(rollback, b'[user]\nname = "before"\n')
+        original = digest(rollback)
+        os.environ["ARCHITRAVE_CODEX_FAIL_AFTER"] = "1"
+        try:
+            with simulated_windows_os(module):
+                outputs = module.planned_outputs(kit, rollback)
+            try:
+                module.apply_outputs_windows(outputs, rollback)
+            except RuntimeError as error:
+                assert "rolled back" in str(error), error
+            else:
+                raise AssertionError("expected simulated windows apply to roll back")
+        finally:
+            del os.environ["ARCHITRAVE_CODEX_FAIL_AFTER"]
+        assert digest(rollback) == original, "simulated windows rollback left target mutated"
+        assert not (rollback / ".codex/agents").exists()
+
+    print("ok    simulated Windows install, idempotency and rollback")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as temporary:
         base = Path(temporary)
@@ -73,6 +185,19 @@ def main() -> int:
         invoke(fresh)
         assert digest(fresh) == before
         print("ok    fresh role install and idempotency")
+
+        # Regression: on Windows, redirecting stdout (as -Codex installs do
+        # from PowerShell) drops Python's default UTF-8 stdout in favor of
+        # the legacy ANSI codepage, which cannot encode non-ASCII output.
+        # PYTHONIOENCODING=ascii reproduces that failure mode on any OS.
+        ascii_stdout = base / "ascii-stdout"
+        ascii_stdout.mkdir()
+        process = invoke(ascii_stdout, env={"PYTHONIOENCODING": "ascii"})
+        assert "UnicodeEncodeError" not in process.stderr
+        process.stdout.encode("ascii")
+        print("ok    success output stays ASCII-safe under restrictive stdout codepages")
+
+        run_simulated_windows_checks(base)
 
         crlf = base / "crlf"
         crlf.mkdir()
