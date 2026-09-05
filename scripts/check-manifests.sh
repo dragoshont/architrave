@@ -191,11 +191,11 @@ if command -v npx >/dev/null 2>&1; then
 else
   echo "  • npx not found — skipping generated Run v2 schema conformance"
 fi
-if python3 scripts/bench-architrave.py --validate >/dev/null 2>&1; then
-  ok "pinned repositories and frozen LongBuild fixtures"
+if python3 scripts/bench-architrave.py --validate --allow-missing-repos >/dev/null 2>&1; then
+  ok "available pinned repositories and frozen LongBuild fixtures"
 else
   err "benchmark repository/fixture references failed"
-  python3 scripts/bench-architrave.py --validate 2>&1 | sed 's/^/      /' | tail -16
+  python3 scripts/bench-architrave.py --validate --allow-missing-repos 2>&1 | sed 's/^/      /' | tail -16
 fi
 if (cd benchmarks/fixtures/tessera-shaped && python3 tests/verify.py >/dev/null 2>&1); then
   err "Tessera-shaped fixture baseline unexpectedly passes"

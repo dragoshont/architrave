@@ -77,7 +77,7 @@
       "id": "tessera-fullstack-contract-and-ui",
       "enabled": true,
       "repo": "/Users/dragoshont/Repo/tessera",
-      "baseRef": "a9595e2345e842d7582592129e5f0ab8bb42fe9e",
+      "baseRef": "2a8b381596c9e94b11b53a435e05e720f5eaf385",
       "lane": "full-stack",
       "tags": ["full-stack", "contract", "storybook"],
       "prompt": "Benchmark task. Add a minimal admin portal indicator for a backend job that is blocked by missing configuration. Acceptance: define the backend/API shape first from existing architecture docs, render an honest blocked state in the UI design source, avoid invented metrics, avoid unnecessary persistence, and run quick gates. This benchmark has pre-approved proceeding without asking follow-up questions unless impossible.",

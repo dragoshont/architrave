@@ -751,7 +751,7 @@ def append_jsonl(path: Path, row: dict[str, Any]) -> None:
         os.fsync(handle.fileno())
 
 
-def validate_scenarios(config: dict[str, Any], config_dir: Path) -> int:
+def validate_scenarios(config: dict[str, Any], config_dir: Path, *, allow_missing_repos: bool = False) -> int:
     failures = 0
     for scenario in config.get("scenarios", []):
         if scenario.get("fixture"):
@@ -763,7 +763,14 @@ def validate_scenarios(config: dict[str, Any], config_dir: Path) -> int:
                 print(f"FAIL {scenario['id']}: fixture not found: {fixture}")
             continue
         repo = resolve_repo(scenario["repo"], config_dir)
-        proc = run(["git", "-C", str(repo), "rev-parse", "--verify", scenario["baseRef"]])
+        if not repo.is_dir():
+            if allow_missing_repos:
+                print(f"skip {scenario['id']}: external repository unavailable: {repo}")
+                continue
+            failures += 1
+            print(f"FAIL {scenario['id']}: repository not found: {repo}")
+            continue
+        proc = run(["git", "-C", str(repo), "rev-parse", "--verify", f"{scenario['baseRef']}^{{commit}}"])
         if proc.returncode != 0:
             failures += 1
             print(f"FAIL {scenario['id']}: baseRef {scenario['baseRef']} not found in {repo}")
@@ -835,7 +842,7 @@ def bench(args: argparse.Namespace) -> int:
     if config_errors:
         raise SystemExit("invalid benchmark config:\n  - " + "\n  - ".join(config_errors))
     if args.validate:
-        return 1 if validate_scenarios(config, scenarios_path.parent) else 0
+        return 1 if validate_scenarios(config, scenarios_path.parent, allow_missing_repos=args.allow_missing_repos) else 0
     if args.execute and not args.scenario and not args.all_enabled:
         raise SystemExit("refusing to execute an implicit one-scenario subset; pass --scenario <id> or --all-enabled")
     scenarios = selected(config["scenarios"], args.scenario, args.all_enabled or args.list)
@@ -1001,6 +1008,7 @@ def main() -> int:
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--validate", action="store_true", help="validate scenario repo/baseRef references and exit")
+    parser.add_argument("--allow-missing-repos", action="store_true", help="during validation, skip unavailable external repositories while still validating frozen fixtures")
     return bench(parser.parse_args())
 
 

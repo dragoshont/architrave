@@ -146,6 +146,25 @@ class JudgeSecurityTests(unittest.TestCase):
 
 
 class BenchmarkExecutionTests(unittest.TestCase):
+    def test_scenario_validation_can_skip_only_unavailable_external_repositories(self) -> None:
+        config = {
+            "scenarios": [
+                {
+                    "id": "external",
+                    "repo": "missing-repository",
+                    "baseRef": "0" * 40,
+                }
+            ]
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.assertEqual(BENCH.validate_scenarios(config, root), 1)
+            self.assertEqual(BENCH.validate_scenarios(config, root, allow_missing_repos=True), 0)
+            repository = root / "missing-repository"
+            repository.mkdir()
+            subprocess.run(["git", "init", "-q", str(repository)], check=True)
+            self.assertEqual(BENCH.validate_scenarios(config, root, allow_missing_repos=True), 1)
+
     def test_legacy_config_remains_valid(self) -> None:
         config = {
             "version": 1,
