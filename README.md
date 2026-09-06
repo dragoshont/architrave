@@ -12,6 +12,32 @@ prove the requested product outcome actually occurred.
 
 ![Architrave — ground in the repo, route to specialists, gate with a judge plus real checks, then ship](assets/overview.png)
 
+## Latest news: v0.11.0
+
+Released **September 5, 2026**. This update helps Architrave choose the right
+amount of AI effort, remember progress, and verify the actual result.
+
+- **Adaptive routing:** lighter execution for small, mechanically verified tasks;
+  stronger reasoning and independent review for difficult or risky work. The
+  goal is the cheapest adequate execution intent, not one heavyweight model for
+  every task. Concrete model recommendations remain provisional.
+- **Resume instead of restart:** the durable Run v2 runtime records tasks,
+  checkpoints, and evidence so interrupted work can continue from recorded state.
+- **Prove it works:** product and deployment checks distinguish a successful
+  build from a working app or a verified deployment.
+- **Safer execution:** stronger worker-state, evidence-binding, installer-path,
+  and scoped-deployment checks.
+- **Bounded routing experiments:** benchmark runs show progress heartbeats and
+  default to a 10-minute agent-cell timeout and a 20-minute invocation budget.
+  These are benchmark limits, not limits on ordinary chats.
+- **More client support:** Codex/ChatGPT plugin skills and opt-in project roles,
+  alongside Copilot and Claude support.
+
+Read the [release notes](https://github.com/dragoshont/architrave/releases/tag/v0.11.0)
+or the [full changelog](CHANGELOG.md#0110---2026-09-05).
+After updating the plugin, refresh each adopted repository's copied kit assets
+using the [update instructions](#install).
+
 ## Built With Architrave
 
 <table>
