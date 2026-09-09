@@ -72,6 +72,21 @@ If the host exposes a per-invocation model or effort override, a local binding m
 
 Use subagents for isolated context, independent parallel work, specialist expertise, noisy reconnaissance, or independent verification. Avoid them for one-file edits, straightforward commands, and sequential work where delegation costs more than it protects.
 
+### Direct-work threshold
+
+The coordinator works directly, without creating a worker or an extra planning
+artifact, when all of these are true:
+
+- at most two files change;
+- no API/data contract, schema/migration, authorization/security, design, or
+  external side effect changes;
+- an existing targeted check decides the acceptance criteria; and
+- the work does not require independent context for a mandatory verification
+  floor.
+
+A durable parent task may still own the change when already present. Do not split
+one mechanical correction into planning, implementation, and review tasks.
+
 ## Context strategy
 
 - `narrow`: targeted search and only the files needed to answer or edit.
@@ -100,6 +115,10 @@ A stronger model never replaces deterministic safety/security validation, migrat
 **Escalation** strengthens semantic intent because observable evidence shows the current intent is insufficient: repeated failure, unresolved root cause, continuing deterministic failures, a REVISE/FAIL verdict, contradictory evidence, or newly discovered blast radius. A model asking for a stronger model is not evidence.
 
 Escalation is bounded: move only the dimensions supported by evidence and stop after three escalation/revise attempts for the same gate. `max` or `long` requires explicit user direction, demonstrated failure/context need, or at least three representative benchmark repeats showing a material quality gain.
+
+For one implementation slice, two semantic reopens trigger consolidation into
+one fix batch. The third non-PASS is terminal for that attempt and requires one
+explicit decision; do not continue serial micro-review loops.
 
 ## Local bindings and evidence
 

@@ -26,6 +26,12 @@ When `kind` is absent, use the application fields and optional `backend`, `iac`,
 
 **Before any implementation:**
 - **YAGNI ladder.** Do not build presumptive features. First try: delete/skip, reuse existing repo source of truth, native/platform feature, standard library, already-installed dependency, tiny local implementation. New abstractions, dependencies, flags, config, factories, or layers need current evidence, not a guessed future. Never cut validation, data-loss handling, security, accessibility, capability honesty, or the smallest useful test.
+- **Delivery first.** For product work, schedule the smallest demonstrable
+  user-visible vertical slice. Supporting harness/framework/evidence work gets
+  at most two consecutive tasks or one full-gate cycle unless a blocking
+  criterion names it. Use targeted checks during implementation; full gates run
+  at integrated-slice/release/Outcome or mandatory R3/R4 boundaries, not after
+  each support task.
 - **Durable Run.** Use `harness/architrave_runtime.py` for canonical Run v2
 	state. Outcome, Acceptance Matrix, TaskGraph, events, policy, and checkpoints
 	are machine-readable. The phase ledger is a projection, not an autonomy gate.

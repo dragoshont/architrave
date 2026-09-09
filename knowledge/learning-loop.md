@@ -20,6 +20,11 @@ Architrave uses four different stores because each has a different job:
 3. **Candidate lessons (semantic/episodic bridge):** `.architrave/learning/repo-lessons.md` tracks repeated observations with evidence and occurrence counts. It is a review queue, not a command file.
 4. **Promoted rules (procedural memory):** stable lessons move into `architrave.config.json`, `AGENTS.md`, `.github/instructions/*.instructions.md`, docs, or contracts after review. These are the places future agents are allowed to treat as standing guidance.
 
+Artifacts are audit support, not delivery currency. Emit them at useful
+boundaries—intake, material decision, candidate handoff, failed side-effect
+reconciliation, integration gate, and completion—not after every micro-action.
+Artifact/event counts never measure product progress.
+
 ## Promotion rules
 
 - Do not write one-off discoveries directly into `architrave.config.json`. Config is for stable pointers, policy knobs, source-of-truth paths, and verified commands.

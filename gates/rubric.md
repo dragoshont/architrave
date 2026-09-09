@@ -18,7 +18,12 @@ Restate the request + the source‑of‑truth (Storybook + `config.designMap` + 
 Score each **Pass / Concern / Fail** with a severity and cite evidence (a spec line, pack section, or doc rule).
 
 1. **Spec & acceptance‑criteria conformance** — every criterion met; no scope drift; honest about anything not done. For Architrave-run non-trivial work, a visible intake block (understanding, acceptance criteria, grounding sources, assumptions, blocking questions/none) must exist before implementation; missing intake is at least a Major concern and can be a Blocker if it caused drift.
-2. **Tournament & recommended-plan quality** — non-trivial work compares viable options before implementation (minimal safe fix, proper architectural fix, defer/ask-more when relevant), scores tradeoffs/blast radius/tests, and selects a recommended plan. Missing tournament/recommended plan is a Major concern; choosing a high-risk option without justification is a Blocker.
+2. **Tournament & recommended-plan quality** — a full tournament is required for
+   architecture/dependency choices, systemic failures, migrations, data loss,
+   security, deployment, or materially ambiguous options. Routine bounded
+   implementation records a direct plan and the selected YAGNI rung instead.
+   Missing the form required by the actual decision risk is a Major concern;
+   choosing a high-risk option without justification is a Blocker.
 3. **Durable Run and phase observability** — non-trivial work has canonical
 	`architrave.run.v2`, Outcome, Acceptance Matrix, dependency-safe TaskGraph,
 	typed EventLog, and truthful checkpoints. The Phase Ledger is synchronized as
@@ -39,6 +44,15 @@ Score each **Pass / Concern / Fail** with a severity and cite evidence (a spec l
 12. **Tests** — the repo's test pattern (`config.test`); cover the new logic **plus ≥ 1 adversarial/edge case** and capability honesty; deterministic and green.
 13. **Verification & ground truth** — `gates/checks.*` green; for UI, a screenshot (`config.screenshot`) matches the Storybook reference; sibling‑instance consistency sweep done.
 14. **Learning/audit trail** — for non-trivial Architrave runs, durable artifacts exist at `config.learning.runArtifactsPath` (or `.architrave/runs` by default): intake, tournament, recommended plan, deterministic gates, judge verdicts, runtime evidence when used, and summary. The repo profile at `config.learning.repoProfilePath` is concise, cited, and current when updated. Candidate lessons are recorded in `config.learning.lessonsPath`; stable repeated lessons are proposed for promotion instead of silently bloating config. Missing artifacts are a Major concern; promoted rules without evidence, stale-fact validation, redaction, or approval are a Major/Blocker depending on blast radius.
+
+15. **Delivery focus and verification cadence** — durable state, gates, and review
+    artifacts support a product increment; they do not substitute for one.
+    Product work prioritizes a real vertical slice, uses targeted checks during
+    development, and reserves full configured gates for integration/release,
+    completion, or mandatory risk floors. More than two consecutive support-only
+    tasks, repeated full gates on unchanged source without a hypothesis, or
+    status reporting led by artifact counts is a Major concern and becomes a
+    Blocker when it displaces an available product acceptance criterion.
 
 ### Backend‑lane dimensions (apply when `config.backend` / `config.iac` are set — see `knowledge/backend.md`)
 15. **Contract conformance** — the implementation honors the agreed contract (`config.backend.contracts`): shapes, errors, auth scope, pagination; UI and backend bind to the *same* contract (no drift); capability honesty (nothing claimed that the service can't perform). For operational/admin work, the contract includes capability matrix, preflight, operation/job schema, readiness/health source, diagnostic evidence, audit, and scarce-limit fields from `knowledge/operations-ux.md`.
@@ -73,7 +87,10 @@ Score each **Pass / Concern / Fail** with a severity and cite evidence (a spec l
 - For best‑of‑N selection (optional): compare candidates **pairwise with order‑swapping** to cancel position bias; the pointwise rubric above still decides final acceptance.
 
 ## Stopping condition (human‑in‑the‑loop)
-The harness caps each judge gate at **3 revise loops**. On a 3rd consecutive non‑PASS, stop and escalate to the user with the findings rather than looping.
+The harness caps each judge gate at **3 revise loops**. Two semantic reopens of
+the same slice require one consolidated fix batch. On the 3rd consecutive
+non-PASS, stop and escalate once with the complete findings rather than opening
+another micro-delta.
 
 ## Required judge output format
 1. **Acceptance criteria** — checklist: `criterion → met? → evidence`.

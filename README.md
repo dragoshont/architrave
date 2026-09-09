@@ -12,29 +12,27 @@ prove the requested product outcome actually occurred.
 
 ![Architrave — ground in the repo, route to specialists, gate with a judge plus real checks, then ship](assets/overview.png)
 
-## Latest news: v0.11.0
+## Latest news: v0.11.1
 
-Released **September 5, 2026**. This update helps Architrave choose the right
-amount of AI effort, remember progress, and verify the actual result.
+Released **September 9, 2026**. This update keeps Architrave's safety controls
+while making product delivery—not ceremony—the scheduling priority.
 
-- **Adaptive routing:** lighter execution for small, mechanically verified tasks;
-  stronger reasoning and independent review for difficult or risky work. The
-  goal is the cheapest adequate execution intent, not one heavyweight model for
-  every task. Concrete model recommendations remain provisional.
-- **Resume instead of restart:** the durable Run v2 runtime records tasks,
-  checkpoints, and evidence so interrupted work can continue from recorded state.
-- **Prove it works:** product and deployment checks distinguish a successful
-  build from a working app or a verified deployment.
-- **Safer execution:** stronger worker-state, evidence-binding, installer-path,
-  and scoped-deployment checks.
-- **Bounded routing experiments:** benchmark runs show progress heartbeats and
-  default to a 10-minute agent-cell timeout and a 20-minute invocation budget.
-  These are benchmark limits, not limits on ordinary chats.
-- **More client support:** Codex/ChatGPT plugin skills and opt-in project roles,
-  alongside Copilot and Claude support.
+- **Delivery-first slices:** full-product work starts with the smallest
+  demonstrable user-visible vertical slice.
+- **Ceremony budget:** at most two consecutive support-only tasks or one
+  full-gate cycle before returning to product behavior, unless a blocking
+  criterion proves the dependency.
+- **Targeted-first verification:** full configured gates run at integrated
+  slice, release, Outcome, or mandatory R3/R4 boundaries—not after every task.
+- **Bounded reviews and stalls:** two semantic reopens consolidate into one fix
+  batch; a third non-PASS stops the attempt. No output for 15 minutes or more
+  than twice the expected duration is treated as stalled.
+- **Product-first status:** artifact, event, and gate counts no longer stand in
+  for usable product progress.
+- **Figma-ready agent:** the canonical Architrave agent includes Figma MCP tool
+  patterns while retaining Storybook, Mobbin, and SearXNG support.
 
-Read the [release notes](https://github.com/dragoshont/architrave/releases/tag/v0.11.0)
-or the [full changelog](CHANGELOG.md#0110---2026-09-05).
+Read the [full changelog](CHANGELOG.md#0111---2026-09-09).
 After updating the plugin, refresh each adopted repository's copied kit assets
 using the [update instructions](#install).
 
@@ -75,8 +73,8 @@ using the [update instructions](#install).
 | **Backend Implementer** | under the hood | Implements approved backend/service slices and tests against the contract. |
 | **Infra Engineer** | under the hood | Plans by default; applies only through an explicit scoped Run grant, then records a receipt and verifies live state. |
 | **Runtime Observer** | under the hood | Establishes deployed/product truth. Read-only by default; scoped mutation follows Run policy. |
-| **Tournament Analyst** | under the hood | Independently compares high-risk implementation options on Claude Opus 4.8 MAX; advisory and read-only. |
-| **Adversarial Judge** | under the hood | Grades proposals and implementations against the rubric: PASS / REVISE / FAIL. Full gates use two independent judge families by default: Copilot/GPT and Claude. |
+| **Tournament Analyst** | under the hood | Independently compares materially risky or ambiguous implementation options; advisory and read-only. |
+| **Adversarial Judge** | under the hood | Grades proposals and implementations against the rubric: PASS / REVISE / FAIL. Cross-family review is reserved for its configured risk floor. |
 
 ## Install
 
@@ -128,9 +126,9 @@ or credential settings. Python 3.11+ is required only for this opt-in role path.
 
 Codex roles are specialized contexts, not mandatory security gates: their
 `sandbox_mode = "read-only"` constrains command filesystem/network access, while
-the parent permission mode, skills, and MCP servers still apply. Architrave's
-mandatory semantic gate uses bounded external launchers: GPT-5.6 Sol MAX through
-Copilot CLI and Claude Opus 4.8 MAX through Claude Code.
+the parent permission mode, skills, and MCP servers still apply. Mandatory
+cross-family review uses independently verified GPT/Copilot-family and
+Claude-family evidence; concrete model bindings remain host- or user-local.
 
 Edit `architrave.config.json` to point at the repo's Storybook/design source, build/test commands, optional backend, optional IaC, optional runtime observation, and optional learning paths. Then ask the **Architrave** agent to build a feature.
 
@@ -185,7 +183,15 @@ Open your assistant, pick the **Architrave** agent, and describe the change in p
 
 > Add an empty state to the library list — an icon, a short message, and a primary action.
 
-Architrave starts with visible intake: understanding, acceptance criteria, grounding sources, assumptions, and blocking questions. Then it runs a **Tournament of Options** plus the **YAGNI ladder**: skip/delete, reuse existing repo source of truth, platform/native feature, standard library, installed dependency, tiny local implementation, and only then new abstraction/dependency/config when the current task proves it. The recommended plan must explain why it beats the alternatives before implementation starts.
+Architrave starts with visible intake scaled to the task: understanding,
+acceptance criteria, grounding sources, assumptions, and blocking questions.
+Routine bounded work records a direct plan and the selected **YAGNI ladder**
+rung: skip/delete, reuse existing repository source, platform/native feature,
+standard library, installed dependency, tiny local implementation, and only
+then new abstraction/dependency/config when the current task proves it. A full
+**Tournament of Options** is reserved for architecture/dependency choices,
+systemic failures, migrations, data loss, security, deployment, or materially
+ambiguous alternatives.
 
 For UI, Architrave starts in **Storybook** or the configured design source. For
 backend/full-stack, it starts with the **contract**. Infrastructure is plan-only

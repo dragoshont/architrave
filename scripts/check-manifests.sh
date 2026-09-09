@@ -281,10 +281,8 @@ roles = sorted(Path('.codex/agents').glob('*.toml'))
 assert len(roles) == 2
 for path in roles:
     data = tomllib.loads(path.read_text())
-    assert data['model'] == 'gpt-5.6-sol'
-    assert data['model_reasoning_effort'] == 'max'
     assert data['sandbox_mode'] == 'read-only'
-    assert not ({'model_provider', 'model_providers', 'mcp_servers', 'skills', 'approval_policy'} & data.keys())
+    assert not ({'model', 'model_reasoning_effort', 'model_provider', 'model_providers', 'mcp_servers', 'skills', 'approval_policy'} & data.keys())
 PY
 then ok "Codex registration and two advisory read-only roles"; else err "Codex TOML contract failed"; fi
 if python3 scripts/generate-codex-agents.py --check >/dev/null 2>&1; then ok "generated Codex roles match canonical agents"; else err "generated Codex role drift"; fi
@@ -468,6 +466,13 @@ else
 fi
 
 echo
+echo "== delivery-focus policy =="
+if python3 scripts/test-delivery-focus.py; then
+  ok "delivery-focus rules"
+else
+  err "delivery-focus rule validation failed"
+fi
+
 if [ "$fail" -eq 0 ]; then
   echo "PASS — manifests valid, versions in sync ($v)"
 else

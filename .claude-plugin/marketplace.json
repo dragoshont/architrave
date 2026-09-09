@@ -4,15 +4,15 @@
     "name": "dragoshont"
   },
   "metadata": {
-    "description": "Architrave — a Storybook-first, contract-first, YAGNI-gated agent crew with deterministic gates plus two independent judge families.",
-    "version": "0.11.0"
+    "description": "Architrave — delivery-first, Storybook-first, contract-first, and risk-gated.",
+    "version": "0.11.1"
   },
   "plugins": [
     {
       "name": "architrave",
       "source": ".",
-      "description": "Config-first, YAGNI-gated agent crew for knowledge repositories, UI, backend, full-stack features, plan-only infrastructure, optional read-only runtime observation, and durable learning artifacts. Grounds knowledge work in repo sources, UI in Storybook + tokens, backend in architecture docs + contracts, and gates every change with deterministic checks plus two independent judge families.",
-      "version": "0.11.0",
+      "description": "Config-first, delivery-focused agent crew for knowledge repositories, UI, backend, full-stack features, plan-only infrastructure, optional runtime verification, and durable learning. Grounds work in repository sources, uses targeted checks during development, and scales independent review to risk.",
+      "version": "0.11.1",
       "license": "MIT",
       "keywords": [
         "ui",

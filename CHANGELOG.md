@@ -5,6 +5,32 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## [0.11.1] - 2026-09-09
+
+### Added
+- Delivery-first scheduling with an explicit support-work budget, targeted-first
+  gate cadence, bounded semantic reopen rules, and stalled-command thresholds.
+- Focused policy validation covering canonical agent, execution, rubric,
+  learning, and installed AGENTS-stanza behavior.
+- Figma MCP tool patterns in the canonical lead agent.
+
+### Changed
+- Full tournaments are reserved for risky or materially ambiguous decisions;
+  routine bounded work records a direct plan and YAGNI rung.
+- Small safe two-file mechanical changes stay with the coordinator when an
+  existing targeted check fully decides acceptance.
+- Status reporting leads with usable product behavior and accepted product
+  criteria; infrastructure and audit evidence are reported separately.
+- Learning artifacts are emitted at useful boundaries rather than after every
+  micro-action.
+
+### Fixed
+- Supporting tasks no longer independently trigger full configured gates.
+- Repeated micro-review loops now consolidate after two reopens and stop after
+  a third non-PASS.
+
+[0.11.1]: https://github.com/dragoshont/architrave/compare/v0.11.0...v0.11.1
+
 ## [0.11.0] - 2026-09-05
 
 ### Added
