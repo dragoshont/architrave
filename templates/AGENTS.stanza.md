@@ -26,12 +26,15 @@ When `kind` is absent, use the application fields and optional `backend`, `iac`,
 
 **Before any implementation:**
 - **YAGNI ladder.** Do not build presumptive features. First try: delete/skip, reuse existing repo source of truth, native/platform feature, standard library, already-installed dependency, tiny local implementation. New abstractions, dependencies, flags, config, factories, or layers need current evidence, not a guessed future. Never cut validation, data-loss handling, security, accessibility, capability honesty, or the smallest useful test.
+<<<<<<< Updated upstream
 - **Delivery first.** For product work, schedule the smallest demonstrable
   user-visible vertical slice. Supporting harness/framework/evidence work gets
   at most two consecutive tasks or one full-gate cycle unless a blocking
   criterion names it. Use targeted checks during implementation; full gates run
   at integrated-slice/release/Outcome or mandatory R3/R4 boundaries, not after
   each support task.
+=======
+>>>>>>> Stashed changes
 - **Durable Run.** Use `harness/architrave_runtime.py` for canonical Run v2
 	state. Outcome, Acceptance Matrix, TaskGraph, events, policy, and checkpoints
 	are machine-readable. The phase ledger is a projection, not an autonomy gate.
@@ -52,8 +55,15 @@ workers under `.architrave/worktrees/`, and the HMAC key at
 Maintain concise tracked repo profile/lessons, validate stale facts, and never
 store secrets or hidden reasoning.
 
+<<<<<<< Updated upstream
 **Adaptive execution:** Load `knowledge/execution-policy.md`. Express bounded work with provider-neutral model/reasoning/context/verification intent, treating FAST/BALANCED/DEEP/CRITICAL as provisional convenience presets. Task characteristics override role hints. Use the current host's structured subagent invocation when useful and otherwise inherit; never shell out to another agent harness, depend on a provider SDK, or commit concrete model IDs as universal policy. A stronger model never replaces required gates.
 
 Low-risk FAST/BALANCED knowledge or mechanical work may use deterministic-only `verification: default` when every criterion is mechanically checked. Semantic, UI, contract, architecture, migration, security/trust, IaC, and high-blast-radius work raises the floor to `independent` or `cross-family`; the full cross-family gate still requires verified GPT/Copilot and Claude passes.
 
 **Never:** invent an unconfigured lane, introduce platform-foreign UI, use raw values where a token exists, create parallel backend abstractions, manually edit canonical Run state, let workers escalate policy or complete tasks, blindly retry uncertain side effects, mutate outside scoped policy, materialize secrets, run apply-shaped IaC commands, or claim compile/plan/simulation or an unsupported capability as a shipped reality.
+=======
+**Never:** manually edit canonical Run state, let workers escalate policy or
+complete tasks, blindly retry uncertain side effects, mutate outside scoped
+policy, materialize secrets, or claim compile/plan/simulation as a shipped
+capability.
+>>>>>>> Stashed changes

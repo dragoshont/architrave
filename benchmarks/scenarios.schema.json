@@ -124,7 +124,11 @@
           "category": { "type": "string", "enum": ["short-mechanical", "feature", "multi-surface", "longbuild"] },
           "durationClass": { "type": "string", "enum": ["minutes", "hours", "overnight"] },
           "expectedHumanInterventions": { "type": "integer", "minimum": 0 },
+<<<<<<< Updated upstream
           "lane": { "type": "string", "enum": ["ui", "ux", "backend", "full-stack", "infra", "ops", "learning", "yagni", "knowledge", "runtime", "security"] },
+=======
+          "lane": { "type": "string", "enum": ["ui", "ux", "backend", "full-stack", "infra", "ops", "learning", "yagni", "runtime", "security"] },
+>>>>>>> Stashed changes
           "prompt": { "type": "string", "minLength": 1 },
           "expectedExecution": { "$ref": "#/definitions/executionIntent" },
           "validation": { "type": "array", "items": { "type": "string" } },

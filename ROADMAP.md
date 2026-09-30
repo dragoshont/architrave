@@ -91,6 +91,7 @@
 - [ ] Real iOS simulator/product repository legibility dogfood beyond the
 	deterministic fixture.
 - [ ] Safe-target live deployment dogfood beyond the sandbox fixture.
+<<<<<<< Updated upstream
 
 ## Milestone 8 - Adaptive Execution Policy
 - [x] Provider-neutral `modelClass`, `reasoning`, `context`, and `verification` intent with provisional FAST/BALANCED/DEEP/CRITICAL presets.
@@ -101,3 +102,5 @@
 - [x] Optional strict run-summary execution evidence with POSIX/PowerShell validation parity.
 - [ ] Publish concrete model/effort recommendations only after repeated, honored-control benchmark evidence.
 - [ ] Evaluate learned routing against the deterministic semantic baseline before adopting it.
+=======
+>>>>>>> Stashed changes

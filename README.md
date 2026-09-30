@@ -73,8 +73,13 @@ using the [update instructions](#install).
 | **Backend Implementer** | under the hood | Implements approved backend/service slices and tests against the contract. |
 | **Infra Engineer** | under the hood | Plans by default; applies only through an explicit scoped Run grant, then records a receipt and verifies live state. |
 | **Runtime Observer** | under the hood | Establishes deployed/product truth. Read-only by default; scoped mutation follows Run policy. |
+<<<<<<< Updated upstream
 | **Tournament Analyst** | under the hood | Independently compares materially risky or ambiguous implementation options; advisory and read-only. |
 | **Adversarial Judge** | under the hood | Grades proposals and implementations against the rubric: PASS / REVISE / FAIL. Cross-family review is reserved for its configured risk floor. |
+=======
+| **Tournament Analyst** | under the hood | Independently compares high-risk implementation options on Claude Opus 4.8 MAX; advisory and read-only. |
+| **Adversarial Judge** | under the hood | Grades proposals and implementations against the rubric: PASS / REVISE / FAIL. Full gates use two independent judge families by default: Copilot/GPT and Claude. |
+>>>>>>> Stashed changes
 
 ## Install
 
@@ -126,9 +131,15 @@ or credential settings. Python 3.11+ is required only for this opt-in role path.
 
 Codex roles are specialized contexts, not mandatory security gates: their
 `sandbox_mode = "read-only"` constrains command filesystem/network access, while
+<<<<<<< Updated upstream
 the parent permission mode, skills, and MCP servers still apply. Mandatory
 cross-family review uses independently verified GPT/Copilot-family and
 Claude-family evidence; concrete model bindings remain host- or user-local.
+=======
+the parent permission mode, skills, and MCP servers still apply. Architrave's
+mandatory semantic gate uses bounded external launchers: GPT-5.6 Sol MAX through
+Copilot CLI and Claude Opus 4.8 MAX through Claude Code.
+>>>>>>> Stashed changes
 
 Edit `architrave.config.json` to point at the repo's Storybook/design source, build/test commands, optional backend, optional IaC, optional runtime observation, and optional learning paths. Then ask the **Architrave** agent to build a feature.
 
@@ -255,6 +266,7 @@ Verification adapts too, without weakening safety. Low-risk FAST/BALANCED knowle
 ## Benchmarks
 
 Architrave ships a benchmark harness because agent quality has to be measured
+<<<<<<< Updated upstream
 against real work, not vibes. The suite in `benchmarks/` runs frozen tasks against
 real local repos in detached worktrees, compares agent arms such as
 `copilot-baseline` and `copilot-architrave`, and records JSONL rows with
@@ -270,6 +282,9 @@ an honored observable control, deterministic validation, and independent
 judging.
 
 It now also includes **Architrave LongBuild** categories, disabled
+=======
+against real work. It now includes **Architrave LongBuild** categories, disabled
+>>>>>>> Stashed changes
 Claude/Codex arms, recovery/external-checkpoint/parallel/deployment-policy cases,
 and a frozen Tessera-shaped fixture with no private code or data.
 
@@ -305,8 +320,11 @@ pwsh -NoProfile -File scripts/test-semantic-learning.ps1
 pwsh -NoProfile -File scripts/test-gates.ps1
 python3 scripts/bench-architrave.py --scenarios benchmarks/scenarios.json --validate
 python3 scripts/bench-architrave.py --scenarios benchmarks/scenarios.json --list
+<<<<<<< Updated upstream
 python3 scripts/bench-architrave.py --scenarios benchmarks/routing-scenarios.json --validate
 python3 scripts/test-benchmark-tools.py
+=======
+>>>>>>> Stashed changes
 python3 scripts/test-runtime-v2.py
 python3 scripts/test-worker-adapters.py
 python3 scripts/test-invariant-engine.py

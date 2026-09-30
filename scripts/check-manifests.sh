@@ -86,7 +86,10 @@ json_files=(
   benchmarks/scenarios.schema.json
   benchmarks/results.schema.json
   benchmarks/scenarios.json
+<<<<<<< Updated upstream
   benchmarks/routing-scenarios.json
+=======
+>>>>>>> Stashed changes
   kit/examples/runtime-v2.architrave.json
   benchmarks/fixtures/tessera-shaped/architrave.config.json
   benchmarks/fixtures/tessera-shaped/runtime/release-state.json
@@ -191,11 +194,19 @@ if command -v npx >/dev/null 2>&1; then
 else
   echo "  • npx not found — skipping generated Run v2 schema conformance"
 fi
+<<<<<<< Updated upstream
 if python3 scripts/bench-architrave.py --validate --allow-missing-repos >/dev/null 2>&1; then
   ok "available pinned repositories and frozen LongBuild fixtures"
 else
   err "benchmark repository/fixture references failed"
   python3 scripts/bench-architrave.py --validate --allow-missing-repos 2>&1 | sed 's/^/      /' | tail -16
+=======
+if python3 scripts/bench-architrave.py --validate >/dev/null 2>&1; then
+  ok "pinned repositories and frozen LongBuild fixtures"
+else
+  err "benchmark repository/fixture references failed"
+  python3 scripts/bench-architrave.py --validate 2>&1 | sed 's/^/      /' | tail -16
+>>>>>>> Stashed changes
 fi
 if (cd benchmarks/fixtures/tessera-shaped && python3 tests/verify.py >/dev/null 2>&1); then
   err "Tessera-shaped fixture baseline unexpectedly passes"
@@ -281,8 +292,15 @@ roles = sorted(Path('.codex/agents').glob('*.toml'))
 assert len(roles) == 2
 for path in roles:
     data = tomllib.loads(path.read_text())
+<<<<<<< Updated upstream
     assert data['sandbox_mode'] == 'read-only'
     assert not ({'model', 'model_reasoning_effort', 'model_provider', 'model_providers', 'mcp_servers', 'skills', 'approval_policy'} & data.keys())
+=======
+    assert data['model'] == 'gpt-5.6-sol'
+    assert data['model_reasoning_effort'] == 'max'
+    assert data['sandbox_mode'] == 'read-only'
+    assert not ({'model_provider', 'model_providers', 'mcp_servers', 'skills', 'approval_policy'} & data.keys())
+>>>>>>> Stashed changes
 PY
 then ok "Codex registration and two advisory read-only roles"; else err "Codex TOML contract failed"; fi
 if python3 scripts/generate-codex-agents.py --check >/dev/null 2>&1; then ok "generated Codex roles match canonical agents"; else err "generated Codex role drift"; fi
@@ -290,6 +308,7 @@ if [ -e .agents/skills ]; then err "project skill copies must not exist; skills 
 
 echo "== Codex adapter fixtures =="
 if python3 scripts/test-codex-roles.py >/dev/null 2>&1; then ok "Codex role transaction fixtures"; else err "Codex role transaction fixtures failed"; fi
+<<<<<<< Updated upstream
 review_launcher_log="$(mktemp)"
 if scripts/test-review-launchers.sh >"$review_launcher_log" 2>&1; then
   ok "bounded semantic/tournament launcher fixtures"
@@ -302,6 +321,13 @@ if python3 scripts/test-codex-runtime.py >/dev/null 2>&1; then ok "disposable pl
 
 echo "== knowledge packs present =="
 for k in apple microsoft web backend operations-ux design-tokens execution-policy learning-loop yagni runtime-v2; do
+=======
+if scripts/test-review-launchers.sh >/dev/null 2>&1; then ok "bounded semantic/tournament launcher fixtures"; else err "review launcher fixtures failed"; fi
+if python3 scripts/test-codex-runtime.py >/dev/null 2>&1; then ok "disposable plugin/role/MCP structural runtime"; else err "Codex structural runtime fixtures failed"; fi
+
+echo "== knowledge packs present =="
+for k in apple microsoft web backend operations-ux design-tokens learning-loop yagni runtime-v2; do
+>>>>>>> Stashed changes
   [ -s "knowledge/$k.md" ] && ok "knowledge/$k.md" || err "missing knowledge/$k.md"
 done
 
@@ -310,8 +336,11 @@ if python3 -m py_compile \
   harness/architrave_runtime.py harness/worker_adapters.py harness/invariant_engine.py \
   harness/legibility.py harness/workspaces.py harness/validate_run_v2.py \
   scripts/bench-architrave.py scripts/judge-bench.py scripts/summarize-bench.py \
+<<<<<<< Updated upstream
   scripts/test-benchmark-tools.py \
   scripts/test-codex-runtime.py scripts/fixtures/codex_fake.py \
+=======
+>>>>>>> Stashed changes
   scripts/test-runtime-v2.py scripts/test-worker-adapters.py scripts/test-invariant-engine.py \
   scripts/test-legibility.py scripts/test-workspaces.py scripts/test-longbuild-runtime.py \
   scripts/test-benchmark-runtime.py \
@@ -346,6 +375,23 @@ for test_script in \
   fi
 done
 rm -f "$runtime_test_output"
+
+echo "== durable Run v2 control-plane fixtures =="
+for test_script in \
+  scripts/test-runtime-v2.py \
+  scripts/test-worker-adapters.py \
+  scripts/test-invariant-engine.py \
+  scripts/test-legibility.py \
+  scripts/test-workspaces.py \
+  scripts/test-longbuild-runtime.py \
+  scripts/test-benchmark-runtime.py; do
+  if python3 "$test_script" >/dev/null 2>&1; then
+    ok "$test_script"
+  else
+    err "$test_script failed"
+    python3 "$test_script" 2>&1 | sed 's/^/      /' | tail -20
+  fi
+done
 
 echo "== harness validator fixtures =="
 if scripts/test-validate-run.sh >/dev/null 2>&1; then

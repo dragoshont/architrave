@@ -49,12 +49,18 @@ ls "$tmp/application"/constitution-*.md >/dev/null 2>&1 || { echo "FAIL applicat
 echo "ok    installer default application profile (full crew + constitutions, no Codex)"
 
 rm "$tmp/application/.github/agents/ui-visual.agent.md" "$tmp/application/constitution-apple.md"
+<<<<<<< Updated upstream
 chmod 644 "$tmp/application/gates/checks.sh"
+=======
+>>>>>>> Stashed changes
 tools/update.sh --agents "$tmp/application" >/dev/null
 [ ! -e "$tmp/application/harness/__pycache__" ] || { echo "FAIL updater copied Python cache files" >&2; exit 1; }
 [ -f "$tmp/application/.github/agents/ui-visual.agent.md" ] || { echo "FAIL application update did not restore full crew" >&2; exit 1; }
 [ -f "$tmp/application/constitution-apple.md" ] || { echo "FAIL application update did not restore constitutions" >&2; exit 1; }
+<<<<<<< Updated upstream
 [ -x "$tmp/application/gates/checks.sh" ] || { echo "FAIL application update did not restore packaged executable mode" >&2; exit 1; }
+=======
+>>>>>>> Stashed changes
 echo "ok    updater preserves legacy application full-profile behavior"
 
 git -C "$tmp/knowledge" init -q

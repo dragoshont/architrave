@@ -44,8 +44,11 @@ Return PASS / REVISE / FAIL with findings ordered by severity.
 "@
 
 Write-Host "semantic-review prompt: $prompt"
+<<<<<<< Updated upstream
 if (-not (Get-Command jq -ErrorAction SilentlyContinue)) { [Console]::Error.WriteLine("semantic-review: 'jq' is required (macOS: brew install jq . Windows: winget install jqlang.jq)"); exit 2 }
 
+=======
+>>>>>>> Stashed changes
 $agentFile = if (Test-Path 'agents/adversarial-judge.agent.md') {
   'agents/adversarial-judge.agent.md'
 } elseif (Test-Path '.github/agents/adversarial-judge.agent.md') {
@@ -54,6 +57,7 @@ $agentFile = if (Test-Path 'agents/adversarial-judge.agent.md') {
   [Console]::Error.WriteLine('semantic-review: canonical agent not found: adversarial-judge.agent.md')
   exit 2
 }
+<<<<<<< Updated upstream
 
 $CopilotModel = $env:ARCHITRAVE_SEMANTIC_REVIEW_COPILOT_MODEL
 $CopilotEffort = $env:ARCHITRAVE_SEMANTIC_REVIEW_COPILOT_EFFORT
@@ -163,10 +167,19 @@ function Test-VerifiedPass([string]$Content, [string]$Nonce) {
   return $nonceLines.Count -eq 1 -and $verdictLines.Count -eq 1 -and $nonEmpty.Count -gt 0 -and $nonEmpty[-1] -eq 'VERDICT: PASS'
 }
 
+=======
+if (-not $Execute) {
+  if ($Provider -in @('copilot','both')) { Write-Host "suggested command: copilot -C `"$PWD`" --agent architrave:adversarial-judge --model gpt-5.6-sol --reasoning-effort max --available-tools view,grep,glob --allow-tool view --allow-tool grep --allow-tool glob --no-ask-user --silent --no-color -p (Get-Content `"$prompt`" -Raw)" }
+  if ($Provider -in @('claude','both')) { Write-Host "suggested command: claude --model claude-opus-4.8 --effort max --tools Read,Grep,Glob --allowedTools Read,Grep,Glob --append-system-prompt-file `"$agentFile`" -p (Get-Content `"$prompt`" -Raw)" }
+  exit 0
+}
+
+>>>>>>> Stashed changes
 $nonceFile = [System.IO.Path]::GetTempFileName()
 try {
   $nonce = [guid]::NewGuid().ToString('D').ToLowerInvariant()
   [System.IO.File]::WriteAllText($nonceFile, $nonce + "`n", [System.Text.UTF8Encoding]::new($false))
+<<<<<<< Updated upstream
   $nonceBody = $body + "`n`nRead $nonceFile and include EVIDENCE_NONCE: <value> in your response; the value is absent from this prompt. End with one line exactly VERDICT: PASS, VERDICT: REVISE, or VERDICT: FAIL."
   $copilotArgs[$copilotArgs.Count - 1] = $nonceBody
   $claudeArgs[$claudeArgs.Count - 1] = $nonceBody
@@ -193,3 +206,26 @@ try {
   if ($Provider -in @('claude','both')) { if (-not (Invoke-Judge 'claude' 'claude' $claudeArgs)) { $failed = $true } }
   if ($failed) { exit 1 }
 } finally { Remove-Item $nonceFile -Force -ErrorAction SilentlyContinue }
+=======
+  $body = (Get-Content $prompt -Raw) + "`n`nRead $nonceFile and include EVIDENCE_NONCE: <value> in your response; the value is absent from this prompt. End with one line exactly VERDICT: PASS, VERDICT: REVISE, or VERDICT: FAIL."
+  $failed = $false
+  function Test-VerifiedPass([string]$Output,[string]$Nonce) {
+    $lines = @($Output -split "`r?`n")
+    $nonEmpty = @($lines | Where-Object { $_.Trim().Length -gt 0 })
+    $nonceLines = @($lines | Where-Object { $_ -eq "EVIDENCE_NONCE: $Nonce" })
+    $verdictLines = @($lines | Where-Object { $_ -match '^VERDICT: (PASS|REVISE|FAIL)$' })
+    return $nonceLines.Count -eq 1 -and $verdictLines.Count -eq 1 -and $nonEmpty.Count -gt 0 -and $nonEmpty[-1] -eq 'VERDICT: PASS'
+  }
+  if ($Provider -in @('copilot','both')) {
+    $output = (& copilot -C "$PWD" --agent architrave:adversarial-judge --model gpt-5.6-sol --reasoning-effort max --available-tools view,grep,glob --allow-tool view --allow-tool grep --allow-tool glob --no-ask-user --silent --no-color -p $body 2>&1 | Out-String)
+    Write-Host $output -NoNewline
+    if ($LASTEXITCODE -ne 0 -or -not (Test-VerifiedPass $output $nonce)) { [Console]::Error.WriteLine('semantic-review: copilot judge did not return a verified PASS'); $failed = $true }
+  }
+  if ($Provider -in @('claude','both')) {
+    $output = (& claude --model claude-opus-4.8 --effort max --tools Read,Grep,Glob --allowedTools Read,Grep,Glob --append-system-prompt-file $agentFile -p $body 2>&1 | Out-String)
+    Write-Host $output -NoNewline
+    if ($LASTEXITCODE -ne 0 -or -not (Test-VerifiedPass $output $nonce)) { [Console]::Error.WriteLine('semantic-review: claude judge did not return a verified PASS'); $failed = $true }
+  }
+  if ($failed) { exit 1 }
+} finally { Remove-Item $nonceFile -Force -ErrorAction SilentlyContinue }
+>>>>>>> Stashed changes

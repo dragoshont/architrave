@@ -31,6 +31,7 @@ def fmt(value: float | int | None, digits: int = 1) -> str:
     return f"{value:.{digits}f}"
 
 
+<<<<<<< Updated upstream
 def group_values(group: list[dict[str, Any]], getter) -> str:
     values = {str(value) for row in group if (value := getter(row)) not in (None, "")}
     return ", ".join(sorted(values)) or "inherit"
@@ -48,6 +49,8 @@ def control_observability(row: dict[str, Any]) -> str:
     )
 
 
+=======
+>>>>>>> Stashed changes
 def percentile(values: list[float | int], fraction: float) -> float | None:
     if not values:
         return None
@@ -62,8 +65,13 @@ def summarize(items: list[dict[str, Any]]) -> str:
         groups[(row.get("scenario", ""), row.get("arm", ""))].append(row)
 
     lines = ["# Architrave Benchmark Summary", ""]
+<<<<<<< Updated upstream
     lines.append("| Scenario | Arm | Profile | Requested binding | Control observability | n | pass % | median ms | p90 ms | variance ms | durable evidence | outcome % (all rows) | human interventions | false PASS | repeated work | timeouts |")
     lines.append("|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+=======
+    lines.append("| Scenario | Arm | n | pass % | median ms | p90 ms | variance ms | outcome % | human interventions | false PASS | repeated work | timeouts |")
+    lines.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+>>>>>>> Stashed changes
     for (scenario, arm), group in sorted(groups.items()):
         n = len(group)
         pass_rate = 100 * sum(1 for row in group if row.get("passed")) / n if n else 0
@@ -71,8 +79,12 @@ def summarize(items: list[dict[str, Any]]) -> str:
         durations = [agent.get("duration_ms") for agent in agents if agent.get("duration_ms") is not None]
         durable = [row.get("durable_run") or {} for row in group]
         outcomes = [item for item in durable if item]
+<<<<<<< Updated upstream
         outcome_rate = 100 * sum(1 for item in outcomes if item.get("outcome_pass")) / n if n else 0
         evidence_coverage = f"{len(outcomes)}/{n} ({100 * len(outcomes) / n:.1f}%)" if n else "0/0"
+=======
+        outcome_rate = 100 * sum(1 for item in outcomes if item.get("outcome_pass")) / len(outcomes) if outcomes else 0
+>>>>>>> Stashed changes
         interventions = sum(int(item.get("human_interventions") or 0) for item in outcomes)
         false_passes = sum(1 for item in outcomes if item.get("false_pass"))
         repeated_work = sum(int(item.get("repeated_work_after_resume") or 0) for item in outcomes)
@@ -105,7 +117,10 @@ def summarize(items: list[dict[str, Any]]) -> str:
                     fmt(median(durations) if durations else None, 0),
                     fmt(percentile(durations, 0.90), 0),
                     fmt(pvariance(durations) if len(durations) > 1 else 0, 0),
+<<<<<<< Updated upstream
                     evidence_coverage,
+=======
+>>>>>>> Stashed changes
                     fmt(outcome_rate),
                     str(interventions),
                     str(false_passes),

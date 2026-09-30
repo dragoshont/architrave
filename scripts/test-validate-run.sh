@@ -160,6 +160,7 @@ jq '.phases[1].status = "completed"' "$progress_no_active/.architrave/runs/test-
 perl -0pi -e 's/\| 2 \| Implementation \| in-progress \|/| 2 | Implementation | completed |/' "$progress_no_active/.architrave/runs/test-run/phase-ledger.md"
 expect_fail in-progress-summary-no-active-phase "$progress_no_active"
 
+<<<<<<< Updated upstream
 adaptive="$tmp/adaptive"
 make_repo "$adaptive"
 make_adaptive_terminal "$adaptive"
@@ -236,6 +237,8 @@ make_repo "$unknown_metrics"
 make_adaptive_terminal "$unknown_metrics"
 jq '.execution.metrics = {latencyMs:10}' "$unknown_metrics/.architrave/runs/test-run/summary.json" > "$unknown_metrics/.architrave/runs/test-run/summary.tmp" && mv "$unknown_metrics/.architrave/runs/test-run/summary.tmp" "$unknown_metrics/.architrave/runs/test-run/summary.json"
 expect_fail adaptive-unknown-metrics "$unknown_metrics"
+=======
+>>>>>>> Stashed changes
 make_v2_repo() {
   local repo="$1"
   mkdir -p "$repo"
@@ -260,4 +263,8 @@ expect_pass valid-v2-run "$v2_valid"
 v2_tampered="$tmp/v2-tampered"
 make_v2_repo "$v2_tampered"
 perl -0pi -e 's/run[.]created/run.forged/' "$v2_tampered/.architrave/runs/test-run/events.jsonl"
+<<<<<<< Updated upstream
 expect_fail tampered-v2-events "$v2_tampered"
+=======
+expect_fail tampered-v2-events "$v2_tampered"
+>>>>>>> Stashed changes

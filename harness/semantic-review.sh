@@ -51,8 +51,11 @@ EOF
 echo "semantic-review prompt: $prompt"
 case "$provider" in copilot|claude|both) : ;; *) echo "semantic-review: provider must be copilot, claude, or both" >&2; exit 2 ;; esac
 
+<<<<<<< Updated upstream
 command -v jq >/dev/null 2>&1 || { echo "semantic-review: 'jq' is required (macOS: brew install jq · Windows: winget install jqlang.jq)" >&2; exit 2; }
 
+=======
+>>>>>>> Stashed changes
 resolve_agent() {
   local name="$1"
   if [ -f "agents/$name" ]; then printf '%s' "agents/$name"
@@ -63,6 +66,7 @@ resolve_agent() {
 
 agent_file="$(resolve_agent adversarial-judge.agent.md)" || exit $?
 body="$(cat "$prompt")"
+<<<<<<< Updated upstream
 
 copilot_model="${ARCHITRAVE_SEMANTIC_REVIEW_COPILOT_MODEL:-}"
 copilot_effort="${ARCHITRAVE_SEMANTIC_REVIEW_COPILOT_EFFORT:-}"
@@ -159,6 +163,27 @@ run_judge() {
     return 1
   fi
   rm -f "$output" "$stderr_output"
+=======
+copilot_cmd=(copilot -C "$PWD" --agent architrave:adversarial-judge --model gpt-5.6-sol --reasoning-effort max --available-tools view,grep,glob --allow-tool view --allow-tool grep --allow-tool glob --no-ask-user --silent --no-color -p "$body")
+claude_cmd=(claude --model claude-opus-4.8 --effort max --tools Read,Grep,Glob --allowedTools Read,Grep,Glob --append-system-prompt-file "$agent_file" -p "$body")
+
+run_judge() {
+  local label="$1" nonce_file="$2" output exit_code=0 nonce nonce_count verdict_count last_line
+  shift 2
+  output="$(mktemp)"
+  "$@" >"$output" 2>&1 || exit_code=$?
+  cat "$output"
+  nonce="$(cat "$nonce_file")"
+  nonce_count="$(grep -Ec "^EVIDENCE_NONCE: $nonce\r?$" "$output" || true)"
+  verdict_count="$(grep -Ec '^VERDICT: (PASS|REVISE|FAIL)\r?$' "$output" || true)"
+  last_line="$(awk 'NF { line=$0 } END { sub(/\r$/, "", line); print line }' "$output")"
+  if [ "$exit_code" -ne 0 ] || [ "$nonce_count" -ne 1 ] || [ "$verdict_count" -ne 1 ] || [ "$last_line" != 'VERDICT: PASS' ]; then
+    echo "semantic-review: $label judge did not return a verified PASS" >&2
+    rm -f "$output"
+    return 1
+  fi
+  rm -f "$output"
+>>>>>>> Stashed changes
 }
 
 if [ "$execute" -eq 1 ]; then
@@ -175,11 +200,19 @@ $nonce_prompt"
 $nonce_prompt"
   failed=0
   case "$provider" in
+<<<<<<< Updated upstream
     copilot) run_judge copilot "$nonce_file" gpt "${copilot_cmd[@]}" || failed=1 ;;
     claude) run_judge claude "$nonce_file" claude "${claude_cmd[@]}" || failed=1 ;;
     both)
       run_judge copilot "$nonce_file" gpt "${copilot_cmd[@]}" || failed=1
       run_judge claude "$nonce_file" claude "${claude_cmd[@]}" || failed=1
+=======
+    copilot) run_judge copilot "$nonce_file" "${copilot_cmd[@]}" || failed=1 ;;
+    claude) run_judge claude "$nonce_file" "${claude_cmd[@]}" || failed=1 ;;
+    both)
+      run_judge copilot "$nonce_file" "${copilot_cmd[@]}" || failed=1
+      run_judge claude "$nonce_file" "${claude_cmd[@]}" || failed=1
+>>>>>>> Stashed changes
       ;;
   esac
   exit "$failed"

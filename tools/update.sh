@@ -142,7 +142,11 @@ echo "  ✓ active workspace hook refreshed"
 
 # Knowledge packs — copied so the cloud agent (no plugin) can read them.
 managed_copy_tree "$KIT/knowledge" knowledge || exit 1
+<<<<<<< Updated upstream
 echo "  ✓ knowledge refreshed (apple · microsoft · web · backend · operations-ux · design-tokens · execution-policy · learning-loop · yagni · runtime-v2)"
+=======
+echo "  ✓ knowledge refreshed (apple · microsoft · web · backend · operations-ux · design-tokens · learning-loop · yagni)"
+>>>>>>> Stashed changes
 
 # Platform constitution(s) - application profile only; knowledge updates remove managed copies.
 if [ "$kind" = "knowledge" ]; then

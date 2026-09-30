@@ -8,8 +8,13 @@ Grounded in modern eval practice:
 - **IBM** — combine **rule‑based + semantic (LLM‑as‑judge)** evaluation; assess **each step and the whole path**, plus **policy‑adherence, prompt‑injection and bias** dimensions, not just final text.
 
 ## Two grading layers (use both)
+<<<<<<< Updated upstream
 1. **Deterministic gates (code‑graded — rule‑based):** `gates/checks.sh` / `gates/checks.ps1` (`config.generate` + `config.build` + `config.test` + `config.designMap` / `config.tokens` JSON valid) and `gates/reconcile.sh` / `gates/reconcile.ps1` (design↔code token drift) and the `.github/hooks` checks; for the backend lane, `gates/backend-checks.sh` (build/test + migration safety + secret scan + IaC plan/policy, **never apply**); plus Run v2 validation, invariant checks, configured E2E/reality checks, and policy/receipt validation. Objective ground truth; they **override optimistic or semantic claims** and must be green.
 2. **Semantic gate (LLM‑as‑judge):** this rubric, applied adversarially according to `knowledge/execution-policy.md`, by two independent judge families by default: one Copilot/GPT-family judge and one Claude-family judge. Both must PASS for the semantic gate to pass. `independent` uses one fresh-context reviewer but is not a full semantic gate — a single-family judge result is advisory evidence, not a completed semantic gate. Low-risk FAST/BALANCED knowledge or mechanical work may close at `default` with deterministic evidence only when every acceptance criterion is mechanically decided and no semantic/high-risk floor applies.
+=======
+1. **Deterministic gates (code‑graded — rule‑based):** `gates/checks.sh` / `gates/checks.ps1`, `gates/reconcile.*`, backend checks, Run v2 validation, invariant checks, configured E2E/reality checks, and policy/receipt validation. Objective ground truth **overrides optimistic or semantic claims**.
+2. **Semantic gate (LLM‑as‑judge):** this rubric, applied adversarially by two independent judge families by default: one Copilot/GPT-family judge and one Claude-family judge. Both must PASS for the semantic gate to pass. A single-family judge result is advisory evidence, not a completed semantic gate.
+>>>>>>> Stashed changes
 
 ## Before grading: derive acceptance criteria (BDD)
 Restate the request + the source‑of‑truth (Storybook + `config.designMap` + the platform pack + `config.tokens`) as a **numbered, testable acceptance‑criteria checklist**. Grade against the checklist, not vibes.
@@ -18,12 +23,16 @@ Restate the request + the source‑of‑truth (Storybook + `config.designMap` + 
 Score each **Pass / Concern / Fail** with a severity and cite evidence (a spec line, pack section, or doc rule).
 
 1. **Spec & acceptance‑criteria conformance** — every criterion met; no scope drift; honest about anything not done. For Architrave-run non-trivial work, a visible intake block (understanding, acceptance criteria, grounding sources, assumptions, blocking questions/none) must exist before implementation; missing intake is at least a Major concern and can be a Blocker if it caused drift.
+<<<<<<< Updated upstream
 2. **Tournament & recommended-plan quality** — a full tournament is required for
    architecture/dependency choices, systemic failures, migrations, data loss,
    security, deployment, or materially ambiguous options. Routine bounded
    implementation records a direct plan and the selected YAGNI rung instead.
    Missing the form required by the actual decision risk is a Major concern;
    choosing a high-risk option without justification is a Blocker.
+=======
+2. **Tournament & recommended-plan quality** — non-trivial work compares viable options before implementation (minimal safe fix, proper architectural fix, defer/ask-more when relevant), scores tradeoffs/blast radius/tests, and selects a recommended plan. Missing tournament/recommended plan is a Major concern; choosing a high-risk option without justification is a Blocker.
+>>>>>>> Stashed changes
 3. **Durable Run and phase observability** — non-trivial work has canonical
 	`architrave.run.v2`, Outcome, Acceptance Matrix, dependency-safe TaskGraph,
 	typed EventLog, and truthful checkpoints. The Phase Ledger is synchronized as

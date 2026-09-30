@@ -120,7 +120,11 @@ echo "  ✓ gates → gates/ (checks · reconcile · quality-gate · backend-che
 
 # 2b) Knowledge packs — platform, backend, operations UX, token, learning, and YAGNI rule bases.
 managed_copy_tree "$KIT/knowledge" knowledge || exit 1
+<<<<<<< Updated upstream
 echo "  ✓ knowledge → knowledge/ (apple · microsoft · web · backend · operations-ux · design-tokens · execution-policy · learning-loop · yagni · runtime-v2)"
+=======
+echo "  ✓ knowledge → knowledge/ (apple · microsoft · web · backend · operations-ux · design-tokens · learning-loop · yagni)"
+>>>>>>> Stashed changes
 
 # 2b-ii) Platform constitution(s) — application profile only.
 if [ "$profile" = "knowledge" ]; then

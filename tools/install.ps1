@@ -77,7 +77,11 @@ Write-Host "  ok gates -> gates/ (checks/reconcile/quality-gate .sh + .ps1 + rub
 
 # 2b) Knowledge packs
 Copy-ManagedTree (Join-Path $kit 'knowledge') 'knowledge'
+<<<<<<< Updated upstream
 Write-Host "  ok knowledge -> knowledge/ (apple/microsoft/web/backend/operations-ux/design-tokens/execution-policy/learning-loop/yagni/runtime-v2)"
+=======
+Write-Host "  ok knowledge -> knowledge/ (apple/microsoft/web/backend/operations-ux/design-tokens/learning-loop/yagni)"
+>>>>>>> Stashed changes
 
 # 2b-ii) Platform constitution(s) - application profile only.
 if ($Profile -eq 'knowledge') {

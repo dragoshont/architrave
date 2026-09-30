@@ -156,6 +156,7 @@ ok
   (Get-Content (Join-Path $ProgressNoActive '.architrave/runs/test-run/phase-ledger.md') -Raw).Replace('| 2 | Implementation | in-progress |', '| 2 | Implementation | completed |') | Set-Content -Path (Join-Path $ProgressNoActive '.architrave/runs/test-run/phase-ledger.md') -Encoding utf8
   Expect-Fail 'in-progress-summary-no-active-phase' $ProgressNoActive
 
+<<<<<<< Updated upstream
   $Adaptive = Join-Path $Tmp 'adaptive'; Make-Repo $Adaptive; Make-AdaptiveTerminal $Adaptive; Expect-Pass 'adaptive-cross-family-run' $Adaptive
 
   $BadPreset = Join-Path $Tmp 'bad-preset'; Make-Repo $BadPreset; Make-AdaptiveTerminal $BadPreset
@@ -205,6 +206,8 @@ ok
   $UnknownMetrics = Join-Path $Tmp 'unknown-metrics'; Make-Repo $UnknownMetrics; Make-AdaptiveTerminal $UnknownMetrics
   $SummaryPath = Join-Path $UnknownMetrics '.architrave/runs/test-run/summary.json'; $Summary = Get-Content $SummaryPath -Raw | ConvertFrom-Json; Add-Member -InputObject $Summary.execution -NotePropertyName metrics -NotePropertyValue ([pscustomobject]@{ latencyMs = 10 }); $Summary | ConvertTo-Json -Depth 15 | Set-Content $SummaryPath -Encoding utf8
   Expect-Fail 'adaptive-unknown-metrics' $UnknownMetrics
+=======
+>>>>>>> Stashed changes
   function Make-V2Repo([string]$Repo) {
     New-Item -ItemType Directory -Force -Path $Repo | Out-Null
     Copy-Item -Recurse -Path 'harness' -Destination (Join-Path $Repo 'harness')

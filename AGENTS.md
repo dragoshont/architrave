@@ -1,5 +1,6 @@
 # AGENTS.md — Architrave
 
+<<<<<<< Updated upstream
 Architrave is a **cross-platform, judge-gated durable software-build control plane** for
 knowledge/automation, UI, backend, full-stack, plan-only infrastructure, optional
 runtime observation/verification, adaptive execution intent, and durable
@@ -8,12 +9,27 @@ ChatGPT plugin plus a per-repo installer. Knowledge profiles ground in repositor
 sources without inventing UI; UI grounds in Storybook + design tokens; backend
 grounds in architecture docs + contracts; IaC is proposal/plan-only. Mutation
 defaults to deny; explicit Run policy may authorize a bounded target and operation.
+=======
+Architrave is a **cross-platform durable software-build control plane** for
+knowledge/automation, UI, backend, full-stack, infrastructure, product/runtime
+verification, and learning. It is distributed as Copilot / Claude / Codex /
+ChatGPT plugins plus a per-repo installer. Mutation defaults to deny; explicit
+Run policy may authorize a bounded target and operation.
+>>>>>>> Stashed changes
 
 ## What's here
 - `agents/` — the thirteen agents: **Architrave**, **Product Research**, **Operations UX**, **UX Architect**, **UI Visual**, **Platform Design**, **Service Architect**, **Backend Planner**, **Backend Implementer**, **Infra Engineer**, **Runtime Observer**, **Tournament Analyst**, and **Adversarial Judge**. Shared `.agent.md` format across VS Code / Copilot CLI / the Copilot app / Claude Code.
 - `gates/` — deterministic gates as **`.sh` + `.ps1` pairs** (`checks`, `reconcile`, `quality-gate`, `backend-checks`) + `rubric.md` (the judge's rubric) + `hooks/` (PostToolUse guards).
+<<<<<<< Updated upstream
 - `harness/` — durable run-artifact helpers (`init-run`, `validate-run`, `semantic-review`, semantic learning review/recovery) as `.sh` + `.ps1` pairs plus schemas, and the Python Run v2 state machine, worker/workspace adapters, invariants, product legibility, and v1/v2 validation.
 - `knowledge/` — platform packs (`apple.md`, `microsoft.md`, `web.md`) + `backend.md` + `operations-ux.md` + `design-tokens.md` + `execution-policy.md` + `learning-loop.md` + `yagni.md` + `runtime-v2.md` for durable control-plane semantics.
+=======
+- `harness/` — Python Run v2 state machine, worker/workspace adapters,
+	invariants, product legibility, v1/v2 validation, and existing semantic/
+	learning helpers.
+- `knowledge/` — platform/backend/operations/design/learning/YAGNI packs plus
+	`runtime-v2.md` for durable control-plane semantics.
+>>>>>>> Stashed changes
 - `kit/` — `architrave.config.schema.json` (the per-repo config keystone) + `examples/`.
 - `plugin.json` + `.github/plugin/marketplace.json` — Copilot agent-plugin + self-hosting marketplace.
 - `.codex-plugin/plugin.json` + `skills/` + `.codex/` — Codex/ChatGPT plugin skills and generated project roles. Skills stay plugin-only; adoption copies roles only with `--codex` / `-Codex`.
@@ -25,7 +41,10 @@ defaults to deny; explicit Run policy may authorize a bounded target and operati
 	the Python Run v2 orchestration runtime in shell or PowerShell.
 - **Keep `tools/managed-paths.sh` and `tools/ManagedPaths.ps1` in lockstep** — installers/updaters must route every managed target write/delete through them; new managed destinations require paired adversarial fixtures.
 - **Agents and gates are config-driven** — resolve everything through `architrave.config.json`; never hard-code a stack or a path.
+<<<<<<< Updated upstream
 - **Execution intent is provider-neutral** — use `knowledge/execution-policy.md` and the current host's structured subagent invocation; concrete model bindings remain host/user-local and canonical agents never shell out to another harness.
+=======
+>>>>>>> Stashed changes
 - **Run state is API-owned** — never manually edit `run.json`, `events.jsonl`,
 	policy, checkpoints, or task statuses. The Phase Ledger is a projection.
 - **Default deny** — unconfigured infrastructure/runtime is plan/read-only.

@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:searxng.hont.ro)",
+      "mcp__searxng__searxng_instance_info",
+      "mcp__searxng__searxng_web_search",
+      "Bash(cd \"/Users/dragoshont/Library/Application Support/Claude-3p/local-agent-mode-sessions/77a1cf2c/00000000/local_1110667a-33cc-457d-96bb-681858b45b52/outputs/hymer-lifepo4-project\")",
+      "Bash(export TMPDIR=/tmp/claude/)",
+      "Bash(sips -Z 1600 \"photos/IMG_0046_charge-booster-lippert-EHG-label.jpg\" --out \"/tmp/claude/IMG_0046.jpg\")",
+      "Bash(echo \"exit=$?\")",
+      "Read(//private/tmp/claude/**)",
+      "mcp__filesystem__read_media_file",
+      "WebSearch",
+      "mcp__searxng__web_url_read",
+      "mcp__filesystem__list_allowed_directories"
+    ]
+  }
+}

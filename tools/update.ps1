@@ -110,7 +110,11 @@ Write-Host '  ok active workspace hook refreshed'
 
 # Knowledge packs - copied so the cloud agent (no plugin) can read them.
 Copy-ManagedTree (Join-Path $kit 'knowledge') 'knowledge'
+<<<<<<< Updated upstream
 Write-Host '  ok knowledge refreshed (apple/microsoft/web/backend/operations-ux/design-tokens/execution-policy/learning-loop/yagni/runtime-v2)'
+=======
+Write-Host '  ok knowledge refreshed (apple/microsoft/web/backend/operations-ux/design-tokens/learning-loop/yagni)'
+>>>>>>> Stashed changes
 
 # Platform constitution(s) - application profile only; knowledge updates remove managed copies.
 if ($kind -eq 'knowledge') {

@@ -163,7 +163,11 @@
     {
       "id": "longbuild-tessera-shaped-release",
       "enabled": true,
+<<<<<<< Updated upstream
       "fixture": "fixtures/tessera-shaped",
+=======
+      "fixture": "benchmarks/fixtures/tessera-shaped",
+>>>>>>> Stashed changes
       "installKit": true,
       "lane": "full-stack",
       "category": "longbuild",
@@ -181,7 +185,11 @@
     {
       "id": "runtime-kill-resume-no-repeat",
       "enabled": true,
+<<<<<<< Updated upstream
       "fixture": "fixtures/tessera-shaped",
+=======
+      "fixture": "benchmarks/fixtures/tessera-shaped",
+>>>>>>> Stashed changes
       "installKit": true,
       "lane": "runtime",
       "category": "multi-surface",
@@ -199,7 +207,11 @@
     {
       "id": "runtime-external-checkpoint-parallel",
       "enabled": true,
+<<<<<<< Updated upstream
       "fixture": "fixtures/tessera-shaped",
+=======
+      "fixture": "benchmarks/fixtures/tessera-shaped",
+>>>>>>> Stashed changes
       "installKit": true,
       "lane": "runtime",
       "category": "feature",
@@ -217,7 +229,11 @@
     {
       "id": "runtime-scoped-deployment-authorization",
       "enabled": true,
+<<<<<<< Updated upstream
       "fixture": "fixtures/tessera-shaped",
+=======
+      "fixture": "benchmarks/fixtures/tessera-shaped",
+>>>>>>> Stashed changes
       "installKit": true,
       "lane": "security",
       "category": "feature",

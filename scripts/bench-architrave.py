@@ -413,19 +413,31 @@ def run_arm(
         }
     )
     if arm["runner"] == "copilot":
+<<<<<<< Updated upstream
         returncode, timed_out, duration_ms = run_to_files(
             copilot_command(arm, worktree, prompt, session_md), worktree, env, timeout, raw_stdout, raw_stderr, heartbeat_interval
         )
+=======
+        returncode, timed_out, duration_ms = run_to_files(copilot_command(arm, worktree, prompt, session_md), worktree, env, timeout, raw_stdout, raw_stderr)
+>>>>>>> Stashed changes
     elif arm["runner"] == "claude":
         command = ["claude", "-p", prompt, "--output-format", "json"]
         if arm.get("model"):
             command.extend(["--model", arm["model"]])
+<<<<<<< Updated upstream
         returncode, timed_out, duration_ms = run_to_files(command, worktree, env, timeout, raw_stdout, raw_stderr, heartbeat_interval)
+=======
+        returncode, timed_out, duration_ms = run_to_files(command, worktree, env, timeout, raw_stdout, raw_stderr)
+>>>>>>> Stashed changes
     elif arm["runner"] == "codex":
         command = ["codex", "-C", str(worktree), "-s", "workspace-write", "-a", "never", "exec", "--json", prompt]
         if arm.get("model"):
             command[1:1] = ["-m", arm["model"]]
+<<<<<<< Updated upstream
         returncode, timed_out, duration_ms = run_to_files(command, worktree, env, timeout, raw_stdout, raw_stderr, heartbeat_interval)
+=======
+        returncode, timed_out, duration_ms = run_to_files(command, worktree, env, timeout, raw_stdout, raw_stderr)
+>>>>>>> Stashed changes
     elif arm["runner"] == "shell":
         returncode, timed_out, duration_ms = run_to_files(arm["command"], worktree, env, timeout, raw_stdout, raw_stderr, heartbeat_interval)
     else:
@@ -534,6 +546,10 @@ def diff_metrics(worktree: Path) -> dict[str, Any]:
                 additions += int(add)
             if delete.isdigit():
                 deletions += int(delete)
+<<<<<<< Updated upstream
+=======
+            files.append(normalize_git_path(file_path))
+>>>>>>> Stashed changes
     dep_files = [file for file in files if file.endswith(("package.json", "package-lock.json", ".csproj", ".fsproj", ".sln", ".slnx", "Package.swift", "project.yml"))]
     return {
         "changed_files": len(files),
@@ -751,17 +767,82 @@ def append_jsonl(path: Path, row: dict[str, Any]) -> None:
         os.fsync(handle.fileno())
 
 
+<<<<<<< Updated upstream
 def validate_scenarios(config: dict[str, Any], config_dir: Path, *, allow_missing_repos: bool = False) -> int:
     failures = 0
     for scenario in config.get("scenarios", []):
         if scenario.get("fixture"):
             fixture = resolve_repo(scenario["fixture"], config_dir)
+=======
+def durable_run_metrics(worktree: Path, duration_ms: int, row_passed: bool) -> dict[str, Any] | None:
+    run_files = sorted(
+        worktree.glob(".architrave/runs/*/run.json"),
+        key=lambda path: path.stat().st_mtime,
+    )
+    if not run_files:
+        return None
+    state = json.loads(run_files[-1].read_text(encoding="utf-8"))
+    if state.get("schema") != "architrave.run.v2":
+        return {"schema": state.get("schema"), "status": state.get("status"), "outcome_pass": False, "false_pass": bool(row_passed)}
+    required = [item for item in state.get("acceptanceCriteria", []) if item.get("blocking")]
+    passed = [item for item in required if item.get("status") in {"PASS", "NOT_APPLICABLE"}]
+    checkpoints = state.get("externalCheckpoints", [])
+    human_interventions = sum(1 for item in checkpoints if item.get("status") == "RESOLVED")
+    ready = [task for task in state.get("tasks", []) if task.get("status") == "READY"]
+    false_external_blockers = int(state.get("status") == "WAITING_EXTERNAL" and bool(ready))
+    repeated_work = sum(max(0, int(task.get("attempts", 0)) - 1) for task in state.get("tasks", []))
+    events_path = run_files[-1].parent / "events.jsonl"
+    active: set[str] = set()
+    peak = 0
+    if events_path.is_file():
+        for line in events_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            task_id = event.get("taskId")
+            if event.get("type") == "task.started" and task_id:
+                active.add(task_id)
+                peak = max(peak, len(active))
+            elif event.get("type") in {"worker.finished", "task.failed", "task.completed"} and task_id:
+                active.discard(task_id)
+    gates = state.get("gateResults", [])
+    deployment_verified = any(
+        gate.get("type") == "reality" and gate.get("status") == "PASS" and str(gate.get("id", "")).startswith("deployment-")
+        for gate in gates
+    )
+    e2e_failures = sum(1 for gate in gates if gate.get("type") in {"e2e", "reality"} and gate.get("status") == "FAIL")
+    outcome_pass = state.get("status") == "COMPLETED" and len(passed) == len(required)
+    return {
+        "schema": state.get("schema"),
+        "status": state.get("status"),
+        "outcome_pass": outcome_pass,
+        "acceptance_required": len(required),
+        "acceptance_passed": len(passed),
+        "false_pass": bool(row_passed and not outcome_pass),
+        "human_interventions": human_interventions,
+        "false_external_blockers": false_external_blockers,
+        "repeated_work_after_resume": repeated_work,
+        "peak_parallel_workers": peak,
+        "deployment_verified": deployment_verified,
+        "product_e2e_failures": e2e_failures,
+        "time_to_verified_outcome_per_intervention_ms": duration_ms / max(1, human_interventions) if outcome_pass else None,
+    }
+
+
+def validate_scenarios(config: dict[str, Any]) -> int:
+    failures = 0
+    for scenario in config.get("scenarios", []):
+        if scenario.get("fixture"):
+            fixture = Path(scenario["fixture"]).expanduser().resolve()
+>>>>>>> Stashed changes
             if fixture.is_dir():
                 print(f"ok   {scenario['id']}: fixture {fixture}")
             else:
                 failures += 1
                 print(f"FAIL {scenario['id']}: fixture not found: {fixture}")
             continue
+<<<<<<< Updated upstream
         repo = resolve_repo(scenario["repo"], config_dir)
         if not repo.is_dir():
             if allow_missing_repos:
@@ -771,6 +852,10 @@ def validate_scenarios(config: dict[str, Any], config_dir: Path, *, allow_missin
             print(f"FAIL {scenario['id']}: repository not found: {repo}")
             continue
         proc = run(["git", "-C", str(repo), "rev-parse", "--verify", f"{scenario['baseRef']}^{{commit}}"])
+=======
+        repo = Path(scenario["repo"]).expanduser().resolve()
+        proc = run(["git", "-C", str(repo), "rev-parse", "--verify", scenario["baseRef"]])
+>>>>>>> Stashed changes
         if proc.returncode != 0:
             failures += 1
             print(f"FAIL {scenario['id']}: baseRef {scenario['baseRef']} not found in {repo}")
@@ -873,7 +958,11 @@ def bench(args: argparse.Namespace) -> int:
         f"heartbeat interval={args.heartbeat_interval}s"
     )
     for scenario in scenarios:
+<<<<<<< Updated upstream
         repo = resolve_repo(scenario.get("repo") or scenario.get("fixture"), scenarios_path.parent)
+=======
+        repo = Path(scenario.get("repo") or scenario.get("fixture")).expanduser().resolve()
+>>>>>>> Stashed changes
         for repeat in range(args.repeats):
             for arm in arms:
                 remaining = run_deadline - time.monotonic()
@@ -913,6 +1002,7 @@ def bench(args: argparse.Namespace) -> int:
                         )
                     else:
                         row["base_commit"] = create_worktree(repo, scenario["baseRef"], worktree)
+<<<<<<< Updated upstream
                     preexisting_summaries = run_summary_paths(worktree)
                     agent_timeout = min(args.agent_timeout, remaining)
                     agent_budget_limited = remaining < args.agent_timeout
@@ -931,6 +1021,9 @@ def bench(args: argparse.Namespace) -> int:
                         row["agent"]["timeout_reason"] = "cell_timeout"
                     row["execution"]["reportedSelection"] = reported_execution(worktree, preexisting_summaries)
                     row["execution"]["controlStatus"] = control_status(row["execution"]["requested"], row["agent"])
+=======
+                    row["agent"] = run_arm(arm, worktree, prompt, cell_dir, args.agent_timeout)
+>>>>>>> Stashed changes
                     row["diff"] = diff_metrics(worktree)
                     row["diff_artifacts"] = save_diff_artifacts(worktree, cell_dir, os.environ.copy())
                     row["validation"] = run_validation(
@@ -949,6 +1042,11 @@ def bench(args: argparse.Namespace) -> int:
                         and all(item["returncode"] == 0 for item in row["validation"])
                         and all(item["exists"] for item in row["artifacts"])
                         and controls_allow_pass(row["execution"]["controlStatus"])
+                    )
+                    row["durable_run"] = durable_run_metrics(
+                        worktree,
+                        int((row.get("agent") or {}).get("duration_ms") or 0),
+                        row["passed"],
                     )
                     row["durable_run"] = durable_run_metrics(
                         worktree,
