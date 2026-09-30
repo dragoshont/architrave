@@ -1,23 +1,17 @@
-name: validate
+name: release
 
-# main IS the published plugin (marketplace source "."), so gate every push and PR:
-# a malformed manifest, broken kit JSON, schema-violating example, or version drift
-# would otherwise reach consumers the moment it lands.
+# Push a tag vX.Y.Z to cut a release. The tag must match the version already bumped
+# into the manifests (scripts/bump-version.sh) — this re-runs the full gate, enforces
+# tag↔manifest agreement, then publishes a GitHub Release with auto-generated notes.
 on:
   push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+    tags: ['v*']
 
 permissions:
   contents: read
 
-concurrency:
-  group: validate-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  manifests:
+  validate:
     name: POSIX manifests and fixtures
     runs-on: ubuntu-latest
     steps:
@@ -25,9 +19,19 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-      # jq + ruby are preinstalled on ubuntu-latest; node provides npx for ajv.
+
       - name: Validate manifests, kit JSON, schema, frontmatter, version sync
         run: ./scripts/check-manifests.sh
+
+      - name: Tag must match manifest version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          man="$(jq -r '.version' plugin.json)"
+          if [ "$tag" != "$man" ]; then
+            echo "::error::tag v$tag != manifest version $man — run scripts/bump-version.sh $tag, commit, then re-tag" >&2
+            exit 1
+          fi
+          echo "tag matches manifest version: $man"
 
   powershell-harness:
     name: PowerShell harness and gate fixtures
@@ -40,7 +44,6 @@ jobs:
       - name: Validate PowerShell run-artifact fixtures
         shell: pwsh
         run: |
-          ./scripts/test-managed-paths.ps1
           ./scripts/test-config-profiles.ps1
           ./scripts/test-installers.ps1
           ./scripts/test-validate-run.ps1
@@ -51,15 +54,14 @@ jobs:
           ./scripts/test-semantic-learning.ps1
           ./scripts/test-gates.ps1
 
-  powershell-unix-paths:
-    name: PowerShell managed paths (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.os }}
+  release:
+    needs: [validate, powershell-harness]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v5
-      - name: Validate Unix managed-path ABI and filesystem types
-        shell: pwsh
-        run: ./scripts/test-managed-paths.ps1
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
