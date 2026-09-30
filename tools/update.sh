@@ -65,6 +65,13 @@ mkdir -p "$TARGET/.github/hooks" "$TARGET/gates/hooks" "$TARGET/knowledge" "$TAR
 if [ "$refresh_agents" -eq 1 ]; then
   mkdir -p "$TARGET/.github/agents"
   if [ "$kind" = "knowledge" ]; then
+    for source in "$KIT"/agents/*.agent.md; do
+      name="${source##*/}"
+      case "$name" in
+        architrave.agent.md|adversarial-judge.agent.md|product-research.agent.md|runtime-observer.agent.md) ;;
+        *) rm -f "$TARGET/.github/agents/$name" ;;
+      esac
+    done
     for a in architrave adversarial-judge product-research runtime-observer; do
       [ -f "$KIT/agents/$a.agent.md" ] && cp "$KIT/agents/$a.agent.md" "$TARGET/.github/agents/"
     done
@@ -101,7 +108,8 @@ echo "  ✓ knowledge refreshed (apple · microsoft · web · backend · operati
 # Platform constitution(s) — copied so the cloud agent can read the native-app synthesis.
 # Application profile only; a knowledge repo has no native-app surface.
 if [ "$kind" = "knowledge" ]; then
-  echo "  • constitution left unchanged (knowledge profile: no native-app UI)"
+  rm -f "$TARGET/constitution-apple.md" "$TARGET/constitution-windows.md"
+  echo "  ✓ constitution removed/skipped (knowledge profile: no native-app UI)"
 else
   cp "$KIT"/constitution-*.md "$TARGET/" 2>/dev/null && echo "  ✓ constitution refreshed (constitution-*.md; Apple + Windows native-app synthesis)" || true
 fi
@@ -110,6 +118,17 @@ fi
 cp -R "$KIT"/harness/* "$TARGET/harness/"
 chmod +x "$TARGET"/harness/*.sh 2>/dev/null || true
 echo "  ✓ harness refreshed"
+
+# Agent session run artifacts are local by default; learning files stay tracked.
+gi="$TARGET/.gitignore"
+if [ -f "$gi" ] && grep -qxF '.architrave/runs/' "$gi"; then
+  echo "  • .gitignore already ignores .architrave/runs/"
+else
+  { printf '\n# Architrave: agent session run artifacts are local by default (may capture repo content).\n'
+    printf '# Delete the next line to version the audit trail instead (.architrave/learning/ stays tracked).\n'
+    printf '.architrave/runs/\n'; } >> "$gi"
+  echo "  ✓ .gitignore updated (.architrave/runs/ stays local by default)"
+fi
 
 # AGENTS.md grounding stanza — idempotent (replace the managed block, else append).
 ag="$TARGET/AGENTS.md"

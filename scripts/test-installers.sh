@@ -14,7 +14,7 @@ expect_code() {
   [ "$actual" -eq "$expected" ] || { echo "FAIL expected exit $expected, got $actual: $*" >&2; exit 1; }
 }
 
-mkdir "$tmp/application" "$tmp/knowledge" "$tmp/preserved"
+mkdir "$tmp/application" "$tmp/knowledge" "$tmp/legacy-knowledge" "$tmp/preserved"
 tools/install.sh "$tmp/application" >/dev/null
 jq -e '.platform == "web" and .stack == "react" and (.kind | not)' "$tmp/application/architrave.config.json" >/dev/null
 [ -f "$tmp/application/.github/agents/ui-visual.agent.md" ] || { echo "FAIL application profile missing UI agents" >&2; exit 1; }
@@ -45,6 +45,7 @@ before="$(shasum -a 256 "$tmp/knowledge/architrave.config.json" | awk '{print $1
 tools/install.sh --profile knowledge "$tmp/knowledge" >/dev/null
 after="$(shasum -a 256 "$tmp/knowledge/architrave.config.json" | awk '{print $1}')"
 [ "$before" = "$after" ] || { echo "FAIL installer clobbered existing knowledge config" >&2; exit 1; }
+[ "$(grep -cxF '.architrave/runs/' "$tmp/knowledge/.gitignore")" -eq 1 ] || { echo "FAIL installer should keep one .architrave/runs/ ignore rule" >&2; exit 1; }
 echo "ok    installer knowledge profile idempotent"
 
 tools/update.sh --agents "$tmp/knowledge" >/dev/null
@@ -52,6 +53,24 @@ cmp -s gates/hooks/design-guard.json "$tmp/knowledge/.github/hooks/design-guard.
 [ ! -f "$tmp/knowledge/.github/agents/ui-visual.agent.md" ] || { echo "FAIL updater --agents re-bloated knowledge repo with UI agents" >&2; exit 1; }
 git -C "$tmp/knowledge" diff --check
 echo "ok    updater refreshes active POSIX hook and keeps knowledge repo lean"
+
+tools/install.sh "$tmp/legacy-knowledge" >/dev/null
+jq '.kind = "knowledge"' "$tmp/legacy-knowledge/architrave.config.json" > "$tmp/legacy-config.json"
+mv "$tmp/legacy-config.json" "$tmp/legacy-knowledge/architrave.config.json"
+printf '%s\n' 'custom agent' > "$tmp/legacy-knowledge/.github/agents/custom.agent.md"
+printf '%s\n' '*.local' > "$tmp/legacy-knowledge/.gitignore"
+tools/update.sh "$tmp/legacy-knowledge" >/dev/null
+[ -f "$tmp/legacy-knowledge/.github/agents/ui-visual.agent.md" ] || { echo "FAIL updater pruned agents without --agents" >&2; exit 1; }
+[ -f "$tmp/legacy-knowledge/.github/agents/custom.agent.md" ] || { echo "FAIL updater removed custom agent" >&2; exit 1; }
+if ls "$tmp/legacy-knowledge"/constitution-*.md >/dev/null 2>&1; then echo "FAIL updater left legacy constitutions in knowledge repo" >&2; exit 1; fi
+[ "$(grep -cxF '.architrave/runs/' "$tmp/legacy-knowledge/.gitignore")" -eq 1 ] || { echo "FAIL updater should keep one .architrave/runs/ ignore rule" >&2; exit 1; }
+grep -qxF '*.local' "$tmp/legacy-knowledge/.gitignore" || { echo "FAIL updater changed unrelated .gitignore content" >&2; exit 1; }
+tools/update.sh --agents "$tmp/legacy-knowledge" >/dev/null
+[ ! -f "$tmp/legacy-knowledge/.github/agents/ui-visual.agent.md" ] || { echo "FAIL updater left legacy UI agent in knowledge repo" >&2; exit 1; }
+[ ! -f "$tmp/legacy-knowledge/.github/agents/backend-planner.agent.md" ] || { echo "FAIL updater left legacy backend agent in knowledge repo" >&2; exit 1; }
+[ -f "$tmp/legacy-knowledge/.github/agents/custom.agent.md" ] || { echo "FAIL updater removed custom agent" >&2; exit 1; }
+[ "$(grep -cxF '.architrave/runs/' "$tmp/legacy-knowledge/.gitignore")" -eq 1 ] || { echo "FAIL updater should keep one .architrave/runs/ ignore rule" >&2; exit 1; }
+echo "ok    updater migrates legacy knowledge repo and preserves custom files"
 
 mkdir "$tmp/update-failure"
 printf '%s\n' '{"kind":"knowledge","build":"true","test":"true"}' > "$tmp/update-failure/architrave.config.json"

@@ -13,8 +13,8 @@ function Invoke-Installer([string[]]$Arguments) {
 }
 
 try {
-  $Application = Join-Path $Tmp 'application'; $Knowledge = Join-Path $Tmp 'knowledge'; $Preserved = Join-Path $Tmp 'preserved'
-  New-Item -ItemType Directory -Force -Path $Application,$Knowledge,$Preserved | Out-Null
+  $Application = Join-Path $Tmp 'application'; $Knowledge = Join-Path $Tmp 'knowledge'; $LegacyKnowledge = Join-Path $Tmp 'legacy-knowledge'; $Preserved = Join-Path $Tmp 'preserved'
+  New-Item -ItemType Directory -Force -Path $Application,$Knowledge,$LegacyKnowledge,$Preserved | Out-Null
   if ((Invoke-Installer @($Application)) -ne 0) { throw 'default installer failed' }
   $AppConfig = Get-Content (Join-Path $Application 'architrave.config.json') -Raw | ConvertFrom-Json
   if ($AppConfig.platform -ne 'web' -or $AppConfig.stack -ne 'react') { throw 'default application profile changed' }
@@ -55,6 +55,7 @@ try {
   if ((Invoke-Installer @($Knowledge, '-Profile', 'knowledge')) -ne 0) { throw 'knowledge reinstall failed' }
   $After = (Get-FileHash (Join-Path $Knowledge 'architrave.config.json') -Algorithm SHA256).Hash
   if ($Before -ne $After) { throw 'installer clobbered existing knowledge config' }
+  if (@(Get-Content (Join-Path $Knowledge '.gitignore') | Where-Object { $_ -eq '.architrave/runs/' }).Count -ne 1) { throw 'installer should keep one .architrave/runs/ ignore rule' }
   Write-Host 'ok    installer knowledge profile idempotent'
 
   & pwsh -NoProfile -File (Join-Path $Root 'tools/update.ps1') $Knowledge -Agents *> $null
@@ -66,6 +67,30 @@ try {
   if ($ActiveHook -ne $WindowsHook) { throw 'updater did not refresh active Windows hook' }
   if (Test-Path (Join-Path $Knowledge '.github/agents/ui-visual.agent.md')) { throw 'updater -Agents re-bloated knowledge repo with UI agents' }
   Write-Host 'ok    updater refreshes active Windows hook, keeps repo lean and whitespace-clean'
+
+  if ((Invoke-Installer @($LegacyKnowledge)) -ne 0) { throw 'legacy application installer failed' }
+  $LegacyConfigPath = Join-Path $LegacyKnowledge 'architrave.config.json'
+  $LegacyConfig = Get-Content $LegacyConfigPath -Raw | ConvertFrom-Json
+  $LegacyConfig | Add-Member -NotePropertyName kind -NotePropertyValue knowledge
+  $LegacyConfig | ConvertTo-Json -Depth 20 | Set-Content $LegacyConfigPath -Encoding utf8
+  'custom agent' | Set-Content (Join-Path $LegacyKnowledge '.github/agents/custom.agent.md') -Encoding utf8
+  '*.local' | Set-Content (Join-Path $LegacyKnowledge '.gitignore') -Encoding utf8
+  & pwsh -NoProfile -File (Join-Path $Root 'tools/update.ps1') $LegacyKnowledge *> $null
+  if ($LASTEXITCODE -ne 0) { throw 'legacy knowledge updater failed without agent refresh' }
+  if (-not (Test-Path (Join-Path $LegacyKnowledge '.github/agents/ui-visual.agent.md'))) { throw 'updater pruned agents without -Agents' }
+  if (-not (Test-Path (Join-Path $LegacyKnowledge '.github/agents/custom.agent.md'))) { throw 'updater removed custom agent' }
+  if (Get-ChildItem (Join-Path $LegacyKnowledge 'constitution-*.md') -ErrorAction SilentlyContinue) { throw 'updater left legacy constitutions in knowledge repo' }
+  $LegacyIgnore = Get-Content (Join-Path $LegacyKnowledge '.gitignore')
+  if (@($LegacyIgnore | Where-Object { $_ -eq '.architrave/runs/' }).Count -ne 1) { throw 'updater should keep one .architrave/runs/ ignore rule' }
+  if ($LegacyIgnore -notcontains '*.local') { throw 'updater changed unrelated .gitignore content' }
+  & pwsh -NoProfile -File (Join-Path $Root 'tools/update.ps1') $LegacyKnowledge -Agents *> $null
+  if ($LASTEXITCODE -ne 0) { throw 'legacy knowledge agent refresh failed' }
+  if (Test-Path (Join-Path $LegacyKnowledge '.github/agents/ui-visual.agent.md')) { throw 'updater left legacy UI agent in knowledge repo' }
+  if (Test-Path (Join-Path $LegacyKnowledge '.github/agents/backend-planner.agent.md')) { throw 'updater left legacy backend agent in knowledge repo' }
+  if (-not (Test-Path (Join-Path $LegacyKnowledge '.github/agents/custom.agent.md'))) { throw 'updater removed custom agent' }
+  $LegacyIgnore = Get-Content (Join-Path $LegacyKnowledge '.gitignore')
+  if (@($LegacyIgnore | Where-Object { $_ -eq '.architrave/runs/' }).Count -ne 1) { throw 'updater should keep one .architrave/runs/ ignore rule' }
+  Write-Host 'ok    updater migrates legacy knowledge repo and preserves custom files'
 
   $UpdateFailure = Join-Path $Tmp 'update-failure'
   New-Item -ItemType Directory -Force -Path (Join-Path $UpdateFailure '.github') | Out-Null

@@ -36,7 +36,14 @@ New-Item -ItemType Directory -Force -Path "$Target/.github/hooks","$Target/gates
 if ($Agents) {
   New-Item -ItemType Directory -Force -Path "$Target/.github/agents" | Out-Null
   if ($kind -eq 'knowledge') {
-    foreach ($a in 'architrave','adversarial-judge','product-research','runtime-observer') {
+    $KnowledgeAgents = @('architrave','adversarial-judge','product-research','runtime-observer')
+    $KnowledgeAgentFiles = @($KnowledgeAgents | ForEach-Object { "$_.agent.md" })
+    foreach ($PackagedAgent in Get-ChildItem (Join-Path $kit 'agents/*.agent.md') -File) {
+      if ($PackagedAgent.Name -notin $KnowledgeAgentFiles) {
+        Remove-Item (Join-Path "$Target/.github/agents" $PackagedAgent.Name) -Force -ErrorAction SilentlyContinue
+      }
+    }
+    foreach ($a in $KnowledgeAgents) {
       $src = "$kit/agents/$a.agent.md"
       if (Test-Path $src) { Copy-Item $src "$Target/.github/agents/" -Force }
     }
@@ -65,7 +72,10 @@ Write-Host '  ok knowledge refreshed (apple/microsoft/web/backend/operations-ux/
 # Platform constitution(s) - native-app synthesis (Apple + Windows). Application profile only;
 # a knowledge repo has no native-app surface.
 if ($kind -eq 'knowledge') {
-  Write-Host '  - constitution left unchanged (knowledge profile: no native-app UI)'
+  foreach ($Constitution in 'constitution-apple.md','constitution-windows.md') {
+    Remove-Item (Join-Path $Target $Constitution) -Force -ErrorAction SilentlyContinue
+  }
+  Write-Host '  ok constitution removed/skipped (knowledge profile: no native-app UI)'
 } else {
   Copy-Item "$kit/constitution-*.md" "$Target/" -Force -ErrorAction SilentlyContinue
   Write-Host '  ok constitution refreshed (constitution-*.md; Apple + Windows native-app synthesis)'
@@ -74,6 +84,21 @@ if ($kind -eq 'knowledge') {
 # Audit harness.
 Copy-Item "$kit/harness/*" "$Target/harness/" -Recurse -Force
 Write-Host '  ok harness refreshed'
+
+# Agent session run artifacts are local by default; learning files stay tracked.
+$gi = "$Target/.gitignore"
+$hasRule = (Test-Path $gi) -and ((Get-Content $gi) -contains '.architrave/runs/')
+if ($hasRule) {
+  Write-Host '  - .gitignore already ignores .architrave/runs/'
+} else {
+  Add-Content -Path $gi -Encoding utf8 -Value @(
+    '',
+    '# Architrave: agent session run artifacts are local by default (may capture repo content).',
+    '# Delete the next line to version the audit trail instead (.architrave/learning/ stays tracked).',
+    '.architrave/runs/'
+  )
+  Write-Host '  ok .gitignore updated (.architrave/runs/ stays local by default)'
+}
 
 # AGENTS.md grounding stanza - idempotent.
 $ag = "$Target/AGENTS.md"
