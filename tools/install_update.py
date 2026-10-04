@@ -147,6 +147,10 @@ def trusted_user_state_root() -> Path:
     return home / ".architrave"
 
 
+def approved_ssh_trust_root(state_root: Path) -> Path:
+    return state_root.parent / ".ssh" if os.name == "nt" else state_root
+
+
 def _ensure_private_directory(path: Path, label: str) -> None:
     if not path.parent.is_dir():
         raise InstallerError(f"{label}: trusted state parent is unavailable or unsafe")
@@ -285,6 +289,15 @@ def install_exact_target_executor(args: argparse.Namespace, kit: Path) -> int:
         ssh_executable = Path(args.ssh_executable).expanduser().resolve()
         identity_source = Path(args.ssh_identity).expanduser().resolve()
         known_hosts_source = Path(args.ssh_known_hosts).expanduser().resolve()
+        if os.name == "nt":
+            ssh_trust_root = approved_ssh_trust_root(state_root).resolve()
+            for path, label in ((identity_source, "SSH identity"), (known_hosts_source, "SSH known-hosts")):
+                try:
+                    path.relative_to(ssh_trust_root)
+                except ValueError as exc:
+                    raise InstallerError(
+                        f"executor-install: {label} must live under the approved user .ssh trust root"
+                    ) from exc
         for path, label in (
             (ssh_executable, "SSH executable"),
             (identity_source, "SSH identity"),

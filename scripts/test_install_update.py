@@ -255,39 +255,48 @@ class InstallUpdateTests(unittest.TestCase):
             ssh_remote_adapter="/Users/operator/.architrave/executors/exact-target-v1/observer.py",
             ssh_remote_adapter_sha256="b" * 64,
         )
+        ssh_trust_root = self.workspace / "approved ssh"
+        ssh_trust_root.mkdir()
+        approved_identity = ssh_trust_root / "id_ed25519"
+        approved_known_hosts = ssh_trust_root / "known_hosts"
+        shutil.copyfile(identity_file, approved_identity)
+        shutil.copyfile(known_hosts, approved_known_hosts)
+        args.ssh_identity = str(approved_identity)
+        args.ssh_known_hosts = str(approved_known_hosts)
         with mock.patch.object(self.module, "trusted_user_state_root", return_value=state):
-            self.assertEqual(0, self.module.install_exact_target_executor(args, ROOT))
-            first_registry = json.loads((state / "executors.json").read_text(encoding="utf-8"))
-            first_target = first_registry["exactTarget"]["targets"][0]
-            identity_destination = Path(first_target["ssh"]["identityFile"])
-            known_hosts_destination = Path(first_target["ssh"]["knownHosts"])
-            if os.name == "nt":
-                self.assertEqual(identity_file.resolve(), identity_destination)
-                self.assertEqual(known_hosts.resolve(), known_hosts_destination)
-            else:
-                external_identity = self.workspace / "external-identity"
-                external_known_hosts = self.workspace / "external-known-hosts"
-                external_identity.write_text("external identity sentinel\n", encoding="utf-8")
-                external_known_hosts.write_text("external hosts sentinel\n", encoding="utf-8")
-                identity_destination.unlink()
-                known_hosts_destination.unlink()
-                os.link(external_identity, identity_destination)
-                os.link(external_known_hosts, known_hosts_destination)
+            with mock.patch.object(self.module, "approved_ssh_trust_root", return_value=ssh_trust_root):
                 self.assertEqual(0, self.module.install_exact_target_executor(args, ROOT))
-                self.assertEqual("external identity sentinel\n", external_identity.read_text(encoding="utf-8"))
-                self.assertEqual("external hosts sentinel\n", external_known_hosts.read_text(encoding="utf-8"))
-            second = argparse.Namespace(**vars(args))
-            second.artifact = "second remote target"
-            second.artifact_path = "/srv/second-target.bin"
-            second.workspace = "/srv/second-prefix"
-            second.sha256 = "c" * 64
-            self.assertEqual(0, self.module.install_exact_target_executor(second, ROOT))
-            before_invalid = snapshot(state)
-            invalid = argparse.Namespace(**vars(args))
-            invalid.ssh_user = "-operator"
-            with self.assertRaises(self.module.InstallerError):
-                self.module.install_exact_target_executor(invalid, ROOT)
-            self.assertEqual(before_invalid, snapshot(state))
+                first_registry = json.loads((state / "executors.json").read_text(encoding="utf-8"))
+                first_target = first_registry["exactTarget"]["targets"][0]
+                identity_destination = Path(first_target["ssh"]["identityFile"])
+                known_hosts_destination = Path(first_target["ssh"]["knownHosts"])
+                if os.name == "nt":
+                    self.assertEqual(approved_identity.resolve(), identity_destination)
+                    self.assertEqual(approved_known_hosts.resolve(), known_hosts_destination)
+                else:
+                    external_identity = self.workspace / "external-identity"
+                    external_known_hosts = self.workspace / "external-known-hosts"
+                    external_identity.write_text("external identity sentinel\n", encoding="utf-8")
+                    external_known_hosts.write_text("external hosts sentinel\n", encoding="utf-8")
+                    identity_destination.unlink()
+                    known_hosts_destination.unlink()
+                    os.link(external_identity, identity_destination)
+                    os.link(external_known_hosts, known_hosts_destination)
+                    self.assertEqual(0, self.module.install_exact_target_executor(args, ROOT))
+                    self.assertEqual("external identity sentinel\n", external_identity.read_text(encoding="utf-8"))
+                    self.assertEqual("external hosts sentinel\n", external_known_hosts.read_text(encoding="utf-8"))
+                second = argparse.Namespace(**vars(args))
+                second.artifact = "second remote target"
+                second.artifact_path = "/srv/second-target.bin"
+                second.workspace = "/srv/second-prefix"
+                second.sha256 = "c" * 64
+                self.assertEqual(0, self.module.install_exact_target_executor(second, ROOT))
+                before_invalid = snapshot(state)
+                invalid = argparse.Namespace(**vars(args))
+                invalid.ssh_user = "-operator"
+                with self.assertRaises(self.module.InstallerError):
+                    self.module.install_exact_target_executor(invalid, ROOT)
+                self.assertEqual(before_invalid, snapshot(state))
         registry = json.loads((state / "executors.json").read_text(encoding="utf-8"))
         target, second_target = registry["exactTarget"]["targets"]
         self.assertEqual("ssh", target["transport"])
@@ -296,8 +305,8 @@ class InstallUpdateTests(unittest.TestCase):
         self.assertEqual("trusted-key-alias", target["ssh"]["hostKeyAlias"])
         self.assertEqual("b" * 64, target["ssh"]["remoteAdapterSha256"])
         if os.name == "nt":
-            self.assertEqual(identity_file.resolve(), Path(target["ssh"]["identityFile"]))
-            self.assertEqual(known_hosts.resolve(), Path(target["ssh"]["knownHosts"]))
+            self.assertEqual(approved_identity.resolve(), Path(target["ssh"]["identityFile"]))
+            self.assertEqual(approved_known_hosts.resolve(), Path(target["ssh"]["knownHosts"]))
         else:
             self.assertTrue(Path(target["ssh"]["identityFile"]).is_relative_to(state / "ssh"))
             self.assertTrue(Path(target["ssh"]["knownHosts"]).is_relative_to(state / "ssh"))
