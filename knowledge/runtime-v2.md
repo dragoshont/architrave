@@ -88,9 +88,10 @@ the objective without explicit user direction.
 When a working baseline is identified, `reuseBaseline` must record its path,
 registered test/diff evidence, and the exact difference being evaluated before a
 replacement architecture or compatibility constraint can enter the TaskGraph.
-Reuse and target-identity receipts are registered only by trusted deterministic
-or external-proof executors; there is intentionally no generic CLI command that
-can self-attest either receipt.
+`reuse-verify` executes the declared baseline test and binds its path digest and
+difference. `objective-replace` requires a `HUMAN_JUDGMENT_REQUIRED` challenge;
+`target-resolve` requires a `SAFE_WRITE_TARGET_REQUIRED` challenge bound to the
+provider/principal. Neither flow accepts a repository-authored self-attestation.
 
 At most two execution lanes are active by default. The product lane cannot be
 displaced by communications, unrelated research, or infrastructure; those

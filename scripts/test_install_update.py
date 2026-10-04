@@ -66,10 +66,16 @@ class InstallUpdateTests(unittest.TestCase):
     def tearDown(self) -> None:
         shutil.rmtree(self.workspace, ignore_errors=True)
 
-    def run_cli(self, *arguments: str, expected: int = 0) -> subprocess.CompletedProcess[str]:
+    def run_cli(
+        self,
+        *arguments: str,
+        expected: int = 0,
+        env: dict[str, str] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
         completed = subprocess.run(
             [sys.executable, str(CLI), *arguments],
             cwd=ROOT,
+            env={**os.environ, **(env or {})},
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -260,6 +266,65 @@ class InstallUpdateTests(unittest.TestCase):
             "scripts/test-installers.ps1",
         ):
             self.assertFalse((ROOT / removed).exists(), f"obsolete paired implementation remains: {removed}")
+
+    def test_transaction_rolls_back_each_injected_replacement(self) -> None:
+        target = self.workspace / "transaction target"
+        target.mkdir()
+        self.run_cli("install", "--profile", "knowledge", str(target))
+        before = snapshot(target)
+        for index in (0, 5, 10):
+            self.run_cli(
+                "update",
+                str(target),
+                expected=1,
+                env={"ARCHITRAVE_INSTALL_FAIL_AFTER": str(index)},
+            )
+            self.assertEqual(before, snapshot(target))
+            self.assertFalse((target / ".architrave-install.lock").exists())
+            self.assertFalse((target / ".architrave-install-transaction").exists())
+
+    def test_concurrent_lock_and_stale_transaction_recovery(self) -> None:
+        target = self.workspace / "locked target"
+        target.mkdir()
+        self.run_cli("install", "--profile", "knowledge", str(target))
+        before = snapshot(target)
+        lock = target / ".architrave-install.lock"
+        lock.write_text(json.dumps({"pid": os.getpid()}), encoding="utf-8")
+        self.run_cli("update", str(target), expected=1)
+        self.assertTrue(lock.exists())
+        lock.unlink()
+        self.assertEqual(before, snapshot(target))
+
+        transaction = target / ".architrave-install-transaction"
+        (transaction / "backup").mkdir(parents=True)
+        (transaction / "stage").mkdir()
+        original = (target / ".gitignore").read_bytes()
+        (transaction / "backup/0").write_bytes(original)
+        (target / ".gitignore").write_text("corrupt\n", encoding="utf-8")
+        (transaction / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "status": "prepared",
+                    "applied": 1,
+                    "operations": [
+                        {
+                            "kind": "write",
+                            "relative": ".gitignore",
+                            "stage": "stage/0",
+                            "mode": 0o644,
+                            "existed": True,
+                            "backup": "backup/0",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        lock.write_text(json.dumps({"pid": 99999999}), encoding="utf-8")
+        self.run_cli("update", str(target))
+        self.assertFalse(lock.exists())
+        self.assertFalse(transaction.exists())
+        self.assertIn(".architrave/runs/", (target / ".gitignore").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

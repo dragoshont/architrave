@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -12,6 +13,7 @@ import stat
 import subprocess
 import sys
 import uuid
+import time
 
 
 BEGIN = "<!-- architrave:begin -->"
@@ -90,6 +92,22 @@ def _is_regular_file(info: os.stat_result) -> bool:
     return stat.S_ISREG(info.st_mode) and not stat.S_ISLNK(info.st_mode) and not _is_reparse(info)
 
 
+def _pid_alive(pid: int) -> bool:
+    if os.name == "nt":
+        import ctypes
+
+        handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)
+        if not handle:
+            return False
+        ctypes.windll.kernel32.CloseHandle(handle)
+        return True
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
 def require_source_file(path: Path, label: str) -> None:
     info = _lstat(path)
     if info is None or not _is_regular_file(info):
@@ -135,6 +153,8 @@ class ManagedRoot:
             raise InstallerError(f"{label}: target root must resolve to a real directory")
         self.root = resolved
         self.label = label
+        self.transaction: ManagedTransaction | None = None
+        self.planned_dirs: set[Path] = set()
 
     def path(self, relative: str) -> Path:
         pure = PurePosixPath(relative)
@@ -171,6 +191,8 @@ class ManagedRoot:
         self.preflight_dir(relative)
         path = self.path(relative)
         info = _lstat(path)
+        if info is None and path in self.planned_dirs:
+            return path
         if info is None or not _is_real_dir(info):
             raise InstallerError(
                 f"{self.label}: unsafe managed path '{relative}': directory is missing or unsafe"
@@ -179,6 +201,10 @@ class ManagedRoot:
 
     def ensure_dir(self, relative: str) -> Path:
         path = self.path(relative)
+        if self.transaction is not None:
+            self.preflight_dir(relative)
+            self.planned_dirs.add(path)
+            return path
         current = self.root
         built: list[str] = []
         for part in path.relative_to(self.root).parts:
@@ -262,6 +288,9 @@ class ManagedRoot:
             raise
 
     def replace_bytes(self, relative: str, data: bytes, mode: int = 0o644) -> None:
+        if self.transaction is not None:
+            self.transaction.stage_write(relative, data, mode, create_only=False)
+            return
         self.preflight_file(relative)
         path = self.path(relative)
         parent_relative = path.parent.relative_to(self.root).as_posix()
@@ -275,6 +304,9 @@ class ManagedRoot:
         self.require_file(relative)
 
     def create_bytes(self, relative: str, data: bytes, mode: int = 0o644) -> None:
+        if self.transaction is not None:
+            self.transaction.stage_write(relative, data, mode, create_only=True)
+            return
         self.preflight_file(relative)
         path = self.path(relative)
         if _lstat(path) is not None:
@@ -317,6 +349,9 @@ class ManagedRoot:
         self.create_bytes(relative, source.read_bytes(), stat.S_IMODE(source_info.st_mode))
 
     def remove_file(self, relative: str) -> None:
+        if self.transaction is not None:
+            self.transaction.stage_remove(relative)
+            return
         self.preflight_file(relative)
         path = self.path(relative)
         if _lstat(path) is None:
@@ -329,6 +364,144 @@ class ManagedRoot:
     def copy_tree(self, source: Path, relative: str) -> None:
         require_source_tree(source, self.label)
         self.preflight_tree(relative)
+
+
+class ManagedTransaction:
+    active: list["ManagedTransaction"] = []
+
+    def __init__(self, managed: ManagedRoot) -> None:
+        self.managed = managed
+        self.root = managed.root
+        self.lock = self.root / ".architrave-install.lock"
+        self.directory = self.root / ".architrave-install-transaction"
+        self.operations: list[dict[str, object]] = []
+
+    def _write_manifest(self, value: dict[str, object]) -> None:
+        path = self.directory / "manifest.json"
+        path.write_text(json.dumps(value, separators=(",", ":")) + "\n", encoding="utf-8")
+        with path.open("r+b") as stream:
+            os.fsync(stream.fileno())
+
+    def _recover(self) -> None:
+        manifest_path = self.directory / "manifest.json"
+        if not manifest_path.is_file():
+            raise InstallerError(f"{self.managed.label}: stale transaction has no recovery manifest")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        for item in reversed(manifest.get("operations", [])):
+            destination = self.managed.path(str(item["relative"]))
+            backup = self.directory / str(item["backup"]) if item.get("backup") else None
+            if backup and backup.is_file():
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                os.replace(backup, destination)
+            elif not item.get("existed"):
+                destination.unlink(missing_ok=True)
+        shutil.rmtree(self.directory)
+
+    def __enter__(self) -> "ManagedTransaction":
+        try:
+            descriptor = os.open(self.lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            try:
+                owner = json.loads(self.lock.read_text(encoding="utf-8"))
+                alive = _pid_alive(int(owner["pid"]))
+            except (OSError, ValueError, KeyError, json.JSONDecodeError):
+                alive = False
+            if not alive:
+                self.lock.unlink(missing_ok=True)
+                descriptor = os.open(self.lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            else:
+                raise InstallerError(f"{self.managed.label}: target is locked by another install/update")
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            json.dump({"pid": os.getpid(), "createdAt": time.time()}, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        if self.directory.exists():
+            self._recover()
+        self.directory.mkdir()
+        (self.directory / "stage").mkdir()
+        (self.directory / "backup").mkdir()
+        self.managed.transaction = self
+        self.active.append(self)
+        return self
+
+    def stage_write(self, relative: str, data: bytes, mode: int, *, create_only: bool) -> None:
+        self.managed.preflight_file(relative)
+        destination = self.managed.path(relative)
+        if create_only and _lstat(destination) is not None:
+            raise InstallerError(f"{self.managed.label}: managed destination already exists: {relative}")
+        index = len(self.operations)
+        stage = self.directory / "stage" / str(index)
+        stage.write_bytes(data)
+        os.chmod(stage, stat.S_IMODE(mode))
+        self.operations.append(
+            {"kind": "write", "relative": relative, "stage": f"stage/{index}", "mode": mode}
+        )
+
+    def stage_remove(self, relative: str) -> None:
+        self.managed.preflight_file(relative)
+        self.operations.append({"kind": "remove", "relative": relative})
+
+    def commit(self) -> None:
+        manifest_operations: list[dict[str, object]] = []
+        for index, operation in enumerate(self.operations):
+            destination = self.managed.path(str(operation["relative"]))
+            info = _lstat(destination)
+            backup_name = None
+            if info is not None:
+                self.managed.require_file(str(operation["relative"]))
+                backup_name = f"backup/{index}"
+                shutil.copy2(destination, self.directory / backup_name, follow_symlinks=False)
+            manifest_operations.append(
+                {
+                    **operation,
+                    "existed": info is not None,
+                    "backup": backup_name,
+                }
+            )
+        manifest = {"status": "prepared", "applied": 0, "operations": manifest_operations}
+        self._write_manifest(manifest)
+        fail_after = os.environ.get("ARCHITRAVE_INSTALL_FAIL_AFTER")
+        try:
+            for index, operation in enumerate(manifest_operations):
+                if fail_after is not None and int(fail_after) == index:
+                    raise OSError(f"injected install/update failure at replacement {index}")
+                relative = str(operation["relative"])
+                destination = self.managed.path(relative)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                if operation["kind"] == "write":
+                    stage = self.directory / str(operation["stage"])
+                    os.replace(stage, destination)
+                    os.chmod(destination, stat.S_IMODE(int(operation["mode"])))
+                else:
+                    destination.unlink(missing_ok=True)
+                manifest["applied"] = index + 1
+                self._write_manifest(manifest)
+        except Exception:
+            self._recover()
+            raise
+        shutil.rmtree(self.directory)
+        if self in self.active:
+            self.active.remove(self)
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self.managed.transaction = None
+        try:
+            if exc_type is None:
+                self.commit()
+            elif self.directory.exists():
+                shutil.rmtree(self.directory)
+        finally:
+            self.lock.unlink(missing_ok=True)
+            if self in self.active:
+                self.active.remove(self)
+
+    def abort(self) -> None:
+        self.managed.transaction = None
+        if self.directory.exists():
+            shutil.rmtree(self.directory)
+        self.lock.unlink(missing_ok=True)
+        if self in self.active:
+            self.active.remove(self)
         self.ensure_dir(relative)
         for current, directories, files in os.walk(source, followlinks=False):
             directories[:] = sorted(name for name in directories if name != "__pycache__")
@@ -416,22 +589,23 @@ def preflight_text(managed: ManagedRoot, relative: str) -> None:
         raise InstallerError(f"{managed.label}: managed text file is not readable UTF-8: {relative}") from exc
 
 
-def run_codex(kit: Path, target: Path, *, preflight: bool, label: str) -> None:
+def run_codex(kit: Path, managed: ManagedRoot, *, preflight: bool, label: str) -> None:
     if sys.version_info < (3, 11):
         raise InstallerError(f"{label}: --codex requires Python 3.11+", 2)
-    command = [
-        sys.executable,
-        str(kit / "tools" / "codex-roles.py"),
-        "--kit",
-        str(kit),
-        "--target",
-        str(target),
-    ]
+    helper = kit / "tools" / "codex-roles.py"
+    spec = importlib.util.spec_from_file_location("architrave_codex_roles", helper)
+    if spec is None or spec.loader is None:
+        raise InstallerError(f"{label}: cannot load Codex role helper")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    outputs = module.planned_outputs(kit, managed.root)
     if preflight:
-        command.append("--preflight")
-    completed = subprocess.run(command, check=False)
-    if completed.returncode:
-        raise InstallerError("", completed.returncode)
+        return
+    for destination, content in outputs:
+        relative = destination.relative_to(managed.root).as_posix()
+        managed.ensure_dir(destination.parent.relative_to(managed.root).as_posix())
+        managed.replace_bytes(relative, content)
 
 
 def install_agents(managed: ManagedRoot, kit: Path, profile: str) -> None:
@@ -570,8 +744,10 @@ def install(args: argparse.Namespace, kit: Path) -> int:
         raise InstallerError("install: packaged AGENTS stanza is not readable UTF-8") from exc
     version = plugin_version(kit, "install")
     if args.codex:
-        run_codex(kit, managed.root, preflight=True, label="install")
+        run_codex(kit, managed, preflight=True, label="install")
 
+    transaction = ManagedTransaction(managed)
+    transaction.__enter__()
     print(f"Architrave -> installing into: {managed.root}")
     for directory in (".github/agents", ".github/hooks", ".github/workflows", "gates/hooks", "knowledge", "harness"):
         managed.ensure_dir(directory)
@@ -608,8 +784,9 @@ def install(args: argparse.Namespace, kit: Path) -> int:
     else:
         print("  - copilot-setup-steps.yml present - merge jq install manually")
     if args.codex:
-        run_codex(kit, managed.root, preflight=False, label="install")
+        run_codex(kit, managed, preflight=False, label="install")
     managed.replace_bytes("gates/.kit-version", f"{version}\n".encode("utf-8"))
+    transaction.__exit__(None, None, None)
     print(f"  ok stamped gates/.kit-version = {version}")
     print(f"\nDone. Edit architrave.config.json to match this repo (profile: {args.profile}).")
     return 0
@@ -663,9 +840,11 @@ def update(args: argparse.Namespace, kit: Path) -> int:
     except (OSError, UnicodeError) as exc:
         raise InstallerError("update: packaged AGENTS stanza is not readable UTF-8") from exc
     if args.codex:
-        run_codex(kit, managed.root, preflight=True, label="update")
+        run_codex(kit, managed, preflight=True, label="update")
     version = plugin_version(kit, "update")
 
+    transaction = ManagedTransaction(managed)
+    transaction.__enter__()
     print(f"Architrave -> refreshing assets in: {managed.root} (kit v{version})")
     for directory in (".github/hooks", "gates/hooks", "knowledge", "harness"):
         managed.ensure_dir(directory)
@@ -687,8 +866,9 @@ def update(args: argparse.Namespace, kit: Path) -> int:
     update_gitignore(managed)
     update_agents_stanza(managed, kit)
     if args.codex:
-        run_codex(kit, managed.root, preflight=False, label="update")
+        run_codex(kit, managed, preflight=False, label="update")
     managed.replace_bytes("gates/.kit-version", f"{version}\n".encode("utf-8"))
+    transaction.__exit__(None, None, None)
     print(f"  ok stamped gates/.kit-version = {version}")
     print("Done. (architrave.config.json left untouched.)")
     return 0
@@ -727,6 +907,9 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, UnicodeError) as exc:
         print(f"{args.command}: {exc}", file=sys.stderr)
         return 1
+    finally:
+        for transaction in list(ManagedTransaction.active):
+            transaction.abort()
 
 
 if __name__ == "__main__":

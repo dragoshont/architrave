@@ -109,7 +109,7 @@ PRODUCER_ARTIFACT_KINDS = {
     "semantic-judge": {"semantic-verdict"},
     "security-review": {"security-verdict"},
     "policy-engine": {"policy-decision"},
-    "external-proof": {"external-proof", "target-identity"},
+    "external-proof": {"external-proof"},
 }
 # Acceptance criteria declare a `verificationType`; this reconciles it with which gate `type`s
 # may legitimately satisfy it (e2e and reality are treated as mutually satisfying, mirroring the
@@ -838,16 +838,35 @@ class RunStore:
         criteria: Sequence[dict[str, Any]],
         correction: str,
         next_cheapest_test: str,
-        explicit_user_direction: bool,
+        explicit_user_direction: bool = False,
+        checkpoint_id: str | None = None,
+        challenge: str | None = None,
         actor: str = "user",
     ) -> dict[str, Any]:
-        if not explicit_user_direction:
-            raise RuntimeFailure("OBJECTIVE_AUTHORITY", "objective replacement requires explicit user direction")
+        if not explicit_user_direction and (not checkpoint_id or not challenge):
+            raise RuntimeFailure("OBJECTIVE_AUTHORITY", "objective replacement requires a trusted human checkpoint")
         if not outcome.strip() or not correction.strip() or not next_cheapest_test.strip():
             raise RuntimeFailure("INVALID_OBJECTIVE", "replacement outcome, correction, and next test are required")
         normalized = normalize_criteria(criteria, outcome)
 
         def mutate(state: dict[str, Any]) -> dict[str, Any]:
+            if not explicit_user_direction:
+                checkpoint = next(
+                    (item for item in state["externalCheckpoints"] if item["id"] == checkpoint_id),
+                    None,
+                )
+                if (
+                    checkpoint is None
+                    or checkpoint["status"] != "PENDING"
+                    or checkpoint["type"] != "HUMAN_JUDGMENT_REQUIRED"
+                    or hashlib.sha256(str(challenge).encode("utf-8")).hexdigest() != checkpoint["challengeHash"]
+                    or not (actor.startswith("human:") or actor == "coordinator")
+                ):
+                    raise RuntimeFailure("OBJECTIVE_AUTHORITY", "objective replacement checkpoint is invalid")
+                checkpoint["status"] = "RESOLVED"
+                checkpoint["resolvedAt"] = utc_now()
+                checkpoint["resolvedBy"] = actor
+                checkpoint["resolutionRef"] = f"objective:{state['objective']['version'] + 1}"
             prior_version = state["objective"]["version"]
             new_version = prior_version + 1
             new_ids = {item["id"] for item in normalized}
@@ -995,47 +1014,123 @@ class RunStore:
             evidence_refs=evidence_refs,
         )
 
-    def verify_target_identity(
+    def verify_reuse_baseline(
         self,
         run_id: str,
         *,
-        intended: dict[str, str],
-        evidence_refs: Sequence[str],
+        path: str,
+        difference: str,
+        test_command: Sequence[str],
         actor: str = "coordinator",
     ) -> dict[str, Any]:
+        relative = safe_relative_path(path, "reuse baseline path")
+        baseline = self.repository / relative
+        if not baseline.exists() or not difference.strip() or not test_command:
+            raise RuntimeFailure("REUSE_EVIDENCE", "existing baseline, difference, and test command are required")
+        completed = subprocess.run(
+            list(test_command),
+            cwd=self.repository,
+            text=True,
+            capture_output=True,
+            timeout=300,
+            check=False,
+        )
+        if completed.returncode != 0:
+            raise RuntimeFailure(
+                "REUSE_EVIDENCE",
+                "reuse baseline test failed",
+                details={"exitCode": completed.returncode, "stderr": completed.stderr[-1000:]},
+            )
+        artifact_id = f"reuse-{uuid.uuid4().hex}"
+        receipt_path = self.run_dir(run_id) / "evidence" / f"{artifact_id}.json"
+        receipt_path.parent.mkdir(parents=True, exist_ok=True)
+        receipt_path.write_text(
+            json.dumps(
+                {
+                    "status": "pass",
+                    "baselinePath": relative,
+                    "difference": difference.strip(),
+                    "test": list(test_command),
+                    "sha256": sha256_path(baseline),
+                    "stdout": completed.stdout[-2000:],
+                },
+                separators=(",", ":"),
+            ) + "\n",
+            encoding="utf-8",
+        )
+        self._record_reuse_result(
+            run_id,
+            artifact_id=artifact_id,
+            path=receipt_path.relative_to(self.repository).as_posix(),
+            evidence_refs=[],
+        )
+        return self.record_reuse_baseline(
+            run_id,
+            path=relative,
+            difference=difference,
+            evidence_refs=[f"artifact:{artifact_id}"],
+            actor=actor,
+        )
+
+    def resolve_target_identity_checkpoint(
+        self,
+        run_id: str,
+        *,
+        checkpoint_id: str,
+        challenge: str,
+        intended: dict[str, str],
+        observed: dict[str, str],
+        actor: str,
+    ) -> dict[str, Any]:
         required = {"provider", "artifact", "version", "sha256", "environment", "workspace", "acceptanceTarget"}
-        if set(intended) != required:
+        if set(intended) != required or set(observed) != required:
             raise RuntimeFailure("TARGET_IDENTITY_INVALID", "target identity requires provider, artifact, version, sha256, environment, workspace, and acceptanceTarget")
 
         def mutate(state: dict[str, Any]) -> dict[str, Any]:
-            require_evidence_refs(state, evidence_refs, allowed={"artifact"})
-            artifacts = [
-                artifact
-                for artifact in state["artifacts"]
-                if f"artifact:{artifact['id']}" in evidence_refs
-                and artifact["kind"] == "target-identity"
-                and artifact["producer"] == "external-proof"
-            ]
-            if not artifacts:
-                raise RuntimeFailure("TARGET_IDENTITY_INVALID", "trusted target identity evidence is required")
-            receipt = self._read_json_receipt(artifacts[-1]["path"], "target identity")
-            observed = receipt["observed"]
+            checkpoint = next(
+                (item for item in state["externalCheckpoints"] if item["id"] == checkpoint_id),
+                None,
+            )
+            if (
+                checkpoint is None
+                or checkpoint["status"] != "PENDING"
+                or checkpoint["type"] != "SAFE_WRITE_TARGET_REQUIRED"
+                or hashlib.sha256(challenge.encode("utf-8")).hexdigest() != checkpoint["challengeHash"]
+                or not (actor.startswith("human:") or actor == "coordinator")
+                or intended["provider"] != checkpoint["provider"]
+            ):
+                raise RuntimeFailure("TARGET_IDENTITY_INVALID", "target identity checkpoint is invalid")
             mismatches = {
                 key: {"intended": intended[key], "observed": observed[key]}
                 for key in sorted(required)
                 if intended[key] != observed[key]
             }
+            checkpoint["status"] = "RESOLVED"
+            checkpoint["resolvedAt"] = utc_now()
+            checkpoint["resolvedBy"] = actor
+            checkpoint["resolutionRef"] = f"target:{checkpoint_id}"
+            task = find_task(state, checkpoint["taskId"])
+            if not any(
+                item["taskId"] == task["id"] and item["status"] == "PENDING"
+                for item in state["externalCheckpoints"]
+            ):
+                task["status"] = "READY" if dependencies_completed(state, task) else "NOT_READY"
             state["targetIdentity"] = {
+                "checkpointId": checkpoint_id,
+                "principal": checkpoint["principal"],
+                "provider": checkpoint["provider"],
+                "challengeHash": checkpoint["challengeHash"],
                 "intended": dict(intended),
                 "observed": dict(observed),
                 "status": "MISMATCH" if mismatches else "VERIFIED",
                 "mismatches": mismatches,
-                "evidenceRefs": list(dict.fromkeys(evidence_refs)),
                 "objectiveVersion": state["objective"]["version"],
                 "verifiedAt": utc_now(),
             }
             if mismatches:
                 state["status"] = "PAUSED"
+            else:
+                state["status"] = derive_run_status(state)
             return copy.deepcopy(state["targetIdentity"])
 
         return self._transaction(
@@ -1043,7 +1138,6 @@ class RunStore:
             mutate,
             event_type="target.preflight",
             actor=actor,
-            evidence_refs=evidence_refs,
         )
 
     def record_review_result(
@@ -1437,19 +1531,6 @@ class RunStore:
             kind="reuse-baseline",
             actor="deterministic-executor",
             producer="deterministic",
-            **kwargs,
-        )
-
-    def _record_target_identity_result(self, run_id: str, **kwargs: Any) -> dict[str, Any]:
-        receipt = self._read_json_receipt(kwargs["path"], "target identity")
-        required = {"provider", "artifact", "version", "sha256", "environment", "workspace", "acceptanceTarget"}
-        if receipt.get("status") != "pass" or set(receipt.get("observed") or {}) != required:
-            raise RuntimeFailure("TARGET_IDENTITY_INVALID", "target identity receipt is invalid")
-        return self._record_artifact(
-            run_id,
-            kind="target-identity",
-            actor="external-proof",
-            producer="external-proof",
             **kwargs,
         )
 
@@ -3243,11 +3324,29 @@ def build_parser() -> argparse.ArgumentParser:
     task_add.add_argument("--side-effect", help="OPERATION@TARGET")
     task_add.add_argument("--command", dest="execution_command", nargs=argparse.REMAINDER, help="deterministic shell argv (must be last)")
 
-    reuse = subparsers.add_parser("reuse-record")
+    objective = subparsers.add_parser("objective-replace")
+    objective.add_argument("run_id")
+    objective.add_argument("--outcome", required=True)
+    objective.add_argument("--criterion", action="append", required=True)
+    objective.add_argument("--correction", required=True)
+    objective.add_argument("--next-test", required=True)
+    objective.add_argument("--checkpoint-id", required=True)
+    objective.add_argument("--challenge", required=True)
+    objective.add_argument("--actor", required=True)
+
+    reuse = subparsers.add_parser("reuse-verify")
     reuse.add_argument("run_id")
     reuse.add_argument("--path", required=True)
     reuse.add_argument("--difference", required=True)
-    reuse.add_argument("--evidence", action="append", required=True)
+    reuse.add_argument("--test-command", nargs=argparse.REMAINDER, required=True)
+
+    target = subparsers.add_parser("target-resolve")
+    target.add_argument("run_id")
+    target.add_argument("--checkpoint-id", required=True)
+    target.add_argument("--challenge", required=True)
+    target.add_argument("--intended-json", required=True)
+    target.add_argument("--observed-json", required=True)
+    target.add_argument("--actor", required=True)
 
     review = subparsers.add_parser("review-record")
     review.add_argument("run_id")
@@ -3366,13 +3465,37 @@ def cli(argv: Sequence[str] | None = None) -> int:
             if not completed:
                 print(json.dumps({"status": "incomplete", "result": output}, indent=2))
                 return 1
-        elif command == "reuse-record":
+        elif command == "objective-replace":
             output = state_summary(
-                store.record_reuse_baseline(
+                store.replace_objective(
+                    args.run_id,
+                    outcome=args.outcome,
+                    criteria=[parse_criterion(item) for item in args.criterion],
+                    correction=args.correction,
+                    next_cheapest_test=args.next_test,
+                    checkpoint_id=args.checkpoint_id,
+                    challenge=args.challenge,
+                    actor=args.actor,
+                )
+            )
+        elif command == "reuse-verify":
+            output = state_summary(
+                store.verify_reuse_baseline(
                     args.run_id,
                     path=args.path,
                     difference=args.difference,
-                    evidence_refs=args.evidence,
+                    test_command=args.test_command,
+                )
+            )
+        elif command == "target-resolve":
+            output = state_summary(
+                store.resolve_target_identity_checkpoint(
+                    args.run_id,
+                    checkpoint_id=args.checkpoint_id,
+                    challenge=args.challenge,
+                    intended=json.loads(args.intended_json),
+                    observed=json.loads(args.observed_json),
+                    actor=args.actor,
                 )
             )
         elif command == "review-record":

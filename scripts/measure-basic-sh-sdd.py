@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
+import platform
 import shutil
 import subprocess
 import sys
@@ -14,6 +16,14 @@ import sys
 
 def command(args: list[str], cwd: Path) -> str:
     return subprocess.run(args, cwd=cwd, check=True, text=True, capture_output=True).stdout.strip()
+
+
+def file_record(path: Path, root: Path) -> dict[str, object]:
+    return {
+        "path": path.relative_to(root).as_posix(),
+        "bytes": path.stat().st_size,
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+    }
 
 
 def fixture(repo: Path) -> tuple[str, list[str]]:
@@ -149,6 +159,7 @@ def main() -> int:
     parser.add_argument("--source", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--label", required=True)
+    parser.add_argument("--manifest", type=Path)
     args = parser.parse_args()
     target = args.output / args.label
     if target.exists():
@@ -199,17 +210,33 @@ def main() -> int:
     run_dir = store.run_dir(state["runId"])
     files = [path for path in run_dir.rglob("*") if path.is_file()]
     code = [repo / api_name, repo / "contract/status.json", repo / "web/index.html"]
+    orchestration_records = [file_record(path, repo) for path in sorted(files)]
+    code_records = [file_record(path, repo) for path in code]
     metrics = {
-        "orchestrationFiles": len(files),
-        "orchestrationBytes": sum(path.stat().st_size for path in files),
-        "approxTokens": round(sum(path.stat().st_size for path in files) / 4),
-        "actualCodeFiles": len(code),
-        "actualCodeBytes": sum(path.stat().st_size for path in code),
+        "schema": "architrave.orchestration-metrics.v1",
+        "label": args.label,
+        "sourceSha": command(["git", "rev-parse", "HEAD"], args.source),
+        "platform": {
+            "system": platform.system(),
+            "release": platform.release(),
+            "machine": platform.machine(),
+            "python": platform.python_version(),
+        },
+        "orchestrationFiles": len(orchestration_records),
+        "orchestrationBytes": sum(int(item["bytes"]) for item in orchestration_records),
+        "approxTokens": round(sum(int(item["bytes"]) for item in orchestration_records) / 4),
+        "actualCodeFiles": len(code_records),
+        "actualCodeBytes": sum(int(item["bytes"]) for item in code_records),
         "runStatus": final["status"],
         "criteria": {item["id"]: item["status"] for item in final["acceptanceCriteria"]},
+        "orchestrationArtifacts": orchestration_records,
+        "actualCodeArtifacts": code_records,
     }
     target.mkdir(parents=True, exist_ok=True)
     (target / "metrics.json").write_text(json.dumps(metrics, indent=2) + "\n", encoding="utf-8")
+    if args.manifest:
+        args.manifest.parent.mkdir(parents=True, exist_ok=True)
+        args.manifest.write_text(json.dumps(metrics, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(metrics, indent=2))
     return 0
 
