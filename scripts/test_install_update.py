@@ -242,6 +242,7 @@ class InstallUpdateTests(unittest.TestCase):
             self.assertIn("https://www.python.org/downloads/", content)
             self.assertNotIn("managed-paths", content.lower())
             self.assertNotIn("ManagedPaths", content)
+            self.assertIn("sys.version_info", content)
         self.assertLess(len(install_sh.splitlines()), 20)
         self.assertLess(len(update_sh.splitlines()), 20)
         self.assertLess(len(install_ps1.splitlines()), 25)

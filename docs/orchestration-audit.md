@@ -17,11 +17,11 @@ and the UI to fetch that endpoint and render an accessible live status target.
 | Metric | Baseline | After | Reduction |
 |---|---:|---:|---:|
 | Orchestration files | 55 | 10 | **81.82%** |
-| Orchestration bytes | 356,749 | 43,622 | **87.77%** |
-| Approximate tokens (`bytes / 4`) | 89,187 | 10,906 | **87.77%** |
+| Orchestration bytes | 356,749 | 43,912 | **87.69%** |
+| Approximate tokens (`bytes / 4`) | 89,187 | 10,978 | **87.69%** |
 | Actual-code files | 3 | 3 | 0% |
 | Actual-code bytes | 484 | 484 | 0% |
-| Orchestration:code bytes | 737.085:1 | 90.128:1 | **87.77% lower** |
+| Orchestration:code bytes | 737.085:1 | 90.727:1 | **87.69% lower** |
 
 Both runs completed with `API-001=PASS`, `UI-001=PASS`,
 `Run status=COMPLETED`, and `python tests/verify.py` printing
@@ -87,7 +87,7 @@ Implemented controls:
 
 | Failure mode | Enforced control | Metric / footprint impact |
 |---|---|---|
-| Corrections leave old tasks active | Versioned canonical objective; `objective.replaced` defers old tasks, releases leases, fails active workers, resets lanes/target, and requires a next cheapest test | Adds compact state fields; artifact count remains 10 and byte reduction remains 87.77% |
+| Corrections leave old tasks active | Versioned canonical objective; `objective.replaced` defers old tasks, releases leases, fails active workers, resets lanes/target, and requires a next cheapest test | Adds compact state fields; artifact count remains 10 and byte reduction remains 87.69% |
 | Working baseline bypassed | Replacement architecture/compatibility tasks require registered reuse path, evidence, and exact difference under test | Evidence references only; no duplicated baseline prose |
 | Hardening/review before acceptance | Non-security infrastructure/review, large changes, and non-minimal diagnostics are deferred until the minimal slice passes; two review reopens force a batch | Prevents repeated micro-review artifacts |
 | Wrong provider/build | Target preflight binds provider/store, artifact, version/hash, environment/workspace, and acceptance target; mismatch pauses and blocks launch/test/install | One compact identity object plus referenced evidence |
@@ -96,6 +96,15 @@ Implemented controls:
 
 Cross-session status may add evidence but cannot invoke objective replacement
 without explicit user direction.
+
+Independent branch review also closed these concrete defects: pre-focus Run v2
+state now migrates in place with a signed `run.migrated` event and recovery
+snapshot; objective replacement preserves uncertain side effects for mandatory
+reconciliation and safely cancels obsolete external waits; gates/checkpoints are
+objective-version-bound; target and reuse gates require dedicated verified
+receipts; unrelated work cannot bypass deferral by claiming the product lane;
+POSIX recipes preserve Bash compatibility; invalid design-source JSON fails the
+gate; and every launch shim verifies Python 3 before forwarding.
 
 ## Implemented changes
 

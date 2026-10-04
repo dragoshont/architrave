@@ -100,7 +100,7 @@ GATE_EVIDENCE_PRODUCERS = {
     "security": {"security-review"},
 }
 PRODUCER_ARTIFACT_KINDS = {
-    "deterministic": {"deterministic-result"},
+    "deterministic": {"deterministic-result", "reuse-baseline"},
     "invariant": {"invariant-result"},
     "workspace": {"candidate-patch", "workspace-status"},
     "worker": {"worker-result"},
@@ -109,7 +109,7 @@ PRODUCER_ARTIFACT_KINDS = {
     "semantic-judge": {"semantic-verdict"},
     "security-review": {"security-verdict"},
     "policy-engine": {"policy-decision"},
-    "external-proof": {"external-proof"},
+    "external-proof": {"external-proof", "target-identity"},
 }
 # Acceptance criteria declare a `verificationType`; this reconciles it with which gate `type`s
 # may legitimately satisfy it (e2e and reality are treated as mutually satisfying, mirroring the
@@ -162,6 +162,20 @@ def sha256_file(path: Path) -> str:
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
+    return digest.hexdigest()
+
+
+def sha256_path(path: Path) -> str:
+    if path.is_file():
+        return sha256_file(path)
+    if not path.is_dir():
+        raise RuntimeFailure("EVIDENCE_RECEIPT", f"evidence path does not exist: {path}")
+    digest = hashlib.sha256()
+    for child in sorted(item for item in path.rglob("*") if item.is_file()):
+        digest.update(child.relative_to(path).as_posix().encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(sha256_file(child).encode("ascii"))
+        digest.update(b"\n")
     return digest.hexdigest()
 
 
@@ -523,6 +537,57 @@ class RunStore:
     def _load_locked(self, run_id: str) -> tuple[Path, dict[str, Any]]:
         run_dir = self.run_dir(run_id)
         state = self._recover_pending(run_dir, self._read_state(run_dir))
+        if state.get("schema") == SCHEMA and "objective" not in state:
+            events = self._read_events(run_dir)
+            self._verify_events(run_id, events, state.get("eventCursor"))
+            if events and events[-1]["payload"].get("stateHash") != self._state_hash(state):
+                raise RuntimeFailure("RUN_STATE_TAMPERED", "legacy Run state does not match its event log")
+            now = utc_now()
+            criterion_ids = [item["id"] for item in state.get("acceptanceCriteria", [])]
+            state["objective"] = {
+                "version": 1,
+                "description": state["outcome"]["description"],
+                "acceptanceCriteria": criterion_ids,
+                "updatedAt": now,
+                "correctionReason": None,
+            }
+            state["reuseBaseline"] = None
+            state["focus"] = {
+                "nextCheapestTest": None,
+                "lastResetReason": None,
+                "minimalSliceProven": any(
+                    item.get("status") == "PASS" for item in state.get("acceptanceCriteria", [])
+                ),
+                "reviewReopens": 0,
+            }
+            state["lanes"] = {
+                "maxActive": 2,
+                "active": [{"id": "product", "kind": "product", "objectiveVersion": 1}],
+                "deferred": [],
+            }
+            state["targetIdentity"] = None
+            for task in state.get("tasks", []):
+                task.setdefault("objectiveVersion", 1)
+                task.setdefault("lane", "product")
+                task.setdefault("workKind", "product")
+                task.setdefault("changeKind", "normal")
+                task.setdefault("operations", [])
+                task.setdefault("targetIdentity", None)
+                task.setdefault("isMinimalAcceptanceTest", False)
+                task.setdefault("largeChange", False)
+                task.setdefault("deferredReason", None)
+                task.get("workPacket", {}).pop("model", None)
+            for gate in state.get("gateResults", []):
+                gate.setdefault("objectiveVersion", 1)
+            for checkpoint in state.get("externalCheckpoints", []):
+                checkpoint.setdefault("objectiveVersion", 1)
+            state = self._commit_locked(
+                run_dir,
+                state,
+                event_type="run.migrated",
+                actor="runtime",
+                payload={"from": "architrave.run.v2-pre-focus", "to": SCHEMA},
+            )
         validate_run(state)
         self._verify_artifacts(state)
         events = self._read_events(run_dir)
@@ -799,6 +864,7 @@ class RunStore:
                     state["acceptanceCriteria"].append(criterion)
             deferred_tasks: list[str] = []
             cancelled_workers: list[str] = []
+            uncertain_tasks: list[str] = []
             old_workspaces: set[str] = set()
             old_worker_ids: set[str] = set()
             for task in state["tasks"]:
@@ -807,12 +873,27 @@ class RunStore:
                 if task["status"] not in TERMINAL_TASK_STATUSES:
                     if task.get("lease"):
                         old_worker_ids.add(task["lease"]["owner"])
-                    task["status"] = "DEFERRED"
+                    if task.get("sideEffect") and task["sideEffect"]["state"] in {"PENDING", "UNCERTAIN"}:
+                        task["sideEffect"]["state"] = "UNCERTAIN"
+                        task["status"] = "WAITING_RESOURCE"
+                        task["deferredReason"] = "objective replaced; side effect requires reconciliation"
+                        append_checkpoint(state, task["id"], "SIDE_EFFECT_AMBIGUITY")
+                        uncertain_tasks.append(task["id"])
+                    else:
+                        task["status"] = "DEFERRED"
+                        task["deferredReason"] = f"objective replaced by version {new_version}"
+                        deferred_tasks.append(task["id"])
                     task["lease"] = None
-                    task["deferredReason"] = f"objective replaced by version {new_version}"
-                    deferred_tasks.append(task["id"])
                     if task.get("workspace"):
                         old_workspaces.add(str(Path(task["workspace"]).resolve()))
+            for checkpoint in state["externalCheckpoints"]:
+                if checkpoint["status"] != "PENDING" or checkpoint["taskId"] in uncertain_tasks:
+                    continue
+                task = find_task(state, checkpoint["taskId"])
+                if task.get("objectiveVersion", prior_version) == prior_version:
+                    checkpoint["status"] = "CANCELLED"
+                    checkpoint["resolvedAt"] = utc_now()
+                    checkpoint["resolvedBy"] = "objective-replacement"
             for worker in state["workers"]:
                 if worker["status"] == "RUNNING" and (
                     worker["id"] in old_worker_ids or worker.get("workspace") in old_workspaces
@@ -849,13 +930,14 @@ class RunStore:
             state["lanes"]["active"] = [{"id": "product", "kind": "product", "objectiveVersion": new_version}]
             state["reuseBaseline"] = None
             state["targetIdentity"] = None
-            state["status"] = "PLANNING"
+            state["status"] = "WAITING_RESOURCE" if uncertain_tasks else "PLANNING"
             return {
                 "priorVersion": prior_version,
                 "objectiveVersion": new_version,
                 "correction": correction.strip(),
                 "deferredTasks": deferred_tasks,
                 "cancelledWorkers": cancelled_workers,
+                "uncertainTasks": uncertain_tasks,
                 "nextCheapestTest": next_cheapest_test.strip(),
             }
 
@@ -873,9 +955,28 @@ class RunStore:
         relative = safe_relative_path(path, "reuse baseline path")
         if not difference.strip():
             raise RuntimeFailure("REUSE_EVIDENCE", "reuse baseline requires the specific difference being tested")
+        baseline = self.repository / relative
+        if not baseline.exists():
+            raise RuntimeFailure("REUSE_EVIDENCE", f"reuse baseline does not exist: {relative}")
 
         def mutate(state: dict[str, Any]) -> dict[str, Any]:
-            require_evidence_refs(state, evidence_refs, allowed={"artifact", "gate"})
+            require_evidence_refs(state, evidence_refs, allowed={"artifact"})
+            artifacts = [
+                artifact
+                for artifact in state["artifacts"]
+                if f"artifact:{artifact['id']}" in evidence_refs
+                and artifact["kind"] == "reuse-baseline"
+                and artifact["producer"] == "deterministic"
+            ]
+            if not artifacts:
+                raise RuntimeFailure("REUSE_EVIDENCE", "dedicated reuse baseline evidence is required")
+            receipt = self._read_json_receipt(artifacts[-1]["path"], "reuse baseline")
+            if (
+                receipt.get("baselinePath") != relative
+                or receipt.get("difference") != difference.strip()
+                or receipt.get("sha256") != sha256_path(baseline)
+            ):
+                raise RuntimeFailure("REUSE_EVIDENCE", "reuse receipt does not match the requested baseline")
             state["reuseBaseline"] = {
                 "path": relative,
                 "difference": difference.strip(),
@@ -899,16 +1000,26 @@ class RunStore:
         run_id: str,
         *,
         intended: dict[str, str],
-        observed: dict[str, str],
         evidence_refs: Sequence[str],
         actor: str = "coordinator",
     ) -> dict[str, Any]:
         required = {"provider", "artifact", "version", "sha256", "environment", "workspace", "acceptanceTarget"}
-        if set(intended) != required or set(observed) != required:
+        if set(intended) != required:
             raise RuntimeFailure("TARGET_IDENTITY_INVALID", "target identity requires provider, artifact, version, sha256, environment, workspace, and acceptanceTarget")
 
         def mutate(state: dict[str, Any]) -> dict[str, Any]:
-            require_evidence_refs(state, evidence_refs, allowed={"artifact", "gate"})
+            require_evidence_refs(state, evidence_refs, allowed={"artifact"})
+            artifacts = [
+                artifact
+                for artifact in state["artifacts"]
+                if f"artifact:{artifact['id']}" in evidence_refs
+                and artifact["kind"] == "target-identity"
+                and artifact["producer"] == "external-proof"
+            ]
+            if not artifacts:
+                raise RuntimeFailure("TARGET_IDENTITY_INVALID", "trusted target identity evidence is required")
+            receipt = self._read_json_receipt(artifacts[-1]["path"], "target identity")
+            observed = receipt["observed"]
             mismatches = {
                 key: {"intended": intended[key], "observed": observed[key]}
                 for key in sorted(required)
@@ -1077,9 +1188,15 @@ class RunStore:
             active_lane_ids = {item["id"] for item in state["lanes"]["active"]}
             deferred_lane_ids = {item["id"] for item in state["lanes"]["deferred"]}
             deferred_reason = None
-            if lane not in active_lane_ids:
-                unrelated = work_kind in {"communications", "research", "infrastructure"}
-                if unrelated or len(active_lane_ids) >= state["lanes"]["maxActive"]:
+            unrelated = work_kind in {"communications", "research", "infrastructure"}
+            if unrelated:
+                deferred_reason = "unrelated lane deferred behind active product objective"
+                if lane not in active_lane_ids and lane not in deferred_lane_ids:
+                    state["lanes"]["deferred"].append(
+                        {"id": lane, "kind": work_kind, "objectiveVersion": state["objective"]["version"]}
+                    )
+            elif lane not in active_lane_ids:
+                if len(active_lane_ids) >= state["lanes"]["maxActive"]:
                     deferred_reason = "unrelated lane deferred behind active product objective"
                     if lane not in deferred_lane_ids:
                         state["lanes"]["deferred"].append(
@@ -1100,7 +1217,14 @@ class RunStore:
                     deferred_reason = "large change is blocked until the minimal end-to-end path is reproduced"
             if work_kind == "review" and state["focus"]["reviewReopens"] >= 2:
                 deferred_reason = "review findings must be batched before another review"
-            operations = list(dict.fromkeys(str(value) for value in task.get("operations") or []))
+            operations = list(
+                dict.fromkeys(
+                    [
+                        *(str(value) for value in task.get("operations") or []),
+                        *([str(side_effect["operation"]).lower()] if side_effect else []),
+                    ]
+                )
+            )
             normalized = {
                 "id": task_id,
                 "title": str(task.get("title") or task_id),
@@ -1296,6 +1420,38 @@ class RunStore:
         if receipt.get("status") != "pass" or receipt.get("exitCode") != 0 or not receipt.get("command"):
             raise RuntimeFailure("DETERMINISTIC_RECEIPT", "deterministic receipt does not prove a passing command")
         return self._record_artifact(run_id, kind="deterministic-result", actor="deterministic-executor", producer="deterministic", **kwargs)
+
+    def _record_reuse_result(self, run_id: str, **kwargs: Any) -> dict[str, Any]:
+        receipt = self._read_json_receipt(kwargs["path"], "reuse baseline")
+        baseline_path = safe_relative_path(str(receipt.get("baselinePath") or ""), "reuse baseline path")
+        baseline = (self.repository / baseline_path).resolve()
+        if (
+            receipt.get("status") != "pass"
+            or not str(receipt.get("difference") or "").strip()
+            or not str(receipt.get("test") or "").strip()
+            or receipt.get("sha256") != sha256_path(baseline)
+        ):
+            raise RuntimeFailure("REUSE_EVIDENCE", "reuse baseline receipt is invalid or stale")
+        return self._record_artifact(
+            run_id,
+            kind="reuse-baseline",
+            actor="deterministic-executor",
+            producer="deterministic",
+            **kwargs,
+        )
+
+    def _record_target_identity_result(self, run_id: str, **kwargs: Any) -> dict[str, Any]:
+        receipt = self._read_json_receipt(kwargs["path"], "target identity")
+        required = {"provider", "artifact", "version", "sha256", "environment", "workspace", "acceptanceTarget"}
+        if receipt.get("status") != "pass" or set(receipt.get("observed") or {}) != required:
+            raise RuntimeFailure("TARGET_IDENTITY_INVALID", "target identity receipt is invalid")
+        return self._record_artifact(
+            run_id,
+            kind="target-identity",
+            actor="external-proof",
+            producer="external-proof",
+            **kwargs,
+        )
 
     def _record_invariant_result(self, run_id: str, **kwargs: Any) -> dict[str, Any]:
         path = (self.repository / safe_relative_path(str(kwargs["path"]), "invariant result path")).resolve()
@@ -1920,6 +2076,7 @@ class RunStore:
                     "criteria": list(dict.fromkeys(bound_criteria)),
                     "type": gate_type,
                     "family": family,
+                    "objectiveVersion": state["objective"]["version"],
                     "status": status,
                     "startedAt": now,
                     "finishedAt": now,
@@ -1960,6 +2117,8 @@ class RunStore:
                     kind, identifier = reference.split(":", 1)
                     if kind == "gate":
                         gate = next(item for item in state["gateResults"] if item["id"] == identifier)
+                        if gate.get("objectiveVersion", 1) != state["objective"]["version"]:
+                            raise RuntimeFailure("EVIDENCE_SUPERSEDED", "gate evidence belongs to a superseded objective")
                         if criterion_id not in gate["criteria"]:
                             raise RuntimeFailure(
                                 "EVIDENCE_INVALID",
@@ -1985,6 +2144,8 @@ class RunStore:
                                 details={"criterionId": criterion_id, "verificationType": criterion["verificationType"]},
                             )
                         checkpoint = next(item for item in state["externalCheckpoints"] if item["id"] == identifier)
+                        if checkpoint.get("objectiveVersion", 1) != state["objective"]["version"]:
+                            raise RuntimeFailure("EVIDENCE_SUPERSEDED", "external evidence belongs to a superseded objective")
                         bound_task = find_task(state, checkpoint["taskId"])
                         if criterion_id not in bound_task["acceptanceCriteria"]:
                             raise RuntimeFailure(
@@ -2050,6 +2211,7 @@ class RunStore:
                     "createdAt": utc_now(),
                     "status": "PENDING",
                     "resumeTask": task_id,
+                    "objectiveVersion": state["objective"]["version"],
                     "challengeHash": challenge_hash,
                     "resolutionRef": None,
                 }
@@ -2360,6 +2522,11 @@ class RunStore:
                 for checkpoint in state["externalCheckpoints"]
                 if checkpoint["status"] == "PENDING"
             ]
+            uncertain_side_effects = [
+                task["id"]
+                for task in state["tasks"]
+                if task.get("sideEffect") and task["sideEffect"]["state"] == "UNCERTAIN"
+            ]
             high_risk = [criterion for criterion in required if criterion["risk"] in {"R3", "R4"}]
             passed_real_gates = {
                 gate["type"]
@@ -2373,6 +2540,8 @@ class RunStore:
                 state["status"] = "FAILED"
             elif blocked or pending_external:
                 state["status"] = "WAITING_EXTERNAL"
+            elif uncertain_side_effects:
+                state["status"] = "WAITING_RESOURCE"
             elif untested or incomplete_tasks or missing_reality or missing_risk_gates:
                 state["status"] = "VERIFYING"
             else:
@@ -2387,6 +2556,7 @@ class RunStore:
                     "missingEvidence": missing_evidence,
                     "incompleteTasks": incomplete_tasks,
                     "pendingExternalCheckpoints": pending_external,
+                    "uncertainSideEffects": uncertain_side_effects,
                     "missingRealityGate": missing_reality,
                     "missingRiskGates": missing_risk_gates,
                 }
@@ -2685,11 +2855,15 @@ def validate_run(state: dict[str, Any]) -> None:
     for checkpoint in state["externalCheckpoints"]:
         if not re.fullmatch(r"[0-9a-f]{64}", str(checkpoint.get("challengeHash", ""))):
             raise RuntimeFailure("RUN_INVALID", "external checkpoint challenge hash is invalid")
+        if int(checkpoint.get("objectiveVersion", 0)) < 1:
+            raise RuntimeFailure("RUN_INVALID", "external checkpoint objective version is invalid")
     gate_ids: set[str] = set()
     for gate in state["gateResults"]:
         gate_id = require_id(str(gate.get("id") or ""), "gate id")
         if gate_id in gate_ids or not gate.get("criteria") or not set(gate["criteria"]).issubset(criteria_ids):
             raise RuntimeFailure("RUN_INVALID", "gate ids and criterion bindings must be valid")
+        if int(gate.get("objectiveVersion", 0)) < 1:
+            raise RuntimeFailure("RUN_INVALID", "gate objective version is invalid")
         gate_ids.add(gate_id)
     cursor = state["eventCursor"]
     if not isinstance(cursor.get("sequence"), int) or cursor["sequence"] < 0:
@@ -2904,7 +3078,9 @@ def missing_gate_requirements(state: dict[str, Any], criteria: Sequence[dict[str
         passed = [
             gate
             for gate in state["gateResults"]
-            if gate["status"] == "PASS" and criterion["id"] in gate["criteria"]
+            if gate["status"] == "PASS"
+            and gate.get("objectiveVersion", 1) == state["objective"]["version"]
+            and criterion["id"] in gate["criteria"]
         ]
         capabilities: set[str] = {gate["type"] for gate in passed}
         if any(gate["type"] == "semantic" for gate in passed):
@@ -3067,24 +3243,11 @@ def build_parser() -> argparse.ArgumentParser:
     task_add.add_argument("--side-effect", help="OPERATION@TARGET")
     task_add.add_argument("--command", dest="execution_command", nargs=argparse.REMAINDER, help="deterministic shell argv (must be last)")
 
-    objective = subparsers.add_parser("objective-replace")
-    objective.add_argument("run_id")
-    objective.add_argument("--outcome", required=True)
-    objective.add_argument("--criterion", action="append", required=True)
-    objective.add_argument("--correction", required=True)
-    objective.add_argument("--next-test", required=True)
-
     reuse = subparsers.add_parser("reuse-record")
     reuse.add_argument("run_id")
     reuse.add_argument("--path", required=True)
     reuse.add_argument("--difference", required=True)
     reuse.add_argument("--evidence", action="append", required=True)
-
-    target = subparsers.add_parser("target-verify")
-    target.add_argument("run_id")
-    target.add_argument("--intended-json", required=True)
-    target.add_argument("--observed-json", required=True)
-    target.add_argument("--evidence", action="append", required=True)
 
     review = subparsers.add_parser("review-record")
     review.add_argument("run_id")
@@ -3203,32 +3366,12 @@ def cli(argv: Sequence[str] | None = None) -> int:
             if not completed:
                 print(json.dumps({"status": "incomplete", "result": output}, indent=2))
                 return 1
-        elif command == "objective-replace":
-            output = state_summary(
-                store.replace_objective(
-                    args.run_id,
-                    outcome=args.outcome,
-                    criteria=[parse_criterion(item) for item in args.criterion],
-                    correction=args.correction,
-                    next_cheapest_test=args.next_test,
-                    explicit_user_direction=True,
-                )
-            )
         elif command == "reuse-record":
             output = state_summary(
                 store.record_reuse_baseline(
                     args.run_id,
                     path=args.path,
                     difference=args.difference,
-                    evidence_refs=args.evidence,
-                )
-            )
-        elif command == "target-verify":
-            output = state_summary(
-                store.verify_target_identity(
-                    args.run_id,
-                    intended=json.loads(args.intended_json),
-                    observed=json.loads(args.observed_json),
                     evidence_refs=args.evidence,
                 )
             )

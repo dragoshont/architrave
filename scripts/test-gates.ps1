@@ -65,6 +65,13 @@ try {
   Expect-Code 'reconcile-skip' $Repo { ./gates/reconcile.ps1 } 0
   Expect-Code 'backend-checks-skip' $Repo { ./gates/backend-checks.ps1 } 0
 
+  $InvalidDesign = Join-Path $Tmp 'invalid-design'; Make-Repo $InvalidDesign
+  Set-Content -Path (Join-Path $InvalidDesign 'design.json') -Encoding utf8 -Value '{'
+  $InvalidConfig = Get-Content (Join-Path $InvalidDesign 'architrave.config.json') -Raw | ConvertFrom-Json
+  $InvalidConfig.designSource.path = 'design.json'
+  $InvalidConfig | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $InvalidDesign 'architrave.config.json') -Encoding utf8
+  Expect-Code 'checks-invalid-design-json' $InvalidDesign { ./gates/checks.ps1 -Quick } 1
+
   $KnowledgeRepo = Join-Path $Tmp 'knowledge'; Make-Repo $KnowledgeRepo
   Set-Content -Path (Join-Path $KnowledgeRepo 'architrave.config.json') -Encoding utf8 -Value @'
 {

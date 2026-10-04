@@ -10,7 +10,7 @@ foreach ($candidate in $candidates) {
   $command = Get-Command $candidate.Name -ErrorAction SilentlyContinue
   if (-not $command) { continue }
   $prefix = @($candidate.Prefix)
-  & $command.Source @prefix -c 'import sys' *> $null
+  & $command.Source @prefix -c 'import sys; raise SystemExit(0 if sys.version_info[0] == 3 else 1)' *> $null
   if ($LASTEXITCODE -ne 0) { continue }
   & $command.Source @prefix (Join-Path $root 'architrave_cli.py') validate-learning @Forwarded
   exit $LASTEXITCODE

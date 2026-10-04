@@ -3,7 +3,7 @@ $cli = Join-Path $PSScriptRoot 'install_update.py'
 
 $py = Get-Command py -ErrorAction SilentlyContinue
 if ($py) {
-  & $py.Source -3 -c 'import sys' *> $null
+  & $py.Source -3 -c 'import sys; raise SystemExit(0 if sys.version_info[0] == 3 else 1)' *> $null
   if ($LASTEXITCODE -ne 0) { $py = $null }
 }
 if ($py) {
@@ -13,7 +13,7 @@ if ($py) {
 foreach ($name in 'python3','python') {
   $python = Get-Command $name -ErrorAction SilentlyContinue
   if ($python) {
-    & $python.Source -c 'import sys' *> $null
+    & $python.Source -c 'import sys; raise SystemExit(0 if sys.version_info[0] == 3 else 1)' *> $null
     if ($LASTEXITCODE -ne 0) { continue }
     & $python.Source $cli update --entrypoint windows @args
     exit $LASTEXITCODE

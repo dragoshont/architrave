@@ -551,6 +551,7 @@
         "status",
         "resumeTask",
         "challengeHash"
+        ,"objectiveVersion"
       ],
       "additionalProperties": false,
       "properties": {
@@ -575,6 +576,7 @@
         "status": { "type": "string", "enum": ["PENDING", "RESOLVED", "CANCELLED"] },
         "resumeTask": { "$ref": "#/definitions/id" },
         "challengeHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "objectiveVersion": { "type": "integer", "minimum": 1 },
         "resolvedBy": { "type": "string", "minLength": 1 },
         "resolutionRef": { "type": ["string", "null"] }
       }
@@ -616,7 +618,7 @@
     },
     "gateResult": {
       "type": "object",
-      "required": ["id", "taskId", "criteria", "type", "family", "status", "startedAt", "finishedAt", "evidenceRefs"],
+      "required": ["id", "taskId", "criteria", "type", "family", "objectiveVersion", "status", "startedAt", "finishedAt", "evidenceRefs"],
       "additionalProperties": false,
       "properties": {
         "id": { "$ref": "#/definitions/id" },
@@ -629,6 +631,7 @@
         },
         "type": { "type": "string", "enum": ["deterministic", "e2e", "semantic", "reality", "policy", "security"] },
         "family": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" },
+        "objectiveVersion": { "type": "integer", "minimum": 1 },
         "status": { "type": "string", "enum": ["PASS", "FAIL", "BLOCKED", "SKIPPED"] },
         "startedAt": { "$ref": "#/definitions/timestamp" },
         "finishedAt": { "$ref": "#/definitions/timestamp" },

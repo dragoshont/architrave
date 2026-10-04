@@ -30,13 +30,13 @@ def configured_shell_command(
             if Path(executable).name.lower().startswith("powershell"):
                 prefix.extend(["-ExecutionPolicy", "Bypass"])
             return [*prefix, "-Command", command]
-        shell = which("sh") or which("bash")
+        shell = which("bash") or which("sh")
         if shell:
             return [shell, "-c", command]
         raise LaunchError(
             "no command shell is available; install PowerShell or a POSIX shell"
         )
-    shell = which("sh") or which("bash")
+    shell = which("bash") or which("sh")
     if shell:
         return [shell, "-c", command]
     raise LaunchError("no POSIX shell is available")

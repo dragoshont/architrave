@@ -38,6 +38,14 @@ class PlatformLaunchTests(unittest.TestCase):
         with self.assertRaisesRegex(LaunchError, "no POSIX shell"):
             configured_shell_command("true", platform="posix", which=self.mapping({}))
 
+    def test_posix_prefers_bash_for_backward_compatible_recipes(self) -> None:
+        command = configured_shell_command(
+            "[[ -n value ]]",
+            platform="posix",
+            which=self.mapping({"bash": "/bin/bash", "sh": "/bin/sh"}),
+        )
+        self.assertEqual("/bin/bash", command[0])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

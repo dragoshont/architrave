@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
 import subprocess
 import sys
@@ -32,7 +33,12 @@ class FocusControlTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp.cleanup()
 
-    def create(self, outcome: str = "Prove the current product objective.") -> str:
+    def create(
+        self,
+        outcome: str = "Prove the current product objective.",
+        *,
+        policy_allow: list[dict[str, object]] | None = None,
+    ) -> str:
         return self.store.create(
             goal=outcome,
             outcome=outcome,
@@ -49,6 +55,7 @@ class FocusControlTests(unittest.TestCase):
                 }
             ],
             autonomy_scope="approved-program",
+            policy_allow=policy_allow or [],
         )["runId"]
 
     def evidence(self, run_id: str, artifact_id: str = "baseline-evidence") -> str:
@@ -59,6 +66,47 @@ class FocusControlTests(unittest.TestCase):
             encoding="utf-8",
         )
         self.store._record_deterministic_result(
+            run_id,
+            artifact_id=artifact_id,
+            path=path.resolve().relative_to(self.store.repository).as_posix(),
+            evidence_refs=[],
+        )
+        return f"artifact:{artifact_id}"
+
+    def reuse_evidence(self, run_id: str, difference: str) -> str:
+        baseline = self.repo / "existing-login.txt"
+        artifact_id = "reuse-evidence"
+        path = self.store.run_dir(run_id) / "evidence" / f"{artifact_id}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "status": "pass",
+                    "baselinePath": "existing-login.txt",
+                    "difference": difference,
+                    "test": "synthetic existing-login acceptance check",
+                    "sha256": hashlib.sha256(baseline.read_bytes()).hexdigest(),
+                }
+            ) + "\n",
+            encoding="utf-8",
+        )
+        self.store._record_reuse_result(
+            run_id,
+            artifact_id=artifact_id,
+            path=path.resolve().relative_to(self.store.repository).as_posix(),
+            evidence_refs=[],
+        )
+        return f"artifact:{artifact_id}"
+
+    def target_evidence(self, run_id: str, observed: dict[str, str]) -> str:
+        artifact_id = "target-evidence"
+        path = self.store.run_dir(run_id) / "evidence" / f"{artifact_id}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps({"status": "pass", "observed": observed}) + "\n",
+            encoding="utf-8",
+        )
+        self.store._record_target_identity_result(
             run_id,
             artifact_id=artifact_id,
             path=path.resolve().relative_to(self.store.repository).as_posix(),
@@ -86,11 +134,12 @@ class FocusControlTests(unittest.TestCase):
         run_id = self.create("Keep the existing working login and verify the smallest difference.")
         with self.assertRaisesRegex(RuntimeFailure, "existing working implementation"):
             self.add_task(run_id, "replacement", changeKind="replacement-architecture", largeChange=True)
-        evidence = self.evidence(run_id)
+        difference = "Compare the existing login response with the requested acceptance state."
+        evidence = self.reuse_evidence(run_id, difference)
         self.store.record_reuse_baseline(
             run_id,
             path="existing-login.txt",
-            difference="Compare the existing login response with the requested acceptance state.",
+            difference=difference,
             evidence_refs=[evidence],
         )
         self.add_task(
@@ -109,6 +158,7 @@ class FocusControlTests(unittest.TestCase):
         run_id = self.create("Run the requested free-engine game acceptance test.")
         self.add_task(run_id, "game-test", isMinimalAcceptanceTest=True)
         self.add_task(run_id, "communications-bridge", workKind="communications", lane="bridge")
+        self.add_task(run_id, "bridge-on-product-lane", workKind="communications", lane="product")
         state = self.store.replace_objective(
             run_id,
             outcome="Run the requested free-engine game acceptance test on the intended build.",
@@ -132,13 +182,18 @@ class FocusControlTests(unittest.TestCase):
         self.assertEqual(["product"], [lane["id"] for lane in state["lanes"]["active"]])
         bridge = next(task for task in state["tasks"] if task["id"] == "communications-bridge")
         self.assertEqual("DEFERRED", bridge["status"])
+        product_bridge = next(task for task in state["tasks"] if task["id"] == "bridge-on-product-lane")
+        self.assertEqual("DEFERRED", product_bridge["status"])
+        self.assertNotIn("product", {lane["id"] for lane in state["lanes"]["deferred"]})
         checkpoint = self.store.human_checkpoint(run_id)
         self.assertEqual("Launch the intended build once and record the result.", checkpoint["nextCheapestTest"])
         self.assertEqual({"product"}, set(checkpoint["activeLanes"]))
 
     def test_wrong_provider_or_build_aborts_target_preflight(self) -> None:
-        run_id = self.create("Test the intended provider build.")
-        evidence = self.evidence(run_id)
+        run_id = self.create(
+            "Test the intended provider build.",
+            policy_allow=[{"scope": "provider-a", "operations": ["launch"]}],
+        )
         intended = {
             "provider": "provider-a",
             "artifact": "game.exe",
@@ -151,15 +206,17 @@ class FocusControlTests(unittest.TestCase):
         self.add_task(
             run_id,
             "launch-intended-build",
-            operations=["launch"],
+            sideEffect={"operation": "launch", "target": "provider-a"},
             targetIdentity=intended,
             isMinimalAcceptanceTest=True,
         )
+        task = next(task for task in self.store.load(run_id)["tasks"] if task["id"] == "launch-intended-build")
+        self.assertEqual(["launch"], task["operations"])
         observed = {**intended, "provider": "provider-b", "version": "1"}
+        evidence = self.target_evidence(run_id, observed)
         state = self.store.verify_target_identity(
             run_id,
             intended=intended,
-            observed=observed,
             evidence_refs=[evidence],
         )
         self.assertEqual("MISMATCH", state["targetIdentity"]["status"])
@@ -168,8 +225,25 @@ class FocusControlTests(unittest.TestCase):
             self.store.start_task(run_id, "launch-intended-build", worker_id="launcher")
 
     def test_correction_cancels_active_old_work_and_recomputes_next_test(self) -> None:
-        run_id = self.create("Old objective.")
-        self.add_task(run_id, "old-worker-one")
+        run_id = self.create(
+            "Old objective.",
+            policy_allow=[{"scope": "sandbox:fixture", "operations": ["deploy"]}],
+        )
+        old_evidence = self.evidence(run_id, "old-gate-evidence")
+        self.store.record_gate(
+            run_id,
+            gate_id="old-objective-gate",
+            task_id=None,
+            gate_type="deterministic",
+            status="PASS",
+            evidence_refs=[old_evidence],
+            criteria=["ACCEPT-001"],
+        )
+        self.add_task(
+            run_id,
+            "old-worker-one",
+            sideEffect={"operation": "deploy", "target": "sandbox:fixture"},
+        )
         self.add_task(run_id, "old-worker-two")
         self.store.start_task(run_id, "old-worker-one", worker_id="worker-one")
         self.store.start_task(run_id, "old-worker-two", worker_id="worker-two")
@@ -178,7 +252,7 @@ class FocusControlTests(unittest.TestCase):
             outcome="Corrected product objective.",
             criteria=[
                 {
-                    "id": "NEW-001",
+                    "id": "ACCEPT-001",
                     "description": "Corrected objective reaches acceptance.",
                     "scope": "product",
                     "risk": "R1",
@@ -192,12 +266,21 @@ class FocusControlTests(unittest.TestCase):
             next_cheapest_test="Diff and run the existing working path.",
             explicit_user_direction=True,
         )
-        self.assertTrue(all(task["status"] == "DEFERRED" for task in state["tasks"]))
+        uncertain = next(task for task in state["tasks"] if task["id"] == "old-worker-one")
+        deferred = next(task for task in state["tasks"] if task["id"] == "old-worker-two")
+        self.assertEqual("UNCERTAIN", uncertain["sideEffect"]["state"])
+        self.assertEqual("WAITING_RESOURCE", uncertain["status"])
+        self.assertEqual("DEFERRED", deferred["status"])
         self.assertTrue(all(worker["status"] == "FAILED" for worker in state["workers"]))
+        with self.assertRaisesRegex(RuntimeFailure, "superseded objective"):
+            self.store.set_criterion(run_id, "ACCEPT-001", "PASS", ["gate:old-objective-gate"])
+        verified, complete = self.store.verify(run_id)
+        self.assertFalse(complete)
+        self.assertEqual("WAITING_RESOURCE", verified["status"])
         self.add_task(
             run_id,
             "new-minimal-test",
-            acceptanceCriteria=["NEW-001"],
+            acceptanceCriteria=["ACCEPT-001"],
             isMinimalAcceptanceTest=True,
         )
         state = self.store.start_task(run_id, "new-minimal-test", worker_id="new-worker")

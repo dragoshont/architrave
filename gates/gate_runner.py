@@ -106,7 +106,8 @@ def checks(root: Path, quick: bool) -> int:
     else:
         design = config.get("designSource")
         if isinstance(design, dict):
-            check_json_reference(root, design.get("path"), "design source")
+            if not check_json_reference(root, design.get("path"), "design source"):
+                return 1
         if not check_json_reference(root, config.get("designMap"), "design map"):
             return 1
         if not check_json_reference(root, config.get("tokens"), "tokens"):

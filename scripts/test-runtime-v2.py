@@ -99,7 +99,7 @@ class RuntimeV2Tests(unittest.TestCase):
                 "dependencies": dependencies or [],
                 "workerProfile": "shell",
                 "mutablePaths": ["README.md"] if mutable else [],
-                "tools": ["test"],
+                "tools": ["fixture"],
                 "risk": risk,
                 "acceptanceCriteria": ["OUTCOME-001"],
                 "requiredArtifacts": [f"evidence-{task_id}"],
@@ -1012,7 +1012,7 @@ class RuntimeV2Tests(unittest.TestCase):
                 "dependencies": [],
                 "workerProfile": "shell",
                 "mutablePaths": [],
-                "tools": ["test"],
+                "tools": ["fixture"],
                 "risk": "R3",
                 "acceptanceCriteria": ["IOS-OWNED-002"],
                 "requiredArtifacts": ["evidence-deploy"],
@@ -1066,7 +1066,7 @@ class RuntimeV2Tests(unittest.TestCase):
                 "dependencies": [],
                 "workerProfile": "shell",
                 "mutablePaths": [],
-                "tools": ["test"],
+                "tools": ["fixture"],
                 "risk": "R1",
                 "acceptanceCriteria": ["WEB-OWNED-002"],
                 "requiredArtifacts": ["evidence-task-a"],
@@ -1624,7 +1624,7 @@ class RuntimeV2Tests(unittest.TestCase):
                 "workerProfile": "shell",
                 "acceptanceCriteria": ["OUTCOME-001"],
                 "maxAttempts": 2,
-                "backoffSeconds": 1,
+                "backoffSeconds": 3,
             },
         )
         self.store.start_task(run_id, "flaky", worker_id="worker-1")
@@ -1635,7 +1635,7 @@ class RuntimeV2Tests(unittest.TestCase):
         self.assertIsNotNone(task["retryNotBefore"])
         with self.assertRaisesRegex(RuntimeFailure, "backoff"):
             self.store.start_task(run_id, "flaky", worker_id="worker-2")
-        time.sleep(2.1)
+        time.sleep(4.1)
         self.store.start_task(run_id, "flaky", worker_id="worker-2")
         task = next(t for t in self.store.load(run_id)["tasks"] if t["id"] == "flaky")
         self.assertEqual("RUNNING", task["status"])
@@ -1718,6 +1718,34 @@ class RuntimeV2Tests(unittest.TestCase):
         self.assertEqual("advisory-only", migrated["autonomy"]["scope"])
         self.assertEqual(["legacy-1", "legacy-2"], [task["id"] for task in migrated["tasks"]])
         self.assertEqual(["COMPLETED", "READY"], [task["status"] for task in migrated["tasks"]])
+
+    def test_pre_focus_run_v2_is_migrated_in_place(self) -> None:
+        state = self.create()
+        run_id = str(state["runId"])
+        self.add_task(run_id, "legacy-task")
+        run_dir = self.store.run_dir(run_id)
+        legacy = self.store.load(run_id)
+        legacy["tasks"][0]["workPacket"]["model"] = None
+        for key in ("objective", "reuseBaseline", "focus", "lanes", "targetIdentity"):
+            legacy.pop(key)
+        events = self.store.events(run_id)
+        events[-1]["payload"]["stateHash"] = self.store._state_hash(legacy)
+        events[-1]["hash"] = self.store._event_hash(events[-1])
+        legacy["eventCursor"] = {"sequence": len(events), "lastHash": events[-1]["hash"]}
+        (run_dir / "run.json").write_text(
+            json.dumps(legacy, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )
+        (run_dir / "events.jsonl").write_text(
+            "\n".join(json.dumps(event, separators=(",", ":")) for event in events) + "\n",
+            encoding="utf-8",
+        )
+        (run_dir / "recovery.json").unlink()
+        migrated = self.store.load(run_id)
+        self.assertEqual(1, migrated["objective"]["version"])
+        self.assertNotIn("model", migrated["tasks"][0]["workPacket"])
+        self.assertTrue((run_dir / "recovery.json").is_file())
+        self.assertEqual("run.migrated", self.store.events(run_id)[-1]["type"])
 
 
 if __name__ == "__main__":

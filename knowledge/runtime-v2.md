@@ -88,6 +88,9 @@ the objective without explicit user direction.
 When a working baseline is identified, `reuseBaseline` must record its path,
 registered test/diff evidence, and the exact difference being evaluated before a
 replacement architecture or compatibility constraint can enter the TaskGraph.
+Reuse and target-identity receipts are registered only by trusted deterministic
+or external-proof executors; there is intentionally no generic CLI command that
+can self-attest either receipt.
 
 At most two execution lanes are active by default. The product lane cannot be
 displaced by communications, unrelated research, or infrastructure; those
