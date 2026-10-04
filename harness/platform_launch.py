@@ -6,10 +6,10 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import shutil
-from typing import Callable
+from typing import Callable, Optional
 
 
-Which = Callable[[str], str | None]
+Which = Callable[[str], Optional[str]]
 
 
 class LaunchError(RuntimeError):
