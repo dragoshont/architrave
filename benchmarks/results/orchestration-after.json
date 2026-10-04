@@ -1,0 +1,90 @@
+{
+  "schema": "architrave.orchestration-metrics.v1",
+  "label": "after",
+  "sourceSha": "92a5ba841383fe8f304b4abb20d22295f1612d2e",
+  "platform": {
+    "system": "Windows",
+    "release": "11",
+    "machine": "AMD64",
+    "python": "3.13.15"
+  },
+  "orchestrationFiles": 10,
+  "orchestrationBytes": 43178,
+  "approxTokens": 10794,
+  "actualCodeFiles": 3,
+  "actualCodeBytes": 484,
+  "runStatus": "COMPLETED",
+  "criteria": {
+    "API-001": "PASS",
+    "UI-001": "PASS"
+  },
+  "orchestrationArtifacts": [
+    {
+      "path": ".architrave/runs/basic-sh-after/.run.lock",
+      "bytes": 1,
+      "sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-after/events.jsonl",
+      "bytes": 17495,
+      "sha256": "345d7599630f42aa054dedfed7bc8b29ddd4d5edfe076e4652801c62e5322c7d"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-after/evidence/backend.json",
+      "bytes": 296,
+      "sha256": "616fc937b51f61f6237309c46f9880633880de994980c858a8129b802c2015c4"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-after/evidence/ui.json",
+      "bytes": 192,
+      "sha256": "7cf77c16ecf3ff36c615a1d3fd9835cac53f4ad83b7aa0eb0baf3356460a39a9"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-after/recovery.json",
+      "bytes": 11769,
+      "sha256": "f882d6b9c7c8c1d68ebd898858e069f7dfc85b5b1a7816cc693ee7c67b526273"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-after/run.json",
+      "bytes": 11769,
+      "sha256": "f882d6b9c7c8c1d68ebd898858e069f7dfc85b5b1a7816cc693ee7c67b526273"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-after/workers/wp-backend/result.json",
+      "bytes": 423,
+      "sha256": "f970a35d0e342fc55d822804ad105f49015e3a61dbc34223f29ada1fbd50f6c8"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-after/workers/wp-ui/result.json",
+      "bytes": 353,
+      "sha256": "c4c009d32481c2ea8bd585f80c0937e052c5a24b26cbbeda2c8c3f99cb09e66a"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-after/workspaces/backend/candidate.patch",
+      "bytes": 427,
+      "sha256": "870e436c71a4bf1d9d699f28b8e6260283c77c43458a81470d66932c808c57d0"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-after/workspaces/ui/candidate.patch",
+      "bytes": 453,
+      "sha256": "987b02b6e504a2710ace681fa56a22ded5df146793748c46cb579316d6e63602"
+    }
+  ],
+  "actualCodeArtifacts": [
+    {
+      "path": "api.cmd",
+      "bytes": 88,
+      "sha256": "65e7799556813989febefa2f3baf8d7fe77505952e86dd288e5c1e0bbf12d05e"
+    },
+    {
+      "path": "contract/status.json",
+      "bytes": 74,
+      "sha256": "37495f4f4474ccacee1c99cd8a09784c3cb09117e93a533523bfd75295169dc6"
+    },
+    {
+      "path": "web/index.html",
+      "bytes": 322,
+      "sha256": "5b71b056260f005a8982acdc1dc3046ee63a8153b2ff2aabf386997a878d0df3"
+    }
+  ]
+}

@@ -1684,6 +1684,74 @@ class RuntimeV2Tests(unittest.TestCase):
         task = next(t for t in self.store.load(run_id)["tasks"] if t["id"] == "solo")
         self.assertEqual("FAILED", task["status"])
 
+    def test_external_evidence_cannot_cross_objective_versions(self) -> None:
+        state = self.store.create(
+            goal="Resolve synthetic approval.",
+            outcome="Synthetic approval is current.",
+            criteria=[
+                {
+                    "id": "EXT-001",
+                    "description": "Synthetic approval is current.",
+                    "scope": "external",
+                    "risk": "R1",
+                    "verificationType": "external",
+                    "status": "UNTESTED",
+                    "evidenceRefs": [],
+                    "blocking": True,
+                }
+            ],
+            autonomy_scope="approved-program",
+        )
+        run_id = state["runId"]
+        self.store.add_task(
+            run_id,
+            {
+                "id": "external-task",
+                "title": "External",
+                "objective": "Resolve approval.",
+                "workerProfile": "shell",
+                "acceptanceCriteria": ["EXT-001"],
+            },
+        )
+        _, challenge = self.store.wait_external(
+            run_id,
+            checkpoint_id="external-old",
+            task_id="external-task",
+            checkpoint_type="CONSENT_REQUIRED",
+            principal="synthetic-user",
+            provider="synthetic-provider",
+            reason="Synthetic approval.",
+        )
+        evidence = self.evidence(run_id, "external-old-proof", producer="external-proof")
+        self.store.resolve_external(
+            run_id,
+            checkpoint_id="external-old",
+            resolution_ref=evidence,
+            challenge=challenge,
+            actor="human:synthetic-user",
+        )
+        self.store.replace_objective(
+            run_id,
+            outcome="Replacement approval is current.",
+            criteria=[
+                {
+                    "id": "EXT-001",
+                    "description": "Replacement approval is current.",
+                    "scope": "external",
+                    "risk": "R1",
+                    "verificationType": "external",
+                    "status": "UNTESTED",
+                    "evidenceRefs": [],
+                    "blocking": True,
+                }
+            ],
+            correction="Explicit synthetic correction.",
+            next_cheapest_test="Resolve the replacement approval.",
+            explicit_user_direction=True,
+        )
+        with self.assertRaisesRegex(RuntimeFailure, "superseded objective"):
+            self.store.set_criterion(run_id, "EXT-001", "PASS", ["external:external-old"])
+
     def test_v1_summary_remains_migratable(self) -> None:
         legacy = self.repo / "legacy-summary.json"
         legacy.write_text(

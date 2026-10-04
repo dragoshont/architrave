@@ -1,0 +1,315 @@
+{
+  "schema": "architrave.orchestration-metrics.v1",
+  "label": "baseline",
+  "sourceSha": "165da5284e0fff5ecfa7b1fff18593c949ad8fd3",
+  "platform": {
+    "system": "Windows",
+    "release": "11",
+    "machine": "AMD64",
+    "python": "3.13.15"
+  },
+  "orchestrationFiles": 55,
+  "orchestrationBytes": 357449,
+  "approxTokens": 89362,
+  "actualCodeFiles": 3,
+  "actualCodeBytes": 484,
+  "runStatus": "COMPLETED",
+  "criteria": {
+    "API-001": "PASS",
+    "UI-001": "PASS"
+  },
+  "orchestrationArtifacts": [
+    {
+      "path": ".architrave/runs/basic-sh-baseline/.run.lock",
+      "bytes": 1,
+      "sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/deterministic-gates.md",
+      "bytes": 25,
+      "sha256": "b429f3a1fa4d74a33696e427c7cfaeb83e248e556501929bbf8a48ffc8a2dd7e"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/events.jsonl",
+      "bytes": 18767,
+      "sha256": "afeab3ef869e1a2bddc39edf1736921c8a5ab6fda6d1c42edf058aa3606b38e2"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/evidence/backend.json",
+      "bytes": 299,
+      "sha256": "65be63a4c7baa33d1acc12aa718ea513f8b17377254a1362f71294407cec5ffd"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/evidence/ui.json",
+      "bytes": 192,
+      "sha256": "7cf77c16ecf3ff36c615a1d3fd9835cac53f4ad83b7aa0eb0baf3356460a39a9"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/intake.md",
+      "bytes": 123,
+      "sha256": "c242b961d21c78ddf4698108dfb0664c757a5f59b8cbd9e5a631ca601d5d8e3f"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/judge-post.md",
+      "bytes": 45,
+      "sha256": "b6a9fc9f46088d672d7c357d7e8ae2ffe5374c43ad4d1095b4cb40f8c1c5d1a6"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/judge-pre.md",
+      "bytes": 45,
+      "sha256": "2fd6ebec175519cdf682dda2c6996218c4efe2a713539c4d92e2ffe8f6ceb3e4"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/phase-ledger.md",
+      "bytes": 493,
+      "sha256": "802e49e8b840a1757330e3a9d882ba54bba30ade2cd4720a029eee0c562bda7d"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/recommended-plan.md",
+      "bytes": 96,
+      "sha256": "75e0b56723051e94eb4e176f8a3223904e8125f2c429cb563aafc0e6bfc06b25"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/run.json",
+      "bytes": 15401,
+      "sha256": "a1314f4178956e1c7125993ebd89f5d181ba52d07de6b585ad754bf1762bb36c"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/runtime-observer.md",
+      "bytes": 77,
+      "sha256": "33d5e136a860f2423437dcce6d852e9e4ca344f5fb05f9f713a1b4def58329f5"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000000.json",
+      "bytes": 2266,
+      "sha256": "b7e5b94e7ebd8aac560754bae8e42f6fc78bbf6bac9f71c378afc73b88d735b0"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000001.json",
+      "bytes": 4595,
+      "sha256": "a8b4a745c7f18d91a2b3d3fecc1608645f4ba23501e9ff4f1850c0770f7b9df9"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000002.json",
+      "bytes": 4823,
+      "sha256": "9250d5ed6e87d75c54308d973fdc25bb7ff998fb3a18f65b5f6231ded55bf3bc"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000003.json",
+      "bytes": 5335,
+      "sha256": "673d2487090d8fcfb8c238097661b6ec27057b6e0ed48153c695e6a72fd81897"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000004.json",
+      "bytes": 5866,
+      "sha256": "470bc39fe87aac88bf6173ac995efa35c3171f891032c9b5586052eb2726f5ff"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000005.json",
+      "bytes": 6033,
+      "sha256": "26e6671caafed36ce8a14abe3ca9be8b399bf7b94bf1e578ce6d6037faab6ab8"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000006.json",
+      "bytes": 6548,
+      "sha256": "64ea5084e2944c3d575d7b3b931ef0c8ae0268b997b6b223b7f7f4990adbdbde"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000007.json",
+      "bytes": 7061,
+      "sha256": "627af4196b5d3d7d04c34305f48b013db3f5b25d76036acc47932792ef5f2a64"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000008.json",
+      "bytes": 7468,
+      "sha256": "bdbd34bdede89e58c6713a510b4bf63d62e621397d40ca78f933cc3c8fc9ef21"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000009.json",
+      "bytes": 7515,
+      "sha256": "bb5dfda0a9d58e9cfa49275371cd3ba005a4d15724bb2bab9f384418df34dbff"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000010.json",
+      "bytes": 7516,
+      "sha256": "a009496ad6ae9b8af8a9fb53d36a744a760c193d3c8b1cf399970395ae0895c5"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000011.json",
+      "bytes": 8014,
+      "sha256": "3dfaed9c6f7bf54236ea92ba9c7d783f6682b56ca7c454877717304f1e07786f"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000012.json",
+      "bytes": 8643,
+      "sha256": "f2710cca3b7cc61d7e064d80d834a35805daf4aa0a59caa33357e59a99de8512"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000013.json",
+      "bytes": 8904,
+      "sha256": "40d318aacc897428f0b27eaf67bf595b8c68bbf79104a94377fd5d636ece8424"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000014.json",
+      "bytes": 8935,
+      "sha256": "d893bf49d58daf1f2c8c4b9e77dd69eb1f3735e18b88c32090131db0158fff12"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000015.json",
+      "bytes": 11226,
+      "sha256": "3cd1a327e74aa0deea87287028f2d0ca334c9df8c713fbf5c36ffeaac576a85d"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000016.json",
+      "bytes": 11444,
+      "sha256": "27359fc44df1dfb5d83a82841c7f5ca96266fffbf63b419ad70bf839ce012d7f"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000017.json",
+      "bytes": 11913,
+      "sha256": "365818723379d581eedc42d4c26046157ccff31b8cc7f8daced29ac43e132184"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000018.json",
+      "bytes": 12427,
+      "sha256": "657a93585b9dfba3ceae6e02223317aa64b0a11d113d77f4ca3b1eb7d2553e88"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000019.json",
+      "bytes": 12593,
+      "sha256": "500fa7504c51c6d38b9f04ea673dfb45d232c8da25d1099a8ed27e70d958eb92"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000020.json",
+      "bytes": 13093,
+      "sha256": "752851fce6914222da9fd9f695b2dbaa53c6f864e5d4889d691927a0f9443db6"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000021.json",
+      "bytes": 13591,
+      "sha256": "b6b5d2b5ed5240d3af3cbcfcf0ce1bfc800ac29856c700bd06bbf62ddcebb8ac"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000022.json",
+      "bytes": 13994,
+      "sha256": "d195a3ddf509e1c09d4ebae4836a16a03417e489695c253f7f80b006c09a226e"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000023.json",
+      "bytes": 14030,
+      "sha256": "c12793a095516d88fb6060fa13c6381f11771c554acb478404a29b87ff5fc4b5"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000024.json",
+      "bytes": 14030,
+      "sha256": "6b0a4689c27cb70482af86a9f41ac3a21a518770ae7887a4b2952b7a61b0ba86"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000025.json",
+      "bytes": 14513,
+      "sha256": "c4237ad3f42ecf940a164ab04cc712ce9195b2663a77a7ed0281e5d02d684137"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000026.json",
+      "bytes": 15119,
+      "sha256": "1c29b16b5b67f7c5d55f744faad885e639cb1e75df1f7ecd9d0629d229d8f3fb"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000027.json",
+      "bytes": 15375,
+      "sha256": "2890367c1649e050d4a00e792e257d6f9bdeb6acdd46268241d6b46b84e7b2e9"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000028.json",
+      "bytes": 15401,
+      "sha256": "dbc9ecb51bebf9f45952cf4174fa6c55aa10b4c9d16c3d005d5e70061f6de8d9"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000029.json",
+      "bytes": 15401,
+      "sha256": "165226971505ce4f3f6ed0f2e443fc8d4366780f132925c4d3ddb1fbee1bbf31"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/snapshots/000000000030.json",
+      "bytes": 15401,
+      "sha256": "a1314f4178956e1c7125993ebd89f5d181ba52d07de6b585ad754bf1762bb36c"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/summary.json",
+      "bytes": 525,
+      "sha256": "5ed4e635c261a1a596cb066f5b7ec58fc5536c31fe3f5171b9be0e7f29e12a10"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/tournament.md",
+      "bytes": 60,
+      "sha256": "1fb7dce9ba37e0672860252d5dbc7051f296e23d87a5048ce416338e77ab42c8"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/workers/wp-backend/result.json",
+      "bytes": 623,
+      "sha256": "5f895afb2d82acf64b4a7889303b946fc76e42c171e127f8afbf3b9a2d88754c"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/workers/wp-backend/stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/workers/wp-backend/stdout.log",
+      "bytes": 18,
+      "sha256": "319723d3c4a6381b3784178b41ed91ef6848bee57731e399afe62456ded74a65"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/workers/wp-ui/result.json",
+      "bytes": 555,
+      "sha256": "dfc8d6e0042950d596366cc8f9e0833f2f525e04a95df9a641b15456d112ab23"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/workers/wp-ui/stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/workers/wp-ui/stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/workspaces/backend/candidate.patch",
+      "bytes": 442,
+      "sha256": "bbd5f5911d583c21ce7e9e571e224e78d57b48b2f24885d93b6e1f2f9b229947"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/workspaces/backend/status.json",
+      "bytes": 76,
+      "sha256": "ef0aceca0f2c10f0dbbc04c4241224d75722ad56a2f83ab1d9f0499e5790dd42"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/workspaces/ui/candidate.patch",
+      "bytes": 459,
+      "sha256": "4fe1aaaf65cb8b17de401697d12287ab4866014758ea64cfaadcd7dcfe01e0ec"
+    },
+    {
+      "path": ".architrave/runs/basic-sh-baseline/workspaces/ui/status.json",
+      "bytes": 54,
+      "sha256": "b0d3f0fd88d7bbfea7ab04a0543e78d87d087c7ec47edf4a551f8632811569fa"
+    }
+  ],
+  "actualCodeArtifacts": [
+    {
+      "path": "api.cmd",
+      "bytes": 88,
+      "sha256": "65e7799556813989febefa2f3baf8d7fe77505952e86dd288e5c1e0bbf12d05e"
+    },
+    {
+      "path": "contract/status.json",
+      "bytes": 74,
+      "sha256": "37495f4f4474ccacee1c99cd8a09784c3cb09117e93a533523bfd75295169dc6"
+    },
+    {
+      "path": "web/index.html",
+      "bytes": 322,
+      "sha256": "5b71b056260f005a8982acdc1dc3046ee63a8153b2ff2aabf386997a878d0df3"
+    }
+  ]
+}
