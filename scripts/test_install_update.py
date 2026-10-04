@@ -261,17 +261,21 @@ class InstallUpdateTests(unittest.TestCase):
             first_target = first_registry["exactTarget"]["targets"][0]
             identity_destination = Path(first_target["ssh"]["identityFile"])
             known_hosts_destination = Path(first_target["ssh"]["knownHosts"])
-            external_identity = self.workspace / "external-identity"
-            external_known_hosts = self.workspace / "external-known-hosts"
-            external_identity.write_text("external identity sentinel\n", encoding="utf-8")
-            external_known_hosts.write_text("external hosts sentinel\n", encoding="utf-8")
-            identity_destination.unlink()
-            known_hosts_destination.unlink()
-            os.link(external_identity, identity_destination)
-            os.link(external_known_hosts, known_hosts_destination)
-            self.assertEqual(0, self.module.install_exact_target_executor(args, ROOT))
-            self.assertEqual("external identity sentinel\n", external_identity.read_text(encoding="utf-8"))
-            self.assertEqual("external hosts sentinel\n", external_known_hosts.read_text(encoding="utf-8"))
+            if os.name == "nt":
+                self.assertEqual(identity_file.resolve(), identity_destination)
+                self.assertEqual(known_hosts.resolve(), known_hosts_destination)
+            else:
+                external_identity = self.workspace / "external-identity"
+                external_known_hosts = self.workspace / "external-known-hosts"
+                external_identity.write_text("external identity sentinel\n", encoding="utf-8")
+                external_known_hosts.write_text("external hosts sentinel\n", encoding="utf-8")
+                identity_destination.unlink()
+                known_hosts_destination.unlink()
+                os.link(external_identity, identity_destination)
+                os.link(external_known_hosts, known_hosts_destination)
+                self.assertEqual(0, self.module.install_exact_target_executor(args, ROOT))
+                self.assertEqual("external identity sentinel\n", external_identity.read_text(encoding="utf-8"))
+                self.assertEqual("external hosts sentinel\n", external_known_hosts.read_text(encoding="utf-8"))
             second = argparse.Namespace(**vars(args))
             second.artifact = "second remote target"
             second.artifact_path = "/srv/second-target.bin"
@@ -291,12 +295,16 @@ class InstallUpdateTests(unittest.TestCase):
         self.assertEqual("trusted-host", target["ssh"]["host"])
         self.assertEqual("trusted-key-alias", target["ssh"]["hostKeyAlias"])
         self.assertEqual("b" * 64, target["ssh"]["remoteAdapterSha256"])
-        self.assertTrue(Path(target["ssh"]["identityFile"]).is_relative_to(state / "ssh"))
-        self.assertTrue(Path(target["ssh"]["knownHosts"]).is_relative_to(state / "ssh"))
-        self.assertNotEqual(
-            Path(target["ssh"]["identityFile"]).parent,
-            Path(second_target["ssh"]["identityFile"]).parent,
-        )
+        if os.name == "nt":
+            self.assertEqual(identity_file.resolve(), Path(target["ssh"]["identityFile"]))
+            self.assertEqual(known_hosts.resolve(), Path(target["ssh"]["knownHosts"]))
+        else:
+            self.assertTrue(Path(target["ssh"]["identityFile"]).is_relative_to(state / "ssh"))
+            self.assertTrue(Path(target["ssh"]["knownHosts"]).is_relative_to(state / "ssh"))
+            self.assertNotEqual(
+                Path(target["ssh"]["identityFile"]).parent,
+                Path(second_target["ssh"]["identityFile"]).parent,
+            )
 
     def test_ssh_relay_streams_fixed_helper_and_preserves_binding(self) -> None:
         identity_file = self.workspace / "relay_identity"
@@ -413,10 +421,7 @@ class InstallUpdateTests(unittest.TestCase):
             "-p",
             "22",
             "operator@trusted-host",
-            "/usr/bin/python3",
-            "-I",
-            "-S",
-            "-",
+            "/usr/bin/python3 -I -S -",
         ]
         self.assertEqual(expected_argv, captured["argv"])
         kwargs = captured["kwargs"]
@@ -429,7 +434,17 @@ class InstallUpdateTests(unittest.TestCase):
             {
                 key: value
                 for key, value in os.environ.items()
-                if key.upper() in {"SYSTEMROOT", "WINDIR", "TMP", "TEMP", "TMPDIR"}
+                if key.upper()
+                in {
+                    "SYSTEMROOT",
+                    "WINDIR",
+                    "TMP",
+                    "TEMP",
+                    "TMPDIR",
+                    "USERPROFILE",
+                    "HOMEDRIVE",
+                    "HOMEPATH",
+                }
             },
             kwargs["env"],
         )

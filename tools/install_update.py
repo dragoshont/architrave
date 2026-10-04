@@ -306,8 +306,12 @@ def install_exact_target_executor(args: argparse.Namespace, kit: Path) -> int:
         ).hexdigest()[:16]
         ssh_base = state_root / "ssh"
         ssh_root = ssh_base / relay_id
-        identity_path = ssh_root / "identity"
-        known_hosts = ssh_root / "known_hosts"
+        if os.name == "nt":
+            identity_path = identity_source
+            known_hosts = known_hosts_source
+        else:
+            identity_path = ssh_root / "identity"
+            known_hosts = ssh_root / "known_hosts"
         ssh_settings = {
             "executable": str(ssh_executable),
             "executableSha256": sha256_file(ssh_executable),
@@ -353,10 +357,11 @@ def install_exact_target_executor(args: argparse.Namespace, kit: Path) -> int:
     if remote:
         assert ssh_base is not None and ssh_root is not None
         assert identity_bytes is not None and known_hosts_bytes is not None
-        _ensure_private_directory(ssh_base, "executor-install")
-        _ensure_private_directory(ssh_root, "executor-install")
-        _replace_private_bytes(identity_bytes, Path(ssh_settings["identityFile"]), "executor-install")
-        _replace_private_bytes(known_hosts_bytes, Path(ssh_settings["knownHosts"]), "executor-install")
+        if os.name != "nt":
+            _ensure_private_directory(ssh_base, "executor-install")
+            _ensure_private_directory(ssh_root, "executor-install")
+            _replace_private_bytes(identity_bytes, Path(ssh_settings["identityFile"]), "executor-install")
+            _replace_private_bytes(known_hosts_bytes, Path(ssh_settings["knownHosts"]), "executor-install")
     registry["exactTarget"] = {
         "executable": str(executable),
         "executableSha256": executable_digest,

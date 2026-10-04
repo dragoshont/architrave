@@ -205,10 +205,7 @@ def invoke_ssh(ssh: dict[str, Any], request: dict[str, Any]) -> dict[str, Any]:
             "-p",
             str(ssh["port"]),
             f"{ssh['user']}@{ssh['host']}",
-            ssh["remotePython"],
-            "-I",
-            "-S",
-            "-",
+            f"{ssh['remotePython']} -I -S -",
         ],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
@@ -217,7 +214,16 @@ def invoke_ssh(ssh: dict[str, Any], request: dict[str, Any]) -> dict[str, Any]:
         env={
             key: value
             for key, value in os.environ.items()
-            if key.upper() in {"SYSTEMROOT", "WINDIR", "TMP", "TEMP", "TMPDIR"}
+            if key.upper() in {
+                "SYSTEMROOT",
+                "WINDIR",
+                "TMP",
+                "TEMP",
+                "TMPDIR",
+                "USERPROFILE",
+                "HOMEDRIVE",
+                "HOMEPATH",
+            }
         },
     )
     stdout = bytearray()

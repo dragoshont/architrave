@@ -529,11 +529,15 @@ class RunStore:
             known_hosts = _verify_pinned_executable(ssh["knownHosts"], ssh["knownHostsSha256"], "SSH known-hosts")
             for trusted_path, label in ((identity_file, "SSH identity"), (known_hosts, "SSH known-hosts")):
                 try:
-                    trusted_path.relative_to(trust_root)
+                    trusted_path.relative_to(
+                        trust_root.parent / ".ssh"
+                        if os.name == "nt"
+                        else trust_root
+                    )
                 except ValueError as exc:
                     raise RuntimeFailure(
                         "EXECUTOR_TRUST_ROOT_INVALID",
-                        f"trusted {label} must live under the private user trust root",
+                        f"trusted {label} must live under the approved private user SSH trust root",
                     ) from exc
         return {
             **executor,
@@ -553,7 +557,16 @@ class RunStore:
         environment = {
             key: value
             for key, value in os.environ.items()
-            if key.upper() in {"SYSTEMROOT", "WINDIR", "TMP", "TEMP", "TMPDIR"}
+            if key.upper() in {
+                "SYSTEMROOT",
+                "WINDIR",
+                "TMP",
+                "TEMP",
+                "TMPDIR",
+                "USERPROFILE",
+                "HOMEDRIVE",
+                "HOMEPATH",
+            }
         }
         try:
             process = subprocess.Popen(
