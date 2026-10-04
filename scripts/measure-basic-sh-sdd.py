@@ -29,12 +29,54 @@ def command(args: list[str], cwd: Path, *, env: dict[str, str] | None = None) ->
 
 def file_record(path: Path, root: Path) -> dict[str, object]:
     data = path.read_bytes()
+    root_values = {str(root), str(root.resolve()), str(root.absolute())}
+    if os.name == "nt":
+        import ctypes
+        buffer = ctypes.create_unicode_buffer(32768)
+        if ctypes.windll.kernel32.GetLongPathNameW(str(root), buffer, len(buffer)):
+            root_values.add(buffer.value)
+
+    def normalize_value(value, key: str = ""):
+        if key in {"stateHash", "hash", "lastHash", "previousHash", "attestation", "sha256"}:
+            return "<VOLATILE>"
+        if key in {"acquiredAt", "expiresAt", "retryNotBefore"}:
+            return "<TIME>"
+        if key == "commit":
+            return "<FIXTURE_COMMIT>"
+        if isinstance(value, dict):
+            return {item_key: normalize_value(item, item_key) for item_key, item in value.items()}
+        if isinstance(value, list):
+            return [normalize_value(item) for item in value]
+        if isinstance(value, str):
+            for root_value in sorted(root_values, key=len, reverse=True):
+                value = value.replace(root_value, "<REPO>")
+            normalized_path = value.replace("\\", "/")
+            tail = f"{root.parent.name}/{root.name}"
+            position = normalized_path.casefold().find(tail.casefold())
+            if position >= 0:
+                value = "<REPO>" + normalized_path[position + len(tail):]
+            return value
+        return value
+
     try:
         text = data.decode("utf-8")
-    except UnicodeDecodeError:
+        if path.suffix == ".json":
+            normalized = json.dumps(
+                normalize_value(json.loads(text)),
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        elif path.suffix == ".jsonl":
+            normalized = "\n".join(
+                json.dumps(normalize_value(json.loads(line)), sort_keys=True, separators=(",", ":"))
+                for line in text.splitlines()
+            ).encode("utf-8")
+        else:
+            for root_value in sorted(root_values, key=len, reverse=True):
+                text = text.replace(root_value, "<REPO>")
+            normalized = text.encode("utf-8")
+    except (UnicodeDecodeError, json.JSONDecodeError):
         normalized = data
-    else:
-        normalized = text.replace(str(root.resolve()), "<REPO>").encode("utf-8")
     return {
         "path": path.resolve().relative_to(root.resolve()).as_posix(),
         "bytes": path.stat().st_size,
