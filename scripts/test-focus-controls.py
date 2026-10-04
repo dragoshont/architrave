@@ -629,12 +629,12 @@ class FocusControlTests(unittest.TestCase):
         registry_path, registry = self.registry()
         adapter = self.home / ".architrave" / "executors" / "wrong-observation.py"
         adapter.write_text(
-            "import json,sys\n"
+            "import hashlib,json,pathlib,sys\n"
             "request=json.load(sys.stdin)\n"
             "observed=dict(request['intended']); observed['version']='wrong'\n"
             "observation={'artifactPath':request['target']['artifactPath'],'artifactSha256':request['intended']['sha256'],"
             "'artifactSize':1,'workspacePath':request['intended']['workspace'],'workspaceState':'absent',"
-            "'observerSha256':'a'*64,'transport':'local'}\n"
+            "'observerSha256':hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest(),'transport':'local'}\n"
             "print(json.dumps({'schema':'architrave.exact-target-result.v1','status':'observed',"
             "'binding':request['binding'],'observed':observed,'observation':observation}))\n",
             encoding="utf-8",
@@ -679,6 +679,33 @@ class FocusControlTests(unittest.TestCase):
             expected=1,
         )
         self.assertEqual("EXECUTOR_RESULT_INVALID", extra_observation["code"])
+
+        contradictory = self.home / ".architrave" / "executors" / "contradictory-observation.py"
+        contradictory.write_text(
+            "import hashlib,json,pathlib,sys\n"
+            "request=json.load(sys.stdin)\n"
+            "observation={'artifactPath':request['target']['artifactPath'],'artifactSha256':'0'*64,"
+            "'artifactSize':1,'workspacePath':request['intended']['workspace'],'workspaceState':'absent',"
+            "'observerSha256':hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest(),'transport':'local'}\n"
+            "print(json.dumps({'schema':'architrave.exact-target-result.v1','status':'observed',"
+            "'binding':request['binding'],'observed':request['intended'],'observation':observation}))\n",
+            encoding="utf-8",
+        )
+        registry["exactTarget"]["adapter"] = str(contradictory)
+        registry["exactTarget"]["adapterSha256"] = hashlib.sha256(contradictory.read_bytes()).hexdigest()
+        self.write_registry(registry_path, registry)
+        contradictory_observation = self.trusted_cli(
+            "target-attest",
+            run_id,
+            "--checkpoint-id",
+            "target-check-security",
+            "--challenge",
+            challenge,
+            "--actor",
+            "human:synthetic-user",
+            expected=1,
+        )
+        self.assertEqual("EXECUTOR_RESULT_INVALID", contradictory_observation["code"])
 
         other_run, other_challenge, other_intended, other_artifact = self.target_wait(suffix="-other")
         self.install_executor(other_intended, other_artifact)

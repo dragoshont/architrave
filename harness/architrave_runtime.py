@@ -646,6 +646,11 @@ class RunStore:
             if request["target"]["transport"] == "local"
             else common_observation | {"sshHost"}
         )
+        expected_observer_sha256 = (
+            executor["adapterSha256"]
+            if request["target"]["transport"] == "local"
+            else request["target"]["ssh"]["remoteAdapterSha256"]
+        )
         if (
             set(observation) != expected_observation
             or observation.get("transport") != request["target"]["transport"]
@@ -658,6 +663,10 @@ class RunStore:
             or not re.fullmatch(r"[0-9a-f]{64}", str(observation.get("artifactSha256", "")))
             or not re.fullmatch(r"[0-9a-f]{64}", str(observation.get("observerSha256", "")))
             or (request["target"]["transport"] == "ssh" and observation.get("sshHost") != request["target"]["ssh"]["host"])
+            or observation.get("artifactSha256") != request["intended"]["sha256"]
+            or observation.get("artifactPath") != request["target"]["artifactPath"]
+            or observation.get("workspacePath") != request["intended"]["workspace"]
+            or observation.get("observerSha256") != expected_observer_sha256
             or redact(observation) != observation
         ):
             raise RuntimeFailure("EXECUTOR_RESULT_INVALID", "trusted executor observation schema is invalid")
