@@ -79,7 +79,7 @@ def file_record(path: Path, root: Path) -> dict[str, object]:
         normalized = data
     return {
         "path": path.resolve().relative_to(root.resolve()).as_posix(),
-        "bytes": path.stat().st_size,
+        "bytes": len(normalized),
         "sha256": hashlib.sha256(normalized).hexdigest(),
     }
 
