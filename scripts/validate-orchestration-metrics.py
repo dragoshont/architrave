@@ -50,18 +50,22 @@ def load(path: Path) -> dict[str, object]:
 
 def materialize(commit: str, path: Path) -> None:
     git("cat-file", "-e", f"{commit}^{{commit}}")
-    subprocess.run(
+    completed = subprocess.run(
         ["git", "worktree", "add", "--detach", str(path), commit],
         cwd=ROOT,
-        check=True,
+        check=False,
         capture_output=True,
         text=True,
     )
+    if completed.returncode:
+        raise RuntimeError(
+            f"cannot materialize {commit} (exit {completed.returncode}):\n{completed.stdout}\n{completed.stderr}"
+        )
 
 
 def measure(source: Path, output: Path, label: str) -> dict[str, object]:
     manifest = output / f"{label}.json"
-    subprocess.run(
+    completed = subprocess.run(
         [
             sys.executable,
             str(MEASURE),
@@ -75,10 +79,14 @@ def measure(source: Path, output: Path, label: str) -> dict[str, object]:
             str(manifest),
         ],
         cwd=ROOT,
-        check=True,
+        check=False,
         capture_output=True,
         text=True,
     )
+    if completed.returncode:
+        raise RuntimeError(
+            f"measurement failed for {source} (exit {completed.returncode}):\n{completed.stdout}\n{completed.stderr}"
+        )
     return load(manifest)
 
 

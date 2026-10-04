@@ -11,19 +11,34 @@ import os
 from pathlib import Path
 import platform
 import shutil
+import stat
 import subprocess
 import sys
 
 
-def command(args: list[str], cwd: Path) -> str:
-    return subprocess.run(args, cwd=cwd, check=True, text=True, capture_output=True).stdout.strip()
+def command(args: list[str], cwd: Path, *, env: dict[str, str] | None = None) -> str:
+    return subprocess.run(
+        args,
+        cwd=cwd,
+        env={**os.environ, **(env or {})},
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout.strip()
 
 
 def file_record(path: Path, root: Path) -> dict[str, object]:
+    data = path.read_bytes()
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        normalized = data
+    else:
+        normalized = text.replace(str(root.resolve()), "<REPO>").encode("utf-8")
     return {
-        "path": path.relative_to(root).as_posix(),
+        "path": path.resolve().relative_to(root.resolve()).as_posix(),
         "bytes": path.stat().st_size,
-        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "sha256": hashlib.sha256(normalized).hexdigest(),
     }
 
 
@@ -85,7 +100,14 @@ print("basic-sh acceptance: PASS")
     command(["git", "config", "user.email", "architrave@example.invalid"], repo)
     command(["git", "config", "user.name", "Architrave Trial"], repo)
     command(["git", "add", "."], repo)
-    command(["git", "commit", "-qm", "basic-sh fixture"], repo)
+    command(
+        ["git", "commit", "-qm", "basic-sh fixture"],
+        repo,
+        env={
+            "GIT_AUTHOR_DATE": "2026-10-04T00:00:00Z",
+            "GIT_COMMITTER_DATE": "2026-10-04T00:00:00Z",
+        },
+    )
     return api_name, api_command
 
 
@@ -111,7 +133,7 @@ def receipt(store, repo: Path, run_id: str, task_id: str, argv: list[str]) -> st
     store._record_deterministic_result(
         run_id,
         artifact_id=artifact_id,
-        path=path.relative_to(repo).as_posix(),
+        path=path.resolve().relative_to(repo.resolve()).as_posix(),
         evidence_refs=[f"task:{task_id}"],
     )
     store.record_gate(
@@ -164,7 +186,10 @@ def main() -> int:
     args = parser.parse_args()
     target = args.output / args.label
     if target.exists():
-        shutil.rmtree(target)
+        def remove_readonly(function, path, error):
+            os.chmod(path, stat.S_IWRITE)
+            function(path)
+        shutil.rmtree(target, onexc=remove_readonly)
     repo = target / "repo"
     api_name, api_command = fixture(repo)
 
