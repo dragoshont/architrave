@@ -110,10 +110,10 @@
                 "required": ["scope", "operations"],
                 "additionalProperties": false,
                 "properties": {
-                  "scope": { "type": "string", "minLength": 1 },
+                  "scope": { "type": "string", "minLength": 1, "not": { "const": "*" } },
                   "operations": {
                     "type": "array",
-                    "items": { "type": "string", "minLength": 1 },
+                    "items": { "type": "string", "minLength": 1, "not": { "const": "*" } },
                     "minItems": 1,
                     "uniqueItems": true
                   }
@@ -122,7 +122,7 @@
             },
             "confirmationRequired": {
               "type": "array",
-              "items": { "type": "string", "minLength": 1 },
+              "items": { "type": "string", "minLength": 1, "not": { "const": "*" } },
               "uniqueItems": true
             }
           }

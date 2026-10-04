@@ -271,12 +271,31 @@ class _ObjectiveAuthorization:
         self.checkpoint_id = checkpoint_id
 
 
+class _PolicyAuthorization:
+    __slots__ = ("issuer", "objective_version", "revision", "checkpoint_id", "challenge")
+
+    def __init__(
+        self,
+        issuer: object,
+        objective_version: int,
+        revision: int,
+        checkpoint_id: str,
+        challenge: str,
+    ):
+        self.issuer = issuer
+        self.objective_version = objective_version
+        self.revision = revision
+        self.checkpoint_id = checkpoint_id
+        self.challenge = challenge
+
+
 class RunStore:
     def __init__(self, repository: Path | str):
         self.repository = Path(repository).resolve()
         self.runs_root = self.repository / ".architrave" / "runs"
         self.key_path = self.repository / ".architrave" / "runtime.key"
         self.__objective_capability = object()
+        self.__policy_capability = object()
 
     def _runtime_key(self, *, create: bool = False) -> bytes:
         if create and not self.key_path.exists():
@@ -593,6 +612,7 @@ class RunStore:
             for checkpoint in state.get("externalCheckpoints", []):
                 checkpoint.setdefault("objectiveVersion", 1)
                 checkpoint.setdefault("targetBindingHash", None)
+                checkpoint.setdefault("policyAmendment", None)
             state = self._commit_locked(
                 run_dir,
                 state,
@@ -718,12 +738,71 @@ class RunStore:
         run_dir = self.run_dir(run_id)
         with FileLock(run_dir / ".run.lock"):
             _, state = self._load_locked(run_id)
+            before_state = copy.deepcopy(state)
             before_policy = copy.deepcopy(state["policy"])
             before_objective = copy.deepcopy(state["objective"])
             payload = mutate(state) or {}
             objective_authorization = payload.pop("_objectiveAuthorization", None)
-            if actor.startswith("worker:") and state["policy"] != before_policy:
-                raise RuntimeFailure("POLICY_ESCALATION", "workers cannot modify Run policy")
+            policy_authorization = payload.pop("_policyAuthorization", None)
+            if event_type == "policy.amended" or state["policy"] != before_policy:
+                before_checkpoint = next(
+                    (
+                        checkpoint
+                        for checkpoint in before_state["externalCheckpoints"]
+                        if isinstance(policy_authorization, _PolicyAuthorization)
+                        and checkpoint["id"] == policy_authorization.checkpoint_id
+                    ),
+                    None,
+                )
+                after_checkpoint = next(
+                    (
+                        checkpoint
+                        for checkpoint in state["externalCheckpoints"]
+                        if isinstance(policy_authorization, _PolicyAuthorization)
+                        and checkpoint["id"] == policy_authorization.checkpoint_id
+                    ),
+                    None,
+                )
+                expected_policy = copy.deepcopy(before_policy)
+                if before_checkpoint is not None and before_checkpoint.get("policyAmendment") is not None:
+                    delta = before_checkpoint["policyAmendment"]["delta"]
+                    expected_policy["allow"] = merge_policy_allow(expected_policy["allow"], delta["addAllow"])
+                    expected_policy["confirmationRequired"] = list(
+                        dict.fromkeys(
+                            expected_policy["confirmationRequired"] + delta["addConfirmationRequired"]
+                        )
+                    )
+                authorized = (
+                    isinstance(policy_authorization, _PolicyAuthorization)
+                    and policy_authorization.issuer is self.__policy_capability
+                    and policy_authorization.objective_version == before_objective["version"]
+                    and policy_authorization.revision == before_state["revision"]
+                    and bool(policy_authorization.checkpoint_id)
+                    and before_checkpoint is not None
+                    and before_checkpoint["type"] == "HUMAN_JUDGMENT_REQUIRED"
+                    and before_checkpoint["status"] == "PENDING"
+                    and before_checkpoint["objectiveVersion"] == before_objective["version"]
+                    and before_checkpoint.get("policyAmendment") is not None
+                    and hmac.compare_digest(
+                        before_checkpoint["challengeHash"],
+                        hashlib.sha256(policy_authorization.challenge.encode("utf-8")).hexdigest(),
+                    )
+                    and after_checkpoint is not None
+                    and after_checkpoint["status"] == "RESOLVED"
+                    and after_checkpoint["resolvedBy"] == actor
+                    and actor == f"human:{before_checkpoint['principal']}"
+                    and state["policy"] == expected_policy
+                    and policy_amendment_state_isolated(
+                        before_state,
+                        state,
+                        policy_authorization.checkpoint_id,
+                    )
+                )
+                if not authorized:
+                    raise RuntimeFailure(
+                        "POLICY_AUTHORITY",
+                        "policy transitions require a consumed policy-amendment checkpoint",
+                    )
             if (
                 event_type == "objective.replaced"
                 or state["objective"] != before_objective
@@ -812,7 +891,7 @@ class RunStore:
                 "policy": {
                     "default": "deny",
                     "allow": normalize_policy_allow(policy_allow),
-                    "confirmationRequired": list(dict.fromkeys(confirmation_required)),
+                    "confirmationRequired": normalize_confirmation_required(confirmation_required),
                 },
                 "outcome": {
                     "description": outcome.strip(),
@@ -893,6 +972,7 @@ class RunStore:
                 checkpoint is None
                 or checkpoint["status"] != "PENDING"
                 or checkpoint["type"] != "HUMAN_JUDGMENT_REQUIRED"
+                or checkpoint.get("policyAmendment") is not None
                 or checkpoint["objectiveVersion"] != state["objective"]["version"]
                 or hashlib.sha256(str(challenge).encode("utf-8")).hexdigest() != checkpoint["challengeHash"]
                 or actor != f"human:{checkpoint['principal']}"
@@ -2405,6 +2485,7 @@ class RunStore:
                     "resumeTask": task_id,
                     "objectiveVersion": state["objective"]["version"],
                     "targetBindingHash": target_binding,
+                    "policyAmendment": None,
                     "challengeHash": challenge_hash,
                     "resolutionRef": None,
                 }
@@ -2452,6 +2533,11 @@ class RunStore:
                 raise RuntimeFailure("EXTERNAL_CHECKPOINT_NOT_FOUND", f"checkpoint not found: {checkpoint_id}")
             if checkpoint["status"] != "PENDING":
                 raise RuntimeFailure("EXTERNAL_CHECKPOINT_TERMINAL", "checkpoint is not pending")
+            if checkpoint.get("policyAmendment") is not None:
+                raise RuntimeFailure(
+                    "POLICY_AMENDMENT_REQUIRED",
+                    "policy amendment checkpoints must be resolved by the policy-amend command",
+                )
             supplied_hash = hashlib.sha256(challenge.encode("utf-8")).hexdigest()
             if not hmac.compare_digest(checkpoint["challengeHash"], supplied_hash):
                 raise RuntimeFailure("UNTRUSTED_RESOLUTION", "external checkpoint challenge is invalid")
@@ -2498,6 +2584,239 @@ class RunStore:
             evidence_refs=[resolution_ref],
         )
         return state
+
+    def request_policy_amendment(
+        self,
+        run_id: str,
+        *,
+        checkpoint_id: str,
+        task_id: str,
+        principal: str,
+        provider: str,
+        delta: dict[str, Any],
+        reason: str,
+        actor: str,
+    ) -> tuple[dict[str, Any], str]:
+        require_id(checkpoint_id, "policy amendment checkpoint id")
+        normalized_delta = normalize_policy_delta(delta)
+        if not principal.strip() or not provider.strip() or not reason.strip():
+            raise RuntimeFailure(
+                "INVALID_POLICY_AMENDMENT",
+                "policy amendment principal, provider, and reason are required",
+            )
+        if actor != f"human:{principal.strip()}":
+            raise RuntimeFailure(
+                "POLICY_AUTHORITY",
+                "policy amendment requests require the authorized human principal",
+            )
+        challenge = "arc_" + secrets.token_urlsafe(32)
+        challenge_hash = hashlib.sha256(challenge.encode("utf-8")).hexdigest()
+
+        def mutate(state: dict[str, Any]) -> dict[str, Any]:
+            task = find_task(state, task_id)
+            if task["status"] != "READY":
+                raise RuntimeFailure(
+                    "POLICY_AMENDMENT_NOT_READY",
+                    "policy amendment requests require a ready task blocked by the requested policy delta",
+                )
+            if any(item["id"] == checkpoint_id for item in state["externalCheckpoints"]):
+                raise RuntimeFailure("EXTERNAL_CHECKPOINT_EXISTS", f"checkpoint already exists: {checkpoint_id}")
+            running_mutations, uncertain_side_effects = policy_amendment_unsafe_tasks(state)
+            if running_mutations or uncertain_side_effects:
+                raise RuntimeFailure(
+                    "POLICY_AMENDMENT_UNSAFE",
+                    "policy amendment requires no running mutation or unresolved side effect",
+                    details={
+                        "runningMutations": running_mutations,
+                        "uncertainSideEffects": uncertain_side_effects,
+                    },
+                )
+            requirements = task_policy_requirements(task)
+            if not requirements:
+                raise RuntimeFailure(
+                    "POLICY_AMENDMENT_SCOPE",
+                    "policy amendment task has no mutation requirement to authorize",
+                )
+            candidate = copy.deepcopy(state)
+            candidate["policy"]["allow"] = merge_policy_allow(
+                candidate["policy"]["allow"],
+                normalized_delta["addAllow"],
+            )
+            candidate["policy"]["confirmationRequired"] = list(
+                dict.fromkeys(
+                    candidate["policy"]["confirmationRequired"]
+                    + normalized_delta["addConfirmationRequired"]
+                )
+            )
+            changed_requirements = [
+                {"scope": scope, "operation": operation}
+                for scope, operation in requirements
+                if mutation_decision(state, scope, operation, confirmed=False)
+                != mutation_decision(candidate, scope, operation, confirmed=False)
+            ]
+            if not changed_requirements:
+                raise RuntimeFailure(
+                    "POLICY_AMENDMENT_SCOPE",
+                    "requested policy delta does not change this task's exact mutation requirements",
+                )
+            requested_revision = state["revision"] + 1
+            binding = {
+                "runId": state["runId"],
+                "objectiveVersion": state["objective"]["version"],
+                "revision": requested_revision,
+                "principal": principal.strip(),
+                "provider": provider.strip(),
+                "delta": normalized_delta,
+                "reason": reason.strip(),
+                "challengeHash": challenge_hash,
+            }
+            task["status"] = "WAITING_EXTERNAL"
+            state["externalCheckpoints"].append(
+                {
+                    "id": checkpoint_id,
+                    "taskId": task_id,
+                    "type": "HUMAN_JUDGMENT_REQUIRED",
+                    "principal": principal.strip(),
+                    "provider": provider.strip(),
+                    "reason": reason.strip(),
+                    "createdAt": utc_now(),
+                    "status": "PENDING",
+                    "resumeTask": task_id,
+                    "objectiveVersion": state["objective"]["version"],
+                    "targetBindingHash": None,
+                    "policyAmendment": {
+                        "revision": requested_revision,
+                        "delta": normalized_delta,
+                        "bindingHash": sha256_value(binding),
+                    },
+                    "challengeHash": challenge_hash,
+                    "resolutionRef": None,
+                }
+            )
+            append_checkpoint(state, task_id, "EXTERNAL_WAIT")
+            state["status"] = derive_run_status(state)
+            return {
+                "checkpointId": checkpoint_id,
+                "principal": principal.strip(),
+                "provider": provider.strip(),
+                "delta": normalized_delta,
+                "reason": reason.strip(),
+                "requirements": changed_requirements,
+            }
+
+        state = self._transaction(
+            run_id,
+            mutate,
+            event_type="policy.amendment_requested",
+            actor=actor,
+            task_id=task_id,
+        )
+        return state, challenge
+
+    def amend_policy(
+        self,
+        run_id: str,
+        *,
+        checkpoint_id: str,
+        challenge: str,
+        principal: str,
+        provider: str,
+        delta: dict[str, Any],
+        actor: str,
+    ) -> dict[str, Any]:
+        normalized_delta = normalize_policy_delta(delta)
+
+        def mutate(state: dict[str, Any]) -> dict[str, Any]:
+            checkpoint = next(
+                (item for item in state["externalCheckpoints"] if item["id"] == checkpoint_id),
+                None,
+            )
+            if checkpoint is None:
+                raise RuntimeFailure("POLICY_CHECKPOINT_NOT_FOUND", f"checkpoint not found: {checkpoint_id}")
+            amendment = checkpoint.get("policyAmendment")
+            supplied_hash = hashlib.sha256(str(challenge).encode("utf-8")).hexdigest()
+            if (
+                checkpoint["status"] != "PENDING"
+                or checkpoint["type"] != "HUMAN_JUDGMENT_REQUIRED"
+                or amendment is None
+                or checkpoint["objectiveVersion"] != state["objective"]["version"]
+                or amendment["revision"] != state["revision"]
+            ):
+                raise RuntimeFailure("POLICY_AUTHORITY", "policy amendment checkpoint is stale or invalid")
+            if (
+                principal != checkpoint["principal"]
+                or provider != checkpoint["provider"]
+                or actor != f"human:{checkpoint['principal']}"
+                or not hmac.compare_digest(checkpoint["challengeHash"], supplied_hash)
+                or normalized_delta != amendment["delta"]
+            ):
+                raise RuntimeFailure("POLICY_AUTHORITY", "policy amendment authority or requested delta does not match")
+            expected_binding = sha256_value(
+                {
+                    "runId": state["runId"],
+                    "objectiveVersion": state["objective"]["version"],
+                    "revision": state["revision"],
+                    "principal": checkpoint["principal"],
+                    "provider": checkpoint["provider"],
+                    "delta": amendment["delta"],
+                    "reason": checkpoint["reason"],
+                    "challengeHash": checkpoint["challengeHash"],
+                }
+            )
+            if not hmac.compare_digest(amendment["bindingHash"], expected_binding):
+                raise RuntimeFailure("POLICY_AUTHORITY", "policy amendment checkpoint binding is invalid")
+            running_mutations, uncertain_side_effects = policy_amendment_unsafe_tasks(state)
+            if running_mutations or uncertain_side_effects:
+                raise RuntimeFailure(
+                    "POLICY_AMENDMENT_UNSAFE",
+                    "policy amendment requires no running mutation or unresolved side effect",
+                    details={
+                        "runningMutations": running_mutations,
+                        "uncertainSideEffects": uncertain_side_effects,
+                    },
+                )
+            state["policy"]["allow"] = merge_policy_allow(
+                state["policy"]["allow"],
+                amendment["delta"]["addAllow"],
+            )
+            state["policy"]["confirmationRequired"] = list(
+                dict.fromkeys(
+                    state["policy"]["confirmationRequired"]
+                    + amendment["delta"]["addConfirmationRequired"]
+                )
+            )
+            checkpoint["status"] = "RESOLVED"
+            checkpoint["resolvedAt"] = utc_now()
+            checkpoint["resolvedBy"] = actor
+            checkpoint["resolutionRef"] = f"policy:{state['revision'] + 1}"
+            task = find_task(state, checkpoint["resumeTask"])
+            outstanding = any(
+                other["resumeTask"] == task["id"] and other["status"] == "PENDING"
+                for other in state["externalCheckpoints"]
+                if other["id"] != checkpoint_id
+            )
+            if not outstanding:
+                task["status"] = "READY" if dependencies_completed(state, task) else "NOT_READY"
+            state["status"] = derive_run_status(state)
+            return {
+                "checkpointId": checkpoint_id,
+                "delta": amendment["delta"],
+                "resumeTask": task["id"],
+                "_policyAuthorization": _PolicyAuthorization(
+                    self.__policy_capability,
+                    state["objective"]["version"],
+                    state["revision"],
+                    checkpoint_id,
+                    challenge,
+                ),
+            }
+
+        return self._transaction(
+            run_id,
+            mutate,
+            event_type="policy.amended",
+            actor=actor,
+        )
 
     def reconcile_side_effect(
         self,
@@ -2849,11 +3168,108 @@ def normalize_policy_allow(entries: Sequence[dict[str, Any]]) -> list[dict[str, 
         operations = tuple(dict.fromkeys(str(item).strip() for item in entry.get("operations", []) if str(item).strip()))
         if not scope or not operations:
             raise RuntimeFailure("INVALID_POLICY", "policy allows require scope and operations")
+        if scope == "*" or "*" in operations:
+            raise RuntimeFailure("INVALID_POLICY", "policy grants require exact scopes and operations")
         key = (scope, operations)
         if key not in seen:
             result.append({"scope": scope, "operations": list(operations)})
             seen.add(key)
     return result
+
+
+def normalize_confirmation_required(operations: Sequence[Any]) -> list[str]:
+    normalized = list(dict.fromkeys(str(item).strip() for item in operations if str(item).strip()))
+    if "*" in normalized:
+        raise RuntimeFailure("INVALID_POLICY", "confirmation-required operations must be exact")
+    return normalized
+
+
+def normalize_policy_delta(delta: dict[str, Any]) -> dict[str, Any]:
+    if set(delta) - {"addAllow", "addConfirmationRequired"}:
+        raise RuntimeFailure("INVALID_POLICY_AMENDMENT", "policy amendment contains unsupported fields")
+    try:
+        add_allow = normalize_policy_allow(delta.get("addAllow") or [])
+        add_confirmation = normalize_confirmation_required(delta.get("addConfirmationRequired") or [])
+    except RuntimeFailure as exc:
+        raise RuntimeFailure("INVALID_POLICY_AMENDMENT", exc.message) from exc
+    if not add_allow and not add_confirmation:
+        raise RuntimeFailure("INVALID_POLICY_AMENDMENT", "policy amendment delta must add an exact grant")
+    return {
+        "addAllow": add_allow,
+        "addConfirmationRequired": add_confirmation,
+    }
+
+
+def merge_policy_allow(
+    existing: Sequence[dict[str, Any]],
+    additions: Sequence[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    merged: dict[str, list[str]] = {}
+    order: list[str] = []
+    for entry in [*existing, *additions]:
+        scope = entry["scope"]
+        if scope not in merged:
+            merged[scope] = []
+            order.append(scope)
+        merged[scope] = list(dict.fromkeys(merged[scope] + list(entry["operations"])))
+    return [{"scope": scope, "operations": merged[scope]} for scope in order]
+
+
+def task_policy_requirements(task: dict[str, Any]) -> list[tuple[str, str]]:
+    requirements: list[tuple[str, str]] = []
+    if task.get("mutablePaths"):
+        requirements.append(("repository", "edit"))
+    side_effect = task.get("sideEffect")
+    if side_effect is not None:
+        requirements.append((side_effect["target"], side_effect["operation"]))
+    return list(dict.fromkeys(requirements))
+
+
+def policy_amendment_unsafe_tasks(state: dict[str, Any]) -> tuple[list[str], list[str]]:
+    running_mutations = [
+        task["id"]
+        for task in state["tasks"]
+        if task["status"] == "RUNNING" and task_policy_requirements(task)
+    ]
+    uncertain_side_effects = [
+        task["id"]
+        for task in state["tasks"]
+        if task.get("sideEffect") is not None
+        and task["sideEffect"]["state"] in {"PENDING", "UNCERTAIN"}
+    ]
+    return running_mutations, uncertain_side_effects
+
+
+def policy_amendment_state_isolated(
+    before: dict[str, Any],
+    after: dict[str, Any],
+    checkpoint_id: str,
+) -> bool:
+    expected = copy.deepcopy(before)
+    candidate = copy.deepcopy(after)
+    candidate["policy"] = copy.deepcopy(expected["policy"])
+    candidate["status"] = expected["status"]
+    before_checkpoint = next(
+        (item for item in expected["externalCheckpoints"] if item["id"] == checkpoint_id),
+        None,
+    )
+    after_checkpoint = next(
+        (item for item in candidate["externalCheckpoints"] if item["id"] == checkpoint_id),
+        None,
+    )
+    if before_checkpoint is None or after_checkpoint is None:
+        return False
+    resume_task = before_checkpoint["resumeTask"]
+    before_task = next((item for item in expected["tasks"] if item["id"] == resume_task), None)
+    after_task = next((item for item in candidate["tasks"] if item["id"] == resume_task), None)
+    if before_task is None or after_task is None or after_task["status"] not in {"READY", "NOT_READY"}:
+        return False
+    after_task["status"] = before_task["status"]
+    for field in ("resolvedAt", "resolvedBy"):
+        after_checkpoint.pop(field, None)
+    after_checkpoint["status"] = before_checkpoint["status"]
+    after_checkpoint["resolutionRef"] = before_checkpoint["resolutionRef"]
+    return candidate == expected
 
 
 def normalize_criteria(criteria: Sequence[dict[str, Any]], outcome: str) -> list[dict[str, Any]]:
@@ -3000,6 +3416,7 @@ def validate_run(state: dict[str, Any]) -> None:
     if state["policy"].get("default") != "deny":
         raise RuntimeFailure("RUN_INVALID", "mutation policy must default to deny")
     normalize_policy_allow(state["policy"].get("allow") or [])
+    normalize_confirmation_required(state["policy"].get("confirmationRequired") or [])
     criteria_ids: set[str] = set()
     for criterion in state["acceptanceCriteria"]:
         criterion_id = require_id(str(criterion.get("id") or ""), "criterion id")
@@ -3053,6 +3470,16 @@ def validate_run(state: dict[str, Any]) -> None:
         binding = checkpoint.get("targetBindingHash")
         if binding is not None and not re.fullmatch(r"[0-9a-f]{64}", str(binding)):
             raise RuntimeFailure("RUN_INVALID", "external checkpoint target binding is invalid")
+        amendment = checkpoint.get("policyAmendment")
+        if amendment is not None:
+            if (
+                checkpoint.get("type") != "HUMAN_JUDGMENT_REQUIRED"
+                or not isinstance(amendment.get("revision"), int)
+                or amendment["revision"] < 0
+                or not re.fullmatch(r"[0-9a-f]{64}", str(amendment.get("bindingHash", "")))
+                or normalize_policy_delta(amendment.get("delta") or {}) != amendment.get("delta")
+            ):
+                raise RuntimeFailure("RUN_INVALID", "policy amendment checkpoint binding is invalid")
     gate_ids: set[str] = set()
     for gate in state["gateResults"]:
         gate_id = require_id(str(gate.get("id") or ""), "gate id")
@@ -3313,8 +3740,7 @@ def mutation_decision(state: dict[str, Any], scope: str, operation: str, *, conf
     if state["autonomy"]["scope"] == "advisory-only":
         return {"status": "denied", "reason": "advisory-only", "scope": scope, "operation": operation}
     allowed = any(
-        (entry["scope"] == scope or entry["scope"] == "*")
-        and (operation in entry["operations"] or "*" in entry["operations"])
+        entry["scope"] == scope and operation in entry["operations"]
         for entry in state["policy"]["allow"]
     )
     if not allowed:
@@ -3525,6 +3951,27 @@ def build_parser() -> argparse.ArgumentParser:
     resolve.add_argument("--challenge", required=True)
     resolve.add_argument("--actor", required=True, help="human:<name> or coordinator")
 
+    policy_request = subparsers.add_parser("policy-amend-request")
+    policy_request.add_argument("run_id")
+    policy_request.add_argument("--id", required=True)
+    policy_request.add_argument("--task-id", required=True)
+    policy_request.add_argument("--principal", required=True)
+    policy_request.add_argument("--provider", required=True)
+    policy_request.add_argument("--actor", required=True)
+    policy_request.add_argument("--reason", required=True)
+    policy_request.add_argument("--add-allow", action="append", default=[])
+    policy_request.add_argument("--add-confirmation-required", action="append", default=[])
+
+    policy_amend = subparsers.add_parser("policy-amend")
+    policy_amend.add_argument("run_id")
+    policy_amend.add_argument("checkpoint_id")
+    policy_amend.add_argument("--challenge", required=True)
+    policy_amend.add_argument("--principal", required=True)
+    policy_amend.add_argument("--provider", required=True)
+    policy_amend.add_argument("--actor", required=True)
+    policy_amend.add_argument("--add-allow", action="append", default=[])
+    policy_amend.add_argument("--add-confirmation-required", action="append", default=[])
+
     reconcile = subparsers.add_parser("reconcile-side-effect")
     reconcile.add_argument("run_id")
     reconcile.add_argument("task_id")
@@ -3722,6 +4169,36 @@ def cli(argv: Sequence[str] | None = None) -> int:
                     checkpoint_id=args.checkpoint_id,
                     resolution_ref=args.resolution_ref,
                     challenge=args.challenge,
+                    actor=args.actor,
+                )
+            )
+        elif command == "policy-amend-request":
+            state, challenge = store.request_policy_amendment(
+                args.run_id,
+                checkpoint_id=args.id,
+                task_id=args.task_id,
+                principal=args.principal,
+                provider=args.provider,
+                delta={
+                    "addAllow": [parse_policy_allow(item) for item in args.add_allow],
+                    "addConfirmationRequired": args.add_confirmation_required,
+                },
+                reason=args.reason,
+                actor=args.actor,
+            )
+            output = {**state_summary(state), "resolutionChallenge": challenge}
+        elif command == "policy-amend":
+            output = state_summary(
+                store.amend_policy(
+                    args.run_id,
+                    checkpoint_id=args.checkpoint_id,
+                    challenge=args.challenge,
+                    principal=args.principal,
+                    provider=args.provider,
+                    delta={
+                        "addAllow": [parse_policy_allow(item) for item in args.add_allow],
+                        "addConfirmationRequired": args.add_confirmation_required,
+                    },
                     actor=args.actor,
                 )
             )

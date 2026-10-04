@@ -12,27 +12,20 @@ prove the requested product outcome actually occurred.
 
 ![Architrave — ground in the repo, route to specialists, gate with a judge plus real checks, then ship](assets/overview.png)
 
-## Latest news: v0.11.1
+## Latest news: v0.11.2
 
-Released **September 9, 2026**. This update keeps Architrave's safety controls
-while making product delivery—not ceremony—the scheduling priority.
+Released **October 4, 2026**. This update closes the immutable-policy usability
+gap without weakening Run v2's default-deny boundary.
 
-- **Delivery-first slices:** full-product work starts with the smallest
-  demonstrable user-visible vertical slice.
-- **Ceremony budget:** at most two consecutive support-only tasks or one
-  full-gate cycle before returning to product behavior, unless a blocking
-  criterion proves the dependency.
-- **Targeted-first verification:** full configured gates run at integrated
-  slice, release, Outcome, or mandatory R3/R4 boundaries—not after every task.
-- **Bounded reviews and stalls:** two semantic reopens consolidate into one fix
-  batch; a third non-PASS stops the attempt. No output for 15 minutes or more
-  than twice the expected duration is treated as stalled.
-- **Product-first status:** artifact, event, and gate counts no longer stand in
-  for usable product progress.
-- **Figma-ready agent:** the canonical Architrave agent includes Figma MCP tool
-  patterns while retaining Storybook, Mobbin, and SearXNG support.
+- **Challenge-bound policy amendments:** an existing Run can add exact mutation
+  grants and confirmation-required operations without replacing its objective.
+- **Transaction-bound authorization:** direct `_transaction`, event-name,
+  worker, coordinator, actor-string, replay, stale-revision, and cross-Run
+  attempts cannot modify policy.
+- **Safe resumption:** amendments apply only with no active or uncertain
+  mutation; policy-blocked tasks become ready but never replay automatically.
 
-Read the [full changelog](CHANGELOG.md#0111---2026-09-09).
+Read the [full changelog](CHANGELOG.md#0112---2026-10-04).
 After updating the plugin, refresh each adopted repository's copied kit assets
 using the [update instructions](#install).
 

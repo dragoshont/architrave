@@ -282,10 +282,10 @@
             "required": ["scope", "operations"],
             "additionalProperties": false,
             "properties": {
-              "scope": { "type": "string", "minLength": 1 },
+              "scope": { "type": "string", "minLength": 1, "not": { "const": "*" } },
               "operations": {
                 "type": "array",
-                "items": { "type": "string", "minLength": 1 },
+                "items": { "type": "string", "minLength": 1, "not": { "const": "*" } },
                 "minItems": 1,
                 "uniqueItems": true
               }
@@ -294,7 +294,7 @@
         },
         "confirmationRequired": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 },
+          "items": { "type": "string", "minLength": 1, "not": { "const": "*" } },
           "uniqueItems": true
         }
       }
@@ -351,13 +351,13 @@
         },
         "contextBundle": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 },
+          "items": { "type": "string", "minLength": 1, "not": { "const": "*" } },
           "uniqueItems": true
         },
         "repoScope": { "type": "string", "minLength": 1 },
         "mutablePaths": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 },
+          "items": { "type": "string", "minLength": 1, "not": { "const": "*" } },
           "uniqueItems": true
         },
         "tools": {
@@ -581,6 +581,49 @@
           "oneOf": [
             { "type": "null" },
             { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          ]
+        },
+        "policyAmendment": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["revision", "delta", "bindingHash"],
+              "additionalProperties": false,
+              "properties": {
+                "revision": { "type": "integer", "minimum": 0 },
+                "delta": {
+                  "type": "object",
+                  "required": ["addAllow", "addConfirmationRequired"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "addAllow": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["scope", "operations"],
+                        "additionalProperties": false,
+                        "properties": {
+                          "scope": { "type": "string", "minLength": 1, "not": { "const": "*" } },
+                          "operations": {
+                            "type": "array",
+                            "items": { "type": "string", "minLength": 1, "not": { "const": "*" } },
+                            "minItems": 1,
+                            "uniqueItems": true
+                          }
+                        }
+                      }
+                    },
+                    "addConfirmationRequired": {
+                      "type": "array",
+                      "items": { "type": "string", "minLength": 1, "not": { "const": "*" } },
+                      "uniqueItems": true
+                    }
+                  }
+                },
+                "bindingHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+              }
+            }
           ]
         },
         "resolvedBy": { "type": "string", "minLength": 1 },

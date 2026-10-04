@@ -39,6 +39,33 @@ An `approved-program` Run crosses internal phase/task boundaries automatically.
 It still stops for policy denial, failure, exhausted retry, unavailable worker or
 resource, cancellation, and typed external checkpoints.
 
+## Policy amendment
+
+Run policy remains immutable except for an additive, challenge-bound amendment.
+Request the exact delta against the task blocked by policy, then apply the same
+delta as the authorized principal:
+
+```bash
+python3 harness/architrave_runtime.py policy-amend-request <run-id> \
+  --id policy-scope-correction --task-id publish \
+  --principal release-owner --provider user-direction \
+  --actor human:release-owner \
+  --reason "Correct public-candidate:edit to repository:edit." \
+  --add-allow repository:edit
+
+python3 harness/architrave_runtime.py policy-amend <run-id> policy-scope-correction \
+  --challenge <one-time-challenge> \
+  --principal release-owner --provider user-direction \
+  --actor human:release-owner --add-allow repository:edit
+```
+
+The request binds the Run, current objective version and revision, principal,
+provider, exact additive delta, reason, and one-time challenge. Any intervening
+transition makes it stale. Apply fails while a mutating task is running or a
+side effect is pending/uncertain. Success returns the blocked task to `READY`;
+it never starts or replays the action automatically. The command cannot change
+default deny, autonomy, objective/outcome, task paths, or other Run state.
+
 ## Safety
 
 Policy defaults to deny. Workers cannot change policy, resolve challenge-bound

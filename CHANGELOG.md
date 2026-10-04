@@ -7,7 +7,29 @@ Releases at or before **v0.8.12** are on the
 
 ## Unreleased
 
+### Planned
+- Add a public Run cancel/supersede transition and make invalid unstarted-task
+  intake terminal instead of retry-ready.
+- Add a public trusted external-attestation registration path for factual
+  cross-session checkpoint receipts without private executor hooks.
+
+## [0.11.2] - 2026-10-04
+
+### Added
+- Public `policy-amend-request` and `policy-amend` Run v2 commands for additive,
+  exact-scope mutation grants and confirmation-required operations.
+- Replay-protected amendment checkpoints bound to Run, objective version,
+  revision, principal, provider, exact delta, reason, and one-time challenge.
+- Public CLI regressions for the `public-candidate:edit` to `repository:edit`
+  correction and authorization, replay, stale-state, cross-Run, transaction,
+  worker/coordinator spoof, and active-mutation rejection paths.
+
 ### Changed
+- Policy mutation authorization is enforced inside the transaction commit
+  boundary with a store-private capability.
+- A successful amendment releases its policy-blocked task to `READY` without
+  replaying the action; active or uncertain mutation state fails closed.
+
 - Model selection is entirely user/host-owned; canonical agents, Run state,
   WorkPackets, schemas, templates, and docs no longer specify model classes,
   tiers, providers, reasoning levels, context tiers, or concrete models.
@@ -43,6 +65,7 @@ Releases at or before **v0.8.12** are on the
 - Repeated micro-review loops now consolidate after two reopens and stop after
   a third non-PASS.
 
+[0.11.2]: https://github.com/dragoshont/architrave/compare/v0.11.1...v0.11.2
 [0.11.1]: https://github.com/dragoshont/architrave/compare/v0.11.0...v0.11.1
 
 ## [0.11.0] - 2026-09-05

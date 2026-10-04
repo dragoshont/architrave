@@ -17,7 +17,15 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "harness"))
 
-from architrave_runtime import FileLock, RunStore, RuntimeFailure, parse_iso, state_summary, utc_now
+from architrave_runtime import (
+    FileLock,
+    RunStore,
+    RuntimeFailure,
+    _PolicyAuthorization,
+    parse_iso,
+    state_summary,
+    utc_now,
+)
 
 
 class RuntimeV2Tests(unittest.TestCase):
@@ -44,6 +52,17 @@ class RuntimeV2Tests(unittest.TestCase):
             capture_output=True,
             text=True,
         ).stdout.strip()
+
+    def runtime_cli(self, *args: str, expected: int = 0) -> dict[str, object]:
+        completed = subprocess.run(
+            [sys.executable, str(ROOT / "harness" / "architrave_runtime.py"), "--repo", str(self.repo), *args],
+            cwd=self.repo,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(expected, completed.returncode, completed.stderr or completed.stdout)
+        stream = completed.stdout if completed.returncode == 0 else completed.stderr
+        return json.loads(stream)
 
     def criterion(
         self, *, risk: str = "R1", verification: str = "deterministic", surface: str | None = None
@@ -304,6 +323,549 @@ class RuntimeV2Tests(unittest.TestCase):
         self.assertEqual("denied", denied["status"])
         self.assertEqual("confirmation-required", pending["status"])
         self.assertEqual("allowed", allowed["status"])
+
+    def test_policy_rejects_wildcards_at_creation_config_cli_and_load(self) -> None:
+        for allow, confirmation in (
+            ([{"scope": "*", "operations": ["edit"]}], []),
+            ([{"scope": "repository", "operations": ["*"]}], []),
+            ([], ["*"]),
+        ):
+            with self.assertRaisesRegex(RuntimeFailure, "exact"):
+                self.store.create(
+                    goal="Reject wildcard policy.",
+                    outcome="Only exact policy grants are accepted.",
+                    criteria=[self.criterion()],
+                    autonomy_scope="approved-program",
+                    policy_allow=allow,
+                    confirmation_required=confirmation,
+                )
+
+        cli_rejected = self.runtime_cli(
+            "run",
+            "--run-id",
+            "wildcard-cli",
+            "--goal",
+            "Reject wildcard policy.",
+            "--outcome",
+            "Only exact policy grants are accepted.",
+            "--allow",
+            "*:edit",
+            expected=1,
+        )
+        self.assertEqual("INVALID_POLICY", cli_rejected["error"]["code"])
+
+        (self.repo / "architrave.config.json").write_text(
+            json.dumps(
+                {
+                    "autonomy": {
+                        "mutationPolicy": {
+                            "allow": [{"scope": "repository", "operations": ["*"]}],
+                            "confirmationRequired": [],
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(RuntimeFailure, "exact"):
+            self.store.create(
+                goal="Reject configured wildcard policy.",
+                outcome="Configured policy remains exact.",
+                criteria=[self.criterion()],
+            )
+        (self.repo / "architrave.config.json").unlink()
+
+        valid = self.create()
+        valid_id = str(valid["runId"])
+        path = self.store.run_dir(valid_id) / "run.json"
+        forged = json.loads(path.read_text(encoding="utf-8"))
+        forged["policy"]["allow"] = [{"scope": "*", "operations": ["edit"]}]
+        path.write_text(json.dumps(forged), encoding="utf-8")
+        with self.assertRaisesRegex(RuntimeFailure, "exact"):
+            self.store.load(valid_id)
+
+        config_schema = json.loads((ROOT / "kit" / "architrave.config.schema.json").read_text(encoding="utf-8"))
+        config_policy = config_schema["properties"]["autonomy"]["properties"]["mutationPolicy"]["properties"]
+        run_schema = json.loads((ROOT / "harness" / "schemas" / "run-v2.schema.json").read_text(encoding="utf-8"))
+        run_policy = run_schema["definitions"]["mutationPolicy"]["properties"]
+        amendment_delta = (
+            run_schema["definitions"]["externalCheckpoint"]["properties"]["policyAmendment"]["oneOf"][1]
+            ["properties"]["delta"]["properties"]
+        )
+        exact_fields = [
+            config_policy["allow"]["items"]["properties"]["scope"],
+            config_policy["allow"]["items"]["properties"]["operations"]["items"],
+            config_policy["confirmationRequired"]["items"],
+            run_policy["allow"]["items"]["properties"]["scope"],
+            run_policy["allow"]["items"]["properties"]["operations"]["items"],
+            run_policy["confirmationRequired"]["items"],
+            amendment_delta["addAllow"]["items"]["properties"]["scope"],
+            amendment_delta["addAllow"]["items"]["properties"]["operations"]["items"],
+            amendment_delta["addConfirmationRequired"]["items"],
+        ]
+        self.assertTrue(all(field.get("not") == {"const": "*"} for field in exact_fields))
+
+    def test_public_cli_policy_amendment_corrects_scope_spelling_in_same_run(self) -> None:
+        state = self.create(allow=[{"scope": "public-candidate", "operations": ["edit"]}])
+        run_id = str(state["runId"])
+        self.add_task(run_id, "mutable", mutable=True)
+        denied = self.runtime_cli(
+            "task-start",
+            run_id,
+            "mutable",
+            "--worker-id",
+            "worker-before-amendment",
+            expected=1,
+        )
+        self.assertEqual("MUTATION_DENIED", denied["error"]["code"])
+
+        requested = self.runtime_cli(
+            "policy-amend-request",
+            run_id,
+            "--id",
+            "policy-scope-correction",
+            "--task-id",
+            "mutable",
+            "--principal",
+            "release-owner",
+            "--provider",
+            "user-direction",
+            "--actor",
+            "human:release-owner",
+            "--reason",
+            "Correct public-candidate:edit to the runtime-required repository:edit scope.",
+            "--add-allow",
+            "repository:edit",
+            "--add-confirmation-required",
+            "edit",
+        )
+        challenge = requested["result"]["resolutionChallenge"]
+        before_apply = self.store.load(run_id)
+        amended = self.runtime_cli(
+            "policy-amend",
+            run_id,
+            "policy-scope-correction",
+            "--challenge",
+            str(challenge),
+            "--principal",
+            "release-owner",
+            "--provider",
+            "user-direction",
+            "--actor",
+            "human:release-owner",
+            "--add-allow",
+            "repository:edit",
+            "--add-confirmation-required",
+            "edit",
+        )
+        self.assertEqual(["mutable"], amended["result"]["readyTasks"])
+        current = self.store.load(run_id)
+        self.assertEqual("deny", current["policy"]["default"])
+        self.assertEqual(
+            [
+                {"scope": "public-candidate", "operations": ["edit"]},
+                {"scope": "repository", "operations": ["edit"]},
+            ],
+            current["policy"]["allow"],
+        )
+        self.assertEqual(["edit"], current["policy"]["confirmationRequired"])
+        for field in ("goal", "objective", "autonomy", "outcome", "acceptanceCriteria", "baseline", "focus", "lanes"):
+            self.assertEqual(before_apply[field], current[field], field)
+        self.assertEqual(
+            [task["mutablePaths"] for task in before_apply["tasks"]],
+            [task["mutablePaths"] for task in current["tasks"]],
+        )
+        self.runtime_cli(
+            "task-start",
+            run_id,
+            "mutable",
+            "--worker-id",
+            "worker-after-amendment",
+            "--confirmed",
+        )
+
+    def test_public_cli_policy_amendment_rejects_authority_mismatch_replay_and_staleness(self) -> None:
+        state = self.create()
+        run_id = str(state["runId"])
+        self.add_task(run_id, "mutable", mutable=True)
+        for label, actor in (("coordinator-request", "coordinator"), ("worker-request", "worker:forged")):
+            rejected_request = self.runtime_cli(
+                "policy-amend-request",
+                run_id,
+                "--id",
+                label,
+                "--task-id",
+                "mutable",
+                "--principal",
+                "authorized-user",
+                "--provider",
+                "trusted-provider",
+                "--actor",
+                actor,
+                "--reason",
+                "Authorize the exact repository edit scope.",
+                "--add-allow",
+                "repository:edit",
+                expected=1,
+            )
+            self.assertEqual("POLICY_AUTHORITY", rejected_request["error"]["code"])
+        wildcard = self.runtime_cli(
+            "policy-amend-request",
+            run_id,
+            "--id",
+            "wildcard-request",
+            "--task-id",
+            "mutable",
+            "--principal",
+            "authorized-user",
+            "--provider",
+            "trusted-provider",
+            "--actor",
+            "human:authorized-user",
+            "--reason",
+            "Reject wildcard policy escalation.",
+            "--add-allow",
+            "*:*",
+            expected=1,
+        )
+        self.assertEqual("INVALID_POLICY_AMENDMENT", wildcard["error"]["code"])
+        requested = self.runtime_cli(
+            "policy-amend-request",
+            run_id,
+            "--id",
+            "policy-authority",
+            "--task-id",
+            "mutable",
+            "--principal",
+            "authorized-user",
+            "--provider",
+            "trusted-provider",
+            "--actor",
+            "human:authorized-user",
+            "--reason",
+            "Authorize the exact repository edit scope.",
+            "--add-allow",
+            "repository:edit",
+        )
+        challenge = str(requested["result"]["resolutionChallenge"])
+
+        rejection_args = [
+            ("wrong-principal", ["--principal", "other-user", "--provider", "trusted-provider", "--actor", "human:other-user", "--add-allow", "repository:edit"]),
+            ("wrong-provider", ["--principal", "authorized-user", "--provider", "other-provider", "--actor", "human:authorized-user", "--add-allow", "repository:edit"]),
+            ("wrong-challenge", ["--principal", "authorized-user", "--provider", "trusted-provider", "--actor", "human:authorized-user", "--add-allow", "repository:edit"]),
+            ("wrong-delta", ["--principal", "authorized-user", "--provider", "trusted-provider", "--actor", "human:authorized-user", "--add-allow", "repository:build"]),
+            ("coordinator-spoof", ["--principal", "authorized-user", "--provider", "trusted-provider", "--actor", "coordinator", "--add-allow", "repository:edit"]),
+            ("worker-spoof", ["--principal", "authorized-user", "--provider", "trusted-provider", "--actor", "worker:authorized-user", "--add-allow", "repository:edit"]),
+        ]
+        for label, extra in rejection_args:
+            supplied_challenge = "forged" if label == "wrong-challenge" else challenge
+            rejected = self.runtime_cli(
+                "policy-amend",
+                run_id,
+                "policy-authority",
+                "--challenge",
+                supplied_challenge,
+                *extra,
+                expected=1,
+            )
+            self.assertEqual("POLICY_AUTHORITY", rejected["error"]["code"], label)
+
+        self.runtime_cli(
+            "policy-amend",
+            run_id,
+            "policy-authority",
+            "--challenge",
+            challenge,
+            "--principal",
+            "authorized-user",
+            "--provider",
+            "trusted-provider",
+            "--actor",
+            "human:authorized-user",
+            "--actor",
+            "human:authorized-user",
+            "--add-allow",
+            "repository:edit",
+        )
+        replay = self.runtime_cli(
+            "policy-amend",
+            run_id,
+            "policy-authority",
+            "--challenge",
+            challenge,
+            "--principal",
+            "authorized-user",
+            "--provider",
+            "trusted-provider",
+            "--actor",
+            "human:authorized-user",
+            "--actor",
+            "human:authorized-user",
+            "--add-allow",
+            "repository:edit",
+            expected=1,
+        )
+        self.assertEqual("POLICY_AUTHORITY", replay["error"]["code"])
+
+        no_checkpoint = self.runtime_cli(
+            "policy-amend",
+            run_id,
+            "missing-checkpoint",
+            "--challenge",
+            challenge,
+            "--principal",
+            "authorized-user",
+            "--provider",
+            "trusted-provider",
+            "--actor",
+            "human:authorized-user",
+            "--add-allow",
+            "repository:edit",
+            expected=1,
+        )
+        self.assertEqual("POLICY_CHECKPOINT_NOT_FOUND", no_checkpoint["error"]["code"])
+
+        other = self.create()
+        cross_run = self.runtime_cli(
+            "policy-amend",
+            str(other["runId"]),
+            "policy-authority",
+            "--challenge",
+            challenge,
+            "--principal",
+            "authorized-user",
+            "--provider",
+            "trusted-provider",
+            "--actor",
+            "human:authorized-user",
+            "--add-allow",
+            "repository:edit",
+            expected=1,
+        )
+        self.assertEqual("POLICY_CHECKPOINT_NOT_FOUND", cross_run["error"]["code"])
+
+        stale = self.create()
+        stale_id = str(stale["runId"])
+        self.add_task(stale_id, "stale-task", mutable=True)
+        stale_request = self.runtime_cli(
+            "policy-amend-request",
+            stale_id,
+            "--id",
+            "policy-stale",
+            "--task-id",
+            "stale-task",
+            "--principal",
+            "authorized-user",
+            "--provider",
+            "trusted-provider",
+            "--actor",
+            "human:authorized-user",
+            "--reason",
+            "Authorize the exact repository edit scope.",
+            "--add-allow",
+            "repository:edit",
+        )
+        self.store.policy_check(stale_id, "repository", "observe")
+        stale_result = self.runtime_cli(
+            "policy-amend",
+            stale_id,
+            "policy-stale",
+            "--challenge",
+            str(stale_request["result"]["resolutionChallenge"]),
+            "--principal",
+            "authorized-user",
+            "--provider",
+            "trusted-provider",
+            "--actor",
+            "human:authorized-user",
+            "--add-allow",
+            "repository:edit",
+            expected=1,
+        )
+        self.assertEqual("POLICY_AUTHORITY", stale_result["error"]["code"])
+
+        stale_objective = self.create()
+        stale_objective_id = str(stale_objective["runId"])
+        self.add_task(stale_objective_id, "policy-task", mutable=True)
+        self.add_task(stale_objective_id, "correction-task")
+        objective_request = self.runtime_cli(
+            "policy-amend-request",
+            stale_objective_id,
+            "--id",
+            "policy-old-objective",
+            "--task-id",
+            "policy-task",
+            "--principal",
+            "authorized-user",
+            "--provider",
+            "trusted-provider",
+            "--actor",
+            "human:authorized-user",
+            "--reason",
+            "Authorize the exact repository edit scope.",
+            "--add-allow",
+            "repository:edit",
+        )
+        _, correction_challenge = self.store.wait_external(
+            stale_objective_id,
+            checkpoint_id="objective-correction",
+            task_id="correction-task",
+            checkpoint_type="HUMAN_JUDGMENT_REQUIRED",
+            principal="authorized-user",
+            provider="user-direction",
+            reason="Replace the synthetic objective.",
+        )
+        self.store.replace_objective(
+            stale_objective_id,
+            outcome="The replacement objective is current.",
+            criteria=[self.criterion()],
+            correction="Synthetic objective correction.",
+            next_cheapest_test="Verify the replacement objective.",
+            checkpoint_id="objective-correction",
+            challenge=correction_challenge,
+            actor="human:authorized-user",
+        )
+        stale_objective_result = self.runtime_cli(
+            "policy-amend",
+            stale_objective_id,
+            "policy-old-objective",
+            "--challenge",
+            str(objective_request["result"]["resolutionChallenge"]),
+            "--principal",
+            "authorized-user",
+            "--provider",
+            "trusted-provider",
+            "--actor",
+            "human:authorized-user",
+            "--add-allow",
+            "repository:edit",
+            expected=1,
+        )
+        self.assertEqual("POLICY_AUTHORITY", stale_objective_result["error"]["code"])
+
+    def test_policy_amendment_rejects_transaction_bypass_and_mutation_in_progress(self) -> None:
+        state = self.create()
+        run_id = str(state["runId"])
+
+        def malicious(run: dict[str, object]) -> dict[str, object]:
+            run["policy"]["allow"].append({"scope": "repository", "operations": ["edit"]})
+            return {}
+
+        with self.assertRaisesRegex(RuntimeFailure, "policy-amendment checkpoint"):
+            self.store._transaction(
+                run_id,
+                malicious,
+                event_type="policy.amended",
+                actor="human:forged",
+            )
+        self.assertEqual([], self.store.load(run_id)["policy"]["allow"])
+
+        self.add_task(run_id, "private-capability-task", mutable=True)
+        _, private_challenge = self.store.request_policy_amendment(
+            run_id,
+            checkpoint_id="private-capability",
+            task_id="private-capability-task",
+            principal="authorized-user",
+            provider="trusted-provider",
+            delta={"addAllow": [{"scope": "repository", "operations": ["edit"]}]},
+            reason="Authorize repository edits.",
+            actor="human:authorized-user",
+        )
+
+        def forged_private_authorization(run: dict[str, object]) -> dict[str, object]:
+            checkpoint = next(
+                item for item in run["externalCheckpoints"] if item["id"] == "private-capability"
+            )
+            run["policy"]["allow"] = [{"scope": "repository", "operations": ["edit"]}]
+            checkpoint["status"] = "RESOLVED"
+            checkpoint["resolvedAt"] = utc_now()
+            checkpoint["resolvedBy"] = "human:authorized-user"
+            checkpoint["resolutionRef"] = "policy:forged"
+            next(task for task in run["tasks"] if task["id"] == "private-capability-task")["status"] = "READY"
+            return {
+                "_policyAuthorization": _PolicyAuthorization(
+                    self.store._RunStore__policy_capability,
+                    run["objective"]["version"],
+                    run["revision"],
+                    "private-capability",
+                    "not-the-real-challenge",
+                )
+            }
+
+        with self.assertRaisesRegex(RuntimeFailure, "policy-amendment checkpoint"):
+            self.store._transaction(
+                run_id,
+                forged_private_authorization,
+                event_type="policy.amended",
+                actor="human:authorized-user",
+            )
+        self.assertNotEqual("not-the-real-challenge", private_challenge)
+
+        active = self.create(allow=[{"scope": "repository", "operations": ["edit"]}])
+        active_id = str(active["runId"])
+        self.add_task(active_id, "running-mutation", mutable=True)
+        self.add_task(active_id, "amendment-target", mutable=True)
+        self.store.start_task(active_id, "running-mutation", worker_id="active-worker")
+        unsafe = self.runtime_cli(
+            "policy-amend-request",
+            active_id,
+            "--id",
+            "policy-unsafe",
+            "--task-id",
+            "amendment-target",
+            "--principal",
+            "authorized-user",
+            "--provider",
+            "trusted-provider",
+            "--actor",
+            "human:authorized-user",
+            "--reason",
+            "Add confirmation for repository edits.",
+            "--add-confirmation-required",
+            "edit",
+            expected=1,
+        )
+        self.assertEqual("POLICY_AMENDMENT_UNSAFE", unsafe["error"]["code"])
+
+        for side_effect_state in ("PENDING", "UNCERTAIN"):
+            side_effect_run = self.create(
+                allow=[{"scope": "homelab:fixture", "operations": ["deploy"]}]
+            )
+            side_effect_id = str(side_effect_run["runId"])
+            self.add_task(
+                side_effect_id,
+                "side-effect",
+                side_effect={"operation": "deploy", "target": "homelab:fixture"},
+            )
+            self.add_task(side_effect_id, "policy-target", mutable=True)
+            self.store.start_task(side_effect_id, "side-effect", worker_id=f"worker-{side_effect_state.lower()}")
+            if side_effect_state == "UNCERTAIN":
+                self.store.prepare_side_effect(
+                    side_effect_id,
+                    "side-effect",
+                    operation="deploy",
+                    target="homelab:fixture",
+                )
+            rejected = self.runtime_cli(
+                "policy-amend-request",
+                side_effect_id,
+                "--id",
+                f"policy-{side_effect_state.lower()}",
+                "--task-id",
+                "policy-target",
+                "--principal",
+                "authorized-user",
+                "--provider",
+                "trusted-provider",
+                "--actor",
+                "human:authorized-user",
+                "--reason",
+                "Authorize repository edits.",
+                "--add-allow",
+                "repository:edit",
+                expected=1,
+            )
+            self.assertEqual("POLICY_AMENDMENT_UNSAFE", rejected["error"]["code"])
 
     def test_external_wait_does_not_block_independent_ready_task(self) -> None:
         state = self.create()
@@ -606,7 +1168,7 @@ class RuntimeV2Tests(unittest.TestCase):
             run["policy"]["allow"].append({"scope": "*", "operations": ["*"]})
             return {}
 
-        with self.assertRaisesRegex(RuntimeFailure, "cannot modify"):
+        with self.assertRaisesRegex(RuntimeFailure, "policy-amendment checkpoint"):
             self.store._transaction(
                 run_id,
                 malicious,
@@ -623,7 +1185,7 @@ class RuntimeV2Tests(unittest.TestCase):
         forged = json.loads(path.read_text(encoding="utf-8"))
         forged["policy"]["allow"].append({"scope": "*", "operations": ["*"]})
         path.write_text(json.dumps(forged), encoding="utf-8")
-        with self.assertRaisesRegex(RuntimeFailure, "latest valid snapshot"):
+        with self.assertRaisesRegex(RuntimeFailure, "exact scopes|latest valid snapshot"):
             self.store.load(run_id)
 
     def test_checkpoint_deletion_is_detected(self) -> None:

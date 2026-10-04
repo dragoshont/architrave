@@ -73,6 +73,8 @@
 	from the Phase Ledger projection.
 - [x] Default-deny scoped mutation policy, trusted external-checkpoint resolution,
 	uncertain-side-effect reconciliation, and deployment receipts.
+- [x] Challenge-bound additive mutation-policy amendments for an existing Run,
+  enforced by a store-private transaction capability.
 - [x] Copilot/Claude/Codex/shell worker adapters with bounded/redacted output and
 	coordinator-only task completion.
 - [x] Isolated git worktrees, mutable-path validation, candidate patch artifacts,
@@ -97,3 +99,10 @@
 - [x] Host-native custom-agent/subagent delegation is used only for bounded isolation, parallelism, permissions, expertise, or independent review.
 - [x] Risk-based verification requires deterministic evidence and independent reviewer identities without constraining host model choice.
 - [x] Compact Run v2 artifacts replace eager per-agent plans, reports, status files, and per-transition snapshots.
+
+## Prioritized v0.11.3 follow-ups
+- [ ] Add a public Run cancel/supersede transition and terminalize invalid
+  unstarted task intake instead of returning retryable tasks to `READY`.
+- [ ] Add a public trusted external-attestation registration path so factual
+  cross-session resource-release receipts can resolve checkpoints without
+  private executor hooks.

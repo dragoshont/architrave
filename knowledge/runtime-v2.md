@@ -161,6 +161,17 @@ Mutation policy always defaults to deny. Grants name exact scopes and operations
 An explicit user mandate may create a bounded deployment grant. Configuration,
 tool access, worker output, or a phase label cannot escalate policy.
 
+An existing Run may add an exact grant or confirmation-required operation only
+through `policy-amend-request` followed by `policy-amend`. The dedicated
+`HUMAN_JUDGMENT_REQUIRED` checkpoint binds Run id, objective version, revision,
+principal, provider, exact additive delta, reason, and one-time challenge.
+Authorization is checked inside the transaction commit boundary with a
+store-private capability. Any intervening transition, replay, actor/provider/
+delta mismatch, cross-Run use, running mutation, or pending/uncertain side
+effect fails closed. A released task becomes `READY`; actions are not replayed.
+Default deny, autonomy, objective/outcome, task paths, and unrelated state are
+not amendable through this transition.
+
 Operations in `confirmationRequired` still require a trusted resolution. Every
 non-trivial mutation produces target/before/after/result/verification evidence.
 
@@ -211,6 +222,13 @@ python3 harness/architrave_runtime.py task-add <run-id> --id task-1 \
   --title "..." --objective "..." --criteria ID
 python3 harness/architrave_runtime.py ready <run-id>
 python3 harness/architrave_runtime.py resume <run-id>
+python3 harness/architrave_runtime.py policy-amend-request <run-id> \
+  --id <checkpoint-id> --task-id <task-id> --principal <principal> \
+  --provider <provider> --actor human:<principal> \
+  --reason "..." --add-allow repository:edit
+python3 harness/architrave_runtime.py policy-amend <run-id> <checkpoint-id> \
+  --challenge <challenge> --principal <principal> --provider <provider> \
+  --actor human:<principal> --add-allow repository:edit
 python3 harness/architrave_runtime.py events <run-id>
 python3 harness/architrave_runtime.py verify <run-id>
 python3 harness/validate_run_v2.py .architrave/runs/<run-id>
