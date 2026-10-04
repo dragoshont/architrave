@@ -136,6 +136,12 @@ class InstallUpdateTests(unittest.TestCase):
         )
         self.assertFalse((knowledge / ".github/agents/ui-visual.agent.md").exists())
         self.assertFalse(any(knowledge.glob("constitution-*.md")))
+        for relative in (
+            "harness/architrave_runtime.py",
+            "knowledge/execution-policy.md",
+            "gates/hooks/design-guard.json",
+        ):
+            self.assertTrue((knowledge / relative).is_file(), relative)
 
     def test_update_agents_codex_and_idempotency(self) -> None:
         target = self.workspace / "codex knowledge"
@@ -282,6 +288,21 @@ class InstallUpdateTests(unittest.TestCase):
             self.assertEqual(before, snapshot(target))
             self.assertFalse((target / ".architrave-install.lock").exists())
             self.assertFalse((target / ".architrave-install-transaction").exists())
+
+    def test_fresh_install_failure_restores_exact_filesystem_shape(self) -> None:
+        for index in (0, 8, 20):
+            target = self.workspace / f"fresh failure {index}"
+            target.mkdir()
+            before = snapshot(target)
+            self.run_cli(
+                "install",
+                "--profile",
+                "knowledge",
+                str(target),
+                expected=1,
+                env={"ARCHITRAVE_INSTALL_FAIL_AFTER": str(index)},
+            )
+            self.assertEqual(before, snapshot(target))
 
     def test_concurrent_lock_and_stale_transaction_recovery(self) -> None:
         target = self.workspace / "locked target"

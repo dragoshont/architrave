@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import itertools
 import json
 import os
 from pathlib import Path
@@ -169,8 +170,30 @@ def main() -> int:
 
     sys.path.insert(0, str(args.source / "harness"))
     from architrave_runtime import RunStore
+    import architrave_runtime
+    import worker_adapters
     from worker_adapters import execute_work_packet
+    import workspaces
     from workspaces import WorkspaceManager
+
+    counter = itertools.count(1)
+
+    def deterministic_uuid():
+        import uuid
+        return uuid.UUID(int=next(counter))
+
+    architrave_runtime.uuid.uuid4 = deterministic_uuid
+    architrave_runtime.utc_now = lambda: "2026-10-04T00:00:00Z"
+    architrave_runtime.secrets.token_bytes = lambda size: b"\x01" * size
+    original_run_bounded = worker_adapters.run_bounded
+
+    def deterministic_run_bounded(*arguments, **keywords):
+        result = original_run_bounded(*arguments, **keywords)
+        result["durationMs"] = 0
+        return result
+
+    worker_adapters.run_bounded = deterministic_run_bounded
+    workspaces.uuid.uuid4 = deterministic_uuid
 
     store = RunStore(repo)
     state = store.create(

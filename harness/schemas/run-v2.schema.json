@@ -551,7 +551,7 @@
         "status",
         "resumeTask",
         "challengeHash"
-        ,"objectiveVersion"
+        ,"objectiveVersion", "targetBindingHash"
       ],
       "additionalProperties": false,
       "properties": {
@@ -577,6 +577,12 @@
         "resumeTask": { "$ref": "#/definitions/id" },
         "challengeHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
         "objectiveVersion": { "type": "integer", "minimum": 1 },
+        "targetBindingHash": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          ]
+        },
         "resolvedBy": { "type": "string", "minLength": 1 },
         "resolutionRef": { "type": ["string", "null"] }
       }

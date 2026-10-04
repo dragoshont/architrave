@@ -1730,6 +1730,25 @@ class RuntimeV2Tests(unittest.TestCase):
             challenge=challenge,
             actor="human:synthetic-user",
         )
+        self.store.add_task(
+            run_id,
+            {
+                "id": "correction-task",
+                "title": "Correction",
+                "objective": "Authorize replacement.",
+                "workerProfile": "shell",
+                "acceptanceCriteria": ["EXT-001"],
+            },
+        )
+        _, correction_challenge = self.store.wait_external(
+            run_id,
+            checkpoint_id="correction-checkpoint",
+            task_id="correction-task",
+            checkpoint_type="HUMAN_JUDGMENT_REQUIRED",
+            principal="synthetic-user",
+            provider="user-direction",
+            reason="Replace the objective.",
+        )
         self.store.replace_objective(
             run_id,
             outcome="Replacement approval is current.",
@@ -1747,7 +1766,9 @@ class RuntimeV2Tests(unittest.TestCase):
             ],
             correction="Explicit synthetic correction.",
             next_cheapest_test="Resolve the replacement approval.",
-            explicit_user_direction=True,
+            checkpoint_id="correction-checkpoint",
+            challenge=correction_challenge,
+            actor="human:synthetic-user",
         )
         with self.assertRaisesRegex(RuntimeFailure, "superseded objective"):
             self.store.set_criterion(run_id, "EXT-001", "PASS", ["external:external-old"])

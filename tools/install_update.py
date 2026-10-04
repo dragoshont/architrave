@@ -364,6 +364,17 @@ class ManagedRoot:
     def copy_tree(self, source: Path, relative: str) -> None:
         require_source_tree(source, self.label)
         self.preflight_tree(relative)
+        self.ensure_dir(relative)
+        for current, directories, files in os.walk(source, followlinks=False):
+            directories[:] = sorted(name for name in directories if name != "__pycache__")
+            files = sorted(name for name in files if not name.endswith(".pyc"))
+            current_path = Path(current)
+            suffix = current_path.relative_to(source)
+            destination_dir = PurePosixPath(relative, *suffix.parts).as_posix()
+            self.ensure_dir(destination_dir)
+            for name in files:
+                destination = PurePosixPath(destination_dir, name).as_posix()
+                self.replace_file(current_path / name, destination)
 
 
 class ManagedTransaction:
@@ -375,6 +386,7 @@ class ManagedTransaction:
         self.lock = self.root / ".architrave-install.lock"
         self.directory = self.root / ".architrave-install-transaction"
         self.operations: list[dict[str, object]] = []
+        self.created_dirs: set[Path] = set()
 
     def _write_manifest(self, value: dict[str, object]) -> None:
         path = self.directory / "manifest.json"
@@ -395,6 +407,15 @@ class ManagedTransaction:
                 os.replace(backup, destination)
             elif not item.get("existed"):
                 destination.unlink(missing_ok=True)
+        for directory in sorted(
+            (self.root / value for value in manifest.get("createdDirectories", [])),
+            key=lambda path: len(path.parts),
+            reverse=True,
+        ):
+            try:
+                directory.rmdir()
+            except OSError:
+                pass
         shutil.rmtree(self.directory)
 
     def __enter__(self) -> "ManagedTransaction":
@@ -436,6 +457,10 @@ class ManagedTransaction:
         self.operations.append(
             {"kind": "write", "relative": relative, "stage": f"stage/{index}", "mode": mode}
         )
+        parent = destination.parent
+        while parent != self.root and _lstat(parent) is None:
+            self.created_dirs.add(parent)
+            parent = parent.parent
 
     def stage_remove(self, relative: str) -> None:
         self.managed.preflight_file(relative)
@@ -458,7 +483,15 @@ class ManagedTransaction:
                     "backup": backup_name,
                 }
             )
-        manifest = {"status": "prepared", "applied": 0, "operations": manifest_operations}
+        manifest = {
+            "status": "prepared",
+            "applied": 0,
+            "operations": manifest_operations,
+            "createdDirectories": [
+                path.relative_to(self.root).as_posix()
+                for path in sorted(self.created_dirs, key=lambda value: len(value.parts))
+            ],
+        }
         self._write_manifest(manifest)
         fail_after = os.environ.get("ARCHITRAVE_INSTALL_FAIL_AFTER")
         try:
@@ -502,18 +535,6 @@ class ManagedTransaction:
         self.lock.unlink(missing_ok=True)
         if self in self.active:
             self.active.remove(self)
-        self.ensure_dir(relative)
-        for current, directories, files in os.walk(source, followlinks=False):
-            directories[:] = sorted(name for name in directories if name != "__pycache__")
-            files = sorted(name for name in files if not name.endswith(".pyc"))
-            current_path = Path(current)
-            suffix = current_path.relative_to(source)
-            destination_dir = PurePosixPath(relative, *suffix.parts).as_posix()
-            self.ensure_dir(destination_dir)
-            for name in files:
-                destination = PurePosixPath(destination_dir, name).as_posix()
-                self.replace_file(current_path / name, destination)
-        self.preflight_tree(relative)
 
 
 class JsonObject(list[tuple[str, object]]):
@@ -693,6 +714,20 @@ def update_agents_stanza(managed: ManagedRoot, kit: Path) -> None:
     print("  ok AGENTS.md stanza refreshed")
 
 
+def assert_required_tree_staged(transaction: ManagedTransaction) -> None:
+    staged = {str(item["relative"]) for item in transaction.operations if item["kind"] == "write"}
+    required = {
+        "harness/architrave_runtime.py",
+        "knowledge/execution-policy.md",
+        "gates/hooks/design-guard.json",
+    }
+    missing = sorted(required - staged)
+    if missing:
+        raise InstallerError(
+            "install/update transaction is missing required managed tree files: " + ", ".join(missing)
+        )
+
+
 def install(args: argparse.Namespace, kit: Path) -> int:
     managed = ManagedRoot(Path(args.target or os.getcwd()), "install")
     if managed.root == kit:
@@ -785,6 +820,7 @@ def install(args: argparse.Namespace, kit: Path) -> int:
         print("  - copilot-setup-steps.yml present - merge jq install manually")
     if args.codex:
         run_codex(kit, managed, preflight=False, label="install")
+    assert_required_tree_staged(transaction)
     managed.replace_bytes("gates/.kit-version", f"{version}\n".encode("utf-8"))
     transaction.__exit__(None, None, None)
     print(f"  ok stamped gates/.kit-version = {version}")
@@ -867,6 +903,7 @@ def update(args: argparse.Namespace, kit: Path) -> int:
     update_agents_stanza(managed, kit)
     if args.codex:
         run_codex(kit, managed, preflight=False, label="update")
+    assert_required_tree_staged(transaction)
     managed.replace_bytes("gates/.kit-version", f"{version}\n".encode("utf-8"))
     transaction.__exit__(None, None, None)
     print(f"  ok stamped gates/.kit-version = {version}")

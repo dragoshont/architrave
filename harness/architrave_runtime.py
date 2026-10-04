@@ -581,6 +581,7 @@ class RunStore:
                 gate.setdefault("objectiveVersion", 1)
             for checkpoint in state.get("externalCheckpoints", []):
                 checkpoint.setdefault("objectiveVersion", 1)
+                checkpoint.setdefault("targetBindingHash", None)
             state = self._commit_locked(
                 run_dir,
                 state,
@@ -838,35 +839,32 @@ class RunStore:
         criteria: Sequence[dict[str, Any]],
         correction: str,
         next_cheapest_test: str,
-        explicit_user_direction: bool = False,
-        checkpoint_id: str | None = None,
-        challenge: str | None = None,
+        checkpoint_id: str,
+        challenge: str,
         actor: str = "user",
     ) -> dict[str, Any]:
-        if not explicit_user_direction and (not checkpoint_id or not challenge):
-            raise RuntimeFailure("OBJECTIVE_AUTHORITY", "objective replacement requires a trusted human checkpoint")
         if not outcome.strip() or not correction.strip() or not next_cheapest_test.strip():
             raise RuntimeFailure("INVALID_OBJECTIVE", "replacement outcome, correction, and next test are required")
         normalized = normalize_criteria(criteria, outcome)
 
         def mutate(state: dict[str, Any]) -> dict[str, Any]:
-            if not explicit_user_direction:
-                checkpoint = next(
-                    (item for item in state["externalCheckpoints"] if item["id"] == checkpoint_id),
-                    None,
-                )
-                if (
-                    checkpoint is None
-                    or checkpoint["status"] != "PENDING"
-                    or checkpoint["type"] != "HUMAN_JUDGMENT_REQUIRED"
-                    or hashlib.sha256(str(challenge).encode("utf-8")).hexdigest() != checkpoint["challengeHash"]
-                    or not (actor.startswith("human:") or actor == "coordinator")
-                ):
-                    raise RuntimeFailure("OBJECTIVE_AUTHORITY", "objective replacement checkpoint is invalid")
-                checkpoint["status"] = "RESOLVED"
-                checkpoint["resolvedAt"] = utc_now()
-                checkpoint["resolvedBy"] = actor
-                checkpoint["resolutionRef"] = f"objective:{state['objective']['version'] + 1}"
+            checkpoint = next(
+                (item for item in state["externalCheckpoints"] if item["id"] == checkpoint_id),
+                None,
+            )
+            if (
+                checkpoint is None
+                or checkpoint["status"] != "PENDING"
+                or checkpoint["type"] != "HUMAN_JUDGMENT_REQUIRED"
+                or checkpoint["objectiveVersion"] != state["objective"]["version"]
+                or hashlib.sha256(str(challenge).encode("utf-8")).hexdigest() != checkpoint["challengeHash"]
+                or actor != f"human:{checkpoint['principal']}"
+            ):
+                raise RuntimeFailure("OBJECTIVE_AUTHORITY", "objective replacement checkpoint is invalid")
+            checkpoint["status"] = "RESOLVED"
+            checkpoint["resolvedAt"] = utc_now()
+            checkpoint["resolvedBy"] = actor
+            checkpoint["resolutionRef"] = f"objective:{state['objective']['version'] + 1}"
             prior_version = state["objective"]["version"]
             new_version = prior_version + 1
             new_ids = {item["id"] for item in normalized}
@@ -1091,12 +1089,28 @@ class RunStore:
                 (item for item in state["externalCheckpoints"] if item["id"] == checkpoint_id),
                 None,
             )
+            task = find_task(state, checkpoint["taskId"]) if checkpoint else None
+            expected_binding = sha256_value(
+                {
+                    "runId": state["runId"],
+                    "objectiveVersion": state["objective"]["version"],
+                    "taskId": checkpoint["taskId"] if checkpoint else "",
+                    "provider": checkpoint["provider"] if checkpoint else "",
+                    "principal": checkpoint["principal"] if checkpoint else "",
+                    "intended": intended,
+                    "challengeHash": checkpoint["challengeHash"] if checkpoint else "",
+                }
+            )
             if (
                 checkpoint is None
+                or task is None
                 or checkpoint["status"] != "PENDING"
                 or checkpoint["type"] != "SAFE_WRITE_TARGET_REQUIRED"
+                or checkpoint["objectiveVersion"] != state["objective"]["version"]
                 or hashlib.sha256(challenge.encode("utf-8")).hexdigest() != checkpoint["challengeHash"]
-                or not (actor.startswith("human:") or actor == "coordinator")
+                or checkpoint.get("targetBindingHash") != expected_binding
+                or task.get("targetIdentity") != intended
+                or actor != f"human:{checkpoint['principal']}"
                 or intended["provider"] != checkpoint["provider"]
             ):
                 raise RuntimeFailure("TARGET_IDENTITY_INVALID", "target identity checkpoint is invalid")
@@ -1109,7 +1123,6 @@ class RunStore:
             checkpoint["resolvedAt"] = utc_now()
             checkpoint["resolvedBy"] = actor
             checkpoint["resolutionRef"] = f"target:{checkpoint_id}"
-            task = find_task(state, checkpoint["taskId"])
             if not any(
                 item["taskId"] == task["id"] and item["status"] == "PENDING"
                 for item in state["externalCheckpoints"]
@@ -2274,6 +2287,26 @@ class RunStore:
                 raise RuntimeFailure("TASK_TERMINAL", "terminal tasks cannot wait externally")
             if any(item["id"] == checkpoint_id for item in state["externalCheckpoints"]):
                 raise RuntimeFailure("EXTERNAL_CHECKPOINT_EXISTS", f"checkpoint already exists: {checkpoint_id}")
+            target_binding = None
+            if checkpoint_type == "SAFE_WRITE_TARGET_REQUIRED":
+                declared = task.get("targetIdentity")
+                required = {"provider", "artifact", "version", "sha256", "environment", "workspace", "acceptanceTarget"}
+                if not isinstance(declared, dict) or set(declared) != required or declared["provider"] != provider:
+                    raise RuntimeFailure(
+                        "TARGET_IDENTITY_REQUIRED",
+                        "SAFE_WRITE_TARGET_REQUIRED needs complete task target identity bound to the provider",
+                    )
+                target_binding = sha256_value(
+                    {
+                        "runId": state["runId"],
+                        "objectiveVersion": state["objective"]["version"],
+                        "taskId": task_id,
+                        "provider": provider,
+                        "principal": principal,
+                        "intended": declared,
+                        "challengeHash": challenge_hash,
+                    }
+                )
             lease = task.get("lease")
             if lease:
                 worker = next((item for item in state["workers"] if item["id"] == lease["owner"]), None)
@@ -2293,6 +2326,7 @@ class RunStore:
                     "status": "PENDING",
                     "resumeTask": task_id,
                     "objectiveVersion": state["objective"]["version"],
+                    "targetBindingHash": target_binding,
                     "challengeHash": challenge_hash,
                     "resolutionRef": None,
                 }
@@ -2938,6 +2972,9 @@ def validate_run(state: dict[str, Any]) -> None:
             raise RuntimeFailure("RUN_INVALID", "external checkpoint challenge hash is invalid")
         if int(checkpoint.get("objectiveVersion", 0)) < 1:
             raise RuntimeFailure("RUN_INVALID", "external checkpoint objective version is invalid")
+        binding = checkpoint.get("targetBindingHash")
+        if binding is not None and not re.fullmatch(r"[0-9a-f]{64}", str(binding)):
+            raise RuntimeFailure("RUN_INVALID", "external checkpoint target binding is invalid")
     gate_ids: set[str] = set()
     for gate in state["gateResults"]:
         gate_id = require_id(str(gate.get("id") or ""), "gate id")
