@@ -1712,7 +1712,7 @@ class RunStore:
                 "path": receipt_relative,
                 "createdAt": utc_now(),
                 "sha256": receipt_sha256,
-                "evidenceRefs": [],
+                "evidenceRefs": [f"task:{current_task['id']}"],
                 "consumedByTask": current_task["id"],
             }
             artifact["attestation"] = self._artifact_attestation(artifact)
