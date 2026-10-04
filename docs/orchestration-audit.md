@@ -20,8 +20,8 @@ and the UI to fetch that endpoint and render an accessible live status target.
 | Orchestration bytes | 227,187 | 33,940 | **85.06%** |
 | Approximate tokens (`bytes / 4`) | 56,797 | 8,485 | **85.06%** |
 | Actual-code files | 3 | 3 | 0% |
-| Actual-code bytes | 484 | 484 | 0% |
-| Orchestration:code bytes | 469.395:1 | 70.124:1 | **85.06% lower** |
+| Actual-code bytes | 482 | 482 | 0% |
+| Orchestration:code bytes | 471.342:1 | 70.415:1 | **85.06% lower** |
 
 Both runs completed with `API-001=PASS`, `UI-001=PASS`,
 `Run status=COMPLETED`, and `python tests/verify.py` printing
@@ -36,10 +36,10 @@ Reproduction command used for both runs:
 
 ```bash
 git worktree add --detach ../architrave-metrics-baseline 165da5284e0fff5ecfa7b1fff18593c949ad8fd3
-git worktree add --detach ../architrave-metrics-after d10a199d610fd9c3c717456b582a5c60bb62df24
+git worktree add --detach ../architrave-metrics-after 2fef1dfc9a32d408c1e0ed4c4b338ed6356a3322
 python scripts/measure-basic-sh-sdd.py --source ../architrave-metrics-baseline --output ../architrave-metrics --label baseline --manifest benchmarks/results/orchestration-baseline.json
 python scripts/measure-basic-sh-sdd.py --source ../architrave-metrics-after --output ../architrave-metrics --label after --manifest benchmarks/results/orchestration-after.json
-python scripts/validate-orchestration-metrics.py --expected-after d10a199d610fd9c3c717456b582a5c60bb62df24
+python scripts/validate-orchestration-metrics.py --expected-after 2fef1dfc9a32d408c1e0ed4c4b338ed6356a3322
 git worktree remove --force ../architrave-metrics-baseline
 git worktree remove --force ../architrave-metrics-after
 ```
@@ -50,13 +50,13 @@ Scratch trial output is intentionally outside the repository.
 
 Validation completed:
 
-- `python scripts/test-runtime-v2.py`: 57 passed, 1 platform skip.
+- `python scripts/test-runtime-v2.py`: 58 passed, 1 platform skip.
 - `python scripts/test-workspaces.py`: 12 passed.
 - `python scripts/test-worker-adapters.py`: 24 passed, 4 platform skips.
 - `python scripts/test-legibility.py`: 19 passed.
 - `python scripts/test-longbuild-runtime.py`: passed.
 - `python scripts/test-benchmark-tools.py`: 34 passed.
-- Python install/update safety suite: 6 passed.
+- Python install/update safety suite: 9 passed.
 - Five synthetic focus/correction regressions: passed.
 - Gate, Run validator, learning validator, config-profile, review-launcher,
   Codex role, and Codex runtime suites: passed.
