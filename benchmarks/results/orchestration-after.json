@@ -1,7 +1,7 @@
 {
   "schema": "architrave.orchestration-metrics.v1",
   "label": "after",
-  "sourceSha": "2fef1dfc9a32d408c1e0ed4c4b338ed6356a3322",
+  "sourceSha": "f6f28575f2a31474944e559ab441b55670ed30e6",
   "platform": {
     "system": "Windows",
     "release": "11",
