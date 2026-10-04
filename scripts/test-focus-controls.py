@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -66,6 +68,44 @@ class FocusControlTests(unittest.TestCase):
             encoding="utf-8",
         )
         self.store._record_deterministic_result(
+            run_id,
+            artifact_id=artifact_id,
+            path=path.resolve().relative_to(self.store.repository).as_posix(),
+            evidence_refs=[],
+        )
+        return f"artifact:{artifact_id}"
+
+    def target_evidence(
+        self,
+        run_id: str,
+        checkpoint_id: str,
+        challenge: str,
+        intended: dict[str, str],
+        observed: dict[str, str],
+        artifact_id: str,
+    ) -> str:
+        state = self.store.load(run_id)
+        checkpoint = next(item for item in state["externalCheckpoints"] if item["id"] == checkpoint_id)
+        path = self.store.run_dir(run_id) / "evidence" / f"{artifact_id}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "checkpointId": checkpoint_id,
+                    "runId": run_id,
+                    "objectiveVersion": state["objective"]["version"],
+                    "taskId": checkpoint["taskId"],
+                    "provider": checkpoint["provider"],
+                    "principal": checkpoint["principal"],
+                    "actor": checkpoint["principal"],
+                    "challengeHash": hashlib.sha256(challenge.encode("utf-8")).hexdigest(),
+                    "intended": intended,
+                    "observed": observed,
+                }
+            ) + "\n",
+            encoding="utf-8",
+        )
+        self.store._record_external_proof(
             run_id,
             artifact_id=artifact_id,
             path=path.resolve().relative_to(self.store.repository).as_posix(),
@@ -183,21 +223,31 @@ class FocusControlTests(unittest.TestCase):
             "--type", "SAFE_WRITE_TARGET_REQUIRED", "--principal", "synthetic-user",
             "--provider", "provider-a", "--reason", "Confirm target identity.",
         )
+        local_assertion = self.evidence(run_id, "local-self-assertion")
         forged = self.cli(
-            "target-resolve", run_id, "--checkpoint-id", "target-check", "--challenge", "forged",
-            "--intended-json", json.dumps(intended), "--observed-json", json.dumps(observed),
+            "target-resolve", run_id, "--checkpoint-id", "target-check",
+            "--challenge", str(wait["resolutionChallenge"]),
+            "--intended-json", json.dumps(intended), "--evidence", local_assertion,
             "--actor", "human:synthetic-user", expected=1,
         )
         self.assertEqual("TARGET_IDENTITY_INVALID", forged["code"])
+        mismatch_evidence = self.target_evidence(
+            run_id,
+            "target-check",
+            str(wait["resolutionChallenge"]),
+            intended,
+            observed,
+            "target-mismatch-proof",
+        )
         self.cli(
             "target-resolve", run_id, "--checkpoint-id", "target-check",
             "--challenge", str(wait["resolutionChallenge"]), "--intended-json", json.dumps(intended),
-            "--observed-json", json.dumps(observed), "--actor", "human:synthetic-user",
+            "--evidence", mismatch_evidence, "--actor", "human:synthetic-user",
         )
         replay = self.cli(
             "target-resolve", run_id, "--checkpoint-id", "target-check",
             "--challenge", str(wait["resolutionChallenge"]), "--intended-json", json.dumps(intended),
-            "--observed-json", json.dumps(intended), "--actor", "human:synthetic-user", expected=1,
+            "--evidence", mismatch_evidence, "--actor", "human:synthetic-user", expected=1,
         )
         self.assertEqual("TARGET_IDENTITY_INVALID", replay["code"])
         state = self.store.load(run_id)
@@ -220,15 +270,29 @@ class FocusControlTests(unittest.TestCase):
             targetIdentity=intended,
             isMinimalAcceptanceTest=True,
         )
-        valid_wait = self.cli(
-            "external-wait", valid_run, "--id", "valid-target", "--task-id", "verified-launch",
-            "--type", "SAFE_WRITE_TARGET_REQUIRED", "--principal", "synthetic-user",
-            "--provider", "provider-a", "--reason", "Confirm target identity.",
+        with mock.patch("architrave_runtime.secrets.token_urlsafe", return_value="-formerly-leading"):
+            _, valid_challenge = self.store.wait_external(
+                valid_run,
+                checkpoint_id="valid-target",
+                task_id="verified-launch",
+                checkpoint_type="SAFE_WRITE_TARGET_REQUIRED",
+                principal="synthetic-user",
+                provider="provider-a",
+                reason="Confirm target identity.",
+            )
+        self.assertEqual("arc_-formerly-leading", valid_challenge)
+        valid_evidence = self.target_evidence(
+            valid_run,
+            "valid-target",
+            valid_challenge,
+            intended,
+            intended,
+            "valid-target-proof",
         )
         self.cli(
             "target-resolve", valid_run, "--checkpoint-id", "valid-target",
-            "--challenge", str(valid_wait["resolutionChallenge"]),
-            "--intended-json", json.dumps(intended), "--observed-json", json.dumps(intended),
+            "--challenge", valid_challenge,
+            "--intended-json", json.dumps(intended), "--evidence", valid_evidence,
             "--actor", "human:synthetic-user",
         )
         self.cli("task-start", valid_run, "verified-launch", "--worker-id", "verified-worker")

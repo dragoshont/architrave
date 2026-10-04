@@ -1773,6 +1773,25 @@ class RuntimeV2Tests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeFailure, "superseded objective"):
             self.store.set_criterion(run_id, "EXT-001", "PASS", ["external:external-old"])
 
+    def test_direct_transaction_cannot_bypass_objective_authorization(self) -> None:
+        run_id = str(self.create()["runId"])
+        original_objective = copy.deepcopy(self.store.load(run_id)["objective"])
+
+        def mutate(state: dict[str, object]) -> dict[str, object]:
+            state["objective"]["outcome"] = "Unauthorized replacement."
+            state["objective"]["version"] = 2
+            return {"objectiveVersion": 2}
+
+        with self.assertRaisesRegex(RuntimeFailure, "trusted checkpoint"):
+            self.store._transaction(
+                run_id,
+                mutate,
+                event_type="objective.replaced",
+                actor="human:synthetic-user",
+            )
+        state = self.store.load(run_id)
+        self.assertEqual(original_objective, state["objective"])
+
     def test_v1_summary_remains_migratable(self) -> None:
         legacy = self.repo / "legacy-summary.json"
         legacy.write_text(

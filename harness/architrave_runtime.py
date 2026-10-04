@@ -261,11 +261,22 @@ class FileLock:
         self.handle.close()
 
 
+class _ObjectiveAuthorization:
+    __slots__ = ("issuer", "from_version", "to_version", "checkpoint_id")
+
+    def __init__(self, issuer: object, from_version: int, to_version: int, checkpoint_id: str):
+        self.issuer = issuer
+        self.from_version = from_version
+        self.to_version = to_version
+        self.checkpoint_id = checkpoint_id
+
+
 class RunStore:
     def __init__(self, repository: Path | str):
         self.repository = Path(repository).resolve()
         self.runs_root = self.repository / ".architrave" / "runs"
         self.key_path = self.repository / ".architrave" / "runtime.key"
+        self.__objective_capability = object()
 
     def _runtime_key(self, *, create: bool = False) -> bytes:
         if create and not self.key_path.exists():
@@ -708,9 +719,35 @@ class RunStore:
         with FileLock(run_dir / ".run.lock"):
             _, state = self._load_locked(run_id)
             before_policy = copy.deepcopy(state["policy"])
+            before_objective = copy.deepcopy(state["objective"])
             payload = mutate(state) or {}
+            objective_authorization = payload.pop("_objectiveAuthorization", None)
             if actor.startswith("worker:") and state["policy"] != before_policy:
                 raise RuntimeFailure("POLICY_ESCALATION", "workers cannot modify Run policy")
+            if (
+                event_type == "objective.replaced"
+                or state["objective"] != before_objective
+            ):
+                authorized = (
+                    isinstance(objective_authorization, _ObjectiveAuthorization)
+                    and objective_authorization.issuer is self.__objective_capability
+                    and objective_authorization.from_version == before_objective["version"]
+                    and objective_authorization.to_version == state["objective"]["version"]
+                    and bool(objective_authorization.checkpoint_id)
+                    and any(
+                        checkpoint["id"] == objective_authorization.checkpoint_id
+                        and checkpoint["type"] == "HUMAN_JUDGMENT_REQUIRED"
+                        and checkpoint["status"] == "RESOLVED"
+                        and checkpoint["resolvedBy"] == actor
+                        and checkpoint["objectiveVersion"] == before_objective["version"]
+                        for checkpoint in state["externalCheckpoints"]
+                    )
+                )
+                if not authorized:
+                    raise RuntimeFailure(
+                        "OBJECTIVE_AUTHORITY",
+                        "objective transitions require a consumed trusted checkpoint",
+                    )
             return self._commit_locked(
                 run_dir,
                 state,
@@ -956,6 +993,12 @@ class RunStore:
                 "cancelledWorkers": cancelled_workers,
                 "uncertainTasks": uncertain_tasks,
                 "nextCheapestTest": next_cheapest_test.strip(),
+                "_objectiveAuthorization": _ObjectiveAuthorization(
+                    self.__objective_capability,
+                    prior_version,
+                    new_version,
+                    checkpoint_id,
+                ),
             }
 
         return self._transaction(run_id, mutate, event_type="objective.replaced", actor=actor)
@@ -1077,11 +1120,11 @@ class RunStore:
         checkpoint_id: str,
         challenge: str,
         intended: dict[str, str],
-        observed: dict[str, str],
+        evidence_ref: str,
         actor: str,
     ) -> dict[str, Any]:
         required = {"provider", "artifact", "version", "sha256", "environment", "workspace", "acceptanceTarget"}
-        if set(intended) != required or set(observed) != required:
+        if set(intended) != required:
             raise RuntimeFailure("TARGET_IDENTITY_INVALID", "target identity requires provider, artifact, version, sha256, environment, workspace, and acceptanceTarget")
 
         def mutate(state: dict[str, Any]) -> dict[str, Any]:
@@ -1090,6 +1133,21 @@ class RunStore:
                 None,
             )
             task = find_task(state, checkpoint["taskId"]) if checkpoint else None
+            require_evidence_refs(state, [evidence_ref], allowed={"artifact"})
+            artifact_id = evidence_ref.split(":", 1)[1]
+            artifact = next(
+                (item for item in state["artifacts"] if item["id"] == artifact_id),
+                None,
+            )
+            if (
+                artifact is None
+                or artifact["producer"] != "external-proof"
+                or artifact["kind"] != "external-proof"
+                or artifact.get("consumedByTask") is not None
+            ):
+                raise RuntimeFailure("TARGET_IDENTITY_INVALID", "unconsumed external attestation is required")
+            receipt = self._read_json_receipt(artifact["path"], "target identity")
+            observed = receipt.get("observed") or {}
             expected_binding = sha256_value(
                 {
                     "runId": state["runId"],
@@ -1112,6 +1170,7 @@ class RunStore:
                 or task.get("targetIdentity") != intended
                 or actor != f"human:{checkpoint['principal']}"
                 or intended["provider"] != checkpoint["provider"]
+                or receipt.get("checkpointId") != checkpoint_id
             ):
                 raise RuntimeFailure("TARGET_IDENTITY_INVALID", "target identity checkpoint is invalid")
             mismatches = {
@@ -1123,6 +1182,8 @@ class RunStore:
             checkpoint["resolvedAt"] = utc_now()
             checkpoint["resolvedBy"] = actor
             checkpoint["resolutionRef"] = f"target:{checkpoint_id}"
+            artifact["consumedByTask"] = task["id"]
+            artifact["attestation"] = self._artifact_attestation(artifact)
             if not any(
                 item["taskId"] == task["id"] and item["status"] == "PENDING"
                 for item in state["externalCheckpoints"]
@@ -1139,6 +1200,7 @@ class RunStore:
                 "mismatches": mismatches,
                 "objectiveVersion": state["objective"]["version"],
                 "verifiedAt": utc_now(),
+                "evidenceRef": evidence_ref,
             }
             if mismatches:
                 state["status"] = "PAUSED"
@@ -1151,6 +1213,7 @@ class RunStore:
             mutate,
             event_type="target.preflight",
             actor=actor,
+            evidence_refs=[evidence_ref],
         )
 
     def record_review_result(
@@ -1663,6 +1726,21 @@ class RunStore:
             or proof.get("provider") != checkpoint["provider"]
         ):
             raise RuntimeFailure("EXTERNAL_PROOF", "external proof does not match a pending checkpoint")
+        if checkpoint["type"] == "SAFE_WRITE_TARGET_REQUIRED":
+            task = find_task(state, checkpoint["taskId"])
+            required = {"provider", "artifact", "version", "sha256", "environment", "workspace", "acceptanceTarget"}
+            if (
+                proof.get("runId") != run_id
+                or proof.get("objectiveVersion") != state["objective"]["version"]
+                or proof.get("taskId") != task["id"]
+                or proof.get("challengeHash") != checkpoint["challengeHash"]
+                or proof.get("provider") != checkpoint["provider"]
+                or proof.get("principal") != checkpoint["principal"]
+                or proof.get("actor") != checkpoint["principal"]
+                or proof.get("intended") != task.get("targetIdentity")
+                or set(proof.get("observed") or {}) != required
+            ):
+                raise RuntimeFailure("EXTERNAL_PROOF", "target identity proof is not bound to the pending checkpoint")
         return self._record_artifact(run_id, kind="external-proof", actor="external-checkpoint", producer="external-proof", **kwargs)
 
     def _read_json_receipt(self, path_value: str, label: str) -> dict[str, Any]:
@@ -2278,7 +2356,7 @@ class RunStore:
         require_id(checkpoint_id, "external checkpoint id")
         if checkpoint_type not in EXTERNAL_TYPES:
             raise RuntimeFailure("INVALID_EXTERNAL_CHECKPOINT", f"invalid external checkpoint type: {checkpoint_type}")
-        challenge = secrets.token_urlsafe(32)
+        challenge = "arc_" + secrets.token_urlsafe(32)
         challenge_hash = hashlib.sha256(challenge.encode("utf-8")).hexdigest()
 
         def mutate(state: dict[str, Any]) -> dict[str, Any]:
@@ -3382,7 +3460,7 @@ def build_parser() -> argparse.ArgumentParser:
     target.add_argument("--checkpoint-id", required=True)
     target.add_argument("--challenge", required=True)
     target.add_argument("--intended-json", required=True)
-    target.add_argument("--observed-json", required=True)
+    target.add_argument("--evidence", required=True)
     target.add_argument("--actor", required=True)
 
     review = subparsers.add_parser("review-record")
@@ -3531,7 +3609,7 @@ def cli(argv: Sequence[str] | None = None) -> int:
                     checkpoint_id=args.checkpoint_id,
                     challenge=args.challenge,
                     intended=json.loads(args.intended_json),
-                    observed=json.loads(args.observed_json),
+                    evidence_ref=args.evidence,
                     actor=args.actor,
                 )
             )
