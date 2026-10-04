@@ -69,7 +69,6 @@ def producer_identity_values(row: dict[str, Any]) -> set[str]:
 
 def redact_producer_identity(text: str, row: dict[str, Any]) -> str:
     redacted = re.sub(r"(?ms)^diff --git a/\.architrave/runs/.*?(?=^diff --git |\Z)", "", text)
-    redacted = re.sub(r"\b(?:FAST|BALANCED|DEEP|CRITICAL)\b", "<redacted-profile>", redacted)
     for value in sorted(producer_identity_values(row), key=len, reverse=True):
         redacted = re.sub(re.escape(value), "<redacted-producer>", redacted, flags=re.IGNORECASE)
     return redacted

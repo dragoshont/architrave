@@ -5,6 +5,15 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## Unreleased
+
+### Changed
+- Model selection is entirely user/host-owned; canonical agents, Run state,
+  WorkPackets, schemas, templates, and docs no longer specify model classes,
+  tiers, providers, reasoning levels, context tiers, or concrete models.
+- Run v2 now persists canonical state, authenticated events, one rolling
+  recovery snapshot, and compact evidence only. Human views are on demand.
+
 ## [0.11.1] - 2026-09-09
 
 ### Added
@@ -34,9 +43,9 @@ Releases at or before **v0.8.12** are on the
 ## [0.11.0] - 2026-09-05
 
 ### Added
-- Provider-neutral adaptive execution intent across model class, reasoning, context, and verification dimensions, with provisional FAST/BALANCED/DEEP/CRITICAL presets and host-native subagent delegation.
-- Backward-compatible routing benchmark treatments, model/effort/context requests, observed execution telemetry, control-honor status, and four model-neutral routing scenarios.
-- Optional run-summary execution evidence with paired POSIX/PowerShell validation of preset consistency, evidence-bearing escalation/fallback, and verified independent/cross-family acceptance.
+- Host-native bounded delegation and risk-based verification policy.
+- Benchmark treatments for delegation, verification, and observable execution telemetry.
+- Optional run-summary execution evidence with paired POSIX/PowerShell validation.
 - Durable `architrave.run.v2` control plane with Outcome, Acceptance Matrix,
   TaskGraph, typed HMAC-authenticated EventLog, checkpoints, resume,
   challenge-bound external waits,
@@ -50,15 +59,14 @@ Releases at or before **v0.8.12** are on the
 - First-class Codex/ChatGPT plugin manifest with three plugin-only Agent Skills.
 - Project-scoped Tournament Analyst and Adversarial Judge roles generated from
   canonical agents, with opt-in POSIX/PowerShell install and update support.
-- Claude Opus 4.8 MAX Tournament launcher and bounded, nonce-verified dual-family
-  semantic launchers using GPT-5.6 Sol MAX and Opus 4.8 MAX.
+- Bounded, nonce-verified independent semantic review launchers.
 - Disposable Codex runtime fixtures for plugin skill discovery, role routing,
   exactly-one MCP invocation, and hostile-output resistance.
 - Installers and updaters ignore `.architrave/runs/` and
   `.architrave/worktrees/` by default while learning remains tracked.
 
 ### Changed
-- Adaptive-routing benchmarks now emit periodic progress heartbeats, cap each
+- Execution benchmarks now emit periodic progress heartbeats, cap each
   agent cell at 10 minutes and each invocation at 20 minutes by default, and
   stop launching cells when the configurable run budget is exhausted.
 - The lead agent is materially smaller and delegates lane detail to retrievable

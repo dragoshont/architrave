@@ -26,16 +26,6 @@ from typing import Any
 
 
 PRODUCER_PROMPT_VERSION = 2
-PROFILE_INTENTS = {
-    "FAST": {"modelClass": "fast", "reasoning": "low", "context": "narrow", "verification": "default"},
-    "BALANCED": {"modelClass": "default", "reasoning": "default", "context": "default", "verification": "default"},
-    "DEEP": {"modelClass": "strong", "reasoning": "high", "context": "default", "verification": "independent"},
-    "CRITICAL": {"modelClass": "strong", "reasoning": "high", "context": "default", "verification": "cross-family"},
-}
-MODEL_CLASSES = {"inherit", "fast", "default", "strong"}
-REASONING_INTENTS = {"low", "default", "high", "max"}
-CONTEXT_INTENTS = {"narrow", "default", "long"}
-VERIFICATION_INTENTS = {"default", "independent", "cross-family"}
 COPILOT_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh", "max"}
 COPILOT_CONTEXT_TIERS = {"default", "long_context"}
 RUNNER_CONTROL_FIELDS = {
@@ -190,32 +180,6 @@ def load_config(path: Path) -> dict[str, Any]:
         return json.load(handle)
 
 
-def execution_intent_errors(intent: object, label: str) -> list[str]:
-    if not isinstance(intent, dict):
-        return [f"{label} must be an object"]
-    errors = []
-    allowed = {"profile", "modelClass", "reasoning", "context", "verification"}
-    unknown = set(intent) - allowed
-    if unknown:
-        errors.append(f"{label} has unknown field(s): {', '.join(sorted(unknown))}")
-    checks = (
-        ("modelClass", MODEL_CLASSES),
-        ("reasoning", REASONING_INTENTS),
-        ("context", CONTEXT_INTENTS),
-        ("verification", VERIFICATION_INTENTS),
-    )
-    for field, values in checks:
-        if intent.get(field) not in values:
-            errors.append(f"{label}.{field} is invalid")
-    profile = intent.get("profile")
-    if profile is not None:
-        if profile not in PROFILE_INTENTS:
-            errors.append(f"{label}.profile is invalid")
-        elif any(intent.get(field) != value for field, value in PROFILE_INTENTS[profile].items()):
-            errors.append(f"{label}.profile does not match its dimensions")
-    return errors
-
-
 def benchmark_config_errors(config: object) -> list[str]:
     if not isinstance(config, dict):
         return ["benchmark config must be an object"]
@@ -256,14 +220,9 @@ def benchmark_config_errors(config: object) -> list[str]:
             errors.append(f"{label}.contextTier is invalid")
         if effort is not None and (not arm.get("model") or str(arm.get("model")).lower() == "auto"):
             errors.append(f"{label} controlled reasoning effort requires an explicit non-auto model")
-        if "execution" in arm:
-            errors.extend(execution_intent_errors(arm["execution"], f"{label}.execution"))
     for scenario in scenarios:
         if not isinstance(scenario, dict):
             errors.append("scenario must be an object")
-            continue
-        if "expectedExecution" in scenario:
-            errors.extend(execution_intent_errors(scenario["expectedExecution"], f"scenario {scenario.get('id', '<missing>')}.expectedExecution"))
     return errors
 
 
@@ -623,16 +582,13 @@ def arm_values(scenario: dict[str, Any], key: str, arm_id: str) -> list[str]:
 
 def execution_snapshot(scenario: dict[str, Any], arm: dict[str, Any]) -> dict[str, Any]:
     return {
-        "expected": copy.deepcopy(scenario.get("expectedExecution")),
         "requested": {
-            "semantic": copy.deepcopy(arm.get("execution")),
             "runner": arm["runner"],
             "agent": arm.get("agent"),
             "model": arm.get("model"),
             "reasoningEffort": arm.get("reasoningEffort"),
             "contextTier": arm.get("contextTier"),
         },
-        "reportedSelection": None,
         "controlStatus": {
             "model": "not-requested",
             "reasoningEffort": "not-requested",
@@ -640,35 +596,6 @@ def execution_snapshot(scenario: dict[str, Any], arm: dict[str, Any]) -> dict[st
             "controlsHonored": None,
         },
     }
-
-
-def run_summary_paths(worktree: Path) -> set[Path]:
-    run_root = worktree / ".architrave" / "runs"
-    return {path.resolve() for path in run_root.glob("*/summary.json")} if run_root.exists() else set()
-
-
-def reported_execution(worktree: Path, preexisting: set[Path] | None = None) -> dict[str, Any] | None:
-    run_root = worktree / ".architrave" / "runs"
-    preexisting = preexisting or set()
-    summaries = sorted(
-        (path for path in run_root.glob("*/summary.json") if path.resolve() not in preexisting),
-        key=lambda path: path.stat().st_mtime,
-        reverse=True,
-    ) if run_root.exists() else []
-    for summary_path in summaries:
-        try:
-            execution = json.loads(summary_path.read_text(encoding="utf-8")).get("execution")
-        except (OSError, json.JSONDecodeError, AttributeError):
-            continue
-        if not isinstance(execution, dict) or execution_intent_errors(execution.get("intent"), "reported intent"):
-            continue
-        return {
-            "profile": execution.get("profile"),
-            "intent": copy.deepcopy(execution["intent"]),
-            "effectiveVerification": execution.get("effectiveVerification"),
-            "selectionReason": execution.get("selectionReason"),
-        }
-    return None
 
 
 def control_status(requested: dict[str, Any], agent: dict[str, Any]) -> dict[str, Any]:
@@ -913,7 +840,6 @@ def bench(args: argparse.Namespace) -> int:
                         )
                     else:
                         row["base_commit"] = create_worktree(repo, scenario["baseRef"], worktree)
-                    preexisting_summaries = run_summary_paths(worktree)
                     agent_timeout = min(args.agent_timeout, remaining)
                     agent_budget_limited = remaining < args.agent_timeout
                     row["agent"] = run_arm(
@@ -929,7 +855,6 @@ def bench(args: argparse.Namespace) -> int:
                         row["agent"]["timeout_reason"] = "run_budget"
                     elif row["agent"].get("timed_out"):
                         row["agent"]["timeout_reason"] = "cell_timeout"
-                    row["execution"]["reportedSelection"] = reported_execution(worktree, preexisting_summaries)
                     row["execution"]["controlStatus"] = control_status(row["execution"]["requested"], row["agent"])
                     row["diff"] = diff_metrics(worktree)
                     row["diff_artifacts"] = save_diff_artifacts(worktree, cell_dir, os.environ.copy())

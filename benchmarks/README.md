@@ -61,7 +61,11 @@ Later arms can add `claude`, `opencode`, `kilo`, or other external-agent command
 
 Supported runner types today are `copilot` and `shell`. Add new runner types in both `benchmarks/scenarios.schema.json` and `scripts/bench-architrave.py` in the same change.
 
-Adaptive routing is not implemented by the runner. `arm.execution` stores provider-neutral treatment metadata; optional Copilot arm fields `model`, `reasoningEffort`, and `contextTier` are local experiment bindings translated only at this existing adapter boundary. Shell arms reject those controls rather than pretending to support them. Controlled effort requires an explicit non-`auto` model. Canonical agents and published routing scenarios contain no concrete model IDs.
+Model selection is outside Architrave policy. Optional benchmark arm fields are
+user-local harness controls used only for explicit experiments; canonical
+agents, published scenarios, WorkPackets, and Run state do not recommend or
+persist them. Shell arms reject unsupported controls rather than pretending to
+honor them.
 
 ## Dataset Shape
 
@@ -142,7 +146,11 @@ Optional LLM judging through Copilot CLI:
 python3 scripts/judge-bench.py --results .architrave/bench/runs/<run-id>/results.jsonl --out .architrave/bench/runs/<run-id>/judged.jsonl
 ```
 
-The benchmark judge is fail-closed and tool-free. It receives nonce-delimited untrusted evidence, blinds producer arm/model/profile and expected-routing labels, verifies zero tool requests, records observed judge model/vendor telemetry, and keys resumability by family/model/effort/prompt/rubric configuration. Run separate `--judge-family gpt` and `--judge-family claude` passes with locally available models; a declared family without matching observed telemetry is `unverified`, sets `gate_eligible=false`, and cannot satisfy cross-family acceptance.
+The benchmark judge is fail-closed and tool-free. It receives nonce-delimited
+untrusted evidence, blinds producer identity and host-selected execution
+metadata, verifies zero tool requests, and keys resumability by reviewer,
+prompt, and rubric configuration. Independent reviewer identity must be
+demonstrable; model choice remains user/host-owned.
 
 Create concrete experiment arms only in an ignored local copy, for example `.architrave/bench/routing.local.json`. Vary one useful dimension at a time, use at least three repeats, and retain `controlsHonored=true` rows for model/effort conclusions. Long-context results remain inconclusive while context application is unobservable.
 

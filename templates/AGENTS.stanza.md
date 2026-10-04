@@ -43,8 +43,8 @@ When `kind` is absent, use the application fields and optional `backend`, `iac`,
 - Runtime: use `harness/invariant_engine.py` and configured
 	`harness/legibility.py` Web/Electron/iOS/deployment checks. Compile is not a
 	product reality gate.
-- Semantic: scale by R0-R4. R3/R4 require independent GPT- and Claude-family
-	passes; R4 also requires security and policy review.
+- Semantic: scale by R0-R4. R3/R4 require two distinct independent reviewer
+	identities; R4 also requires security and policy review.
 
 **Learning loop:** Keep private Run evidence under `.architrave/runs/`, isolated
 workers under `.architrave/worktrees/`, and the HMAC key at
@@ -52,8 +52,16 @@ workers under `.architrave/worktrees/`, and the HMAC key at
 Maintain concise tracked repo profile/lessons, validate stale facts, and never
 store secrets or hidden reasoning.
 
-**Adaptive execution:** Load `knowledge/execution-policy.md`. Express bounded work with provider-neutral model/reasoning/context/verification intent, treating FAST/BALANCED/DEEP/CRITICAL as provisional convenience presets. Task characteristics override role hints. Use the current host's structured subagent invocation when useful and otherwise inherit; never shell out to another agent harness, depend on a provider SDK, or commit concrete model IDs as universal policy. A stronger model never replaces required gates.
+**Host-owned execution:** Load `knowledge/execution-policy.md`. Architrave does
+not select, rank, recommend, or persist a model class, tier, reasoning level,
+context tier, provider, or concrete model. The user and active host harness own
+those choices. Use structured subagent invocation only when isolation,
+parallelism, permissions, expertise, or independent context justify it; never
+shell out to another agent harness or depend on a provider SDK.
 
-Low-risk FAST/BALANCED knowledge or mechanical work may use deterministic-only `verification: default` when every criterion is mechanically checked. Semantic, UI, contract, architecture, migration, security/trust, IaC, and high-blast-radius work raises the floor to `independent` or `cross-family`; the full cross-family gate still requires verified GPT/Copilot and Claude passes.
+Low-risk mechanical work may close on deterministic checks when every criterion
+is mechanically covered. Semantic, UI, contract, architecture, migration,
+security/trust, IaC, and high-blast-radius work adds one or two independent
+reviewers according to risk, without specifying their models.
 
 **Never:** invent an unconfigured lane, introduce platform-foreign UI, use raw values where a token exists, create parallel backend abstractions, manually edit canonical Run state, let workers escalate policy or complete tasks, blindly retry uncertain side effects, mutate outside scoped policy, materialize secrets, run apply-shaped IaC commands, or claim compile/plan/simulation or an unsupported capability as a shipped reality.

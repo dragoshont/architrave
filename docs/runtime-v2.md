@@ -10,7 +10,8 @@ The complete behavioral contract lives in
 - `.architrave/runs/<id>/run.json` is authoritative.
 - `events.jsonl` is append-only and HMAC-authenticated with the local ignored
   `.architrave/runtime.key`.
-- Markdown and `summary.json` are projections.
+- `recovery.json` is the single rolling last-known-good snapshot.
+- Status, phase, handoff, and audit views are rendered on demand.
 - `harness/architrave_runtime.py` is the only state transition API.
 - v1 `summary.json` remains readable and migratable.
 

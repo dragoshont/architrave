@@ -62,8 +62,8 @@ def summarize(items: list[dict[str, Any]]) -> str:
         groups[(row.get("scenario", ""), row.get("arm", ""))].append(row)
 
     lines = ["# Architrave Benchmark Summary", ""]
-    lines.append("| Scenario | Arm | Profile | Requested binding | Control observability | n | pass % | median ms | p90 ms | variance ms | durable evidence | outcome % (all rows) | human interventions | false PASS | repeated work | timeouts |")
-    lines.append("|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+    lines.append("| Scenario | Arm | Requested binding | Control observability | n | pass % | median ms | p90 ms | variance ms | durable evidence | outcome % (all rows) | human interventions | false PASS | repeated work | timeouts |")
+    lines.append("|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     for (scenario, arm), group in sorted(groups.items()):
         n = len(group)
         pass_rate = 100 * sum(1 for row in group if row.get("passed")) / n if n else 0
@@ -77,7 +77,6 @@ def summarize(items: list[dict[str, Any]]) -> str:
         false_passes = sum(1 for item in outcomes if item.get("false_pass"))
         repeated_work = sum(int(item.get("repeated_work_after_resume") or 0) for item in outcomes)
         timeouts = sum(1 for agent in agents if agent.get("timed_out"))
-        profile = group_values(group, lambda row: ((((row.get("execution") or {}).get("requested") or {}).get("semantic") or {}).get("profile")))
         binding = group_values(
             group,
             lambda row: "/".join(
@@ -97,7 +96,6 @@ def summarize(items: list[dict[str, Any]]) -> str:
                 [
                     scenario,
                     arm,
-                    profile,
                     binding,
                     controls,
                     str(n),

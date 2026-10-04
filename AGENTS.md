@@ -25,7 +25,11 @@ defaults to deny; explicit Run policy may authorize a bounded target and operati
 	the Python Run v2 orchestration runtime in shell or PowerShell.
 - **Keep `tools/managed-paths.sh` and `tools/ManagedPaths.ps1` in lockstep** — installers/updaters must route every managed target write/delete through them; new managed destinations require paired adversarial fixtures.
 - **Agents and gates are config-driven** — resolve everything through `architrave.config.json`; never hard-code a stack or a path.
-- **Execution intent is provider-neutral** — use `knowledge/execution-policy.md` and the current host's structured subagent invocation; concrete model bindings remain host/user-local and canonical agents never shell out to another harness.
+- **Model selection is host-owned** — canonical agents, repository config,
+  WorkPackets, and Run state do not specify model class, tier, provider,
+  reasoning, context, or concrete model. Use structured subagent invocation only
+  for bounded isolation, parallelism, permissions, expertise, or review, and
+  never shell out to another harness.
 - **Run state is API-owned** — never manually edit `run.json`, `events.jsonl`,
 	policy, checkpoints, or task statuses. The Phase Ledger is a projection.
 - **Default deny** — unconfigured infrastructure/runtime is plan/read-only.

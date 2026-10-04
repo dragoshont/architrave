@@ -204,10 +204,24 @@ class RuntimeV2Tests(unittest.TestCase):
         self.assertEqual("run.created", events[0]["type"])
         self.assertEqual(events[0]["hash"], state["eventCursor"]["lastHash"])
         self.assertIsNone(state["pendingEvent"])
-        self.assertTrue((self.store.run_dir(run_id) / "phase-ledger.md").is_file())
+        run_dir = self.store.run_dir(run_id)
+        self.assertTrue((run_dir / "recovery.json").is_file())
+        self.assertFalse((run_dir / "phase-ledger.md").exists())
+        self.assertFalse((run_dir / "summary.json").exists())
+        self.assertFalse((run_dir / "snapshots").exists())
         self.assertTrue(self.store.key_path.is_file())
         if os.name != "nt":
             self.assertEqual(0o600, self.store.key_path.stat().st_mode & 0o777)
+
+    def test_transitions_keep_one_compact_recovery_snapshot(self) -> None:
+        state = self.create()
+        run_id = str(state["runId"])
+        for index in range(12):
+            self.store.policy_check(run_id, f"scope-{index}", "observe")
+        run_dir = self.store.run_dir(run_id)
+        files = sorted(path.relative_to(run_dir).as_posix() for path in run_dir.rglob("*") if path.is_file())
+        self.assertEqual([".run.lock", "events.jsonl", "recovery.json", "run.json"], files)
+        self.assertLess((run_dir / "recovery.json").stat().st_size, 16_384)
 
     def test_missing_runtime_key_fails_closed(self) -> None:
         state = self.create()

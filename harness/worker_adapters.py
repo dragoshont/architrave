@@ -616,11 +616,7 @@ def execute_work_packet(store: RunStore, run_id: str, task_id: str, worker_id: s
         escaped_paths = [path for path in changed_paths if not path_allowed(path, task["mutablePaths"])]
 
         artifact_dir = run_dir / "workers" / packet["workPacketId"]
-        stdout_path = artifact_dir / "stdout.log"
-        stderr_path = artifact_dir / "stderr.log"
         result_path = artifact_dir / "result.json"
-        write_redacted(stdout_path, execution["stdout"])
-        write_redacted(stderr_path, execution["stderr"])
 
         errors: list[dict[str, Any]] = []
         if execution["timedOut"]:
@@ -666,18 +662,21 @@ def execute_work_packet(store: RunStore, run_id: str, task_id: str, worker_id: s
             "status": candidate_status,
             "exitCode": execution["exitCode"],
             "durationMs": execution["durationMs"],
-            "outputTruncated": execution["outputTruncated"],
+            "outputTruncated": execution["outputTruncated"]
+            or len(execution["stdout"]) > 2000
+            or len(execution["stderr"]) > 2000,
             "summary": str(redact(summary_source[:1000])),
+            "stdout": str(redact(execution["stdout"][:2000])),
+            "stderr": str(redact(execution["stderr"][:2000])),
             "changedPaths": changed_paths,
             "errors": errors,
-            "artifacts": [
-                stdout_path.relative_to(store.repository).as_posix(),
-                stderr_path.relative_to(store.repository).as_posix(),
-                result_path.relative_to(store.repository).as_posix(),
-            ],
+            "artifacts": [result_path.relative_to(store.repository).as_posix()],
         }
         result_path.parent.mkdir(parents=True, exist_ok=True)
-        result_path.write_text(json.dumps(redact(result), indent=2) + "\n", encoding="utf-8")
+        result_path.write_text(
+            json.dumps(redact(result), separators=(",", ":"), ensure_ascii=True) + "\n",
+            encoding="utf-8",
+        )
         result_artifact_id = f"worker-result-{packet['workPacketId']}-{uuid.uuid4().hex}"
         store._record_worker_result(
             run_id,

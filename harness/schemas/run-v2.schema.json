@@ -294,7 +294,6 @@
         "mutablePaths",
         "tools",
         "worker",
-        "model",
         "risk",
         "expectedArtifacts",
         "budget"
@@ -327,7 +326,6 @@
           "uniqueItems": true
         },
         "worker": { "type": "string", "minLength": 1 },
-        "model": { "type": ["string", "null"] },
         "risk": { "$ref": "#/definitions/risk" },
         "expectedArtifacts": {
           "type": "array",
@@ -580,7 +578,7 @@
           "uniqueItems": true
         },
         "type": { "type": "string", "enum": ["deterministic", "e2e", "semantic", "reality", "policy", "security"] },
-        "family": { "type": ["string", "null"], "enum": [null, "gpt", "claude", "security"] },
+        "family": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" },
         "status": { "type": "string", "enum": ["PASS", "FAIL", "BLOCKED", "SKIPPED"] },
         "startedAt": { "$ref": "#/definitions/timestamp" },
         "finishedAt": { "$ref": "#/definitions/timestamp" },

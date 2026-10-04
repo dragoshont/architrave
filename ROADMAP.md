@@ -39,9 +39,9 @@
 
 ## Milestone 5 — SDD + Learning Hardening
 - [x] Mandatory visible intake for non-trivial work, with direct plans for routine bounded changes and a Tournament of Options only for materially ambiguous or high-risk choices.
-- [x] Mandatory phase ledger for non-trivial SDD/backend/full-stack/multi-slice/runtime runs, mirrored into `.architrave/runs/<id>/phase-ledger.md` and `summary.json.phases`.
-- [x] Harness scaffolding for phase-ledger artifacts (`harness/init-run.*`) and schema support (`harness/schemas/run-summary.schema.json`).
-- [x] Validator hardening for phase-ledger structure: required columns, allowed statuses, at most one `in-progress` phase, non-empty phase rows, and summary phase validation.
+- [x] Compact canonical Run state plus authenticated events and one rolling recovery snapshot; phase/status/audit views are rendered on demand.
+- [x] Run v1 migration support retained without requiring legacy projection files for Run v2.
+- [x] Validator hardening for canonical state, event integrity, recovery state, and compact artifact receipts.
 - [x] Direct validator fixture tests (`scripts/test-validate-run.sh`) covering valid and malformed run artifacts.
 - [x] Learning artifact validator (`harness/validate-learning.*`) for required learning files, local markdown links, and obvious secret patterns.
 - [x] Approval-first lesson promotion helper (`harness/promote-lesson.*`), dry-run by default and Markdown-only in the first slice.
@@ -92,12 +92,8 @@
 	deterministic fixture.
 - [ ] Safe-target live deployment dogfood beyond the sandbox fixture.
 
-## Milestone 8 - Adaptive Execution Policy
-- [x] Provider-neutral `modelClass`, `reasoning`, `context`, and `verification` intent with provisional FAST/BALANCED/DEEP/CRITICAL presets.
-- [x] Host-native custom-agent/subagent delegation policy with user-local concrete bindings and clean inheritance.
-- [x] Backward-compatible benchmark arms for semantic treatment plus observable model/reasoning controls and control-honor evidence.
-- [x] Model-neutral FAST/BALANCED/DEEP/CRITICAL routing scenarios pinned to repository evidence.
-- [x] Tool-free, prompt-injection-resistant, family-verifiable benchmark judging.
-- [x] Optional strict run-summary execution evidence with POSIX/PowerShell validation parity.
-- [ ] Publish concrete model/effort recommendations only after repeated, honored-control benchmark evidence.
-- [ ] Evaluate learned routing against the deterministic semantic baseline before adopting it.
+## Milestone 8 - Host-owned Execution Policy
+- [x] Canonical agents, Run state, WorkPackets, docs, and templates contain no model class, tier, provider, reasoning, or context recommendations.
+- [x] Host-native custom-agent/subagent delegation is used only for bounded isolation, parallelism, permissions, expertise, or independent review.
+- [x] Risk-based verification requires deterministic evidence and independent reviewer identities without constraining host model choice.
+- [x] Compact Run v2 artifacts replace eager per-agent plans, reports, status files, and per-transition snapshots.

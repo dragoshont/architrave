@@ -359,7 +359,7 @@ class RunStore:
         descriptor, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
         try:
             with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
-                json.dump(value, handle, indent=2, sort_keys=False, ensure_ascii=True)
+                json.dump(value, handle, separators=(",", ":"), sort_keys=False, ensure_ascii=True)
                 handle.write("\n")
                 handle.flush()
                 os.fsync(handle.fileno())
@@ -375,9 +375,7 @@ class RunStore:
                 os.unlink(temp_name)
 
     def _write_snapshot(self, run_dir: Path, state: dict[str, Any]) -> None:
-        snapshot_dir = run_dir / "snapshots"
-        snapshot_dir.mkdir(parents=True, exist_ok=True)
-        self._atomic_write(snapshot_dir / f"{state['revision']:012d}.json", state)
+        self._atomic_write(run_dir / "recovery.json", state)
 
     def _restore_snapshot(
         self,
@@ -388,22 +386,20 @@ class RunStore:
         if not events:
             return None
         expected_hash = events[-1]["payload"].get("stateHash")
-        snapshot_dir = run_dir / "snapshots"
-        for path in sorted(snapshot_dir.glob("*.json"), reverse=True) if snapshot_dir.is_dir() else []:
-            try:
-                candidate = json.loads(path.read_text(encoding="utf-8"))
-                validate_run(candidate)
-            except (OSError, json.JSONDecodeError, RuntimeFailure):
-                continue
-            if candidate.get("runId") != run_id:
-                continue
-            if candidate.get("eventCursor") != {"sequence": len(events), "lastHash": events[-1]["hash"]}:
-                continue
-            if self._state_hash(candidate) != expected_hash:
-                continue
-            self._atomic_write(run_dir / "run.json", candidate)
-            return candidate
-        return None
+        path = run_dir / "recovery.json"
+        try:
+            candidate = json.loads(path.read_text(encoding="utf-8"))
+            validate_run(candidate)
+        except (OSError, json.JSONDecodeError, RuntimeFailure):
+            return None
+        if candidate.get("runId") != run_id:
+            return None
+        if candidate.get("eventCursor") != {"sequence": len(events), "lastHash": events[-1]["hash"]}:
+            return None
+        if self._state_hash(candidate) != expected_hash:
+            return None
+        self._atomic_write(run_dir / "run.json", candidate)
+        return candidate
 
     def _read_state(self, run_dir: Path) -> dict[str, Any]:
         path = run_dir / "run.json"
@@ -722,82 +718,12 @@ class RunStore:
             )
 
     def _create_human_artifacts(self, run_dir: Path, state: dict[str, Any]) -> None:
-        templates = {
-            "intake.md": "# Intake\n\n## Understanding\n\n## Acceptance Criteria\n\n## Grounding Sources\n\n## Assumptions\n\n## Blocking Questions\n",
-            "tournament.md": "# Tournament of Options\n\n## Decision Matrix\n\n## Winner\n",
-            "recommended-plan.md": "# Recommended Plan\n\n## Implementation Sequence\n\n## Test Strategy\n\n## Rollback / Recovery\n",
-            "deterministic-gates.md": "# Deterministic Gates\n\n",
-            "judge-pre.md": "# Judge Gate 1\n\n## Verdict\n\n## Findings\n",
-            "judge-post.md": "# Judge Gate 2\n\n## Verdict\n\n## Findings\n",
-            "runtime-observer.md": "# Runtime Observer\n\n## Sources Used\n\n## Observed State\n\n## Mismatches\n",
-        }
-        for name, content in templates.items():
-            path = run_dir / name
-            if not path.exists():
-                path.write_text(content, encoding="utf-8")
+        # Canonical state and the authenticated event ledger are the durable artifacts.
+        # Human-readable views are rendered on demand by CLI commands.
+        return None
 
     def _project(self, run_dir: Path, state: dict[str, Any]) -> None:
-        rows = [
-            "# Phase Ledger",
-            "",
-            "> Projection of `run.json`; phase labels are observational and do not authorize or block work.",
-            "",
-            "| Phase | Name | Status | Scope | Gate | Result |",
-            "|---:|---|---|---|---|---|",
-        ]
-        status_map = {
-            "NOT_READY": "not-started",
-            "READY": "not-started",
-            "RUNNING": "in-progress",
-            "WAITING_EXTERNAL": "blocked",
-            "WAITING_RESOURCE": "blocked",
-            "COMPLETED": "completed",
-            "FAILED": "blocked",
-            "SKIPPED": "skipped",
-            "CANCELLED": "skipped",
-        }
-        for index, task in enumerate(state["tasks"], start=1):
-            result = "pass" if task["status"] == "COMPLETED" else "pending"
-            if task["status"] == "FAILED":
-                result = "fail"
-            values = [
-                str(index),
-                task["title"],
-                status_map[task["status"]],
-                task["objective"],
-                task.get("gate") or "runtime task gate",
-                result,
-            ]
-            escaped = [value.replace("|", "\\|").replace("\n", " ") for value in values]
-            rows.append("| " + " | ".join(escaped) + " |")
-        if not state["tasks"]:
-            rows.append("| 0 | Planning | in-progress | Build the TaskGraph. | TaskGraph accepted | pending |")
-        rows.extend(["", "## Phase Transition Log", "", f"Last projected from Run revision {state['revision']}.", ""])
-        (run_dir / "phase-ledger.md").write_text("\n".join(rows), encoding="utf-8")
-
-        required = [criterion for criterion in state["acceptanceCriteria"] if criterion["blocking"]]
-        summary = {
-            "schema": SCHEMA,
-            "runId": state["runId"],
-            "status": state["status"],
-            "updatedAt": state["updatedAt"],
-            "canonicalState": f".architrave/runs/{state['runId']}/run.json",
-            "eventLog": state["eventLog"],
-            "outcome": state["outcome"]["description"],
-            "acceptance": {
-                "required": len(required),
-                "passed": sum(item["status"] in {"PASS", "NOT_APPLICABLE"} for item in required),
-                "failed": sum(item["status"] == "FAIL" for item in required),
-                "blockedExternal": sum(item["status"] == "BLOCKED_EXTERNAL" for item in required),
-            },
-            "readyTasks": [task["id"] for task in state["tasks"] if task["status"] == "READY"],
-            "pendingExternalCheckpoints": [
-                checkpoint["id"]
-                for checkpoint in state["externalCheckpoints"]
-                if checkpoint["status"] == "PENDING"
-            ],
-        }
-        self._atomic_write(run_dir / "summary.json", summary)
+        return None
 
     def add_task(self, run_id: str, task: dict[str, Any], actor: str = "coordinator") -> dict[str, Any]:
         task_id = require_id(str(task.get("id", "")), "task id")
@@ -1113,7 +1039,8 @@ class RunStore:
 
     def _record_semantic_verdict(self, run_id: str, **kwargs: Any) -> dict[str, Any]:
         verdict = self._read_json_receipt(kwargs["path"], "semantic")
-        if verdict.get("verdict") != "PASS" or verdict.get("family") not in {"gpt", "claude"} or not verdict.get("criteria"):
+        reviewer = verdict.get("reviewer") or verdict.get("family")
+        if verdict.get("verdict") != "PASS" or not reviewer or not verdict.get("criteria"):
             raise RuntimeFailure("SEMANTIC_RECEIPT", "semantic verdict receipt is invalid")
         return self._record_artifact(run_id, kind="semantic-verdict", actor="semantic-review", producer="semantic-judge", **kwargs)
 
@@ -1480,10 +1407,10 @@ class RunStore:
         require_id(gate_id, "gate id")
         if gate_type not in {"deterministic", "e2e", "semantic", "reality", "policy", "security"}:
             raise RuntimeFailure("INVALID_GATE", f"invalid gate type: {gate_type}")
-        if family not in {None, "gpt", "claude", "security"}:
-            raise RuntimeFailure("INVALID_GATE", f"invalid gate family: {family}")
-        if gate_type == "semantic" and family not in {"gpt", "claude"}:
-            raise RuntimeFailure("INVALID_GATE", "semantic gates require gpt or claude family")
+        if family is not None and not ID_RE.fullmatch(family):
+            raise RuntimeFailure("INVALID_GATE", f"invalid gate reviewer identity: {family}")
+        if gate_type == "semantic" and family is None:
+            raise RuntimeFailure("INVALID_GATE", "semantic gates require an independent reviewer identity")
         if gate_type == "security" and family not in {None, "security"}:
             raise RuntimeFailure("INVALID_GATE", "security gate family must be security")
         if status not in {"PASS", "FAIL", "BLOCKED", "SKIPPED"}:
@@ -2265,7 +2192,6 @@ def normalize_work_packet(
         "mutablePaths": [safe_relative_path(path, "mutable path") for path in value.get("mutablePaths", normalized_defaults["mutablePaths"])],
         "tools": list(dict.fromkeys(value.get("tools") or normalized_defaults["tools"])),
         "worker": str(value.get("worker") or normalized_defaults["worker"]),
-        "model": value.get("model"),
         "risk": str(value.get("risk") or normalized_defaults["risk"]),
         "expectedArtifacts": list(value.get("expectedArtifacts") or normalized_defaults["expectedArtifacts"]),
         "budget": {
@@ -2515,8 +2441,8 @@ DEFAULT_RISK_GATES = {
     "R0": ["deterministic"],
     "R1": ["deterministic"],
     "R2": ["deterministic", "semantic-any"],
-    "R3": ["deterministic", "e2e-or-reality", "semantic-gpt", "semantic-claude"],
-    "R4": ["deterministic", "e2e-or-reality", "semantic-gpt", "semantic-claude", "security", "policy"],
+    "R3": ["deterministic", "e2e-or-reality", "semantic-independent-2"],
+    "R4": ["deterministic", "e2e-or-reality", "semantic-independent-2", "security", "policy"],
 }
 
 
@@ -2568,10 +2494,13 @@ def missing_gate_requirements(state: dict[str, Any], criteria: Sequence[dict[str
         capabilities: set[str] = {gate["type"] for gate in passed}
         if any(gate["type"] == "semantic" for gate in passed):
             capabilities.add("semantic-any")
-        if any(gate["type"] == "semantic" and gate.get("family") == "gpt" for gate in passed):
-            capabilities.add("semantic-gpt")
-        if any(gate["type"] == "semantic" and gate.get("family") == "claude" for gate in passed):
-            capabilities.add("semantic-claude")
+        semantic_reviewers = {
+            gate.get("family")
+            for gate in passed
+            if gate["type"] == "semantic" and gate.get("family")
+        }
+        if len(semantic_reviewers) >= 2:
+            capabilities.add("semantic-independent-2")
         if any(gate["type"] in {"e2e", "reality"} for gate in passed):
             capabilities.add("e2e-or-reality")
         if any(
@@ -2741,7 +2670,7 @@ def build_parser() -> argparse.ArgumentParser:
     gate.add_argument("--id", required=True)
     gate.add_argument("--task-id")
     gate.add_argument("--type", choices=["deterministic", "e2e", "semantic", "reality", "policy", "security"], required=True)
-    gate.add_argument("--family", choices=["gpt", "claude", "security"])
+    gate.add_argument("--family", help="independent reviewer identity; model selection remains host-owned")
     gate.add_argument("--criteria", help="comma-separated acceptance criterion ids")
     gate.add_argument("--surface", help="verification surface this reality/e2e gate proves (e.g. web, ios, electron)")
     gate.add_argument("--status", choices=["PASS", "FAIL", "BLOCKED", "SKIPPED"], required=True)

@@ -248,6 +248,9 @@ class WorkerAdapterTests(unittest.TestCase):
         )
         result = execute_work_packet(self.store, run_id, task_id, "worker-1")
         stdout_path = self.repo / result["artifacts"][0]
+        self.assertEqual(1, len(result["artifacts"]))
+        self.assertFalse((stdout_path.parent / "stdout.log").exists())
+        self.assertFalse((stdout_path.parent / "stderr.log").exists())
         output = stdout_path.read_text(encoding="utf-8")
         serialized = json.dumps(result)
         self.assertNotIn("ABCDEFGHIJKLMNOP", output)

@@ -108,9 +108,7 @@ class WorkspaceManager:
         artifact_dir = run_dir / "workspaces" / task_id
         artifact_dir.mkdir(parents=True, exist_ok=True)
         patch_path = artifact_dir / "candidate.patch"
-        status_path = artifact_dir / "status.json"
-        patch_path.write_text(patch, encoding="utf-8")
-        status_path.write_text(json.dumps({"changedPaths": changed}, indent=2) + "\n", encoding="utf-8")
+        patch_path.write_text(patch, encoding="utf-8", newline="\n")
         suffix = uuid.uuid4().hex[:10]
         patch_artifact_id = f"workspace-patch-{task_id}-{suffix}"
         self.store._record_workspace_artifact(
@@ -120,13 +118,6 @@ class WorkspaceManager:
             path=patch_path.relative_to(self.repository).as_posix(),
             evidence_refs=[f"task:{task_id}"],
         )
-        self.store._record_workspace_artifact(
-            run_id,
-            artifact_id=f"workspace-status-{task_id}-{suffix}",
-            kind="workspace-status",
-            path=status_path.relative_to(self.repository).as_posix(),
-            evidence_refs=[f"task:{task_id}"],
-        )
         return {
             "status": "candidate",
             "taskId": task_id,
@@ -134,7 +125,6 @@ class WorkspaceManager:
             "changedPaths": changed,
             "patch": patch_path.relative_to(self.repository).as_posix(),
             "patchArtifactRef": f"artifact:{patch_artifact_id}",
-            "statusArtifact": status_path.relative_to(self.repository).as_posix(),
         }
 
     def integrate(self, run_id: str, task_id: str, *, confirmed: bool = False) -> dict[str, Any]:

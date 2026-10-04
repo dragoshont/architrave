@@ -70,8 +70,8 @@
     "controlAudit": true,
     "riskPolicy": {
       "R0": ["deterministic"],
-      "R2": ["deterministic", "semantic-gpt"],
-      "R3": ["deterministic", "e2e", "semantic-gpt", "semantic-claude", "reality"]
+      "R2": ["deterministic", "semantic-any"],
+      "R3": ["deterministic", "e2e", "semantic-independent-2", "reality"]
     }
   }
 }

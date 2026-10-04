@@ -153,6 +153,7 @@ class WorkspaceManagerTests(unittest.TestCase):
         patch_text = (self.repo / candidate["patch"]).read_text(encoding="utf-8")
         self.assertIn("staged change", patch_text)
         self.assertIn("README.md", candidate["changedPaths"])
+        self.assertFalse((self.repo / candidate["patch"]).with_name("status.json").exists())
 
     def test_coordinator_integration_applies_scoped_patch_and_records_artifact(self) -> None:
         run_id = self.create_run()
@@ -165,7 +166,7 @@ class WorkspaceManagerTests(unittest.TestCase):
         self.assertEqual("integrated", result["status"])
         self.assertEqual("after\n", (self.repo / "README.md").read_text(encoding="utf-8"))
         state = self.store.load(run_id)
-        self.assertGreaterEqual(len(state["artifacts"]), 2)
+        self.assertGreaterEqual(len(state["artifacts"]), 1)
         self.assertEqual("workspace.integrated", self.store.events(run_id)[-1]["type"])
 
     def test_cleanup_refuses_active_or_dirty_workspace_without_force(self) -> None:

@@ -24,16 +24,14 @@
     "producer_prompt_version": { "type": "integer", "minimum": 1 },
     "execution": {
       "type": "object",
-      "required": ["expected", "requested", "reportedSelection", "controlStatus"],
+      "required": ["requested", "controlStatus"],
       "additionalProperties": false,
       "properties": {
-        "expected": { "type": ["object", "null"], "additionalProperties": true },
         "requested": {
           "type": "object",
-          "required": ["semantic", "runner", "agent", "model", "reasoningEffort", "contextTier"],
+          "required": ["runner", "agent", "model", "reasoningEffort", "contextTier"],
           "additionalProperties": false,
           "properties": {
-            "semantic": { "type": ["object", "null"], "additionalProperties": true },
             "runner": { "type": "string" },
             "agent": { "type": ["string", "null"] },
             "model": { "type": ["string", "null"] },
@@ -41,7 +39,6 @@
             "contextTier": { "type": ["string", "null"] }
           }
         },
-        "reportedSelection": { "type": ["object", "null"], "additionalProperties": true },
         "controlStatus": {
           "type": "object",
           "required": ["model", "reasoningEffort", "contextTier", "controlsHonored"],

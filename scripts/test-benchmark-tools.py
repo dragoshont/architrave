@@ -55,12 +55,6 @@ class JudgeSecurityTests(unittest.TestCase):
         self.assertEqual(prompt.count("BEGIN_UNTRUSTED_BENCHMARK_EVIDENCE_fedcba9876543210"), 1)
         self.assertEqual(prompt.count("END_UNTRUSTED_BENCHMARK_EVIDENCE_fedcba9876543210"), 1)
 
-    def test_free_text_blinding_removes_profile_labels(self) -> None:
-        redacted = JUDGE.redact_producer_identity("Selected CRITICAL after rejecting FAST and BALANCED.", {})
-        self.assertNotIn("CRITICAL", redacted)
-        self.assertNotIn("FAST", redacted)
-        self.assertNotIn("BALANCED", redacted)
-
     def test_completion_reports_tool_requests(self) -> None:
         event = json.dumps({"type": "assistant.message", "data": {"content": "{}", "model": "judge-model", "toolRequests": [{"name": "shell"}]}})
         completed = type("Completed", (), {"stdout": event, "stderr": "", "returncode": 0})()
@@ -87,7 +81,7 @@ class JudgeSecurityTests(unittest.TestCase):
             "arm": "producer-arm",
             "repeat": 0,
             "passed": True,
-            "execution": {"requested": {"model": "private-model", "agent": "private-agent"}, "reportedSelection": {"profile": "FAST"}},
+            "execution": {"requested": {"model": "private-model", "agent": "private-agent"}},
             "agent": {"models": ["private-model"], "model_reasoning": [{"model": "private-model", "vendor": "private-vendor"}], "duration_ms": 1},
         }
         blinded = JUDGE.blind_run(row)
@@ -100,8 +94,8 @@ class JudgeSecurityTests(unittest.TestCase):
         self.assertNotIn("private-agent", redacted)
         self.assertNotIn("private-vendor", redacted)
 
-    def test_scenario_blinding_removes_expected_profile_labels(self) -> None:
-        scenario = {"id": "architrave-fast-task", "repo": "private", "tags": ["FAST"], "expectedExecution": {"profile": "FAST"}, "lane": "knowledge", "prompt": "Do the task", "scoring": {}}
+    def test_scenario_blinding_removes_private_metadata(self) -> None:
+        scenario = {"id": "architrave-task", "repo": "private", "tags": ["private"], "lane": "knowledge", "prompt": "Do the task", "scoring": {}}
         blinded = JUDGE.blind_scenario(scenario)
         self.assertEqual(blinded, {"lane": "knowledge", "prompt": "Do the task", "scoring": {}})
 
@@ -230,10 +224,6 @@ class BenchmarkExecutionTests(unittest.TestCase):
         }
         self.assertEqual(BENCH.failure_mode(row), "control_unhonored")
 
-    def test_profile_must_match_dimensions(self) -> None:
-        intent = {"profile": "FAST", "modelClass": "fast", "reasoning": "high", "context": "narrow", "verification": "default"}
-        self.assertIn("profile does not match", "\n".join(BENCH.execution_intent_errors(intent, "intent")))
-
     def test_copilot_command_maps_explicit_controls(self) -> None:
         arm = {"runner": "copilot", "model": "local-model", "reasoningEffort": "high", "contextTier": "long_context"}
         command = BENCH.copilot_command(arm, Path("worktree"), "prompt", Path("session.md"))
@@ -277,15 +267,6 @@ class BenchmarkExecutionTests(unittest.TestCase):
         )
         self.assertEqual(status["reasoningEffort"], "unobserved")
 
-    def test_reported_selection_ignores_preexisting_summary(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            worktree = Path(directory)
-            stale = worktree / ".architrave" / "runs" / "old" / "summary.json"
-            stale.parent.mkdir(parents=True)
-            stale.write_text(json.dumps({"execution": {"intent": {"modelClass": "fast", "reasoning": "low", "context": "narrow", "verification": "default"}}}), encoding="utf-8")
-            baseline = BENCH.run_summary_paths(worktree)
-            self.assertIsNone(BENCH.reported_execution(worktree, baseline))
-
     def test_empty_diff_has_stable_metrics(self) -> None:
         responses = [
             subprocess.CompletedProcess([], 0, "", ""),
@@ -317,31 +298,30 @@ class BenchmarkExecutionTests(unittest.TestCase):
         self.assertIn(str(Path(BENCH.sys.executable)), resolved)
         self.assertEqual(results[0]["command"], resolved)
 
-    def test_summary_surfaces_treatment_and_honor(self) -> None:
+    def test_summary_surfaces_host_binding_and_honor(self) -> None:
         row = {
             "scenario": "task",
             "arm": "arm",
             "repeat": 0,
             "passed": True,
             "execution": {
-                "requested": {"semantic": {"profile": "FAST"}, "model": "local-model", "reasoningEffort": "low", "contextTier": None},
+                "requested": {"model": "local-model", "reasoningEffort": "low", "contextTier": None},
                 "controlStatus": {"controlsHonored": True},
             },
             "agent": {"duration_ms": 1, "output_tokens": 2},
             "diff": {"net_loc": 0, "changed_files": 1},
         }
         summary = SUMMARY.summarize([row])
-        self.assertIn("FAST", summary)
         self.assertIn("local-model/low", summary)
         self.assertIn("True", summary)
 
-    def test_summary_handles_inherited_semantic_treatment(self) -> None:
+    def test_summary_handles_inherited_host_binding(self) -> None:
         row = {
             "scenario": "task",
             "arm": "legacy",
             "repeat": 0,
             "passed": True,
-            "execution": {"requested": {"semantic": None, "model": None, "reasoningEffort": None, "contextTier": None}, "controlStatus": {"controlsHonored": None}},
+            "execution": {"requested": {"model": None, "reasoningEffort": None, "contextTier": None}, "controlStatus": {"controlsHonored": None}},
             "agent": {},
             "diff": {},
         }

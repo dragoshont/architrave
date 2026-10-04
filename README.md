@@ -126,9 +126,8 @@ or credential settings. Python 3.11+ is required only for this opt-in role path.
 
 Codex roles are specialized contexts, not mandatory security gates: their
 `sandbox_mode = "read-only"` constrains command filesystem/network access, while
-the parent permission mode, skills, and MCP servers still apply. Mandatory
-cross-family review uses independently verified GPT/Copilot-family and
-Claude-family evidence; concrete model bindings remain host- or user-local.
+the parent permission mode, skills, and MCP servers still apply. Mandatory high-risk review uses two independent reviewer identities while model
+selection remains entirely host- or user-owned.
 
 Edit `architrave.config.json` to point at the repo's Storybook/design source, build/test commands, optional backend, optional IaC, optional runtime observation, and optional learning paths. Then ask the **Architrave** agent to build a feature.
 
@@ -225,26 +224,28 @@ Goal → Outcome → Acceptance Matrix → TaskGraph → WorkPackets
 - Evidence is executor-produced, HMAC-attested, digest-checked, and bound to the
         exact criterion/gate; arbitrary registered files cannot manufacture PASS.
 - Risk class scales evaluation cost from deterministic-only R0 to R4 security,
-        policy, E2E/reality, and both judge families.
+        policy, E2E/reality, and two independent semantic reviewers.
 
 See [`docs/runtime-v2.md`](docs/runtime-v2.md),
 [`docs/application-legibility.md`](docs/application-legibility.md), and
-[`docs/migration-run-v1-v2.md`](docs/migration-run-v1-v2.md).
+[`docs/migration-run-v1-v2.md`](docs/migration-run-v1-v2.md). The measured
+Pi/OpenCode comparison and basic-sh before/after footprint are in
+[`docs/orchestration-audit.md`](docs/orchestration-audit.md).
 
 **Full-stack is built in.** Set a `backend` and/or `iac` block in `architrave.config.json` and the same conductor extends past UI. Repos without a service, infra, or runtime lane simply omit those blocks.
 
 **Knowledge repositories are first-class.** Set `kind: "knowledge"` through the installer profile and Architrave grounds in repository docs, scripts, skills, schemas, tests, and learning artifacts. It does not invent a UI lane or demand Storybook sign-off.
 
-**Execution adapts to the task.** Architrave expresses provider-neutral `modelClass`, `reasoning`, `context`, and `verification` intent. `FAST`, `BALANCED`, `DEEP`, and `CRITICAL` are convenience presets, not concrete model tiers. Task characteristics override provisional role hints, and `inherit/default` remains preferred when specialization is unproved. Architrave uses the current host's structured custom-agent/subagent invocation when useful; it never shells out to another agent harness or requires a provider SDK. Your local host settings map semantic intent to the models currently available on that machine.
+**Execution stays host-owned.** Architrave does not select, rank, recommend, or
+persist a model class, tier, reasoning level, context tier, provider, or concrete
+model. The user and active host harness own those choices. Architrave contributes
+bounded task scope, permissions, evidence requirements, output limits, and
+risk-based verification only.
 
-This adaptive routing prevents Architrave from sending every task to the same
-heavyweight model or maximum reasoning level. It starts with the cheapest
-adequate execution intent for the task, preserves deterministic verification,
-and escalates model strength, reasoning, context, or review only when risk or
-observed evidence requires it. Concrete model recommendations remain provisional
-until repeated benchmarks show a meaningful advantage.
-
-Verification adapts too, without weakening safety. Low-risk FAST/BALANCED knowledge or mechanical work can close on deterministic evidence when every criterion is machine-checked. Semantic, UI, contract, architecture, migration, security/trust, IaC, and high-blast-radius work raises the floor to an independent reviewer or the full cross-family gate. A full semantic gate still means verified GPT/Copilot-family and Claude-family PASS records.
+Low-risk mechanical work can close on deterministic evidence when every
+criterion is machine-checked. Semantic, UI, contract, architecture, migration,
+security/trust, IaC, and high-blast-radius work add one or two independent
+reviewers according to risk, without constraining which models the host uses.
 
 **Learning is explicit.** Set the optional `learning` block and Architrave keeps per-run evidence, a concise repo profile, and candidate repeated lessons. Lessons only become standing repo guidance after validation and review.
 
@@ -258,16 +259,13 @@ Architrave ships a benchmark harness because agent quality has to be measured
 against real work, not vibes. The suite in `benchmarks/` runs frozen tasks against
 real local repos in detached worktrees, compares agent arms such as
 `copilot-baseline` and `copilot-architrave`, and records JSONL rows with
-validation results, diff size, output tokens, wall time, artifacts, requested
-execution treatment, observed model/effort telemetry, and optional blinded
+validation results, diff size, output tokens, wall time, artifacts, and optional blinded
 LLM-judge scores.
 
-`benchmarks/routing-scenarios.json` adds four model-neutral routing cases for
-FAST, BALANCED, DEEP, and CRITICAL hypotheses. Concrete model/effort bindings
-belong in an ignored local scenario file. A single run is smoke evidence; a
-local binding recommendation requires at least three representative repeats,
-an honored observable control, deterministic validation, and independent
-judging.
+`benchmarks/routing-scenarios.json` exercises delegation and verification
+decisions without encoding model guidance. Any benchmark model selection belongs
+to the invoking host or user-local experiment configuration, never Architrave's
+canonical policy.
 
 It now also includes **Architrave LongBuild** categories, disabled
 Claude/Codex arms, recovery/external-checkpoint/parallel/deployment-policy cases,
@@ -407,16 +405,17 @@ The method isn't theoretical — it emerged independently across real apps, **Ph
 
 Everything in layers 2–4 is **retargeted per repo by one config file** (`architrave.config.json`). The agents never hard‑code a stack; they read the config and the matching knowledge pack.
 
-Adaptive execution is deliberately outside repository stack config. Canonical agents state semantic intent; the active VS Code/Copilot/Claude host invokes the bounded subagent and applies any user-local model/effort override it supports. If it cannot honor an override, the subagent inherits and the run records the limitation. This keeps the same Architrave release portable across machines and future hosts.
-
-For VS Code/Copilot, use the structured subagent call's model preference or a user-local custom agent with local `model` / `reasoning-effort` fields; otherwise the subagent inherits its parent. For Claude Code, use the native per-invocation preference or user-local `model` / `effort` fields; otherwise it falls through to the local subagent default and parent model. Keep values such as `<fast-model>` and `<strong-model>` in user-local configuration only. The canonical crew intentionally has no model fields.
+Model selection is deliberately outside repository stack config and canonical
+agents. The active host and user own it; Architrave records only task scope,
+verification evidence, and reviewer identity needed for audit.
 
 ## The learning loop
 
 AI agents get better in a repo the same way developers do: they remember the shape of the system, which commands actually work, which assumptions caused mistakes, and which rules are stable enough to teach the next run. Architrave makes that learning visible and reviewable instead of relying on hidden chat context.
 
 - **Run state and artifacts** are episodic memory: canonical `run.json`,
-  hash-chained events, projections, gate/judge/runtime evidence, and receipts.
+  hash-chained events, one rolling recovery snapshot, compact evidence, and
+  receipts. Human-readable views are generated on demand.
 - **Repo profile** is semantic memory: `.architrave/learning/repo-profile.md` captures the repo description and validated operational facts future agents should read first.
 - **Candidate lessons** are a review queue: `.architrave/learning/repo-lessons.md` records repeated observations with evidence and occurrence counts.
 - **Promoted rules** are procedural memory: stable lessons move into `architrave.config.json`, `AGENTS.md`, `.github/instructions/`, docs, or contracts after review.

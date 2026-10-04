@@ -284,7 +284,7 @@
           "patternProperties": {
             "^R[0-4]$": {
               "type": "array",
-              "items": { "type": "string", "enum": ["deterministic", "e2e", "semantic-gpt", "semantic-claude", "reality", "security"] },
+              "items": { "type": "string", "enum": ["deterministic", "e2e", "semantic-any", "semantic-independent-2", "reality", "security", "policy"] },
               "uniqueItems": true
             }
           }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate one durable Run v2 and its human-readable projections."""
+"""Validate one compact durable Run v2."""
 
 from __future__ import annotations
 
@@ -13,13 +13,10 @@ from typing import Sequence
 from architrave_runtime import RunStore, RuntimeFailure
 
 
-REQUIRED_PROJECTIONS = (
-    "intake.md",
-    "tournament.md",
-    "recommended-plan.md",
-    "phase-ledger.md",
-    "deterministic-gates.md",
-    "summary.json",
+REQUIRED_FILES = (
+    "run.json",
+    "events.jsonl",
+    "recovery.json",
 )
 
 
@@ -44,12 +41,9 @@ def validate(run_dir: Path) -> dict[str, object]:
         raise RuntimeFailure("PATH_ESCAPE", "Run directory is outside .architrave/runs")
     store = RunStore(root)
     state = store.load(run_dir.name)
-    missing = [name for name in REQUIRED_PROJECTIONS if not (run_dir / name).is_file() or (run_dir / name).stat().st_size == 0]
+    missing = [name for name in REQUIRED_FILES if not (run_dir / name).is_file() or (run_dir / name).stat().st_size == 0]
     if missing:
-        raise RuntimeFailure("PROJECTION_MISSING", "required Run projections are missing", details={"files": missing})
-    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
-    if summary.get("schema") != "architrave.run.v2" or summary.get("runId") != state["runId"]:
-        raise RuntimeFailure("PROJECTION_DIVERGED", "summary.json does not project the canonical Run")
+        raise RuntimeFailure("RUN_FILE_MISSING", "required compact Run files are missing", details={"files": missing})
     events = store.events(run_dir.name)
     return {
         "runId": state["runId"],

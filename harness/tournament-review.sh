@@ -15,14 +15,10 @@ if [ -f agents/tournament-analyst.agent.md ]; then agent_file=agents/tournament-
 elif [ -f .github/agents/tournament-analyst.agent.md ]; then agent_file=.github/agents/tournament-analyst.agent.md
 else echo "tournament-review: canonical Tournament Analyst not found" >&2; exit 2; fi
 
-prompt="$run_dir/tournament-review-prompt.md"
-cat >"$prompt" <<EOF
-Read the intake and governing repository sources for the Architrave run at $run_dir.
+body="Read canonical state and governing repository sources for the Architrave run at $run_dir.
 Compare viable options using the canonical Tournament Analyst instructions.
-Do not edit files or authorize mutations. End with one line exactly TOURNAMENT: COMPLETE.
-EOF
-body="$(cat "$prompt")"
-cmd=(claude --model claude-opus-4.8 --effort max --tools Read,Grep,Glob --allowedTools Read,Grep,Glob --append-system-prompt-file "$agent_file" -p "$body")
+Do not edit files or authorize mutations. End with one line exactly TOURNAMENT: COMPLETE."
+cmd=(claude --tools Read,Grep,Glob --allowedTools Read,Grep,Glob --append-system-prompt-file "$agent_file" -p "$body")
 if [ "$execute" -eq 0 ]; then printf 'suggested command (review before running):\n  '; printf '%q ' "${cmd[@]}"; printf '\n'; exit 0; fi
 nonce_file="$(mktemp)"; output="$(mktemp)"; trap 'rm -f "$nonce_file" "$output"' EXIT
 if command -v uuidgen >/dev/null 2>&1; then uuidgen | tr '[:upper:]' '[:lower:]' >"$nonce_file"

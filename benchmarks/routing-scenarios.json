@@ -1,17 +1,10 @@
 {
-  "version": 1,
+  "version": 2,
   "arms": [
     {
-      "id": "copilot-architrave-inherit",
+      "id": "copilot-architrave",
       "runner": "copilot",
       "agent": "architrave:architrave",
-      "execution": {
-        "profile": null,
-        "modelClass": "inherit",
-        "reasoning": "default",
-        "context": "default",
-        "verification": "default"
-      },
       "customInstructions": true,
       "allowAll": true,
       "noAskUser": true
@@ -19,43 +12,29 @@
   ],
   "scenarios": [
     {
-      "id": "architrave-fast-agent-count",
+      "id": "architrave-direct-agent-count",
       "enabled": true,
       "repo": "..",
-      "baseRef": "2638741ce78954ecc0eccb4216ea130f7167724c",
+      "baseRef": "165da5284e0fff5ecfa7b1fff18593c949ad8fd3",
       "lane": "knowledge",
-      "tags": ["routing", "fast", "extraction", "deterministic"],
-      "expectedExecution": {
-        "profile": "FAST",
-        "modelClass": "fast",
-        "reasoning": "low",
-        "context": "narrow",
-        "verification": "default"
-      },
+      "tags": ["delegation", "direct", "deterministic"],
       "prompt": "Count the canonical agent definition files directly under agents/ and write only the decimal count plus a newline to benchmarks/outputs/agent-count.txt. Do not modify any other tracked file. Use targeted repository inspection and verify the count against the directory contents.",
       "validation": [
         "{python} -c \"from pathlib import Path; expected=len(list(Path('agents').glob('*.agent.md'))); actual=int(Path('benchmarks/outputs/agent-count.txt').read_text().strip()); assert actual == expected\""
       ],
       "expectedArtifacts": ["benchmarks/outputs/agent-count.txt"],
       "scoring": {
-        "mustShow": ["correct count", "no unrelated changes"],
+        "mustShow": ["correct count", "no unrelated changes", "no unnecessary delegation"],
         "failureModes": ["broad refactor", "guessed count", "extra tracked output"]
       }
     },
     {
-      "id": "architrave-balanced-diff-metrics",
+      "id": "architrave-bounded-debugging",
       "enabled": true,
       "repo": "..",
-      "baseRef": "2638741ce78954ecc0eccb4216ea130f7167724c",
+      "baseRef": "165da5284e0fff5ecfa7b1fff18593c949ad8fd3",
       "lane": "knowledge",
-      "tags": ["routing", "balanced", "debugging", "python"],
-      "expectedExecution": {
-        "profile": "BALANCED",
-        "modelClass": "default",
-        "reasoning": "default",
-        "context": "default",
-        "verification": "default"
-      },
+      "tags": ["delegation", "bounded", "debugging"],
       "prompt": "Fix scripts/bench-architrave.py diff metrics so an empty diff never leaves dependency metrics undefined and binary numstat entries still count as changed files without inventing line counts. Add a focused Python stdlib test at scripts/test-benchmark-tools.py that proves both cases. Keep the change local and run that test.",
       "validation": ["{python} scripts/test-benchmark-tools.py"],
       "expectedArtifacts": ["scripts/test-benchmark-tools.py"],
@@ -65,51 +44,20 @@
       }
     },
     {
-      "id": "architrave-deep-execution-policy-decision",
+      "id": "architrave-independent-judge-trust-review",
       "enabled": true,
       "repo": "..",
-      "baseRef": "2638741ce78954ecc0eccb4216ea130f7167724c",
-      "lane": "knowledge",
-      "tags": ["routing", "deep", "architecture", "policy"],
-      "expectedExecution": {
-        "profile": "DEEP",
-        "modelClass": "strong",
-        "reasoning": "high",
-        "context": "default",
-        "verification": "independent"
-      },
-      "prompt": "Design, but do not implement, a provider-neutral adaptive execution policy for Architrave. Write benchmarks/outputs/adaptive-policy-decision.md. Compare canonical model fields, host-local overrides, generated overlays, and semantic intent plus native subagent bindings. Define orthogonal modelClass/reasoning/context/verification dimensions, optional presets, task-over-role precedence, context and delegation policy, fallback versus bounded escalation, and verification floors. Preserve the thin conductor and keep concrete model IDs and new runtimes out.",
+      "baseRef": "165da5284e0fff5ecfa7b1fff18593c949ad8fd3",
+      "lane": "security",
+      "tags": ["verification", "independent", "security", "judge"],
+      "prompt": "Adversarially review scripts/judge-bench.py as a trust boundary and write benchmarks/outputs/judge-security-review.md without changing product code. Determine whether untrusted patches/stdout can prompt-inject the judge, whether the judge can use tools, whether resumability can confuse reviewer identities, and what evidence is needed before claiming independent review. Recommend the smallest fail-closed fixes and preserve deterministic validation.",
       "validation": [
-        "{python} -c \"from pathlib import Path; text=Path('benchmarks/outputs/adaptive-policy-decision.md').read_text().lower(); required=['modelclass','reasoning','context','verification','subagent','fallback','escalation','concrete model']; assert all(item in text for item in required)\""
-      ],
-      "expectedArtifacts": ["benchmarks/outputs/adaptive-policy-decision.md"],
-      "scoring": {
-        "mustShow": ["four options", "orthogonal dimensions", "task overrides role", "host owns invocation", "no concrete IDs"],
-        "failureModes": ["new runtime", "model gateway", "canonical model pin", "role-only routing"]
-      }
-    },
-    {
-      "id": "architrave-critical-judge-trust-review",
-      "enabled": true,
-      "repo": "..",
-      "baseRef": "2638741ce78954ecc0eccb4216ea130f7167724c",
-      "lane": "knowledge",
-      "tags": ["routing", "critical", "security", "judge"],
-      "expectedExecution": {
-        "profile": "CRITICAL",
-        "modelClass": "strong",
-        "reasoning": "high",
-        "context": "default",
-        "verification": "cross-family"
-      },
-      "prompt": "Adversarially review scripts/judge-bench.py as a trust boundary and write benchmarks/outputs/judge-security-review.md without changing product code. Determine whether untrusted patches/stdout can prompt-inject the judge, whether the judge can use tools, whether resumability can confuse judge families/configurations, and what evidence is needed before claiming cross-family independence. Recommend the smallest fail-closed fixes and preserve deterministic validation.",
-      "validation": [
-        "{python} -c \"from pathlib import Path; text=Path('benchmarks/outputs/judge-security-review.md').read_text().lower(); required=['allow-all-tools','prompt injection','resume','family','tool-free','fail closed']; assert all(item in text for item in required)\""
+        "{python} -c \"from pathlib import Path; text=Path('benchmarks/outputs/judge-security-review.md').read_text().lower(); required=['allow-all-tools','prompt injection','resume','reviewer','tool-free','fail closed']; assert all(item in text for item in required)\""
       ],
       "expectedArtifacts": ["benchmarks/outputs/judge-security-review.md"],
       "scoring": {
-        "mustShow": ["untrusted evidence boundary", "zero tools", "family-aware resume identity", "verified model family"],
-        "failureModes": ["rubber stamp", "model self-attestation", "new evaluator framework", "mutation during review"]
+        "mustShow": ["untrusted evidence boundary", "zero tools", "reviewer-aware resume identity"],
+        "failureModes": ["rubber stamp", "self-attestation", "new evaluator framework", "mutation during review"]
       }
     }
   ]

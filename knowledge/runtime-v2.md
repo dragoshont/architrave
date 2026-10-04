@@ -39,20 +39,16 @@ reordering, or mutation.
 .architrave/runs/<run-id>/
   run.json                 canonical architrave.run.v2
   events.jsonl             typed HMAC-authenticated events
-  summary.json             concise projection
-  phase-ledger.md          TaskGraph projection, never an autonomy gate
-  intake.md
-  tournament.md
-  recommended-plan.md
-  deterministic-gates.md
-  judge-pre.md
-  judge-post.md
-  runtime-observer.md
-  workers/                 bounded redacted worker artifacts
-  workspaces/              candidate status and patches
+  recovery.json            rolling last-known-good recovery snapshot
+  workers/                 one compact redacted result per worker
+  workspaces/              one candidate patch per mutable task
   legibility/              app/runtime evidence
   mutations/               receipts
 ```
+
+Status, phase, handoff, and audit reports are rendered on demand from canonical
+state and events. Runs do not create empty Markdown placeholders or duplicate
+per-agent plans and reports.
 
 Runs, isolated worktrees, and the authentication key are ignored by default.
 Never put secrets, cookies, provider sessions, private keys, or hidden model
@@ -162,7 +158,7 @@ Risk controls cost:
 - R0 deterministic;
 - R1 deterministic, optional one judge;
 - R2 deterministic plus one semantic judge;
-- R3 deterministic, E2E/reality, GPT-family and Claude-family judges;
+- R3 deterministic, E2E/reality, and two independent semantic reviewers;
 - R4 R3 plus security and policy review.
 
 Repository `evaluation.riskPolicy` may tune this. Deterministic, invariant, E2E,
