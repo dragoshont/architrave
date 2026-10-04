@@ -563,6 +563,15 @@ class InstallUpdateTests(unittest.TestCase):
     def test_observer_self_installer_is_python39_compatible_and_pinned(self) -> None:
         state = self.workspace / "observer state" / ".architrave"
         state.parent.mkdir()
+        source = ROOT / "trusted" / "exact_target_observer.py"
+        destination_root = state / "executors" / "exact-target-v1" / digest(source)[:32]
+        destination_root.mkdir(parents=True)
+        if os.name != "nt":
+            for path in (state, state / "executors", state / "executors" / "exact-target-v1", destination_root):
+                path.chmod(0o700)
+        external = self.workspace / "observer-temp-sentinel"
+        external.write_text("unchanged\n", encoding="utf-8")
+        os.link(external, destination_root / f".observer.{os.getpid()}.tmp")
         stdout = io.StringIO()
         with mock.patch.object(self.observer, "trusted_user_state_root", return_value=state):
             with contextlib.redirect_stdout(stdout):
@@ -571,6 +580,7 @@ class InstallUpdateTests(unittest.TestCase):
         adapter = Path(installed["adapter"])
         self.assertEqual(digest(adapter), installed["sha256"])
         self.assertTrue(adapter.is_relative_to(state / "executors"))
+        self.assertEqual("unchanged\n", external.read_text(encoding="utf-8"))
 
     def test_executor_and_observer_reject_linked_trust_root(self) -> None:
         home = self.workspace / "linked home"

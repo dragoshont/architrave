@@ -660,6 +660,10 @@ class RunStore:
             or isinstance(observation.get("artifactSize"), bool)
             or observation["artifactSize"] < 0
             or observation.get("workspaceState") not in {"absent", "directory"}
+            or (
+                request["target"]["workspaceMode"] == "exact-directory"
+                and observation.get("workspaceState") != "directory"
+            )
             or not re.fullmatch(r"[0-9a-f]{64}", str(observation.get("artifactSha256", "")))
             or not re.fullmatch(r"[0-9a-f]{64}", str(observation.get("observerSha256", "")))
             or (request["target"]["transport"] == "ssh" and observation.get("sshHost") != request["target"]["ssh"]["host"])

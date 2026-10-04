@@ -12,6 +12,7 @@ import re
 import stat
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from typing import Any
@@ -402,11 +403,20 @@ def install_self() -> int:
     ensure_private_directory(version_root)
     ensure_private_directory(destination_root)
     destination = destination_root / "observer.py"
-    temporary = destination_root / (".observer." + str(os.getpid()) + ".tmp")
-    temporary.write_bytes(source_bytes)
-    if os.name != "nt":
-        temporary.chmod(0o700)
-    os.replace(str(temporary), str(destination))
+    descriptor, temporary_name = tempfile.mkstemp(prefix=".observer.", dir=str(destination_root))
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(source_bytes)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if os.name != "nt":
+            os.chmod(temporary_name, 0o700)
+        os.replace(temporary_name, str(destination))
+    finally:
+        try:
+            os.unlink(temporary_name)
+        except FileNotFoundError:
+            pass
     result = {"adapter": str(destination), "sha256": source_digest}
     sys.stdout.write(json.dumps(result, separators=(",", ":"), ensure_ascii=True))
     return 0

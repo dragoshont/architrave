@@ -639,6 +639,14 @@ class FocusControlTests(unittest.TestCase):
             "'binding':request['binding'],'observed':observed,'observation':observation}))\n",
             encoding="utf-8",
         )
+        adapter.write_text(
+            adapter.read_text(encoding="utf-8").replace(",'extra':'forged'", ""),
+            encoding="utf-8",
+        )
+        adapter.write_text(
+            adapter.read_text(encoding="utf-8").replace(",'extra':'forged'", ""),
+            encoding="utf-8",
+        )
         registry["exactTarget"]["adapter"] = str(adapter)
         registry["exactTarget"]["adapterSha256"] = hashlib.sha256(adapter.read_bytes()).hexdigest()
         self.write_registry(registry_path, registry)
@@ -706,6 +714,31 @@ class FocusControlTests(unittest.TestCase):
             expected=1,
         )
         self.assertEqual("EXECUTOR_RESULT_INVALID", contradictory_observation["code"])
+
+        adapter.write_text(
+            adapter.read_text(encoding="utf-8").replace(",'extra':'forged'", ""),
+            encoding="utf-8",
+        )
+        registry["exactTarget"]["adapter"] = str(adapter)
+        registry["exactTarget"]["adapterSha256"] = hashlib.sha256(adapter.read_bytes()).hexdigest()
+        next(
+            target
+            for target in registry["exactTarget"]["targets"]
+            if target["identity"] == intended
+        )["workspaceMode"] = "exact-directory"
+        self.write_registry(registry_path, registry)
+        impossible_absent_workspace = self.trusted_cli(
+            "target-attest",
+            run_id,
+            "--checkpoint-id",
+            "target-check-security",
+            "--challenge",
+            challenge,
+            "--actor",
+            "human:synthetic-user",
+            expected=1,
+        )
+        self.assertEqual("EXECUTOR_RESULT_INVALID", impossible_absent_workspace["code"])
 
         other_run, other_challenge, other_intended, other_artifact = self.target_wait(suffix="-other")
         self.install_executor(other_intended, other_artifact)
