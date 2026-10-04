@@ -1,10 +1,14 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 
 from __future__ import annotations
 
+import argparse
+import importlib.util
 import json
 import hashlib
+import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -15,7 +19,18 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "harness"))
 
+import architrave_runtime as runtime_module
 from architrave_runtime import RunStore
+
+
+def load_installer_module():
+    path = ROOT / "tools" / "install_update.py"
+    spec = importlib.util.spec_from_file_location("architrave_install_update_focus", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("cannot load install_update.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 class FocusControlTests(unittest.TestCase):
@@ -31,6 +46,14 @@ class FocusControlTests(unittest.TestCase):
         subprocess.run(["git", "commit", "-qm", "fixture"], cwd=self.repo, check=True)
         self.store = RunStore(self.repo)
         self.runtime = ROOT / "harness" / "architrave_runtime.py"
+        self.home = Path(self.temp.name) / "home"
+        self.home.mkdir()
+        self.cli_env = {
+            **os.environ,
+            "HOME": str(self.home),
+            "USERPROFILE": str(self.home),
+        }
+        self.installer = load_installer_module()
 
     def tearDown(self) -> None:
         self.temp.cleanup()
@@ -55,10 +78,37 @@ class FocusControlTests(unittest.TestCase):
             text=True,
             capture_output=True,
             check=False,
+            env=self.cli_env,
         )
         self.assertEqual(expected, process.returncode, process.stdout + process.stderr)
         payload = json.loads(process.stdout if process.stdout.strip() else process.stderr)
         return payload.get("result") or payload.get("error") or {}
+
+    def trusted_cli(self, *arguments: str, expected: int = 0) -> dict[str, object]:
+        self.assertEqual("target-attest", arguments[0])
+        parser = runtime_module.build_parser()
+        parsed = parser.parse_args(["--repo", str(self.repo), *arguments])
+        with mock.patch.object(
+            runtime_module.RunStore,
+            "_executor_registry_path",
+            return_value=self.home / ".architrave" / "executors.json",
+        ), mock.patch.object(
+            runtime_module,
+            "trusted_user_state_root",
+            return_value=self.home / ".architrave",
+        ):
+            try:
+                state = self.store.attest_target_identity_checkpoint(
+                    parsed.run_id,
+                    checkpoint_id=parsed.checkpoint_id,
+                    challenge=parsed.challenge,
+                    actor=parsed.actor,
+                )
+            except runtime_module.RuntimeFailure as exc:
+                self.assertEqual(expected, exc.exit_code)
+                return {"code": exc.code, "message": exc.message, "details": exc.details}
+        self.assertEqual(expected, 0)
+        return runtime_module.state_summary(state)
 
     def evidence(self, run_id: str, artifact_id: str = "baseline-evidence") -> str:
         path = self.store.run_dir(run_id) / "evidence" / f"{artifact_id}.json"
@@ -136,6 +186,84 @@ class FocusControlTests(unittest.TestCase):
             arguments.extend(["--target-json", json.dumps(overrides["targetIdentity"])])
         return self.cli(*arguments)
 
+    def target_wait(
+        self,
+        *,
+        provider: str = "provider-a",
+        principal: str = "synthetic-user",
+        suffix: str = "",
+    ) -> tuple[str, str, dict[str, str], Path]:
+        artifact = Path(self.temp.name) / f"target{suffix}.bin"
+        artifact.write_bytes(f"trusted target {suffix}".encode("utf-8"))
+        intended = {
+            "provider": provider,
+            "artifact": f"target{suffix}.bin",
+            "version": "2",
+            "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
+            "environment": "test",
+            "workspace": str(Path(self.temp.name) / f"prefix{suffix}"),
+            "acceptanceTarget": "exact local target",
+        }
+        run_id = self.create(
+            "Verify an exact trusted target.",
+            policy_allow=[{"scope": provider, "operations": ["launch"]}],
+        )
+        task_id = f"target-task{suffix}"
+        self.add_task(
+            run_id,
+            task_id,
+            sideEffect={"operation": "launch", "target": provider},
+            targetIdentity=intended,
+            isMinimalAcceptanceTest=True,
+        )
+        checkpoint_id = f"target-check{suffix}"
+        wait = self.cli(
+            "external-wait",
+            run_id,
+            "--id",
+            checkpoint_id,
+            "--task-id",
+            task_id,
+            "--type",
+            "SAFE_WRITE_TARGET_REQUIRED",
+            "--principal",
+            principal,
+            "--provider",
+            provider,
+            "--reason",
+            "Observe exact target.",
+        )
+        return run_id, str(wait["resolutionChallenge"]), intended, artifact
+
+    def install_executor(self, intended: dict[str, str], artifact: Path) -> None:
+        args = argparse.Namespace(
+            provider=intended["provider"],
+            artifact=intended["artifact"],
+            artifact_path=str(artifact),
+            version=intended["version"],
+            sha256=intended["sha256"],
+            environment=intended["environment"],
+            workspace=intended["workspace"],
+            acceptance_target=intended["acceptanceTarget"],
+            workspace_mode="absent-or-exact-directory",
+            timeout_seconds=1,
+        )
+        with mock.patch.object(
+            self.installer,
+            "trusted_user_state_root",
+            return_value=self.home / ".architrave",
+        ):
+            self.assertEqual(0, self.installer.install_exact_target_executor(args, ROOT))
+
+    def registry(self) -> tuple[Path, dict[str, object]]:
+        path = self.home / ".architrave" / "executors.json"
+        return path, json.loads(path.read_text(encoding="utf-8"))
+
+    def write_registry(self, path: Path, registry: dict[str, object]) -> None:
+        path.write_text(json.dumps(registry, separators=(",", ":")) + "\n", encoding="utf-8")
+        if os.name != "nt":
+            path.chmod(0o600)
+
     def test_existing_working_login_blocks_diagnostic_redesign(self) -> None:
         run_id = self.create("Keep the existing working login and verify the smallest difference.")
         error = self.cli(
@@ -194,7 +322,7 @@ class FocusControlTests(unittest.TestCase):
         self.assertEqual("Launch the intended build once and record the result.", checkpoint["nextCheapestTest"])
         self.assertEqual({"product"}, set(checkpoint["activeLanes"]))
 
-    def test_wrong_provider_or_build_aborts_target_preflight(self) -> None:
+    def test_legacy_target_resolve_cannot_consume_private_external_proof(self) -> None:
         run_id = self.create(
             "Test the intended provider build.",
             policy_allow=[{"scope": "provider-a", "operations": ["launch"]}],
@@ -217,86 +345,313 @@ class FocusControlTests(unittest.TestCase):
         )
         task = next(task for task in self.store.load(run_id)["tasks"] if task["id"] == "launch-intended-build")
         self.assertEqual(["launch"], task["operations"])
-        observed = {**intended, "provider": "provider-b", "version": "1"}
         wait = self.cli(
             "external-wait", run_id, "--id", "target-check", "--task-id", "launch-intended-build",
             "--type", "SAFE_WRITE_TARGET_REQUIRED", "--principal", "synthetic-user",
             "--provider", "provider-a", "--reason", "Confirm target identity.",
         )
-        local_assertion = self.evidence(run_id, "local-self-assertion")
-        forged = self.cli(
-            "target-resolve", run_id, "--checkpoint-id", "target-check",
-            "--challenge", str(wait["resolutionChallenge"]),
-            "--intended-json", json.dumps(intended), "--evidence", local_assertion,
-            "--actor", "human:synthetic-user", expected=1,
-        )
-        self.assertEqual("TARGET_IDENTITY_INVALID", forged["code"])
-        mismatch_evidence = self.target_evidence(
+        private_proof = self.target_evidence(
             run_id,
             "target-check",
             str(wait["resolutionChallenge"]),
             intended,
-            observed,
-            "target-mismatch-proof",
+            intended,
+            "private-target-proof",
         )
-        self.cli(
+        rejected = self.cli(
             "target-resolve", run_id, "--checkpoint-id", "target-check",
             "--challenge", str(wait["resolutionChallenge"]), "--intended-json", json.dumps(intended),
-            "--evidence", mismatch_evidence, "--actor", "human:synthetic-user",
+            "--evidence", private_proof, "--actor", "human:synthetic-user", expected=1,
         )
-        replay = self.cli(
-            "target-resolve", run_id, "--checkpoint-id", "target-check",
-            "--challenge", str(wait["resolutionChallenge"]), "--intended-json", json.dumps(intended),
-            "--evidence", mismatch_evidence, "--actor", "human:synthetic-user", expected=1,
-        )
-        self.assertEqual("TARGET_IDENTITY_INVALID", replay["code"])
+        self.assertEqual("TRUSTED_EXECUTOR_REQUIRED", rejected["code"])
         state = self.store.load(run_id)
-        self.assertEqual("MISMATCH", state["targetIdentity"]["status"])
-        self.assertEqual("PAUSED", state["status"])
-        paused = self.cli(
+        checkpoint = next(item for item in state["externalCheckpoints"] if item["id"] == "target-check")
+        self.assertEqual("PENDING", checkpoint["status"])
+        blocked = self.cli(
             "task-start", run_id, "launch-intended-build", "--worker-id", "launcher",
             expected=1,
         )
-        self.assertEqual("RUN_PAUSED", paused["code"])
-
-        valid_run = self.create(
-            "Launch the verified intended build.",
-            policy_allow=[{"scope": "provider-a", "operations": ["launch"]}],
-        )
-        self.add_task(
-            valid_run,
-            "verified-launch",
-            sideEffect={"operation": "launch", "target": "provider-a"},
-            targetIdentity=intended,
-            isMinimalAcceptanceTest=True,
-        )
+        self.assertEqual("TASK_NOT_READY", blocked["code"])
         with mock.patch("architrave_runtime.secrets.token_urlsafe", return_value="-formerly-leading"):
-            _, valid_challenge = self.store.wait_external(
-                valid_run,
-                checkpoint_id="valid-target",
-                task_id="verified-launch",
-                checkpoint_type="SAFE_WRITE_TARGET_REQUIRED",
-                principal="synthetic-user",
-                provider="provider-a",
-                reason="Confirm target identity.",
-            )
-        self.assertEqual("arc_-formerly-leading", valid_challenge)
-        valid_evidence = self.target_evidence(
-            valid_run,
-            "valid-target",
-            valid_challenge,
-            intended,
-            intended,
-            "valid-target-proof",
+            challenge = "arc_" + runtime_module.secrets.token_urlsafe(32)
+        self.assertEqual("arc_-formerly-leading", challenge)
+
+    def test_public_target_attest_uses_pinned_external_executor_and_consumes_once(self) -> None:
+        run_id, challenge, intended, artifact = self.target_wait(suffix="-valid")
+        self.add_task(
+            run_id,
+            "same-target-other-task",
+            sideEffect={"operation": "launch", "target": intended["provider"]},
+            targetIdentity=intended,
         )
-        self.cli(
-            "target-resolve", valid_run, "--checkpoint-id", "valid-target",
-            "--challenge", valid_challenge,
-            "--intended-json", json.dumps(intended), "--evidence", valid_evidence,
-            "--actor", "human:synthetic-user",
+        self.install_executor(intended, artifact)
+        result = self.trusted_cli(
+            "target-attest",
+            run_id,
+            "--checkpoint-id",
+            "target-check-valid",
+            "--challenge",
+            challenge,
+            "--actor",
+            "human:synthetic-user",
         )
-        self.cli("task-start", valid_run, "verified-launch", "--worker-id", "verified-worker")
-        self.assertEqual("VERIFIED", self.store.load(valid_run)["targetIdentity"]["status"])
+        self.assertEqual("VERIFIED", self.store.load(run_id)["targetIdentity"]["status"])
+        self.assertEqual([], result["pendingExternal"])
+        proof = next(item for item in self.store.load(run_id)["artifacts"] if item["producer"] == "external-proof")
+        self.assertEqual("target-task-valid", proof["consumedByTask"])
+        wrong_task = self.cli(
+            "task-start",
+            run_id,
+            "same-target-other-task",
+            "--worker-id",
+            "wrong-task-worker",
+            expected=1,
+        )
+        self.assertEqual("TARGET_IDENTITY_REQUIRED", wrong_task["code"])
+        self.cli("task-start", run_id, "target-task-valid", "--worker-id", "verified-worker")
+        replay = self.trusted_cli(
+            "target-attest",
+            run_id,
+            "--checkpoint-id",
+            "target-check-valid",
+            "--challenge",
+            challenge,
+            "--actor",
+            "human:synthetic-user",
+            expected=1,
+        )
+        self.assertEqual("TARGET_IDENTITY_INVALID", replay["code"])
+
+    def test_public_target_attest_invalidates_on_transition_or_artifact_change(self) -> None:
+        stale_run, stale_challenge, stale_intended, stale_artifact = self.target_wait(suffix="-stale")
+        self.install_executor(stale_intended, stale_artifact)
+        self.trusted_cli(
+            "target-attest",
+            stale_run,
+            "--checkpoint-id",
+            "target-check-stale",
+            "--challenge",
+            stale_challenge,
+            "--actor",
+            "human:synthetic-user",
+        )
+        self.add_task(stale_run, "intervening-task")
+        stale = self.cli(
+            "task-start",
+            stale_run,
+            "target-task-stale",
+            "--worker-id",
+            "stale-worker",
+            expected=1,
+        )
+        self.assertEqual("TARGET_IDENTITY_STALE", stale["code"])
+
+        changed_run, changed_challenge, changed_intended, changed_artifact = self.target_wait(suffix="-changed")
+        self.install_executor(changed_intended, changed_artifact)
+        self.trusted_cli(
+            "target-attest",
+            changed_run,
+            "--checkpoint-id",
+            "target-check-changed",
+            "--challenge",
+            changed_challenge,
+            "--actor",
+            "human:synthetic-user",
+        )
+        changed_artifact.write_bytes(b"changed after attestation")
+        changed = self.cli(
+            "task-start",
+            changed_run,
+            "target-task-changed",
+            "--worker-id",
+            "changed-worker",
+            expected=1,
+        )
+        self.assertEqual("TARGET_IDENTITY_STALE", changed["code"])
+
+    def test_public_target_attest_rejects_forgery_modified_pin_and_binding_mismatches(self) -> None:
+        run_id, challenge, intended, artifact = self.target_wait(suffix="-security")
+        self.install_executor(intended, artifact)
+        registry_path, registry = self.registry()
+        exact = registry["exactTarget"]
+        adapter = Path(exact["adapter"])
+
+        forged = self.repo / "forged-observer.py"
+        shutil.copyfile(adapter, forged)
+        exact["adapter"] = str(forged)
+        exact["adapterSha256"] = hashlib.sha256(forged.read_bytes()).hexdigest()
+        self.write_registry(registry_path, registry)
+        error = self.trusted_cli(
+            "target-attest",
+            run_id,
+            "--checkpoint-id",
+            "target-check-security",
+            "--challenge",
+            challenge,
+            "--actor",
+            "human:synthetic-user",
+            expected=1,
+        )
+        self.assertEqual("EXECUTOR_TRUST_ROOT_INVALID", error["code"])
+
+        self.install_executor(intended, artifact)
+        _, registry = self.registry()
+        adapter = Path(registry["exactTarget"]["adapter"])
+        adapter.write_text(adapter.read_text(encoding="utf-8") + "\n# modified\n", encoding="utf-8")
+        error = self.trusted_cli(
+            "target-attest",
+            run_id,
+            "--checkpoint-id",
+            "target-check-security",
+            "--challenge",
+            challenge,
+            "--actor",
+            "human:synthetic-user",
+            expected=1,
+        )
+        self.assertEqual("EXECUTOR_PIN_MISMATCH", error["code"])
+
+        self.install_executor(intended, artifact)
+        wrong_actor = self.trusted_cli(
+            "target-attest",
+            run_id,
+            "--checkpoint-id",
+            "target-check-security",
+            "--challenge",
+            challenge,
+            "--actor",
+            "human:other-user",
+            expected=1,
+        )
+        self.assertEqual("TARGET_IDENTITY_INVALID", wrong_actor["code"])
+        wrong_challenge = self.trusted_cli(
+            "target-attest",
+            run_id,
+            "--checkpoint-id",
+            "target-check-security",
+            "--challenge",
+            "arc_wrong",
+            "--actor",
+            "human:synthetic-user",
+            expected=1,
+        )
+        self.assertEqual("TARGET_IDENTITY_INVALID", wrong_challenge["code"])
+
+        registry_path, registry = self.registry()
+        registry["exactTarget"]["allowedProviders"] = ["provider-b"]
+        self.write_registry(registry_path, registry)
+        wrong_provider = self.trusted_cli(
+            "target-attest",
+            run_id,
+            "--checkpoint-id",
+            "target-check-security",
+            "--challenge",
+            challenge,
+            "--actor",
+            "human:synthetic-user",
+            expected=1,
+        )
+        self.assertEqual("EXECUTOR_NOT_ALLOWED", wrong_provider["code"])
+
+        self.install_executor(intended, artifact)
+        registry_path, registry = self.registry()
+        registry["exactTarget"]["targets"][0]["identity"]["version"] = "stale"
+        self.write_registry(registry_path, registry)
+        wrong_identity = self.trusted_cli(
+            "target-attest",
+            run_id,
+            "--checkpoint-id",
+            "target-check-security",
+            "--challenge",
+            challenge,
+            "--actor",
+            "human:synthetic-user",
+            expected=1,
+        )
+        self.assertEqual("EXECUTOR_TARGET_NOT_TRUSTED", wrong_identity["code"])
+
+        self.install_executor(intended, artifact)
+        registry_path, registry = self.registry()
+        adapter = self.home / ".architrave" / "executors" / "wrong-observation.py"
+        adapter.write_text(
+            "import json,sys\n"
+            "request=json.load(sys.stdin)\n"
+            "observed=dict(request['intended']); observed['version']='wrong'\n"
+            "print(json.dumps({'schema':'architrave.exact-target-result.v1','status':'observed',"
+            "'binding':request['binding'],'observed':observed,'observation':{}}))\n",
+            encoding="utf-8",
+        )
+        registry["exactTarget"]["adapter"] = str(adapter)
+        registry["exactTarget"]["adapterSha256"] = hashlib.sha256(adapter.read_bytes()).hexdigest()
+        self.write_registry(registry_path, registry)
+        wrong_observation = self.trusted_cli(
+            "target-attest",
+            run_id,
+            "--checkpoint-id",
+            "target-check-security",
+            "--challenge",
+            challenge,
+            "--actor",
+            "human:synthetic-user",
+            expected=1,
+        )
+        self.assertEqual("TARGET_IDENTITY_MISMATCH", wrong_observation["code"])
+        checkpoint = next(
+            item
+            for item in self.store.load(run_id)["externalCheckpoints"]
+            if item["id"] == "target-check-security"
+        )
+        self.assertEqual("PENDING", checkpoint["status"])
+
+        other_run, other_challenge, other_intended, other_artifact = self.target_wait(suffix="-other")
+        self.install_executor(other_intended, other_artifact)
+        cross_task = self.trusted_cli(
+            "target-attest",
+            other_run,
+            "--checkpoint-id",
+            "target-check-other",
+            "--challenge",
+            challenge,
+            "--actor",
+            "human:synthetic-user",
+            expected=1,
+        )
+        self.assertEqual("TARGET_IDENTITY_INVALID", cross_task["code"])
+        self.assertNotEqual(challenge, other_challenge)
+
+    def test_public_target_attest_rejects_timeout_malformed_and_oversize_output(self) -> None:
+        cases = {
+            "timeout": "import time; time.sleep(5)\n",
+            "malformed": "print('not-json')\n",
+            "oversize": "print('x' * 70000)\n",
+        }
+        for name, source in cases.items():
+            with self.subTest(name=name):
+                run_id, challenge, intended, artifact = self.target_wait(suffix=f"-{name}")
+                self.install_executor(intended, artifact)
+                registry_path, registry = self.registry()
+                adapter = self.home / ".architrave" / "executors" / f"{name}.py"
+                adapter.write_text(source, encoding="utf-8")
+                registry["exactTarget"]["adapter"] = str(adapter)
+                registry["exactTarget"]["adapterSha256"] = hashlib.sha256(adapter.read_bytes()).hexdigest()
+                self.write_registry(registry_path, registry)
+                error = self.trusted_cli(
+                    "target-attest",
+                    run_id,
+                    "--checkpoint-id",
+                    f"target-check-{name}",
+                    "--challenge",
+                    challenge,
+                    "--actor",
+                    "human:synthetic-user",
+                    expected=1,
+                )
+                expected = {
+                    "timeout": "EXECUTOR_TIMEOUT",
+                    "malformed": "EXECUTOR_RESULT_INVALID",
+                    "oversize": "EXECUTOR_OUTPUT_OVERSIZE",
+                }[name]
+                self.assertEqual(expected, error["code"])
 
     def test_correction_cancels_active_old_work_and_recomputes_next_test(self) -> None:
         run_id = self.create(

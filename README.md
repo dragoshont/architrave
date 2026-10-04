@@ -12,20 +12,21 @@ prove the requested product outcome actually occurred.
 
 ![Architrave — ground in the repo, route to specialists, gate with a judge plus real checks, then ship](assets/overview.png)
 
-## Latest news: v0.11.2
+## Latest news: v0.11.3
 
-Released **October 4, 2026**. This update closes the immutable-policy usability
-gap without weakening Run v2's default-deny boundary.
+Released **October 5, 2026**. This update adds a supported host-trusted path for
+resolving exact target preflight checkpoints without repository self-attestation.
 
-- **Challenge-bound policy amendments:** an existing Run can add exact mutation
-  grants and confirmation-required operations without replacing its objective.
-- **Transaction-bound authorization:** direct `_transaction`, event-name,
-  worker, coordinator, actor-string, replay, stale-revision, and cross-Run
-  attempts cannot modify policy.
-- **Safe resumption:** amendments apply only with no active or uncertain
-  mutation; policy-blocked tasks become ready but never replay automatically.
+- **Pinned exact-target executor:** the public `target-attest` command invokes
+  one absolute, SHA-256-pinned observer from a user-level trust registry.
+- **No repository self-attestation:** the adapter, registry, and observed target
+  mapping live outside the target repository; caller-supplied observations are
+  never accepted.
+- **Atomic resolution:** Run, objective, revision, task, checkpoint, provider,
+  principal, challenge, and intended identity are rechecked before one
+  transaction registers and consumes the proof.
 
-Read the [full changelog](CHANGELOG.md#0112---2026-10-04).
+Read the [full changelog](CHANGELOG.md#0113---2026-10-05).
 After updating the plugin, refresh each adopted repository's copied kit assets
 using the [update instructions](#install).
 
@@ -165,6 +166,46 @@ native plugin command):
 ```bash
 python /path/to/architrave/tools/install_update.py update --codex .
 ```
+
+### Trusted exact-target attestation
+
+`SAFE_WRITE_TARGET_REQUIRED` checkpoints can be resolved through the public
+read-only exact-target observer. Enroll the target from the installed trusted
+Architrave tree, not from the target repository:
+
+```bash
+python /path/to/installed/architrave/tools/install_update.py executor-install \
+  --provider "provider-id" \
+  --artifact "declared artifact label" \
+  --artifact-path "/absolute/path/to/artifact" \
+  --version "declared-build" \
+  --sha256 "<64-lowercase-hex>" \
+  --environment "declared environment" \
+  --workspace "/absolute/intended/prefix" \
+  --workspace-mode absent-or-exact-directory \
+  --acceptance-target "declared acceptance target"
+```
+
+This installs the observer under `~/.architrave/executors/` and writes
+`~/.architrave/executors.json` with absolute Python/adapter paths, SHA-256 pins,
+the allowed provider and checkpoint type, and the exact enrolled target. The
+runtime rejects registries or adapters inside the target repository, modified
+pins, links/reparse points, unsafe POSIX permissions, timeouts, malformed or
+oversized output, stale bindings, mismatches, and replay.
+
+Resolve the pending checkpoint from the adopted repository:
+
+```bash
+python harness/architrave_runtime.py target-attest <run-id> \
+  --checkpoint-id <checkpoint-id> \
+  --challenge <one-time-challenge> \
+  --actor human:<principal>
+```
+
+The observer hashes the exact artifact and checks that the declared workspace
+is either the exact existing directory or, when explicitly enrolled that way,
+still absent. It never launches, installs, creates, terminates, or mutates the
+target.
 
 ## How It Works
 

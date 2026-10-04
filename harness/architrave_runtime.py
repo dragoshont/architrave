@@ -24,6 +24,8 @@ import tempfile
 import uuid
 import secrets
 import stat
+import threading
+import time
 from typing import Any, Callable, Iterable, Iterator, Sequence
 
 
@@ -128,6 +130,20 @@ SURFACE_VALUES = {"web", "electron", "ios", "deployment", "runtime"}
 SURFACE_VERIFICATION_TYPES = {"reality", "e2e"}
 WORK_KINDS = {"product", "diagnostic", "infrastructure", "review", "research", "communications"}
 TARGET_OPERATIONS = {"launch", "test", "install"}
+TARGET_IDENTITY_FIELDS = {
+    "provider",
+    "artifact",
+    "version",
+    "sha256",
+    "environment",
+    "workspace",
+    "acceptanceTarget",
+}
+EXECUTOR_REGISTRY_SCHEMA = "architrave.executor-registry.v1"
+EXACT_TARGET_REQUEST_SCHEMA = "architrave.exact-target-request.v1"
+EXACT_TARGET_RESULT_SCHEMA = "architrave.exact-target-result.v1"
+EXECUTOR_STDOUT_LIMIT = 64 * 1024
+EXECUTOR_STDERR_LIMIT = 8 * 1024
 
 
 class RuntimeFailure(Exception):
@@ -147,6 +163,72 @@ def utc_now() -> str:
 
 def parse_iso(value: str) -> dt.datetime:
     return dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _is_reparse_point(info: os.stat_result) -> bool:
+    return bool(getattr(info, "st_file_attributes", 0) & 0x400)
+
+
+def trusted_user_state_root() -> Path:
+    if os.name == "nt":
+        import ctypes
+
+        buffer = ctypes.create_unicode_buffer(32768)
+        result = ctypes.windll.shell32.SHGetFolderPathW(None, 40, None, 0, buffer)
+        if result != 0 or not buffer.value:
+            raise RuntimeFailure("EXECUTOR_TRUST_ROOT_INVALID", "Windows user profile path is unavailable")
+        home = Path(buffer.value)
+    else:
+        import pwd
+
+        home = Path(pwd.getpwuid(os.getuid()).pw_dir)
+    if not home.is_absolute():
+        raise RuntimeFailure("EXECUTOR_TRUST_ROOT_INVALID", "user profile path is not absolute")
+    return home / ".architrave"
+
+
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise json.JSONDecodeError(f"duplicate key: {key}", key, 0)
+        result[key] = value
+    return result
+
+
+def _verify_pinned_executable(path_value: Any, digest_value: Any, label: str) -> Path:
+    if not isinstance(path_value, str) or not isinstance(digest_value, str):
+        raise RuntimeFailure("EXECUTOR_REGISTRY_INVALID", f"trusted {label} path and digest are invalid")
+    path = Path(path_value)
+    if not path.is_absolute() or not re.fullmatch(r"[0-9a-f]{64}", digest_value):
+        raise RuntimeFailure("EXECUTOR_REGISTRY_INVALID", f"trusted {label} path or digest is invalid")
+    try:
+        info = path.lstat()
+    except OSError as exc:
+        raise RuntimeFailure("EXECUTOR_PIN_MISMATCH", f"trusted {label} is unavailable") from exc
+    if not stat.S_ISREG(info.st_mode) or path.is_symlink() or _is_reparse_point(info):
+        raise RuntimeFailure("EXECUTOR_PIN_MISMATCH", f"trusted {label} must be a regular non-link file")
+    if not hmac.compare_digest(sha256_file(path), digest_value):
+        raise RuntimeFailure("EXECUTOR_PIN_MISMATCH", f"trusted {label} SHA-256 pin does not match")
+    return path.resolve()
+
+
+def _bounded_stream_reader(
+    stream: Any,
+    limit: int,
+    output: bytearray,
+    overflow: threading.Event,
+) -> None:
+    while True:
+        chunk = stream.read(min(4096, limit + 1))
+        if not chunk:
+            return
+        remaining = limit - len(output)
+        if remaining > 0:
+            output.extend(chunk[:remaining])
+        if len(chunk) > remaining:
+            overflow.set()
+            return
 
 
 def canonical_json(value: Any) -> str:
@@ -321,6 +403,196 @@ class RunStore:
         if len(key) != 32:
             raise RuntimeFailure("RUNTIME_KEY_INVALID", "durable Run authentication key is invalid")
         return key
+
+    def _executor_registry_path(self) -> Path:
+        return trusted_user_state_root() / "executors.json"
+
+    def _read_executor_registry(self) -> dict[str, Any]:
+        path = self._executor_registry_path()
+        try:
+            info = path.lstat()
+            if not stat.S_ISREG(info.st_mode) or path.is_symlink() or _is_reparse_point(info):
+                raise RuntimeFailure("EXECUTOR_REGISTRY_INVALID", "trusted executor registry must be a regular file")
+            if os.name != "nt" and (info.st_uid != os.getuid() or (info.st_mode & 0o077) != 0):
+                raise RuntimeFailure("EXECUTOR_REGISTRY_PERMISSIONS", "trusted executor registry owner or permissions are unsafe")
+            registry = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_reject_duplicate_json_keys)
+        except RuntimeFailure:
+            raise
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise RuntimeFailure("EXECUTOR_REGISTRY_INVALID", "trusted executor registry is unavailable or invalid") from exc
+        if not isinstance(registry, dict) or set(registry) != {"schema", "exactTarget"}:
+            raise RuntimeFailure("EXECUTOR_REGISTRY_INVALID", "trusted executor registry schema is invalid")
+        if registry["schema"] != EXECUTOR_REGISTRY_SCHEMA or not isinstance(registry["exactTarget"], dict):
+            raise RuntimeFailure("EXECUTOR_REGISTRY_INVALID", "trusted executor registry schema is unsupported")
+        return registry
+
+    def _trusted_exact_target_executor(
+        self,
+        checkpoint: dict[str, Any],
+        intended: dict[str, str],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        executor = self._read_executor_registry()["exactTarget"]
+        required = {
+            "executable",
+            "executableSha256",
+            "adapter",
+            "adapterSha256",
+            "allowedProviders",
+            "allowedCheckpointTypes",
+            "timeoutSeconds",
+            "targets",
+        }
+        if set(executor) != required:
+            raise RuntimeFailure("EXECUTOR_REGISTRY_INVALID", "exact-target executor entry is invalid")
+        if (
+            not isinstance(executor["allowedProviders"], list)
+            or checkpoint["provider"] not in executor["allowedProviders"]
+            or not isinstance(executor["allowedCheckpointTypes"], list)
+            or checkpoint["type"] not in executor["allowedCheckpointTypes"]
+        ):
+            raise RuntimeFailure("EXECUTOR_NOT_ALLOWED", "trusted executor is not allowed for this provider and checkpoint type")
+        timeout = executor["timeoutSeconds"]
+        if not isinstance(timeout, int) or isinstance(timeout, bool) or timeout < 1 or timeout > 30:
+            raise RuntimeFailure("EXECUTOR_REGISTRY_INVALID", "trusted executor timeout must be between 1 and 30 seconds")
+        executable = _verify_pinned_executable(executor["executable"], executor["executableSha256"], "executor")
+        adapter = _verify_pinned_executable(executor["adapter"], executor["adapterSha256"], "adapter")
+        trust_root = trusted_user_state_root().resolve()
+        registry_path = self._executor_registry_path().resolve()
+        try:
+            registry_path.relative_to(trust_root)
+            adapter.relative_to(trust_root / "executors")
+        except ValueError as exc:
+            raise RuntimeFailure(
+                "EXECUTOR_TRUST_ROOT_INVALID",
+                "trusted executor registry and adapter must live in the private user executor tree",
+            ) from exc
+        for trusted_path, label in ((registry_path, "registry"), (adapter, "adapter")):
+            try:
+                trusted_path.relative_to(self.repository)
+            except ValueError:
+                pass
+            else:
+                raise RuntimeFailure("EXECUTOR_TRUST_ROOT_INVALID", f"trusted executor {label} cannot live inside the target repository")
+        if os.name != "nt":
+            for path in (trust_root, trust_root / "executors", adapter.parent):
+                info = path.lstat()
+                if not stat.S_ISDIR(info.st_mode) or path.is_symlink() or info.st_uid != os.getuid() or (info.st_mode & 0o077) != 0:
+                    raise RuntimeFailure("EXECUTOR_TRUST_ROOT_INVALID", "trusted executor directory owner or permissions are unsafe")
+        targets = executor["targets"]
+        if not isinstance(targets, list):
+            raise RuntimeFailure("EXECUTOR_REGISTRY_INVALID", "trusted executor targets must be a list")
+        matches = [
+            target
+            for target in targets
+            if isinstance(target, dict)
+            and target.get("identity") == intended
+        ]
+        if len(matches) != 1:
+            raise RuntimeFailure("EXECUTOR_TARGET_NOT_TRUSTED", "intended target is not uniquely enrolled in the trusted executor registry")
+        target = matches[0]
+        if set(target) != {"identity", "artifactPath", "workspaceMode"}:
+            raise RuntimeFailure("EXECUTOR_REGISTRY_INVALID", "trusted target entry is invalid")
+        artifact_path = Path(str(target["artifactPath"]))
+        workspace_mode = target["workspaceMode"]
+        if not artifact_path.is_absolute() or workspace_mode not in {"exact-directory", "absent-or-exact-directory"}:
+            raise RuntimeFailure("EXECUTOR_REGISTRY_INVALID", "trusted target path or workspace mode is invalid")
+        return {
+            **executor,
+            "executable": str(executable),
+            "adapter": str(adapter),
+        }, target
+
+    def _invoke_exact_target_executor(
+        self,
+        executor: dict[str, Any],
+        request: dict[str, Any],
+    ) -> dict[str, Any]:
+        encoded = canonical_json(request).encode("utf-8")
+        if len(encoded) > 32 * 1024:
+            raise RuntimeFailure("EXECUTOR_REQUEST_OVERSIZE", "trusted executor request exceeds the size limit")
+        registry_dir = self._executor_registry_path().parent.resolve()
+        environment = {
+            key: value
+            for key, value in os.environ.items()
+            if key.upper() in {"SYSTEMROOT", "WINDIR", "TMP", "TEMP", "TMPDIR"}
+        }
+        try:
+            process = subprocess.Popen(
+                [executor["executable"], "-I", "-S", executor["adapter"]],
+                cwd=registry_dir,
+                env=environment,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                shell=False,
+            )
+        except OSError as exc:
+            raise RuntimeFailure("EXECUTOR_LAUNCH_FAILED", "trusted executor could not be launched") from exc
+        stdout_bytes = bytearray()
+        stderr_bytes = bytearray()
+        stdout_overflow = threading.Event()
+        stderr_overflow = threading.Event()
+        stdout_thread = threading.Thread(
+            target=_bounded_stream_reader,
+            args=(process.stdout, EXECUTOR_STDOUT_LIMIT, stdout_bytes, stdout_overflow),
+            daemon=True,
+        )
+        stderr_thread = threading.Thread(
+            target=_bounded_stream_reader,
+            args=(process.stderr, EXECUTOR_STDERR_LIMIT, stderr_bytes, stderr_overflow),
+            daemon=True,
+        )
+        stdout_thread.start()
+        stderr_thread.start()
+        try:
+            assert process.stdin is not None
+            process.stdin.write(encoded)
+            process.stdin.close()
+            deadline = time.monotonic() + executor["timeoutSeconds"]
+            while process.poll() is None:
+                if stdout_overflow.is_set() or stderr_overflow.is_set():
+                    process.kill()
+                    raise RuntimeFailure("EXECUTOR_OUTPUT_OVERSIZE", "trusted executor output exceeds the size limit")
+                if time.monotonic() >= deadline:
+                    process.kill()
+                    raise RuntimeFailure("EXECUTOR_TIMEOUT", "trusted executor timed out")
+                time.sleep(0.01)
+        finally:
+            if process.poll() is None:
+                process.kill()
+            process.wait()
+            stdout_thread.join(timeout=1)
+            stderr_thread.join(timeout=1)
+            if process.stdout is not None:
+                process.stdout.close()
+            if process.stderr is not None:
+                process.stderr.close()
+        if stdout_overflow.is_set() or stderr_overflow.is_set():
+            raise RuntimeFailure("EXECUTOR_OUTPUT_OVERSIZE", "trusted executor output exceeds the size limit")
+        stdout = bytes(stdout_bytes).decode("utf-8", "replace")
+        stderr = bytes(stderr_bytes).decode("utf-8", "replace")
+        if process.returncode != 0:
+            raise RuntimeFailure(
+                "EXECUTOR_FAILED",
+                "trusted executor rejected the observation",
+                details={"exitCode": process.returncode, "stderr": redact(stderr)[:2000]},
+            )
+        try:
+            result = json.loads(stdout, object_pairs_hook=_reject_duplicate_json_keys)
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            raise RuntimeFailure("EXECUTOR_RESULT_INVALID", "trusted executor returned malformed JSON") from exc
+        if (
+            not isinstance(result, dict)
+            or set(result) != {"schema", "status", "binding", "observed", "observation"}
+            or result.get("schema") != EXACT_TARGET_RESULT_SCHEMA
+            or result.get("status") != "observed"
+            or result.get("binding") != request["binding"]
+            or not isinstance(result.get("observed"), dict)
+            or set(result["observed"]) != TARGET_IDENTITY_FIELDS
+            or not isinstance(result.get("observation"), dict)
+        ):
+            raise RuntimeFailure("EXECUTOR_RESULT_INVALID", "trusted executor result schema or binding is invalid")
+        return result
 
     def _state_hash(self, state: dict[str, Any]) -> str:
         semantic = {
@@ -1203,89 +1475,176 @@ class RunStore:
         evidence_ref: str,
         actor: str,
     ) -> dict[str, Any]:
-        required = {"provider", "artifact", "version", "sha256", "environment", "workspace", "acceptanceTarget"}
-        if set(intended) != required:
-            raise RuntimeFailure("TARGET_IDENTITY_INVALID", "target identity requires provider, artifact, version, sha256, environment, workspace, and acceptanceTarget")
+        raise RuntimeFailure(
+            "TRUSTED_EXECUTOR_REQUIRED",
+            "SAFE_WRITE_TARGET_REQUIRED checkpoints must be resolved with target-attest",
+        )
+
+    def attest_target_identity_checkpoint(
+        self,
+        run_id: str,
+        *,
+        checkpoint_id: str,
+        challenge: str,
+        actor: str,
+    ) -> dict[str, Any]:
+        before = self.load(run_id)
+        checkpoint = next((item for item in before["externalCheckpoints"] if item["id"] == checkpoint_id), None)
+        task = find_task(before, checkpoint["taskId"]) if checkpoint else None
+        supplied_hash = hashlib.sha256(challenge.encode("utf-8")).hexdigest()
+        if (
+            checkpoint is None
+            or task is None
+            or checkpoint["status"] != "PENDING"
+            or checkpoint["type"] != "SAFE_WRITE_TARGET_REQUIRED"
+            or checkpoint["objectiveVersion"] != before["objective"]["version"]
+            or not hmac.compare_digest(checkpoint["challengeHash"], supplied_hash)
+            or actor != f"human:{checkpoint['principal']}"
+            or not isinstance(task.get("targetIdentity"), dict)
+            or set(task["targetIdentity"]) != TARGET_IDENTITY_FIELDS
+        ):
+            raise RuntimeFailure("TARGET_IDENTITY_INVALID", "target identity checkpoint is invalid")
+        intended = dict(task["targetIdentity"])
+        expected_binding = sha256_value(
+            {
+                "runId": run_id,
+                "objectiveVersion": before["objective"]["version"],
+                "taskId": task["id"],
+                "provider": checkpoint["provider"],
+                "principal": checkpoint["principal"],
+                "intended": intended,
+                "challengeHash": checkpoint["challengeHash"],
+            }
+        )
+        if checkpoint.get("targetBindingHash") != expected_binding:
+            raise RuntimeFailure("TARGET_IDENTITY_INVALID", "target identity checkpoint binding is invalid")
+        executor, trusted_target = self._trusted_exact_target_executor(checkpoint, intended)
+        binding = {
+            "runId": run_id,
+            "objectiveVersion": before["objective"]["version"],
+            "revision": before["revision"],
+            "taskId": task["id"],
+            "checkpointId": checkpoint_id,
+            "checkpointType": checkpoint["type"],
+            "provider": checkpoint["provider"],
+            "principal": checkpoint["principal"],
+            "challengeHash": checkpoint["challengeHash"],
+        }
+        request = {
+            "schema": EXACT_TARGET_REQUEST_SCHEMA,
+            "binding": binding,
+            "intended": intended,
+            "target": {
+                "artifactPath": trusted_target["artifactPath"],
+                "workspaceMode": trusted_target["workspaceMode"],
+            },
+        }
+        result = self._invoke_exact_target_executor(executor, request)
+        observed = result["observed"]
+        mismatches = {
+            key: {"intended": intended[key], "observed": observed[key]}
+            for key in sorted(TARGET_IDENTITY_FIELDS)
+            if intended[key] != observed[key]
+        }
+        if mismatches:
+            raise RuntimeFailure(
+                "TARGET_IDENTITY_MISMATCH",
+                "trusted executor observed a different target identity",
+                details=mismatches,
+            )
+        artifact_id = f"external-{uuid.uuid4().hex}"
+        evidence_ref = f"artifact:{artifact_id}"
+        receipt_relative = (Path(".architrave") / "runs" / run_id / "evidence" / f"{artifact_id}.json").as_posix()
+        receipt_path = self.repository / receipt_relative
+        receipt = {
+            **binding,
+            "actor": checkpoint["principal"],
+            "intended": intended,
+            "observed": observed,
+            "adapter": {
+                "executable": executor["executable"],
+                "executableSha256": executor["executableSha256"],
+                "adapter": executor["adapter"],
+                "adapterSha256": executor["adapterSha256"],
+            },
+            "observation": result["observation"],
+        }
+        receipt_bytes = (canonical_json(receipt) + "\n").encode("utf-8")
+        receipt_sha256 = hashlib.sha256(receipt_bytes).hexdigest()
 
         def mutate(state: dict[str, Any]) -> dict[str, Any]:
-            checkpoint = next(
+            current_checkpoint = next(
                 (item for item in state["externalCheckpoints"] if item["id"] == checkpoint_id),
                 None,
             )
-            task = find_task(state, checkpoint["taskId"]) if checkpoint else None
-            require_evidence_refs(state, [evidence_ref], allowed={"artifact"})
-            artifact_id = evidence_ref.split(":", 1)[1]
-            artifact = next(
-                (item for item in state["artifacts"] if item["id"] == artifact_id),
-                None,
-            )
+            current_task = find_task(state, current_checkpoint["taskId"]) if current_checkpoint else None
             if (
-                artifact is None
-                or artifact["producer"] != "external-proof"
-                or artifact["kind"] != "external-proof"
-                or artifact.get("consumedByTask") is not None
+                state["revision"] != before["revision"]
+                or state["objective"]["version"] != binding["objectiveVersion"]
+                or current_checkpoint is None
+                or current_task is None
+                or current_checkpoint["status"] != "PENDING"
+                or current_checkpoint["type"] != binding["checkpointType"]
+                or current_checkpoint["taskId"] != binding["taskId"]
+                or current_checkpoint["provider"] != binding["provider"]
+                or current_checkpoint["principal"] != binding["principal"]
+                or current_checkpoint["challengeHash"] != binding["challengeHash"]
+                or current_checkpoint.get("targetBindingHash") != expected_binding
+                or current_task.get("targetIdentity") != intended
+                or actor != f"human:{current_checkpoint['principal']}"
             ):
-                raise RuntimeFailure("TARGET_IDENTITY_INVALID", "unconsumed external attestation is required")
-            receipt = self._read_json_receipt(artifact["path"], "target identity")
-            observed = receipt.get("observed") or {}
-            expected_binding = sha256_value(
-                {
-                    "runId": state["runId"],
-                    "objectiveVersion": state["objective"]["version"],
-                    "taskId": checkpoint["taskId"] if checkpoint else "",
-                    "provider": checkpoint["provider"] if checkpoint else "",
-                    "principal": checkpoint["principal"] if checkpoint else "",
-                    "intended": intended,
-                    "challengeHash": checkpoint["challengeHash"] if checkpoint else "",
-                }
-            )
-            if (
-                checkpoint is None
-                or task is None
-                or checkpoint["status"] != "PENDING"
-                or checkpoint["type"] != "SAFE_WRITE_TARGET_REQUIRED"
-                or checkpoint["objectiveVersion"] != state["objective"]["version"]
-                or hashlib.sha256(challenge.encode("utf-8")).hexdigest() != checkpoint["challengeHash"]
-                or checkpoint.get("targetBindingHash") != expected_binding
-                or task.get("targetIdentity") != intended
-                or actor != f"human:{checkpoint['principal']}"
-                or intended["provider"] != checkpoint["provider"]
-                or receipt.get("checkpointId") != checkpoint_id
-            ):
-                raise RuntimeFailure("TARGET_IDENTITY_INVALID", "target identity checkpoint is invalid")
-            mismatches = {
-                key: {"intended": intended[key], "observed": observed[key]}
-                for key in sorted(required)
-                if intended[key] != observed[key]
+                raise RuntimeFailure("TARGET_ATTESTATION_STALE", "target attestation became stale before commit")
+            receipt_path.parent.mkdir(parents=True, exist_ok=True)
+            descriptor, temporary = tempfile.mkstemp(prefix=f".{receipt_path.name}.", dir=receipt_path.parent)
+            try:
+                with os.fdopen(descriptor, "wb") as handle:
+                    handle.write(receipt_bytes)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(temporary, receipt_path)
+            finally:
+                with contextlib.suppress(FileNotFoundError):
+                    os.unlink(temporary)
+            if sha256_file(receipt_path) != receipt_sha256:
+                raise RuntimeFailure("TARGET_ATTESTATION_RACE", "target proof receipt changed before registration")
+            artifact = {
+                "id": artifact_id,
+                "kind": "external-proof",
+                "producer": "external-proof",
+                "path": receipt_relative,
+                "createdAt": utc_now(),
+                "sha256": receipt_sha256,
+                "evidenceRefs": [],
+                "consumedByTask": current_task["id"],
             }
-            checkpoint["status"] = "RESOLVED"
-            checkpoint["resolvedAt"] = utc_now()
-            checkpoint["resolvedBy"] = actor
-            checkpoint["resolutionRef"] = f"target:{checkpoint_id}"
-            artifact["consumedByTask"] = task["id"]
             artifact["attestation"] = self._artifact_attestation(artifact)
+            state["artifacts"].append(artifact)
+            current_checkpoint["status"] = "RESOLVED"
+            current_checkpoint["resolvedAt"] = utc_now()
+            current_checkpoint["resolvedBy"] = actor
+            current_checkpoint["resolutionRef"] = f"target:{checkpoint_id}"
             if not any(
-                item["taskId"] == task["id"] and item["status"] == "PENDING"
+                item["taskId"] == current_task["id"] and item["status"] == "PENDING"
                 for item in state["externalCheckpoints"]
             ):
-                task["status"] = "READY" if dependencies_completed(state, task) else "NOT_READY"
+                current_task["status"] = "READY" if dependencies_completed(state, current_task) else "NOT_READY"
             state["targetIdentity"] = {
+                "taskId": current_task["id"],
                 "checkpointId": checkpoint_id,
-                "principal": checkpoint["principal"],
-                "provider": checkpoint["provider"],
-                "challengeHash": checkpoint["challengeHash"],
-                "intended": dict(intended),
-                "observed": dict(observed),
-                "status": "MISMATCH" if mismatches else "VERIFIED",
-                "mismatches": mismatches,
+                "principal": current_checkpoint["principal"],
+                "provider": current_checkpoint["provider"],
+                "challengeHash": current_checkpoint["challengeHash"],
+                "intended": intended,
+                "observed": observed,
+                "status": "VERIFIED",
+                "mismatches": {},
                 "objectiveVersion": state["objective"]["version"],
                 "verifiedAt": utc_now(),
+                "verifiedRevision": state["revision"] + 1,
+                "artifactPath": result["observation"].get("artifactPath"),
                 "evidenceRef": evidence_ref,
             }
-            if mismatches:
-                state["status"] = "PAUSED"
-            else:
-                state["status"] = derive_run_status(state)
+            state["status"] = derive_run_status(state)
             return copy.deepcopy(state["targetIdentity"])
 
         return self._transaction(
@@ -1293,6 +1652,7 @@ class RunStore:
             mutate,
             event_type="target.preflight",
             actor=actor,
+            task_id=task["id"],
             evidence_refs=[evidence_ref],
         )
 
@@ -1865,6 +2225,10 @@ class RunStore:
                 identity = state.get("targetIdentity")
                 if not identity or identity.get("status") != "VERIFIED":
                     raise RuntimeFailure("TARGET_IDENTITY_REQUIRED", "launch/test/install requires verified target identity")
+                if identity.get("taskId") != task["id"]:
+                    raise RuntimeFailure("TARGET_IDENTITY_REQUIRED", "verified target identity belongs to another task")
+                if identity.get("verifiedRevision") != state["revision"]:
+                    raise RuntimeFailure("TARGET_IDENTITY_STALE", "verified target identity is stale after an intervening Run transition")
                 expected_identity = task.get("targetIdentity") or {}
                 mismatches = {
                     key: {"expected": value, "actual": identity["observed"].get(key)}
@@ -1873,6 +2237,21 @@ class RunStore:
                 }
                 if mismatches:
                     raise RuntimeFailure("TARGET_IDENTITY_MISMATCH", "task target does not match verified identity", details=mismatches)
+                artifact_path_value = identity.get("artifactPath")
+                if artifact_path_value:
+                    artifact_path = Path(str(artifact_path_value))
+                    try:
+                        artifact_info = artifact_path.lstat()
+                    except OSError as exc:
+                        raise RuntimeFailure("TARGET_IDENTITY_STALE", "verified target artifact is unavailable") from exc
+                    if (
+                        not artifact_path.is_absolute()
+                        or not stat.S_ISREG(artifact_info.st_mode)
+                        or artifact_path.is_symlink()
+                        or _is_reparse_point(artifact_info)
+                        or sha256_file(artifact_path) != expected_identity.get("sha256")
+                    ):
+                        raise RuntimeFailure("TARGET_IDENTITY_STALE", "verified target artifact changed after attestation")
             if task["attempts"] >= task["retryPolicy"]["maxAttempts"]:
                 raise RuntimeFailure("RETRY_EXHAUSTED", f"task {task_id} exhausted its retry policy")
             if task.get("retryNotBefore") and parse_iso(task["retryNotBefore"]) > dt.datetime.now(dt.timezone.utc):
@@ -3889,6 +4268,12 @@ def build_parser() -> argparse.ArgumentParser:
     target.add_argument("--evidence", required=True)
     target.add_argument("--actor", required=True)
 
+    attest = subparsers.add_parser("target-attest")
+    attest.add_argument("run_id")
+    attest.add_argument("--checkpoint-id", required=True)
+    attest.add_argument("--challenge", required=True)
+    attest.add_argument("--actor", required=True)
+
     review = subparsers.add_parser("review-record")
     review.add_argument("run_id")
     review.add_argument("--verdict", choices=["PASS", "REVISE", "FAIL"], required=True)
@@ -4057,6 +4442,15 @@ def cli(argv: Sequence[str] | None = None) -> int:
                     challenge=args.challenge,
                     intended=json.loads(args.intended_json),
                     evidence_ref=args.evidence,
+                    actor=args.actor,
+                )
+            )
+        elif command == "target-attest":
+            output = state_summary(
+                store.attest_target_identity_checkpoint(
+                    args.run_id,
+                    checkpoint_id=args.checkpoint_id,
+                    challenge=args.challenge,
                     actor=args.actor,
                 )
             )

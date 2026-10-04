@@ -184,6 +184,18 @@ task. Resolution requires the one-time challenge returned only to the trusted
 caller; the Run persists only its hash. A worker cannot resolve one. Independent
 READY tasks continue while one task waits.
 
+`SAFE_WRITE_TARGET_REQUIRED` has a public trusted producer path:
+`target-attest`. The runtime reads `~/.architrave/executors.json`, rejects a
+registry or adapter inside the target repository, verifies absolute Python and
+adapter paths plus their SHA-256 pins, and invokes the observer with an argv
+vector, a minimal environment, a non-repository working directory, bounded
+input/output, and a timeout. The request binds Run, objective version, revision,
+task, checkpoint, provider, principal, challenge hash, and intended identity.
+The caller cannot supply observed JSON. The runtime validates the exact result
+schema and identity, then atomically registers and consumes the external proof.
+The bundled exact-target observer only hashes a declared regular file and checks
+an exact existing-or-absent workspace; it never launches or mutates the target.
+
 ## Worker adapters
 
 `harness/worker_adapters.py` supports Copilot, Claude Code, Codex, and structured
@@ -229,6 +241,9 @@ python3 harness/architrave_runtime.py policy-amend-request <run-id> \
 python3 harness/architrave_runtime.py policy-amend <run-id> <checkpoint-id> \
   --challenge <challenge> --principal <principal> --provider <provider> \
   --actor human:<principal> --add-allow repository:edit
+python3 harness/architrave_runtime.py target-attest <run-id> \
+  --checkpoint-id <checkpoint-id> --challenge <challenge> \
+  --actor human:<principal>
 python3 harness/architrave_runtime.py events <run-id>
 python3 harness/architrave_runtime.py verify <run-id>
 python3 harness/validate_run_v2.py .architrave/runs/<run-id>

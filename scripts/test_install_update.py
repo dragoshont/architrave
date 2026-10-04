@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import importlib.util
 import json
@@ -14,6 +15,7 @@ import subprocess
 import sys
 import unittest
 import uuid
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -167,6 +169,37 @@ class InstallUpdateTests(unittest.TestCase):
         updated = snapshot(target)
         self.run_cli("update", "--agents", "--codex", str(target))
         self.assertEqual(snapshot(target), updated)
+
+    def test_executor_install_uses_private_user_state_and_pins_exact_target(self) -> None:
+        state = self.workspace / "user state" / ".architrave"
+        artifact = self.workspace / "target.bin"
+        artifact.write_bytes(b"exact target")
+        workspace = self.workspace / "future prefix"
+        args = argparse.Namespace(
+            provider="provider-a",
+            artifact="target.bin",
+            artifact_path=str(artifact),
+            version="2",
+            sha256=digest(artifact),
+            environment="test",
+            workspace=str(workspace),
+            acceptance_target="exact target smoke",
+            workspace_mode="absent-or-exact-directory",
+            timeout_seconds=3,
+        )
+        with mock.patch.object(self.module, "trusted_user_state_root", return_value=state):
+            self.assertEqual(0, self.module.install_exact_target_executor(args, ROOT))
+            self.assertEqual(0, self.module.install_exact_target_executor(args, ROOT))
+        registry_path = state / "executors.json"
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        exact = registry["exactTarget"]
+        self.assertEqual("architrave.executor-registry.v1", registry["schema"])
+        self.assertEqual(["provider-a"], exact["allowedProviders"])
+        self.assertEqual(["SAFE_WRITE_TARGET_REQUIRED"], exact["allowedCheckpointTypes"])
+        self.assertEqual(1, len(exact["targets"]))
+        self.assertEqual(digest(Path(exact["adapter"])), exact["adapterSha256"])
+        self.assertEqual(digest(Path(exact["executable"])), exact["executableSha256"])
+        self.assertTrue(Path(exact["adapter"]).is_relative_to(state / "executors"))
 
     def test_symlink_and_path_escape_fail_without_writes(self) -> None:
         target = self.workspace / "linked target"

@@ -10,8 +10,27 @@ Releases at or before **v0.8.12** are on the
 ### Planned
 - Add a public Run cancel/supersede transition and make invalid unstarted-task
   intake terminal instead of retry-ready.
-- Add a public trusted external-attestation registration path for factual
-  cross-session checkpoint receipts without private executor hooks.
+
+## [0.11.3] - 2026-10-05
+
+### Added
+- Public `target-attest` Run v2 command for exact
+  `SAFE_WRITE_TARGET_REQUIRED` observation through a user-level trusted
+  executor registry.
+- Stdlib-only exact filesystem observer and `executor-install` enrollment path
+  with absolute Python/adapter paths, SHA-256 pins, exact provider/checkpoint
+  allowlists, and exact target identities outside the target repository.
+- End-to-end regressions for repository-local and modified adapters, provider,
+  principal, task/challenge and observed-identity mismatches, replay, timeout,
+  malformed output, oversize output, and successful atomic proof consumption.
+
+### Security
+- Target attestation rechecks Run, objective version, state revision, task,
+  checkpoint, provider, principal, challenge hash, target binding, and intended
+  identity at commit time.
+- Adapter execution uses argv without a shell, a minimal environment,
+  non-repository working directory, bounded request/stdout/stderr, and a
+  configured timeout. Caller-supplied observed JSON is not accepted.
 
 ## [0.11.2] - 2026-10-04
 
@@ -65,6 +84,7 @@ Releases at or before **v0.8.12** are on the
 - Repeated micro-review loops now consolidate after two reopens and stop after
   a third non-PASS.
 
+[0.11.3]: https://github.com/dragoshont/architrave/compare/v0.11.2...v0.11.3
 [0.11.2]: https://github.com/dragoshont/architrave/compare/v0.11.1...v0.11.2
 [0.11.1]: https://github.com/dragoshont/architrave/compare/v0.11.0...v0.11.1
 

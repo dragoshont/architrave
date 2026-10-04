@@ -4,14 +4,17 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import os
 from pathlib import Path, PurePosixPath
+import re
 import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 import uuid
 import time
 
@@ -65,6 +68,16 @@ APPLICATION_CONFIG = """{
   }
 }
 """
+EXECUTOR_REGISTRY_SCHEMA = "architrave.executor-registry.v1"
+TARGET_IDENTITY_FIELDS = {
+    "provider",
+    "artifact",
+    "version",
+    "sha256",
+    "environment",
+    "workspace",
+    "acceptanceTarget",
+}
 
 
 class InstallerError(Exception):
@@ -106,6 +119,158 @@ def _pid_alive(pid: int) -> bool:
         return True
     except OSError:
         return False
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def trusted_user_state_root() -> Path:
+    if os.name == "nt":
+        import ctypes
+
+        buffer = ctypes.create_unicode_buffer(32768)
+        result = ctypes.windll.shell32.SHGetFolderPathW(None, 40, None, 0, buffer)
+        if result != 0 or not buffer.value:
+            raise InstallerError("executor-install: Windows user profile path is unavailable")
+        home = Path(buffer.value)
+    else:
+        import pwd
+
+        home = Path(pwd.getpwuid(os.getuid()).pw_dir)
+    if not home.is_absolute():
+        raise InstallerError("executor-install: user profile path is not absolute")
+    return home / ".architrave"
+
+
+def _ensure_private_directory(path: Path, label: str) -> None:
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    info = path.lstat()
+    if not _is_real_dir(info):
+        raise InstallerError(f"{label}: trusted state directory is unsafe")
+    if os.name != "nt":
+        if info.st_uid != os.getuid():
+            raise InstallerError(f"{label}: trusted state directory owner is unsafe")
+        path.chmod(0o700)
+
+
+def _atomic_private_json(path: Path, value: dict[str, object]) -> None:
+    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+            json.dump(value, handle, separators=(",", ":"), ensure_ascii=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        if os.name != "nt":
+            os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+
+
+def install_exact_target_executor(args: argparse.Namespace, kit: Path) -> int:
+    source = kit / "trusted" / "exact_target_observer.py"
+    require_source_file(source, "executor-install")
+    state_root = trusted_user_state_root()
+    executors_root = state_root / "executors"
+    executor_root = executors_root / "exact-target-v1"
+    _ensure_private_directory(state_root, "executor-install")
+    _ensure_private_directory(executors_root, "executor-install")
+    _ensure_private_directory(executor_root, "executor-install")
+    adapter = executor_root / "observer.py"
+    temporary = executor_root / f".observer.{uuid.uuid4().hex}.tmp"
+    try:
+        shutil.copyfile(source, temporary)
+        if os.name != "nt":
+            temporary.chmod(0o700)
+        os.replace(temporary, adapter)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+    executable = Path(sys.executable).resolve()
+    if not executable.is_absolute() or not _is_regular_file(executable.lstat()):
+        raise InstallerError("executor-install: Python executable is unsafe")
+    artifact_path = Path(args.artifact_path).expanduser()
+    workspace = Path(args.workspace).expanduser()
+    if not artifact_path.is_absolute() or not workspace.is_absolute():
+        raise InstallerError("executor-install: artifact path and workspace must be absolute", code=2)
+    if not re.fullmatch(r"[0-9a-f]{64}", args.sha256):
+        raise InstallerError("executor-install: target SHA-256 must be 64 lowercase hex characters", code=2)
+    identity = {
+        "provider": args.provider,
+        "artifact": args.artifact,
+        "version": args.version,
+        "sha256": args.sha256,
+        "environment": args.environment,
+        "workspace": str(workspace),
+        "acceptanceTarget": args.acceptance_target,
+    }
+    if any(not isinstance(value, str) or not value for value in identity.values()) or set(identity) != TARGET_IDENTITY_FIELDS:
+        raise InstallerError("executor-install: target identity fields must be non-empty", code=2)
+    registry_path = state_root / "executors.json"
+    registry: dict[str, object]
+    if registry_path.exists():
+        info = registry_path.lstat()
+        if not _is_regular_file(info):
+            raise InstallerError("executor-install: trusted executor registry is unsafe")
+        if os.name != "nt" and (info.st_uid != os.getuid() or (info.st_mode & 0o077) != 0):
+            raise InstallerError("executor-install: trusted executor registry permissions are unsafe")
+        try:
+            registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise InstallerError("executor-install: trusted executor registry is invalid") from exc
+        if registry.get("schema") != EXECUTOR_REGISTRY_SCHEMA or not isinstance(registry.get("exactTarget"), dict):
+            raise InstallerError("executor-install: trusted executor registry schema is invalid")
+        targets = registry["exactTarget"].get("targets")
+        if not isinstance(targets, list):
+            raise InstallerError("executor-install: trusted target registry is invalid")
+    else:
+        registry = {"schema": EXECUTOR_REGISTRY_SCHEMA, "exactTarget": {"targets": []}}
+        targets = registry["exactTarget"]["targets"]
+    target = {
+        "identity": identity,
+        "artifactPath": str(artifact_path),
+        "workspaceMode": args.workspace_mode,
+    }
+    targets[:] = [
+        item
+        for item in targets
+        if not isinstance(item, dict) or item.get("identity") != identity
+    ]
+    targets.append(target)
+    providers = sorted(
+        {
+            item["identity"]["provider"]
+            for item in targets
+            if isinstance(item, dict)
+            and isinstance(item.get("identity"), dict)
+            and isinstance(item["identity"].get("provider"), str)
+        }
+    )
+    registry["exactTarget"] = {
+        "executable": str(executable),
+        "executableSha256": sha256_file(executable),
+        "adapter": str(adapter.resolve()),
+        "adapterSha256": sha256_file(adapter),
+        "allowedProviders": providers,
+        "allowedCheckpointTypes": ["SAFE_WRITE_TARGET_REQUIRED"],
+        "timeoutSeconds": args.timeout_seconds,
+        "targets": targets,
+    }
+    _atomic_private_json(registry_path, registry)
+    print(f"Architrave trusted exact-target executor installed: {adapter}")
+    print(f"Trusted target enrolled for provider: {args.provider}")
+    return 0
 
 
 def require_source_file(path: Path, label: str) -> None:
@@ -929,6 +1094,22 @@ def parser() -> argparse.ArgumentParser:
     update_parser.add_argument("--codex", "-Codex", action="store_true")
     update_parser.add_argument("--entrypoint", choices=("posix", "windows"), default=default_entrypoint)
     update_parser.add_argument("target", nargs="?")
+
+    executor = subcommands.add_parser("executor-install")
+    executor.add_argument("--provider", required=True)
+    executor.add_argument("--artifact", required=True)
+    executor.add_argument("--artifact-path", required=True)
+    executor.add_argument("--version", required=True)
+    executor.add_argument("--sha256", required=True)
+    executor.add_argument("--environment", required=True)
+    executor.add_argument("--workspace", required=True)
+    executor.add_argument("--acceptance-target", required=True)
+    executor.add_argument(
+        "--workspace-mode",
+        choices=("exact-directory", "absent-or-exact-directory"),
+        default="exact-directory",
+    )
+    executor.add_argument("--timeout-seconds", type=int, choices=range(1, 31), default=10)
     return result
 
 
@@ -936,7 +1117,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     kit = Path(__file__).resolve().parents[1]
     try:
-        return install(args, kit) if args.command == "install" else update(args, kit)
+        if args.command == "install":
+            return install(args, kit)
+        if args.command == "update":
+            return update(args, kit)
+        return install_exact_target_executor(args, kit)
     except InstallerError as exc:
         if str(exc):
             print(str(exc), file=sys.stderr)
