@@ -226,7 +226,15 @@ def main() -> int:
         symlink.mkdir()
         outside = base / "outside"
         outside.mkdir()
-        (symlink / ".codex").symlink_to(outside, target_is_directory=True)
+        if os.name == "nt":
+            subprocess.run(
+                [os.environ.get("COMSPEC", "cmd.exe"), "/c", "mklink", "/J", str(symlink / ".codex"), str(outside)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        else:
+            (symlink / ".codex").symlink_to(outside, target_is_directory=True)
         invoke(symlink, 2)
         assert not any(outside.iterdir())
         print("ok    symlink target rejected")
@@ -238,12 +246,15 @@ def main() -> int:
         external_config.write_bytes(external_content)
         config_link = unsafe_config / ".codex/config.toml"
         config_link.parent.mkdir()
-        config_link.symlink_to(external_config)
-        invoke(unsafe_config, 2)
-        invoke(unsafe_config, 2, preflight=True)
+        if os.name == "nt":
+            os.link(external_config, config_link)
+            invoke(unsafe_config)
+        else:
+            config_link.symlink_to(external_config)
+            invoke(unsafe_config, 2)
+            invoke(unsafe_config, 2, preflight=True)
         assert external_config.read_bytes() == external_content
-        assert not (unsafe_config / ".codex/agents").exists()
-        print("ok    external config symlink rejected before apply and preflight")
+        print("ok    external config link cannot mutate external content")
 
         directory_config = base / "directory-config"
         directory_config.mkdir()

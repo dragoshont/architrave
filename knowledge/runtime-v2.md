@@ -72,11 +72,45 @@ legibility, mutation, semantic, security, and policy gates accept only their
 matching producer classes. An arbitrary file or caller-selected gate name cannot
 manufacture PASS.
 
+## Focus and correction controls
+
+The current objective is versioned and singular. An explicit correction or
+priority change replaces it, emits `objective.replaced`, marks prior nonterminal
+tasks `DEFERRED`, releases their leases, fails their active workers, resets
+lanes/target identity, and records the next cheapest acceptance test.
+Old objective evidence remains in authenticated events; it cannot remain active.
+
+Correction phrases such as “stay focused”, “you lost my ask”, “do not drift”,
+“wrong target”, and “use the existing working implementation” are objective
+reset signals. Status messages and cross-session evidence updates cannot replace
+the objective without explicit user direction.
+
+When a working baseline is identified, `reuseBaseline` must record its path,
+registered test/diff evidence, and the exact difference being evaluated before a
+replacement architecture or compatibility constraint can enter the TaskGraph.
+
+At most two execution lanes are active by default. The product lane cannot be
+displaced by communications, unrelated research, or infrastructure; those
+become deferred lanes until explicitly promoted.
+
+Except for immediate R4 safety/security work, extensive diagnostics,
+infrastructure, large refactors, and review are deferred until a minimal
+acceptance slice is proven. Two review reopens without new product evidence
+force one coherent fix batch before another review.
+
+Launch/test/install tasks require a verified target identity: provider/store,
+artifact or executable, version/build, SHA-256, environment, workspace/prefix,
+and acceptance target. Any mismatch pauses the Run and blocks task start.
+
 ## TaskGraph and WorkPackets
 
 Tasks have explicit dependencies, mutable paths, worker profile, workspace,
 risk, criterion references, artifacts, gate, retry/checkpoint policy, attempts,
 lease, bounded WorkPacket, and optional side-effect reconciliation state.
+
+Tasks also bind to objective version, lane, work kind, change kind, target
+operations, and whether they are the minimal acceptance test. A task from a
+superseded objective or deferred lane cannot start.
 
 Only dependency-ready tasks become `READY`. Under `approved-program`, a passing
 task automatically releases in-scope dependants. Under `current-task`, the Run

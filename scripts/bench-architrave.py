@@ -317,7 +317,7 @@ Task:
 
 def copilot_command(arm: dict[str, Any], worktree: Path, prompt: str, session_md: Path) -> list[str]:
     cmd = [
-        "copilot",
+        shutil.which("copilot") or "copilot",
         "-C",
         str(worktree),
         "--output-format",
@@ -376,12 +376,12 @@ def run_arm(
             copilot_command(arm, worktree, prompt, session_md), worktree, env, timeout, raw_stdout, raw_stderr, heartbeat_interval
         )
     elif arm["runner"] == "claude":
-        command = ["claude", "-p", prompt, "--output-format", "json"]
+        command = [shutil.which("claude") or "claude", "-p", prompt, "--output-format", "json"]
         if arm.get("model"):
             command.extend(["--model", arm["model"]])
         returncode, timed_out, duration_ms = run_to_files(command, worktree, env, timeout, raw_stdout, raw_stderr, heartbeat_interval)
     elif arm["runner"] == "codex":
-        command = ["codex", "-C", str(worktree), "-s", "workspace-write", "-a", "never", "exec", "--json", prompt]
+        command = [shutil.which("codex") or "codex", "-C", str(worktree), "-s", "workspace-write", "-a", "never", "exec", "--json", prompt]
         if arm.get("model"):
             command[1:1] = ["-m", arm["model"]]
         returncode, timed_out, duration_ms = run_to_files(command, worktree, env, timeout, raw_stdout, raw_stderr, heartbeat_interval)

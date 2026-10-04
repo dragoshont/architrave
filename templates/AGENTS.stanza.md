@@ -64,4 +64,12 @@ is mechanically covered. Semantic, UI, contract, architecture, migration,
 security/trust, IaC, and high-blast-radius work adds one or two independent
 reviewers according to risk, without specifying their models.
 
+**Focus controls:** The latest explicit user direction owns one versioned
+objective. Corrections replace it and defer/cancel prior active work. Reuse an
+identified working implementation before replacement architecture. Keep at most
+two active lanes; communications/research/infrastructure stay deferred unless
+explicitly promoted. Two review reopens without product evidence require one
+coherent fix batch. Verify target provider, artifact, version/hash,
+environment/workspace, and acceptance target before launch/test/install.
+
 **Never:** invent an unconfigured lane, introduce platform-foreign UI, use raw values where a token exists, create parallel backend abstractions, manually edit canonical Run state, let workers escalate policy or complete tasks, blindly retry uncertain side effects, mutate outside scoped policy, materialize secrets, run apply-shaped IaC commands, or claim compile/plan/simulation or an unsupported capability as a shipped reality.

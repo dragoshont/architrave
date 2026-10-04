@@ -20,10 +20,11 @@ defaults to deny; explicit Run policy may authorize a bounded target and operati
 - `templates/` + `tools/install.{sh,ps1}` — the per-repo installer and what it injects.
 
 ## Conventions when changing the kit
-- **Keep every gate's `.sh` and `.ps1` in lockstep** — identical behavior and exit codes (PASS=0 / FAIL=1 / BLOCK=2 / DRIFT=1). POSIX uses `jq`; PowerShell uses native `ConvertFrom-Json` (no jq on Windows).
-- Keep simple shell/PowerShell harness wrappers in lockstep. Do not duplicate
-	the Python Run v2 orchestration runtime in shell or PowerShell.
-- **Keep `tools/managed-paths.sh` and `tools/ManagedPaths.ps1` in lockstep** — installers/updaters must route every managed target write/delete through them; new managed destinations require paired adversarial fixtures.
+- Keep Python as the sole substantive cross-platform implementation. `.sh` and
+  `.ps1` compatibility entrypoints may only discover Python and forward argv,
+  stdout/stderr, and exit codes to the same Python CLI. Gate exits remain
+  PASS=0 / FAIL=1 / BLOCK=2 / DRIFT=1 where applicable.
+- **Keep install/update logic canonical in `tools/install_update.py`** — the four public `.sh` / `.ps1` entrypoints are Python-discovery/exec shims only; managed-path safety and adversarial fixtures live in Python.
 - **Agents and gates are config-driven** — resolve everything through `architrave.config.json`; never hard-code a stack or a path.
 - **Model selection is host-owned** — canonical agents, repository config,
   WorkPackets, and Run state do not specify model class, tier, provider,
@@ -47,5 +48,5 @@ defaults to deny; explicit Run policy may authorize a bounded target and operati
   `test-worker-adapters.py`, `test-invariant-engine.py`, `test-legibility.py`,
   `test-workspaces.py`, and `test-longbuild-runtime.py`.
 - Smoke-test the gates against a config with `gates/checks.sh --quick`.
-- Test repository profiles and installers with `scripts/test-config-profiles.sh` and `scripts/test-installers.sh`.
+- Test repository profiles with `scripts/test-config-profiles.sh` and installers with `python3 scripts/test_install_update.py`.
 - Test plugin load: `copilot plugin install "$PWD"` → `copilot plugin list` → `copilot plugin uninstall architrave`.

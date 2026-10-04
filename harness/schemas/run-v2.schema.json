@@ -11,6 +11,7 @@
     "updatedAt",
     "goal",
     "status",
+    "objective",
     "autonomy",
     "policy",
     "outcome",
@@ -22,6 +23,10 @@
     "artifacts",
     "workers",
     "gateResults",
+    "reuseBaseline",
+    "focus",
+    "lanes",
+    "targetIdentity",
     "eventLog",
     "eventCursor",
     "pendingEvent"
@@ -34,6 +39,18 @@
     "createdAt": { "$ref": "#/definitions/timestamp" },
     "updatedAt": { "$ref": "#/definitions/timestamp" },
     "goal": { "type": "string", "minLength": 1 },
+    "objective": {
+      "type": "object",
+      "required": ["version", "description", "acceptanceCriteria", "updatedAt", "correctionReason"],
+      "additionalProperties": false,
+      "properties": {
+        "version": { "type": "integer", "minimum": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "acceptanceCriteria": { "type": "array", "items": { "$ref": "#/definitions/id" }, "minItems": 1, "uniqueItems": true },
+        "updatedAt": { "$ref": "#/definitions/timestamp" },
+        "correctionReason": { "type": ["string", "null"] }
+      }
+    },
     "status": { "$ref": "#/definitions/runStatus" },
     "autonomy": {
       "type": "object",
@@ -100,6 +117,29 @@
       "type": "array",
       "items": { "$ref": "#/definitions/gateResult" }
     },
+    "reuseBaseline": { "type": ["object", "null"] },
+    "focus": {
+      "type": "object",
+      "required": ["nextCheapestTest", "lastResetReason", "minimalSliceProven", "reviewReopens"],
+      "additionalProperties": false,
+      "properties": {
+        "nextCheapestTest": { "type": ["string", "null"] },
+        "lastResetReason": { "type": ["string", "null"] },
+        "minimalSliceProven": { "type": "boolean" },
+        "reviewReopens": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "lanes": {
+      "type": "object",
+      "required": ["maxActive", "active", "deferred"],
+      "additionalProperties": false,
+      "properties": {
+        "maxActive": { "type": "integer", "minimum": 1 },
+        "active": { "type": "array", "maxItems": 2, "items": { "type": "object" } },
+        "deferred": { "type": "array", "items": { "type": "object" } }
+      }
+    },
+    "targetIdentity": { "type": ["object", "null"] },
     "eventLog": { "type": "string", "pattern": "(^|/)events\\.jsonl$" },
     "eventCursor": {
       "type": "object",
@@ -400,6 +440,7 @@
             "WAITING_RESOURCE",
             "COMPLETED",
             "FAILED",
+            "DEFERRED",
             "SKIPPED",
             "CANCELLED"
           ]
@@ -422,6 +463,15 @@
           "uniqueItems": true
         },
         "risk": { "$ref": "#/definitions/risk" },
+        "objectiveVersion": { "type": "integer", "minimum": 1 },
+        "lane": { "$ref": "#/definitions/id" },
+        "workKind": { "type": "string", "enum": ["product", "diagnostic", "infrastructure", "review", "research", "communications"] },
+        "changeKind": { "type": "string", "enum": ["normal", "replacement-architecture", "new-compatibility-constraint"] },
+        "operations": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "targetIdentity": { "type": ["object", "null"] },
+        "isMinimalAcceptanceTest": { "type": "boolean" },
+        "largeChange": { "type": "boolean" },
+        "deferredReason": { "type": ["string", "null"] },
         "acceptanceCriteria": {
           "type": "array",
           "items": { "$ref": "#/definitions/id" },

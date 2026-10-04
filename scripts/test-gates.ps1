@@ -6,25 +6,25 @@ $ErrorActionPreference = 'Stop'
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Set-Location $Root
-$Pwsh = if ($IsWindows) { Join-Path $PSHOME 'pwsh.exe' } else { Join-Path $PSHOME 'pwsh' }
+$PowerShellHost = (Get-Process -Id $PID).Path
 $Tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("architrave-gates-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $Tmp | Out-Null
 try {
   function Make-Repo([string]$Repo) {
     New-Item -ItemType Directory -Force -Path (Join-Path $Repo 'gates'),(Join-Path $Repo 'harness'),(Join-Path $Repo 'knowledge') | Out-Null
     Copy-Item gates/*.ps1 -Destination (Join-Path $Repo 'gates')
+    Copy-Item gates/gate_runner.py -Destination (Join-Path $Repo 'gates')
     Copy-Item gates/rubric.md -Destination (Join-Path $Repo 'gates')
     Copy-Item harness/*.ps1 -Destination (Join-Path $Repo 'harness')
-    Set-Content -Path (Join-Path $Repo 'architrave.config.json') -Encoding utf8 -Value @'
-{
-  "platform": "web",
-  "stack": "react",
-  "designSource": { "type": "design-doc", "path": "README.md" },
-  "applyTo": ["src/**"],
-  "build": "pwsh -NoProfile -Command \"Write-Output build-ok\"",
-  "test": "pwsh -NoProfile -Command \"Write-Output test-ok\""
-}
-'@
+    Copy-Item harness/platform_launch.py -Destination (Join-Path $Repo 'harness')
+    [ordered]@{
+      platform = 'web'
+      stack = 'react'
+      designSource = [ordered]@{ type = 'design-doc'; path = 'README.md' }
+      applyTo = @('src/**')
+      build = "& '$PowerShellHost' -NoProfile -Command `"Write-Output build-ok`""
+      test = "& '$PowerShellHost' -NoProfile -Command `"Write-Output test-ok`""
+    } | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $Repo 'architrave.config.json') -Encoding utf8
   }
 
   function Expect-Code([string]$Name, [string]$Repo, [scriptblock]$Command, [int]$Expected) {
@@ -34,17 +34,22 @@ try {
   }
 
   function Invoke-CapturedPwsh([string]$ScriptPath, [string]$WorkingDirectory, [string[]]$Arguments) {
-    $StartInfo = [Diagnostics.ProcessStartInfo]::new()
-    $StartInfo.FileName = $Pwsh
+    function Quote-NativeArgument([string]$Value) {
+      if ($Value -notmatch '[\s"]') { return $Value }
+      $Escaped = [regex]::Replace($Value, '(\\*)"', '$1$1\"')
+      $Escaped = [regex]::Replace($Escaped, '(\\+)$', '$1$1')
+      return '"' + $Escaped + '"'
+    }
+    $StartInfo = New-Object Diagnostics.ProcessStartInfo
+    $StartInfo.FileName = $PowerShellHost
     $StartInfo.WorkingDirectory = $WorkingDirectory
     $StartInfo.UseShellExecute = $false
     $StartInfo.RedirectStandardOutput = $true
     $StartInfo.RedirectStandardError = $true
-    $StartInfo.ArgumentList.Add('-NoProfile')
-    $StartInfo.ArgumentList.Add('-File')
-    $StartInfo.ArgumentList.Add($ScriptPath)
-    foreach ($Argument in $Arguments) { $StartInfo.ArgumentList.Add($Argument) }
-    $Process = [Diagnostics.Process]::new()
+    $NativeArguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $ScriptPath) + $Arguments
+    $QuotedArguments = @($NativeArguments | ForEach-Object { Quote-NativeArgument -Value ([string]$_) })
+    $StartInfo.Arguments = $QuotedArguments -join ' '
+    $Process = New-Object Diagnostics.Process
     $Process.StartInfo = $StartInfo
     [void]$Process.Start()
     $Stdout = $Process.StandardOutput.ReadToEnd()
@@ -90,7 +95,9 @@ try {
 
     Set-Content -Path architrave.config.json -Encoding utf8 -Value '{'
     $HookFailProcess = Invoke-CapturedPwsh (Join-Path $KnowledgeRepo 'gates/quality-gate.ps1') $KnowledgeRepo @('-HookJson')
-    if ($HookFailProcess.ExitCode -ne 2 -or $HookFailProcess.Stdout.Length -ne 0 -or $HookFailProcess.Stderr -notmatch 'quality-gate: BLOCKING') { throw 'knowledge hook blocking contract invalid' }
+    if ($HookFailProcess.ExitCode -ne 2 -or $HookFailProcess.Stdout.Length -ne 0 -or $HookFailProcess.Stderr -notmatch 'quality-gate: BLOCKING') {
+      throw "knowledge hook blocking contract invalid (exit=$($HookFailProcess.ExitCode), stdout=$($HookFailProcess.Stdout), stderr=$($HookFailProcess.Stderr))"
+    }
     Write-Host 'ok   knowledge-profile-gates'
   } finally { Pop-Location }
 }

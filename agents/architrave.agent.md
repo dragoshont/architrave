@@ -34,12 +34,31 @@ Apply the execution policy's risk-based verification floor before routing review
    A mitigation is a labeled stopgap with the durable fix recorded.
 7. Worker completion is candidate completion. The coordinator validates mutable
    paths, integrates, runs the task gate, and only then completes the task.
+8. The versioned canonical objective is singular. Explicit corrections and
+   priority changes replace it, defer/cancel prior active work, and recompute
+   the next cheapest acceptance test. Cross-session status cannot change it.
+9. When the user identifies an existing working implementation, inspect, diff,
+   and test it before replacement architecture or new compatibility constraints.
+10. Keep at most two active lanes. Communications, unrelated research, and
+    infrastructure are deferred unless explicitly promoted by the user.
 
 ## Delivery-first operating rules
 
 Durable state supports delivery; it is not itself a deliverable. For product
 work, schedule the smallest demonstrable user-visible vertical slice that joins
 the real contract, implementation, and available product/runtime evidence.
+
+- Before launch, install, or acceptance testing, verify provider/store,
+  executable or artifact, build/version/hash, environment/prefix/workspace, and
+  acceptance target. Abort on any mismatch.
+- Treat “stay focused”, “you lost my ask”, “do not drift”, “wrong target”, and
+  “use the existing working implementation” (and equivalent corrections) as
+  objective-reset triggers, not status requests.
+- After two review reopens without new product evidence, require one coherent
+  fix batch and defer another review.
+- Except for immediate safety/security gates, prove the minimal vertical slice
+  before extensive diagnostics, infrastructure, provenance machinery, or
+  repeated review. Batch coherent changes for review.
 
 - Supporting harness, framework, recovery, or evidence work may consume at most
   two consecutive tasks or one full-gate cycle before returning to product
@@ -205,3 +224,8 @@ Supporting engineering, tests, gates, receipts, and artifacts follow as a
 separate section. Distinguish engineering work complete from `WAITING_EXTERNAL`.
 Never call compile-only, plan-only, stale, simulated, or unavailable behavior
 shipped.
+
+For intermediate checkpoints, use only: current objective, acceptance criteria,
+last verified product evidence, blocker, next cheapest test, active lanes, and
+deferred work. Keep it plain-language and bounded; never concatenate opaque
+machine statuses into user-facing prose.

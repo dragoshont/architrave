@@ -17,11 +17,11 @@ and the UI to fetch that endpoint and render an accessible live status target.
 | Metric | Baseline | After | Reduction |
 |---|---:|---:|---:|
 | Orchestration files | 55 | 10 | **81.82%** |
-| Orchestration bytes | 356,749 | 41,686 | **88.32%** |
-| Approximate tokens (`bytes / 4`) | 89,187 | 10,422 | **88.31%** |
+| Orchestration bytes | 356,749 | 43,622 | **87.77%** |
+| Approximate tokens (`bytes / 4`) | 89,187 | 10,906 | **87.77%** |
 | Actual-code files | 3 | 3 | 0% |
 | Actual-code bytes | 484 | 484 | 0% |
-| Orchestration:code bytes | 737.085:1 | 86.128:1 | **88.32% lower** |
+| Orchestration:code bytes | 737.085:1 | 90.128:1 | **87.77% lower** |
 
 Both runs completed with `API-001=PASS`, `UI-001=PASS`,
 `Run status=COMPLETED`, and `python tests/verify.py` printing
@@ -47,21 +47,55 @@ Validation completed:
 
 - `python scripts/test-runtime-v2.py`: 55 passed, 1 platform skip.
 - `python scripts/test-workspaces.py`: 12 passed.
-- targeted compact worker tests: 4 passed.
+- `python scripts/test-worker-adapters.py`: 24 passed, 4 platform skips.
+- `python scripts/test-legibility.py`: 19 passed.
 - `python scripts/test-longbuild-runtime.py`: passed.
 - `python scripts/test-benchmark-tools.py`: 34 passed.
+- Python install/update safety suite: 6 passed.
+- Five synthetic focus/correction regressions: passed.
+- Gate, Run validator, learning validator, config-profile, review-launcher,
+  Codex role, and Codex runtime suites: passed.
 - `python scripts/test-delivery-focus.py`: passed.
 - `powershell -File scripts/test-validate-run.ps1`: compact v1/v2 cases passed.
 - `python scripts/generate-codex-agents.py --check`, Python compilation, JSON
   parsing, `git diff --check`, and direct compact Run validation: passed.
 
-The complete worker-adapter suite still contains pre-existing Windows-only test
-failures around POSIX fake executables, quoted filenames, and thread cleanup; the
-changed shell-worker compact-result cases pass. The full Codex-role test also
-retains a pre-existing CRLF-preservation failure reproduced unchanged at the
-pinned baseline. PowerShell 7 was unavailable, so scripts that explicitly spawn
-`pwsh` could not run in this environment; the Windows PowerShell-compatible
-compact validator test passed.
+Python stdlib is now the canonical implementation for install/update, gates,
+Run/learning validation, orchestration, review launchers, and platform command
+selection. The remaining `.sh`/`.ps1` entrypoints only locate Python and forward
+argv/output/exit status. Portable Node/npm was restored for the documented
+repository-development `npx ajv-cli` schema check.
+
+Substantive shell/PowerShell files over 20 lines fell from **55 files / 4,833
+lines** on the baseline to **33 files / 1,877 lines**. The remaining non-Python
+exceptions are release/manifest bootstrapping, legacy learning promotion/recovery
+utilities, and their compatibility tests; the product orchestration,
+install/update, deterministic gates, Run/learning validators, and review
+launchers are Python-backed.
+
+## Long-running-session failure controls
+
+Two generic failure classes were converted into synthetic regressions without
+copying private session data:
+
+- a working implementation was ignored while diagnostics and compatibility
+  machinery expanded without a minimal acceptance result;
+- an explicit product-test correction was displaced by an unrelated
+  communications/infrastructure lane and wrong-target execution.
+
+Implemented controls:
+
+| Failure mode | Enforced control | Metric / footprint impact |
+|---|---|---|
+| Corrections leave old tasks active | Versioned canonical objective; `objective.replaced` defers old tasks, releases leases, fails active workers, resets lanes/target, and requires a next cheapest test | Adds compact state fields; artifact count remains 10 and byte reduction remains 87.77% |
+| Working baseline bypassed | Replacement architecture/compatibility tasks require registered reuse path, evidence, and exact difference under test | Evidence references only; no duplicated baseline prose |
+| Hardening/review before acceptance | Non-security infrastructure/review, large changes, and non-minimal diagnostics are deferred until the minimal slice passes; two review reopens force a batch | Prevents repeated micro-review artifacts |
+| Wrong provider/build | Target preflight binds provider/store, artifact, version/hash, environment/workspace, and acceptance target; mismatch pauses and blocks launch/test/install | One compact identity object plus referenced evidence |
+| Objective displacement | Maximum two active lanes; communications/research/infrastructure default to deferred and cannot displace product | Lane IDs only |
+| Opaque checkpoints | On-demand bounded checkpoint contains objective, criteria, last product evidence, blocker, cheapest test, active lanes, deferred work | No persistent projection file |
+
+Cross-session status may add evidence but cannot invoke objective replacement
+without explicit user direction.
 
 ## Implemented changes
 

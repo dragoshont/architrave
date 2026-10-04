@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import struct
 import sys
@@ -17,7 +16,8 @@ from typing import Any, Callable, Sequence
 from urllib.parse import urlsplit
 
 from architrave_runtime import RunStore, RuntimeFailure, redact, utc_now
-from worker_adapters import run_bounded
+from platform_launch import LaunchError, configured_shell_command
+from worker_adapters import bounded_environment, run_bounded
 
 
 def load_config(repository: Path) -> dict[str, Any]:
@@ -34,9 +34,10 @@ def load_config(repository: Path) -> dict[str, Any]:
 
 
 def shell_command(command: str) -> list[str]:
-    if os.name == "nt":
-        return ["pwsh", "-NoProfile", "-Command", command]
-    return ["/bin/sh", "-lc", command]
+    try:
+        return configured_shell_command(command)
+    except LaunchError as exc:
+        raise RuntimeFailure("SHELL_RUNTIME", str(exc), exit_code=2) from exc
 
 
 def paeth(left: int, above: int, upper_left: int) -> int:
@@ -155,11 +156,7 @@ class LegibilityRunner:
         execution = run_bounded(
             shell_command(command),
             cwd=self.repository,
-            environment={
-                name: value
-                for name, value in os.environ.items()
-                if name in {"PATH", "HOME", "USERPROFILE", "TMPDIR", "TEMP", "TMP", "LANG", "LC_ALL"}
-            },
+            environment=bounded_environment({"execution": {"environment": []}}),
             timeout_seconds=timeout_seconds,
             max_output_bytes=1024 * 1024,
         )

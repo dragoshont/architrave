@@ -203,15 +203,19 @@ else
   ok "Tessera-shaped fixture baseline is intentionally unresolved"
 fi
 
-echo "== managed installer path safety =="
-if [ -f tools/managed-paths.sh ] && [ -f tools/ManagedPaths.ps1 ] &&
-  [ -f scripts/test-managed-paths.ps1 ] &&
-   bash -n tools/managed-paths.sh tools/install.sh tools/update.sh &&
-   grep -q 'managed_paths_init' tools/install.sh && grep -q 'managed_paths_init' tools/update.sh &&
-   grep -q 'Initialize-ManagedPaths' tools/install.ps1 && grep -q 'Initialize-ManagedPaths' tools/update.ps1; then
-  ok "paired managed-path helpers wired into install/update"
+echo "== canonical installer path safety =="
+if [ -f tools/install_update.py ] &&
+   python3 -m py_compile tools/install_update.py scripts/test_install_update.py &&
+   python3 scripts/test_install_update.py >/dev/null 2>&1 &&
+   bash -n tools/install.sh tools/update.sh &&
+   grep -q 'install_update.py.*install' tools/install.sh &&
+   grep -q 'install_update.py.*update' tools/update.sh &&
+   grep -q 'install_update.py' tools/install.ps1 &&
+   grep -q 'install_update.py' tools/update.ps1 &&
+   ! grep -q 'managed-paths\|ManagedPaths' tools/install.sh tools/update.sh tools/install.ps1 tools/update.ps1; then
+  ok "canonical Python install/update with thin public launch shims"
 else
-  err "managed-path helper pair missing, invalid, or not wired into every installer/updater"
+  err "canonical Python install/update or thin public launch shims are invalid"
 fi
 
 echo "== repository profile fixtures =="
@@ -220,12 +224,6 @@ if scripts/test-config-profiles.sh >/dev/null 2>&1; then
 else
   err "config profile fixtures failed"
   scripts/test-config-profiles.sh 2>&1 | sed 's/^/      /' | tail -24
-fi
-if scripts/test-installers.sh >/dev/null 2>&1; then
-  ok "application and knowledge installer profiles"
-else
-  err "installer profile fixtures failed"
-  scripts/test-installers.sh 2>&1 | sed 's/^/      /' | tail -24
 fi
 if scripts/test-gates.sh >/dev/null 2>&1; then
   ok "knowledge profile gate messages and execution"
@@ -337,7 +335,11 @@ for test_script in \
   scripts/test-legibility.py \
   scripts/test-workspaces.py \
   scripts/test-longbuild-runtime.py \
-  scripts/test-benchmark-runtime.py; do
+  scripts/test-benchmark-runtime.py \
+  scripts/test-platform-launch.py \
+  scripts/test-focus-controls.py \
+  scripts/test-review-launchers.py \
+  scripts/test_install_update.py; do
   if python3 "$test_script" >"$runtime_test_output" 2>&1; then
     ok "$test_script"
   else
@@ -354,16 +356,6 @@ else
   err "harness validator fixture tests failed"
   scripts/test-validate-run.sh 2>&1 | sed 's/^/      /' | tail -20
 fi
-if command -v pwsh >/dev/null 2>&1; then
-  if pwsh -NoProfile -File scripts/test-validate-run.ps1 >/dev/null 2>&1; then
-    ok "harness/validate-run.ps1 positive and negative fixtures"
-  else
-    err "PowerShell harness validator fixture tests failed"
-    pwsh -NoProfile -File scripts/test-validate-run.ps1 2>&1 | sed 's/^/      /' | tail -20
-  fi
-else
-  echo "  • pwsh not found — skipping PowerShell harness validator fixtures"
-fi
 
 echo "== learning validator fixtures =="
 if scripts/test-validate-learning.sh >/dev/null 2>&1; then
@@ -371,16 +363,6 @@ if scripts/test-validate-learning.sh >/dev/null 2>&1; then
 else
   err "learning validator fixture tests failed"
   scripts/test-validate-learning.sh 2>&1 | sed 's/^/      /' | tail -20
-fi
-if command -v pwsh >/dev/null 2>&1; then
-  if pwsh -NoProfile -File scripts/test-validate-learning.ps1 >/dev/null 2>&1; then
-    ok "harness/validate-learning.ps1 positive and negative fixtures"
-  else
-    err "PowerShell learning validator fixture tests failed"
-    pwsh -NoProfile -File scripts/test-validate-learning.ps1 2>&1 | sed 's/^/      /' | tail -20
-  fi
-else
-  echo "  • pwsh not found — skipping PowerShell learning validator fixtures"
 fi
 
 echo "== lesson promotion fixtures =="
@@ -390,43 +372,11 @@ else
   err "lesson promotion fixture tests failed"
   scripts/test-promote-lesson.sh 2>&1 | sed 's/^/      /' | tail -20
 fi
-if command -v pwsh >/dev/null 2>&1; then
-  if pwsh -NoProfile -File scripts/test-promote-lesson.ps1 >/dev/null 2>&1; then
-    ok "harness/promote-lesson.ps1 dry-run/apply/error fixtures"
-  else
-    err "PowerShell lesson promotion fixture tests failed"
-    pwsh -NoProfile -File scripts/test-promote-lesson.ps1 2>&1 | sed 's/^/      /' | tail -20
-  fi
-else
-  echo "  • pwsh not found — skipping PowerShell lesson promotion fixtures"
-fi
 if scripts/test-promote-lesson-picker.sh >/dev/null 2>&1; then
   ok "harness/promote-lesson-picker.sh candidate-row fixtures"
 else
   err "lesson promotion picker fixture tests failed"
   scripts/test-promote-lesson-picker.sh 2>&1 | sed 's/^/      /' | tail -20
-fi
-if command -v pwsh >/dev/null 2>&1; then
-  if pwsh -NoProfile -File scripts/test-promote-lesson-picker.ps1 >/dev/null 2>&1; then
-    ok "harness/promote-lesson-picker.ps1 candidate-row fixtures"
-  else
-    err "PowerShell lesson promotion picker fixture tests failed"
-    pwsh -NoProfile -File scripts/test-promote-lesson-picker.ps1 2>&1 | sed 's/^/      /' | tail -20
-  fi
-else
-  echo "  • pwsh not found — skipping PowerShell lesson promotion picker fixtures"
-fi
-
-echo "== PowerShell gate fixtures =="
-if command -v pwsh >/dev/null 2>&1; then
-  if pwsh -NoProfile -File scripts/test-gates.ps1 >/dev/null 2>&1; then
-    ok "gates/*.ps1 smoke fixtures"
-  else
-    err "PowerShell gate fixture tests failed"
-    pwsh -NoProfile -File scripts/test-gates.ps1 2>&1 | sed 's/^/      /' | tail -20
-  fi
-else
-  echo "  • pwsh not found — skipping PowerShell gate fixtures"
 fi
 
 echo "== stale learning fixtures =="
@@ -436,16 +386,6 @@ else
   err "stale learning fixture tests failed"
   scripts/test-mark-stale-learning.sh 2>&1 | sed 's/^/      /' | tail -20
 fi
-if command -v pwsh >/dev/null 2>&1; then
-  if pwsh -NoProfile -File scripts/test-mark-stale-learning.ps1 >/dev/null 2>&1; then
-    ok "harness/mark-stale-learning.ps1 dry-run/apply fixtures"
-  else
-    err "PowerShell stale learning fixture tests failed"
-    pwsh -NoProfile -File scripts/test-mark-stale-learning.ps1 2>&1 | sed 's/^/      /' | tail -20
-  fi
-else
-  echo "  • pwsh not found — skipping PowerShell stale learning fixtures"
-fi
 
 echo "== semantic learning fixtures =="
 if scripts/test-semantic-learning.sh >/dev/null 2>&1; then
@@ -453,16 +393,6 @@ if scripts/test-semantic-learning.sh >/dev/null 2>&1; then
 else
   err "semantic learning fixture tests failed"
   scripts/test-semantic-learning.sh 2>&1 | sed 's/^/      /' | tail -24
-fi
-if command -v pwsh >/dev/null 2>&1; then
-  if pwsh -NoProfile -File scripts/test-semantic-learning.ps1 >/dev/null 2>&1; then
-    ok "harness/semantic-learning-review.ps1 + apply-semantic-learning-findings.ps1 fixtures"
-  else
-    err "PowerShell semantic learning fixture tests failed"
-    pwsh -NoProfile -File scripts/test-semantic-learning.ps1 2>&1 | sed 's/^/      /' | tail -24
-  fi
-else
-  echo "  • pwsh not found — skipping PowerShell semantic learning fixtures"
 fi
 
 echo

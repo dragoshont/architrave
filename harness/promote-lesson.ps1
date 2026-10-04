@@ -35,7 +35,8 @@ if (-not $Apply) {
   exit 0
 }
 
-$Target = [System.IO.Path]::GetRelativePath($RepoRoot, $FullTarget)
+$BaseUri = [Uri]([IO.Path]::GetFullPath($RepoRoot).TrimEnd([char[]]@([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)) + [IO.Path]::DirectorySeparatorChar)
+$Target = [Uri]::UnescapeDataString($BaseUri.MakeRelativeUri([Uri]([IO.Path]::GetFullPath($FullTarget))).ToString()).Replace('/', [IO.Path]::DirectorySeparatorChar)
 $Parent = Split-Path $Target -Parent
 if ($Parent) { New-Item -ItemType Directory -Force -Path $Parent | Out-Null }
 if (-not (Test-Path $Target)) { New-Item -ItemType File -Force -Path $Target | Out-Null }

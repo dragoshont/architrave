@@ -1,37 +1,19 @@
-#!/usr/bin/env pwsh
-# Validate a compact Run v2 or a legacy compact Run v1 summary.
 [CmdletBinding()]
-param([string]$RunDir)
-$ErrorActionPreference = 'Stop'
-
-if (-not $RunDir) {
-  $latest = Get-ChildItem '.architrave/runs' -Directory -ErrorAction SilentlyContinue |
-    Sort-Object LastWriteTime -Descending | Select-Object -First 1
-  if ($latest) { $RunDir = $latest.FullName }
-}
-if (-not $RunDir -or -not (Test-Path $RunDir -PathType Container)) {
-  [Console]::Error.WriteLine('validate-run: run dir not found')
-  exit 2
-}
-
-if (Test-Path (Join-Path $RunDir 'run.json') -PathType Leaf) {
-  $Python = Get-Command python -ErrorAction SilentlyContinue
-  if (-not $Python) { $Python = Get-Command python3 -ErrorAction SilentlyContinue }
-  if (-not $Python) { [Console]::Error.WriteLine('validate-run: Python 3 is required for Run v2'); exit 2 }
-  & $Python.Source (Join-Path $PSScriptRoot 'validate_run_v2.py') $RunDir
+param([Parameter(ValueFromRemainingArguments=$true)][string[]]$Forwarded)
+$root = Split-Path $MyInvocation.MyCommand.Path -Parent
+$candidates = @(
+  [pscustomobject]@{ Name = 'py'; Prefix = @('-3') },
+  [pscustomobject]@{ Name = 'python3'; Prefix = @() },
+  [pscustomobject]@{ Name = 'python'; Prefix = @() }
+)
+foreach ($candidate in $candidates) {
+  $command = Get-Command $candidate.Name -ErrorAction SilentlyContinue
+  if (-not $command) { continue }
+  $prefix = @($candidate.Prefix)
+  & $command.Source @prefix -c 'import sys' *> $null
+  if ($LASTEXITCODE -ne 0) { continue }
+  & $command.Source @prefix (Join-Path $root 'architrave_cli.py') validate-run @Forwarded
   exit $LASTEXITCODE
 }
-
-try {
-  $summary = Get-Content (Join-Path $RunDir 'summary.json') -Raw | ConvertFrom-Json
-  if ($summary.schema -ne 'architrave.run.v1' -or
-      [string]::IsNullOrWhiteSpace([string]$summary.runId) -or
-      $summary.status -notin @('in-progress','blocked','passed','revised','failed')) {
-    throw 'invalid legacy summary'
-  }
-  Write-Host 'ARCHITRAVE-RUN: PASS'
-  exit 0
-} catch {
-  Write-Host 'ARCHITRAVE-RUN: FAIL'
-  exit 1
-}
+[Console]::Error.WriteLine('validate-run: Python 3 is required. Install from https://www.python.org/downloads/windows/ and enable the Python launcher or add Python to PATH.')
+exit 2

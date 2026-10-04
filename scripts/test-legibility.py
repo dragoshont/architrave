@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import base64
 import json
+import os
 from pathlib import Path
 import shlex
 import subprocess
@@ -65,8 +67,32 @@ class LegibilityTests(unittest.TestCase):
         if refresh:
             statements.append(refresh)
         statements.append(f"print(json.dumps({payload!r}))")
-        source = "; ".join(statements)
-        return f"python3 -c {shlex.quote(source)}"
+        return self.python_command("; ".join(statements))
+
+    def python_command(self, source: str) -> str:
+        payload = base64.b64encode(source.encode("utf-8")).decode("ascii")
+        loader = f"import base64;exec(base64.b64decode('{payload}'))"
+        if os.name == "nt":
+            executable = str(Path(sys.executable)).replace("'", "''")
+            return f"& '{executable}' -c \"{loader}\""
+        return shlex.join([sys.executable, "-c", loader])
+
+    def pass_command(self, output: str = "") -> str:
+        return self.python_command(f"print({output!r}, end='')" if output else "pass")
+
+    def fail_command(self) -> str:
+        return self.python_command("raise SystemExit(1)")
+
+    def touch_command(self, path: str) -> str:
+        return self.python_command(f"from pathlib import Path; Path({path!r}).touch()")
+
+    def append_command(self, path: str, value: str) -> str:
+        return self.python_command(
+            f"from pathlib import Path; p=Path({path!r}); p.open('a', encoding='utf-8').write({value!r})"
+        )
+
+    def script_command(self, path: str) -> str:
+        return self.python_command(f"exec(compile(open({path!r}, encoding='utf-8').read(), {path!r}, 'exec'))")
 
     def ios_evidence(self, screenshot: str) -> str:
         return self.json_command(
@@ -128,7 +154,7 @@ class LegibilityTests(unittest.TestCase):
         return LegibilityRunner(self.repo, state["runId"]), state["runId"]
 
     def test_web_requires_health_and_product_evidence(self) -> None:
-        runner, _ = self.create_runner({"health": "true", "web": {"url": "http://fixture.invalid"}})
+        runner, _ = self.create_runner({"health": self.pass_command(), "web": {"url": "http://fixture.invalid"}})
         result = runner.verify_surface("web")
         self.assertEqual("fail", result["status"])
         self.assertIn("web.e2e", result["failed"])
@@ -150,7 +176,7 @@ class LegibilityTests(unittest.TestCase):
             ["dom.json", "a11y.json", "web.png"],
         )
         runner, run_id = self.create_runner(
-            {"health": "printf healthy", "web": {"url": "http://fixture.invalid/release", "e2e": evidence}}
+            {"health": self.pass_command("healthy"), "web": {"url": "http://fixture.invalid/release", "e2e": evidence}}
         )
         result = runner.verify_surface("web")
         self.assertEqual("pass", result["status"])
@@ -177,7 +203,7 @@ class LegibilityTests(unittest.TestCase):
                     ["dom.json", "a11y.json", "web.png"],
                 )
                 runner, _ = self.create_runner(
-                    {"health": "true", "web": {"url": "http://fixture.invalid/release", "e2e": evidence}}
+                    {"health": self.pass_command(), "web": {"url": "http://fixture.invalid/release", "e2e": evidence}}
                 )
                 result = runner.verify_surface("web")
                 self.assertEqual("fail", result["status"])
@@ -186,7 +212,7 @@ class LegibilityTests(unittest.TestCase):
 
     def test_web_trivial_exit_zero_cannot_pass_reality_gate(self) -> None:
         runner, _ = self.create_runner(
-            {"health": "true", "web": {"url": "http://fixture.invalid", "e2e": "true"}}
+            {"health": self.pass_command(), "web": {"url": "http://fixture.invalid", "e2e": self.pass_command()}}
         )
         result = runner.verify_surface("web")
         self.assertEqual("fail", result["status"])
@@ -195,9 +221,9 @@ class LegibilityTests(unittest.TestCase):
     def test_electron_is_verified_distinctly_from_web(self) -> None:
         runner, _ = self.create_runner(
             {
-                "health": "true",
-                "web": {"url": "http://fixture.invalid", "e2e": "true"},
-                "electron": {"launch": "false", "health": "true", "screenshot": "true"},
+                "health": self.pass_command(),
+                "web": {"url": "http://fixture.invalid", "e2e": self.pass_command()},
+                "electron": {"launch": self.fail_command(), "health": self.pass_command(), "screenshot": self.pass_command()},
             }
         )
         result = runner.verify_surface("electron")
@@ -219,7 +245,7 @@ class LegibilityTests(unittest.TestCase):
             ["electron.png"],
         )
         runner, _ = self.create_runner(
-            {"electron": {"launch": evidence, "health": "true", "screenshot": "true"}}, surface="electron"
+            {"electron": {"launch": evidence, "health": self.pass_command(), "screenshot": self.pass_command()}}, surface="electron"
         )
         self.assertEqual("pass", runner.verify_surface("electron")["status"])
 
@@ -228,10 +254,10 @@ class LegibilityTests(unittest.TestCase):
             {
                 "ios": {
                     "bundleId": "example.fixture",
-                    "build": "true",
-                    "install": "true",
-                    "launch": "true",
-                    "screenshot": "true"
+                    "build": self.pass_command(),
+                    "install": self.pass_command(),
+                    "launch": self.pass_command(),
+                    "screenshot": self.pass_command()
                 }
             }
         )
@@ -245,11 +271,11 @@ class LegibilityTests(unittest.TestCase):
             {
                 "ios": {
                     "bundleId": "example.fixture",
-                    "build": "printf build",
-                    "install": "printf install",
+                    "build": self.pass_command("build"),
+                    "install": self.pass_command("install"),
                     "launch": self.ios_evidence("ios-custom.png"),
-                    "logs": "printf logs",
-                    "screenshot": "printf screenshot",
+                    "logs": self.pass_command("logs"),
+                    "screenshot": self.pass_command("screenshot"),
                     "screenshotPath": "ios-custom.png"
                 }
             },
@@ -281,10 +307,10 @@ class LegibilityTests(unittest.TestCase):
             {
                 "ios": {
                     "bundleId": "example.fixture",
-                    "build": "printf 'build\\n' >> ios-lifecycle",
-                    "install": "printf 'install\\n' >> ios-lifecycle",
-                    "launch": f"python3 -c {shlex.quote(launch_source)}",
-                    "screenshot": "printf 'screenshot\\n' >> ios-lifecycle",
+                    "build": self.append_command("ios-lifecycle", "build\n"),
+                    "install": self.append_command("ios-lifecycle", "install\n"),
+                    "launch": self.python_command(launch_source),
+                    "screenshot": self.append_command("ios-lifecycle", "screenshot\n"),
                     "screenshotPath": screenshot.name,
                 }
             },
@@ -306,10 +332,10 @@ class LegibilityTests(unittest.TestCase):
             {
                 "ios": {
                     "bundleId": "example.fixture",
-                    "build": "true",
-                    "install": "true",
+                    "build": self.pass_command(),
+                    "install": self.pass_command(),
                     "launch": self.ios_evidence("ios-flat.png"),
-                    "screenshot": "true",
+                    "screenshot": self.pass_command(),
                     "screenshotPath": "ios-flat.png"
                 }
             }
@@ -326,10 +352,10 @@ class LegibilityTests(unittest.TestCase):
             {
                 "ios": {
                     "bundleId": "example.fixture",
-                    "build": "true",
-                    "install": "true",
+                    "build": self.pass_command(),
+                    "install": self.pass_command(),
                     "launch": self.ios_evidence("ios-content.png"),
-                    "screenshot": "true",
+                    "screenshot": self.pass_command(),
                     "screenshotPath": "ios-content.png"
                 }
             },
@@ -356,10 +382,10 @@ class LegibilityTests(unittest.TestCase):
             {
                 "ios": {
                     "bundleId": "example.fixture",
-                    "build": "true",
-                    "install": "true",
+                    "build": self.pass_command(),
+                    "install": self.pass_command(),
                     "launch": stale_command,
-                    "screenshot": "true",
+                    "screenshot": self.pass_command(),
                     "screenshotPath": "ios-stale.png"
                 }
             }
@@ -374,9 +400,9 @@ class LegibilityTests(unittest.TestCase):
             {
                 "deployment": {
                     "target": "sandbox:fixture",
-                    "current": "printf before",
-                    "apply": f"touch {sentinel.name}",
-                    "health": "true"
+                    "current": self.pass_command("before"),
+                    "apply": self.touch_command(sentinel.name),
+                    "health": self.pass_command()
                 }
             }
         )
@@ -389,12 +415,12 @@ class LegibilityTests(unittest.TestCase):
             {
                 "deployment": {
                     "target": "sandbox:fixture",
-                    "current": "printf current",
-                    "diff": "printf diff",
-                    "apply": "printf apply",
-                    "health": "printf healthy",
-                    "version": "printf 1.2.3",
-                    "digest": "printf sha256:abc"
+                    "current": self.pass_command("current"),
+                    "diff": self.pass_command("diff"),
+                    "apply": self.pass_command("apply"),
+                    "health": self.pass_command("healthy"),
+                    "version": self.pass_command("1.2.3"),
+                    "digest": self.pass_command("sha256:abc")
                 }
             },
             allow_deploy=True,
@@ -419,11 +445,11 @@ class LegibilityTests(unittest.TestCase):
             {
                 "deployment": {
                     "target": "sandbox:fixture",
-                    "current": "printf current",
-                    "apply": "true",
-                    "health": "true",
-                    "version": "printf stale",
-                    "digest": "printf sha256:actual"
+                    "current": self.pass_command("current"),
+                    "apply": self.pass_command(),
+                    "health": self.pass_command(),
+                    "version": self.pass_command("stale"),
+                    "digest": self.pass_command("sha256:actual")
                 }
             },
             allow_deploy=True,
@@ -440,19 +466,19 @@ class LegibilityTests(unittest.TestCase):
 
     def test_failed_deployment_cannot_replay_before_reconciliation(self) -> None:
         counter = self.repo / "apply-count"
-        apply_command = (
-            f"python3 -c \"from pathlib import Path; p=Path('{counter.name}'); "
-            "p.write_text(str(int(p.read_text()) + 1) if p.exists() else '1'); raise SystemExit(1)\""
+        apply_command = self.python_command(
+            f"from pathlib import Path; p=Path({counter.name!r}); "
+            "p.write_text(str(int(p.read_text()) + 1) if p.exists() else '1'); raise SystemExit(1)"
         )
         runner, run_id = self.create_runner(
             {
                 "deployment": {
                     "target": "sandbox:fixture",
-                    "current": "printf current",
+                    "current": self.pass_command("current"),
                     "apply": apply_command,
-                    "health": "true",
-                    "version": "printf 1.0.0",
-                    "digest": "printf sha256:test"
+                    "health": self.pass_command(),
+                    "version": self.pass_command("1.0.0"),
+                    "digest": self.pass_command("sha256:test")
                 }
             },
             allow_deploy=True,
@@ -490,11 +516,11 @@ class LegibilityTests(unittest.TestCase):
             {
                 "deployment": {
                     "target": "sandbox:fixture",
-                    "current": "python3 current_state.py",
-                    "apply": f"touch {sentinel.name}",
-                    "health": "true",
-                    "version": "printf 1.0.0",
-                    "digest": "printf sha256:test"
+                    "current": self.script_command("current_state.py"),
+                    "apply": self.touch_command(sentinel.name),
+                    "health": self.pass_command(),
+                    "version": self.pass_command("1.0.0"),
+                    "digest": self.pass_command("sha256:test")
                 }
             },
             allow_deploy=True,
@@ -514,12 +540,12 @@ class LegibilityTests(unittest.TestCase):
             {
                 "deployment": {
                     "target": "sandbox:fixture",
-                    "current": "printf current",
-                    "diff": "false",
-                    "apply": f"touch {sentinel.name}",
-                    "health": "true",
-                    "version": "printf 1.0.0",
-                    "digest": "printf sha256:test",
+                    "current": self.pass_command("current"),
+                    "diff": self.fail_command(),
+                    "apply": self.touch_command(sentinel.name),
+                    "health": self.pass_command(),
+                    "version": self.pass_command("1.0.0"),
+                    "digest": self.pass_command("sha256:test"),
                 }
             },
             allow_deploy=True,
@@ -552,12 +578,12 @@ class LegibilityTests(unittest.TestCase):
             {
                 "deployment": {
                     "target": "sandbox:fixture",
-                    "current": "python3 current_state.py",
-                    "diff": "true",
-                    "apply": f"touch {sentinel.name}",
-                    "health": "true",
-                    "version": "printf 1.0.0",
-                    "digest": "printf sha256:test",
+                    "current": self.script_command("current_state.py"),
+                    "diff": self.pass_command(),
+                    "apply": self.touch_command(sentinel.name),
+                    "health": self.pass_command(),
+                    "version": self.pass_command("1.0.0"),
+                    "digest": self.pass_command("sha256:test"),
                 }
             },
             allow_deploy=True,

@@ -284,7 +284,7 @@ def read_regular_file(path: Path, expected: Fingerprint, parent: Fingerprint) ->
             # os.O_NONBLOCK does not exist on Windows (no FIFO semantics to
             # guard against there), so it must not be referenced in this
             # branch's flags.
-            flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+            flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
             descriptor = os.open(path, flags)
         else:
             flags = os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0)

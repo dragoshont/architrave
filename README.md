@@ -105,24 +105,25 @@ The Codex plugin owns three skills: `architrave` (implicit lead workflow), plus
 explicit-only `architrave-tournament` and `architrave-review`. Do not copy those
 same names into `.agents/skills`; Codex does not merge duplicate skill names.
 
-Then **adopt/ground each repository** so local agents, cloud agents, and deterministic gates all see the same source of truth. This is a per-repo step: run the shell script on macOS/Linux, or the PowerShell script on Windows:
+Then **adopt/ground each repository** so local agents, cloud agents, and
+deterministic gates all see the same source of truth. Python is the canonical
+cross-platform implementation; the small `.sh`/`.ps1` files are compatibility
+launchers only.
 
 ```bash
-/path/to/architrave/tools/install.sh .                          # macOS / Linux
-pwsh -NoProfile -File /path/to/architrave/tools/install.ps1 .    # Windows
+python /path/to/architrave/tools/install_update.py install .
 ```
 
 To add the two project-scoped Codex roles as well, opt in explicitly:
 
 ```bash
-/path/to/architrave/tools/install.sh --codex .
-pwsh -NoProfile -File /path/to/architrave/tools/install.ps1 . -Codex
+python /path/to/architrave/tools/install_update.py install --codex .
 ```
 
 This writes only generated Tournament Analyst / Adversarial Judge role files
 under `.codex/agents/` and one managed registration block in
 `.codex/config.toml`. It never writes provider, auth, trust, MCP, plugin, skill,
-or credential settings. Python 3.11+ is required only for this opt-in role path.
+or credential settings. Python 3.11+ is the kit runtime on every platform.
 
 Codex roles are specialized contexts, not mandatory security gates: their
 `sandbox_mode = "read-only"` constrains command filesystem/network access, while
@@ -134,8 +135,7 @@ Edit `architrave.config.json` to point at the repo's Storybook/design source, bu
 For a repository that contains knowledge, skills, schemas, and automation but no product UI or service lane, use the explicit knowledge profile:
 
 ```bash
-/path/to/architrave/tools/install.sh --profile knowledge .
-pwsh -NoProfile -File /path/to/architrave/tools/install.ps1 . -Profile knowledge
+python /path/to/architrave/tools/install_update.py install --profile knowledge .
 ```
 
 The generated config is the canonical [`kit/examples/knowledge.architrave.json`](kit/examples/knowledge.architrave.json). It requires real build/test commands while deliberately omitting platform, Storybook, tokens, backend, IaC, and runtime fields. The default installer profile remains the existing application scaffold.
@@ -157,23 +157,20 @@ claude plugin update architrave@architrave
 After updating the plugin, users **must also refresh each adopted repo's copied kit assets**. A plugin update refreshes the locally installed agent package only; it does not change copied gates, the active `.github/hooks/design-guard.json`, harness, knowledge, profile-appropriate constitutions, or the managed `AGENTS.md` stanza. Run the matching repo script in every adopted repo. This leaves `architrave.config.json` and copied `.github/agents` untouched by default:
 
 ```bash
-/path/to/architrave/tools/update.sh .
-pwsh -NoProfile -File /path/to/architrave/tools/update.ps1 .
+python /path/to/architrave/tools/install_update.py update .
 ```
 
 When the Architrave crew itself changes and you want to refresh the copied repo agents too, opt in explicitly. Application repos receive the full packaged crew. Knowledge repos converge to the five-agent crew above: only non-crew basenames packaged by Architrave are removed, so target-only custom agents remain untouched.
 
 ```bash
-/path/to/architrave/tools/update.sh --agents .
-pwsh -NoProfile -File /path/to/architrave/tools/update.ps1 . -Agents
+python /path/to/architrave/tools/install_update.py update --agents .
 ```
 
 Refresh generated Codex roles separately (plugin skills update through the
 native plugin command):
 
 ```bash
-/path/to/architrave/tools/update.sh --codex .
-pwsh -NoProfile -File /path/to/architrave/tools/update.ps1 . -Codex
+python /path/to/architrave/tools/install_update.py update --codex .
 ```
 
 ## How It Works
@@ -294,13 +291,13 @@ scripts/test-promote-lesson.sh
 scripts/test-promote-lesson-picker.sh
 scripts/test-mark-stale-learning.sh
 scripts/test-semantic-learning.sh
-pwsh -NoProfile -File scripts/test-validate-run.ps1   # optional, when pwsh is available
-pwsh -NoProfile -File scripts/test-validate-learning.ps1
-pwsh -NoProfile -File scripts/test-promote-lesson.ps1
-pwsh -NoProfile -File scripts/test-promote-lesson-picker.ps1
-pwsh -NoProfile -File scripts/test-mark-stale-learning.ps1
-pwsh -NoProfile -File scripts/test-semantic-learning.ps1
-pwsh -NoProfile -File scripts/test-gates.ps1
+scripts/test-validate-run.sh
+scripts/test-validate-learning.sh
+scripts/test-promote-lesson.sh
+scripts/test-promote-lesson.sh-picker
+scripts/test-mark-stale-learning.sh
+scripts/test-semantic-learning.sh
+scripts/test-gates.sh
 python3 scripts/bench-architrave.py --scenarios benchmarks/scenarios.json --validate
 python3 scripts/bench-architrave.py --scenarios benchmarks/scenarios.json --list
 python3 scripts/bench-architrave.py --scenarios benchmarks/routing-scenarios.json --validate
@@ -440,27 +437,27 @@ design tweak ──▶ tokens (.tokens.json, SSOT) ──▶ Style Dictionary �
 
 ## Requirements
 
-The kit is just Markdown + small scripts; the only hard dependencies are for the **gates**.
+The kit is Markdown plus one canonical Python implementation.
 
 | Tool | Why it's needed | Install |
 |---|---|---|
 | **GitHub Copilot** (CLI, desktop app, or VS Code) **or Claude Code** | runs the agents | [github.com/features/copilot](https://github.com/features/copilot) |
-| **`jq`** | the POSIX (`.sh`) gates and updater parse `architrave.config.json` | macOS: `brew install jq` · Ubuntu/Debian: `sudo apt-get install -y jq` · Windows: `winget install jqlang.jq` |
-| **PowerShell 7+** | only for the Windows (`.ps1`) gates — built in on Windows | macOS: `brew install --cask powershell` · [releases](https://github.com/PowerShell/PowerShell/releases) |
 | **git** | the reconcile gate diffs generated vs committed code | already installed on most systems |
-| **Python 3** | Run v2, worker/workspace adapters, legibility, invariants, and benchmarks | use Python 3.11+ for Codex role tooling |
+| **Python 3.11+** | canonical installer/updater, gates, validators, Run v2, workers, legibility, invariants, and benchmarks | [python.org/downloads](https://www.python.org/downloads/) · [Windows](https://www.python.org/downloads/windows/) |
+| **Node.js 22+** | repository development/CI only: `npx ajv-cli` validates the published JSON schema and examples | [nodejs.org](https://nodejs.org/) |
 
-> On **Windows you don't need `jq`** — the `.ps1` gates and updater use PowerShell's built‑in `ConvertFrom-Json`. On **macOS/Linux you don't need PowerShell** — the `.sh` gates and updater use `jq`.
+> The `.sh` and `.ps1` files contain no business logic. They only discover
+> Python, forward arguments/output/exit status, and print an actionable install
+> URL when Python is missing.
 
 Your repo's own build/test toolchain (Node for web, Xcode for Apple, .NET for WinUI, …) is whatever your `architrave.config.json` `build`/`test` commands invoke — the gates just run those.
 
 ## Set up a repo
 
-After installing the plugin (above), **adopt/ground a repo** — this is also what reaches the Copilot **cloud** agent. This is a per-repo onboarding step: run the `.sh` script on macOS/Linux or the `.ps1` script on Windows from the repo you are adopting.
+After installing the plugin (above), **adopt/ground a repo** — this is also what reaches the Copilot **cloud** agent:
 
 ```bash
-/path/to/architrave/tools/install.sh .                          # macOS / Linux
-pwsh -NoProfile -File /path/to/architrave/tools/install.ps1 .    # Windows
+python /path/to/architrave/tools/install_update.py install .
 ```
 
 This copies agents, gates, the complete harness, and knowledge packs; scaffolds
@@ -468,7 +465,14 @@ config; ignores private Runs and worktrees; injects the grounding stanza; wires
 the hook; and drops cloud setup. Existing configs remain valid. The application
 profile also copies native constitutions; the knowledge profile omits them.
 
-**Important update rule:** after every Architrave plugin update, run `tools/update.sh` (macOS/Linux) or `tools/update.ps1` (Windows) in each adopted repo. Plugin updates do not rewrite these copied repo assets. `tools/update.*` refreshes copied gates, the active platform-specific workspace hook, harness, knowledge, profile-appropriate constitutions, the run-artifact ignore, and the managed `AGENTS.md` stanza while leaving `architrave.config.json` and `.github/agents` alone by default; pass `--agents` / `-Agents` only when you deliberately want to refresh copied Architrave agents too.
+**Important update rule:** after every Architrave plugin update, run
+`python tools/install_update.py update <repo>` in each adopted repo.
+Plugin updates do not rewrite copied repo assets. The Python updater refreshes
+gates, the active platform-specific workspace hook, harness, knowledge,
+profile-appropriate constitutions, the run-artifact ignore, and the managed
+`AGENTS.md` stanza while leaving `architrave.config.json` and `.github/agents`
+alone by default; pass `--agents` only when deliberately refreshing copied
+Architrave agents.
 
 Install and update fail closed when a managed destination is a symbolic link,
 junction, reparse point, or wrong path type. Managed files are staged and
@@ -576,7 +580,7 @@ harness/                      ← Run v2 runtime · workers/workspaces · invari
 benchmarks/                   ← short/feature/multi-surface/LongBuild scenarios + frozen fixture
 docs/                         ← runtime, legibility, LongBuild, and v1→v2 migration guides
 templates/                    ← AGENTS.stanza.md · copilot-setup-steps.yml (injected by the installer)
-tools/                        ← install/update scripts + managed-path helpers (`managed-paths.sh` / `ManagedPaths.ps1`) + Codex role transaction helper
+tools/                        ← canonical Python install/update + Codex role transaction helpers; tiny OS launch shims
 scripts/                      ← check-manifests.sh (the gate) · bump-version.sh (one-command release bump)
 assets/                       ← README screenshots (drop PNGs here)
 AGENTS.md                     ← kit-level agent instructions

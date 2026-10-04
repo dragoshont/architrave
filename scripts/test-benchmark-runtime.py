@@ -89,13 +89,19 @@ class BenchmarkRuntimeTests(unittest.TestCase):
     def test_unobserved_requested_model_cannot_pass(self) -> None:
         bin_dir = self.base / "bin"
         bin_dir.mkdir()
-        copilot = bin_dir / "copilot"
-        copilot.write_text(
-            "#!/usr/bin/env python3\n"
-            "print('{\"type\":\"assistant.message\",\"data\":{\"content\":\"done\"}}')\n",
-            encoding="utf-8",
-        )
-        copilot.chmod(0o755)
+        copilot = bin_dir / ("copilot.cmd" if os.name == "nt" else "copilot")
+        if os.name == "nt":
+            copilot.write_text(
+                '@echo off\npython -c "print(\'{\\\"type\\\":\\\"assistant.message\\\",\\\"data\\\":{\\\"content\\\":\\\"done\\\"}}\')" \n',
+                encoding="utf-8",
+            )
+        else:
+            copilot.write_text(
+                "#!/usr/bin/env python3\n"
+                "print('{\"type\":\"assistant.message\",\"data\":{\"content\":\"done\"}}')\n",
+                encoding="utf-8",
+            )
+            copilot.chmod(0o755)
         self.scenarios.write_text(
             json.dumps(
                 {

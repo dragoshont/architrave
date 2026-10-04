@@ -319,12 +319,21 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="architrave-codex-runtime-") as temporary:
         base = Path(temporary)
         if not args.live:
-            fake = base / "codex"
-            fake.write_text(
-                (ROOT / "scripts/fixtures/codex_fake.py").read_text(encoding="utf-8"),
-                encoding="utf-8",
-            )
-            fake.chmod(0o755)
+            if os.name == "nt":
+                fixture = base / "codex_fake.py"
+                fixture.write_text(
+                    (ROOT / "scripts/fixtures/codex_fake.py").read_text(encoding="utf-8"),
+                    encoding="utf-8",
+                )
+                fake = base / "codex.cmd"
+                fake.write_text(f'@echo off\n"{sys.executable}" "{fixture}" %*\n', encoding="utf-8")
+            else:
+                fake = base / "codex"
+                fake.write_text(
+                    (ROOT / "scripts/fixtures/codex_fake.py").read_text(encoding="utf-8"),
+                    encoding="utf-8",
+                )
+                fake.chmod(0o755)
             CODEX_EXECUTABLE = str(fake)
         plugin_checks(base, args.live)
         role_checks(base, args.live)

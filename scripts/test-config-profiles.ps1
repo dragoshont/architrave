@@ -9,8 +9,12 @@ $Tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("architrave-config-profiles-
 New-Item -ItemType Directory -Force -Path $Tmp | Out-Null
 
 function Test-Config([string]$Path) {
-  & npx --yes ajv-cli@5 validate --spec=draft7 -s $Schema -d $Path *> $null
-  return $LASTEXITCODE
+  $PreviousErrorAction = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  try {
+    & npx --yes ajv-cli@5 validate --spec=draft7 -s $Schema -d $Path *> $null
+    $Code = $LASTEXITCODE
+  } finally { $ErrorActionPreference = $PreviousErrorAction }
+  return $Code
 }
 function Expect-Pass([string]$Name, [string]$Path) {
   if ((Test-Config $Path) -ne 0) { throw "FAIL $Name should pass" }
@@ -23,18 +27,21 @@ function Expect-Fail([string]$Name, [string]$Path) {
 function Write-Json([object]$Value, [string]$Path) {
   $Value | ConvertTo-Json -Depth 20 | Set-Content -Path $Path -Encoding utf8
 }
+function Copy-Json([object]$Value) {
+  return ($Value | ConvertTo-Json -Depth 20 | ConvertFrom-Json)
+}
 
 try {
-  $Knowledge = Get-Content 'kit/examples/knowledge.architrave.json' -Raw | ConvertFrom-Json -AsHashtable
+  $Knowledge = Get-Content 'kit/examples/knowledge.architrave.json' -Raw | ConvertFrom-Json
   $KnowledgePath = Join-Path $Tmp 'knowledge.json'; Write-Json $Knowledge $KnowledgePath
   Expect-Pass 'knowledge-positive' $KnowledgePath
 
   foreach ($Missing in @('build', 'test')) {
-    $Value = $Knowledge.Clone(); $Value.Remove($Missing)
+    $Value = Copy-Json $Knowledge; $Value.PSObject.Properties.Remove($Missing)
     $Path = Join-Path $Tmp "missing-$Missing.json"; Write-Json $Value $Path
     Expect-Fail "knowledge-missing-$Missing" $Path
   }
-  $Unknown = $Knowledge.Clone(); $Unknown.kind = 'automation'
+  $Unknown = Copy-Json $Knowledge; $Unknown.kind = 'automation'
   $UnknownPath = Join-Path $Tmp 'unknown-kind.json'; Write-Json $Unknown $UnknownPath
   Expect-Fail 'knowledge-unknown-kind' $UnknownPath
 
@@ -44,15 +51,16 @@ try {
     screenshot='echo screenshot'; backend=@{}; iac=@{}; ops=@{}
   }
   foreach ($Field in $Forbidden.Keys) {
-    $Value = $Knowledge.Clone(); $Value[$Field] = $Forbidden[$Field]
+    $Value = Copy-Json $Knowledge
+    $Value | Add-Member -NotePropertyName $Field -NotePropertyValue $Forbidden[$Field]
     $Path = Join-Path $Tmp "forbidden-$Field.json"; Write-Json $Value $Path
     Expect-Fail "knowledge-forbids-$Field" $Path
   }
   foreach ($Example in @('phonodeck','sideport','tessera')) {
     Expect-Pass "legacy-$Example" "kit/examples/$Example.architrave.json"
   }
-  $Legacy = Get-Content 'kit/examples/sideport.architrave.json' -Raw | ConvertFrom-Json -AsHashtable
-  $Legacy.Remove('platform'); $LegacyPath = Join-Path $Tmp 'legacy-missing-platform.json'; Write-Json $Legacy $LegacyPath
+  $Legacy = Get-Content 'kit/examples/sideport.architrave.json' -Raw | ConvertFrom-Json
+  $Legacy.PSObject.Properties.Remove('platform'); $LegacyPath = Join-Path $Tmp 'legacy-missing-platform.json'; Write-Json $Legacy $LegacyPath
   Expect-Fail 'legacy-missing-platform' $LegacyPath
   Write-Host 'CONFIG-PROFILES: PASS'
 }

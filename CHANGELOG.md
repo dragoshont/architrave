@@ -13,6 +13,11 @@ Releases at or before **v0.8.12** are on the
   tiers, providers, reasoning levels, context tiers, or concrete models.
 - Run v2 now persists canonical state, authenticated events, one rolling
   recovery snapshot, and compact evidence only. Human views are on demand.
+- Python stdlib is now canonical for install/update, gates, Run/learning
+  validation, review launchers, and orchestration; OS scripts are launch shims.
+- Versioned objective replacement, reuse-first redesign gating, target identity
+  preflight, two-lane isolation, bounded checkpoints, and review batching guard
+  long-running work against correction loss and objective drift.
 
 ## [0.11.1] - 2026-09-09
 

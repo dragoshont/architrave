@@ -22,6 +22,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -34,32 +37,21 @@ jobs:
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-      - name: Validate PowerShell run-artifact fixtures
-        shell: pwsh
+      - name: Validate Python canonical paths and compatibility shims
+        shell: powershell
         run: |
-          ./scripts/test-managed-paths.ps1
-          ./scripts/test-config-profiles.ps1
-          ./scripts/test-installers.ps1
-          ./scripts/test-validate-run.ps1
-          ./scripts/test-validate-learning.ps1
-          ./scripts/test-promote-lesson.ps1
-          ./scripts/test-promote-lesson-picker.ps1
-          ./scripts/test-mark-stale-learning.ps1
-          ./scripts/test-semantic-learning.ps1
-          ./scripts/test-gates.ps1
-
-  powershell-unix-paths:
-    name: PowerShell managed paths (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v5
-      - name: Validate Unix managed-path ABI and filesystem types
-        shell: pwsh
-        run: ./scripts/test-managed-paths.ps1
+          python scripts/test_install_update.py
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-config-profiles.ps1
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-validate-run.ps1
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-validate-learning.ps1
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-promote-lesson.ps1
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-promote-lesson-picker.ps1
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-mark-stale-learning.ps1
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-semantic-learning.ps1
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-gates.ps1

@@ -51,10 +51,11 @@ TASK_STATUSES = {
     "WAITING_RESOURCE",
     "COMPLETED",
     "FAILED",
+    "DEFERRED",
     "SKIPPED",
     "CANCELLED",
 }
-TERMINAL_TASK_STATUSES = {"COMPLETED", "FAILED", "SKIPPED", "CANCELLED"}
+TERMINAL_TASK_STATUSES = {"COMPLETED", "FAILED", "DEFERRED", "SKIPPED", "CANCELLED"}
 CRITERION_STATUSES = {"UNTESTED", "PASS", "FAIL", "BLOCKED_EXTERNAL", "NOT_APPLICABLE"}
 RISK_CLASSES = {"R0", "R1", "R2", "R3", "R4"}
 EXTERNAL_TYPES = {
@@ -125,6 +126,8 @@ CRITERION_GATE_TYPES = {
 # "runtime" cover the non-legibility reality producers (mutation, external-proof) below.
 SURFACE_VALUES = {"web", "electron", "ios", "deployment", "runtime"}
 SURFACE_VERIFICATION_TYPES = {"reality", "e2e"}
+WORK_KINDS = {"product", "diagnostic", "infrastructure", "review", "research", "communications"}
+TARGET_OPERATIONS = {"launch", "test", "install"}
 
 
 class RuntimeFailure(Exception):
@@ -580,6 +583,23 @@ class RunStore:
         event["hash"] = self._event_hash(event)
         return event
 
+    def _batch_review_reset(self, state: dict[str, Any], reason: str) -> list[str]:
+        deferred: list[str] = []
+        for task in state["tasks"]:
+            if (
+                task.get("objectiveVersion", state["objective"]["version"]) == state["objective"]["version"]
+                and task["status"] not in TERMINAL_TASK_STATUSES
+                and task.get("workKind") == "review"
+            ):
+                task["status"] = "DEFERRED"
+                task["lease"] = None
+                task["deferredReason"] = reason
+                deferred.append(task["id"])
+        state["focus"]["reviewReopens"] = 0
+        state["focus"]["lastResetReason"] = reason
+        state["status"] = derive_run_status(state)
+        return deferred
+
     def _commit_locked(
         self,
         run_dir: Path,
@@ -678,6 +698,13 @@ class RunStore:
                 "updatedAt": now,
                 "goal": goal.strip(),
                 "status": "CREATED",
+                "objective": {
+                    "version": 1,
+                    "description": outcome.strip(),
+                    "acceptanceCriteria": [criterion["id"] for criterion in normalized_criteria],
+                    "updatedAt": now,
+                    "correctionReason": None,
+                },
                 "autonomy": {"scope": autonomy_scope},
                 "policy": {
                     "default": "deny",
@@ -704,6 +731,19 @@ class RunStore:
                 "artifacts": [],
                 "workers": [],
                 "gateResults": [],
+                "reuseBaseline": None,
+                "focus": {
+                    "nextCheapestTest": None,
+                    "lastResetReason": None,
+                    "minimalSliceProven": False,
+                    "reviewReopens": 0,
+                },
+                "lanes": {
+                    "maxActive": 2,
+                    "active": [{"id": "product", "kind": "product", "objectiveVersion": 1}],
+                    "deferred": [],
+                },
+                "targetIdentity": None,
                 "eventLog": f".architrave/runs/{run_id}/events.jsonl",
                 "eventCursor": {"sequence": 0, "lastHash": ZERO_HASH},
                 "pendingEvent": None,
@@ -725,6 +765,250 @@ class RunStore:
     def _project(self, run_dir: Path, state: dict[str, Any]) -> None:
         return None
 
+    def replace_objective(
+        self,
+        run_id: str,
+        *,
+        outcome: str,
+        criteria: Sequence[dict[str, Any]],
+        correction: str,
+        next_cheapest_test: str,
+        explicit_user_direction: bool,
+        actor: str = "user",
+    ) -> dict[str, Any]:
+        if not explicit_user_direction:
+            raise RuntimeFailure("OBJECTIVE_AUTHORITY", "objective replacement requires explicit user direction")
+        if not outcome.strip() or not correction.strip() or not next_cheapest_test.strip():
+            raise RuntimeFailure("INVALID_OBJECTIVE", "replacement outcome, correction, and next test are required")
+        normalized = normalize_criteria(criteria, outcome)
+
+        def mutate(state: dict[str, Any]) -> dict[str, Any]:
+            prior_version = state["objective"]["version"]
+            new_version = prior_version + 1
+            new_ids = {item["id"] for item in normalized}
+            for criterion in state["acceptanceCriteria"]:
+                if criterion["id"] in state["objective"]["acceptanceCriteria"] and criterion["id"] not in new_ids:
+                    criterion["status"] = "NOT_APPLICABLE"
+                    criterion["blocking"] = False
+                    criterion["evidenceRefs"] = []
+            by_id = {item["id"]: item for item in state["acceptanceCriteria"]}
+            for criterion in normalized:
+                if criterion["id"] in by_id:
+                    by_id[criterion["id"]].update(criterion)
+                else:
+                    state["acceptanceCriteria"].append(criterion)
+            deferred_tasks: list[str] = []
+            cancelled_workers: list[str] = []
+            old_workspaces: set[str] = set()
+            old_worker_ids: set[str] = set()
+            for task in state["tasks"]:
+                if task.get("objectiveVersion", prior_version) != prior_version:
+                    continue
+                if task["status"] not in TERMINAL_TASK_STATUSES:
+                    if task.get("lease"):
+                        old_worker_ids.add(task["lease"]["owner"])
+                    task["status"] = "DEFERRED"
+                    task["lease"] = None
+                    task["deferredReason"] = f"objective replaced by version {new_version}"
+                    deferred_tasks.append(task["id"])
+                    if task.get("workspace"):
+                        old_workspaces.add(str(Path(task["workspace"]).resolve()))
+            for worker in state["workers"]:
+                if worker["status"] == "RUNNING" and (
+                    worker["id"] in old_worker_ids or worker.get("workspace") in old_workspaces
+                ):
+                    worker["status"] = "FAILED"
+                    cancelled_workers.append(worker["id"])
+            state["objective"] = {
+                "version": new_version,
+                "description": outcome.strip(),
+                "acceptanceCriteria": [item["id"] for item in normalized],
+                "updatedAt": utc_now(),
+                "correctionReason": correction.strip(),
+            }
+            state["goal"] = outcome.strip()
+            state["outcome"] = {
+                "description": outcome.strip(),
+                "requiredCriteria": [
+                    {
+                        "id": criterion["id"],
+                        "description": criterion["description"],
+                        "verification": criterion["verificationType"],
+                        "required": criterion["blocking"],
+                    }
+                    for criterion in normalized
+                ],
+            }
+            state["focus"]["reviewReopens"] = 0
+            state["focus"]["minimalSliceProven"] = False
+            state["focus"]["nextCheapestTest"] = next_cheapest_test.strip()
+            state["focus"]["lastResetReason"] = correction.strip()
+            state["lanes"]["deferred"].extend(
+                lane for lane in state["lanes"]["active"] if lane["id"] != "product"
+            )
+            state["lanes"]["active"] = [{"id": "product", "kind": "product", "objectiveVersion": new_version}]
+            state["reuseBaseline"] = None
+            state["targetIdentity"] = None
+            state["status"] = "PLANNING"
+            return {
+                "priorVersion": prior_version,
+                "objectiveVersion": new_version,
+                "correction": correction.strip(),
+                "deferredTasks": deferred_tasks,
+                "cancelledWorkers": cancelled_workers,
+                "nextCheapestTest": next_cheapest_test.strip(),
+            }
+
+        return self._transaction(run_id, mutate, event_type="objective.replaced", actor=actor)
+
+    def record_reuse_baseline(
+        self,
+        run_id: str,
+        *,
+        path: str,
+        difference: str,
+        evidence_refs: Sequence[str],
+        actor: str = "coordinator",
+    ) -> dict[str, Any]:
+        relative = safe_relative_path(path, "reuse baseline path")
+        if not difference.strip():
+            raise RuntimeFailure("REUSE_EVIDENCE", "reuse baseline requires the specific difference being tested")
+
+        def mutate(state: dict[str, Any]) -> dict[str, Any]:
+            require_evidence_refs(state, evidence_refs, allowed={"artifact", "gate"})
+            state["reuseBaseline"] = {
+                "path": relative,
+                "difference": difference.strip(),
+                "evidenceRefs": list(dict.fromkeys(evidence_refs)),
+                "status": "TESTED",
+                "objectiveVersion": state["objective"]["version"],
+                "recordedAt": utc_now(),
+            }
+            return copy.deepcopy(state["reuseBaseline"])
+
+        return self._transaction(
+            run_id,
+            mutate,
+            event_type="reuse.baseline_tested",
+            actor=actor,
+            evidence_refs=evidence_refs,
+        )
+
+    def verify_target_identity(
+        self,
+        run_id: str,
+        *,
+        intended: dict[str, str],
+        observed: dict[str, str],
+        evidence_refs: Sequence[str],
+        actor: str = "coordinator",
+    ) -> dict[str, Any]:
+        required = {"provider", "artifact", "version", "sha256", "environment", "workspace", "acceptanceTarget"}
+        if set(intended) != required or set(observed) != required:
+            raise RuntimeFailure("TARGET_IDENTITY_INVALID", "target identity requires provider, artifact, version, sha256, environment, workspace, and acceptanceTarget")
+
+        def mutate(state: dict[str, Any]) -> dict[str, Any]:
+            require_evidence_refs(state, evidence_refs, allowed={"artifact", "gate"})
+            mismatches = {
+                key: {"intended": intended[key], "observed": observed[key]}
+                for key in sorted(required)
+                if intended[key] != observed[key]
+            }
+            state["targetIdentity"] = {
+                "intended": dict(intended),
+                "observed": dict(observed),
+                "status": "MISMATCH" if mismatches else "VERIFIED",
+                "mismatches": mismatches,
+                "evidenceRefs": list(dict.fromkeys(evidence_refs)),
+                "objectiveVersion": state["objective"]["version"],
+                "verifiedAt": utc_now(),
+            }
+            if mismatches:
+                state["status"] = "PAUSED"
+            return copy.deepcopy(state["targetIdentity"])
+
+        return self._transaction(
+            run_id,
+            mutate,
+            event_type="target.preflight",
+            actor=actor,
+            evidence_refs=evidence_refs,
+        )
+
+    def record_review_result(
+        self,
+        run_id: str,
+        *,
+        verdict: str,
+        product_evidence_refs: Sequence[str] = (),
+        actor: str = "coordinator",
+    ) -> dict[str, Any]:
+        if verdict not in {"PASS", "REVISE", "FAIL"}:
+            raise RuntimeFailure("INVALID_REVIEW", "review verdict must be PASS, REVISE, or FAIL")
+        before = self.load(run_id)
+        will_reset = verdict != "PASS" and before["focus"]["reviewReopens"] + 1 >= 2
+
+        def mutate(state: dict[str, Any]) -> dict[str, Any]:
+            if product_evidence_refs:
+                require_evidence_refs(state, product_evidence_refs, allowed={"artifact", "gate"})
+            if verdict == "PASS":
+                state["focus"]["reviewReopens"] = 0
+                return {"verdict": verdict, "batchRequired": False}
+            state["focus"]["reviewReopens"] += 1
+            deferred: list[str] = []
+            if state["focus"]["reviewReopens"] >= 2:
+                deferred = self._batch_review_reset(state, "repeated review without new product evidence")
+            return {
+                "verdict": verdict,
+                "batchRequired": state["focus"]["lastResetReason"] == "repeated review without new product evidence",
+                "deferredTasks": deferred,
+            }
+
+        return self._transaction(
+            run_id,
+            mutate,
+            event_type="review.batch_required" if will_reset else "review.recorded",
+            actor=actor,
+            evidence_refs=product_evidence_refs,
+        )
+
+    def human_checkpoint(self, run_id: str | None = None) -> dict[str, Any]:
+        state = self.load(run_id)
+        current_ids = set(state["objective"]["acceptanceCriteria"])
+        acceptance = [
+            f"{item['id']}: {item['description']} [{item['status']}]"
+            for item in state["acceptanceCriteria"]
+            if item["id"] in current_ids
+        ][:8]
+        passed_evidence = [
+            reference
+            for item in state["acceptanceCriteria"]
+            if item["id"] in current_ids and item["status"] == "PASS"
+            for reference in item["evidenceRefs"]
+        ]
+        blocker = next(
+            (
+                checkpoint["reason"]
+                for checkpoint in state["externalCheckpoints"]
+                if checkpoint["status"] == "PENDING"
+            ),
+            state["focus"]["lastResetReason"],
+        )
+        return {
+            "currentObjective": state["objective"]["description"],
+            "objectiveVersion": state["objective"]["version"],
+            "acceptanceCriteria": acceptance,
+            "lastVerifiedProductEvidence": passed_evidence[-3:],
+            "blocker": blocker,
+            "nextCheapestTest": state["focus"]["nextCheapestTest"],
+            "activeLanes": [item["id"] for item in state["lanes"]["active"]],
+            "deferredWork": [
+                {"task": task["id"], "reason": task.get("deferredReason")}
+                for task in state["tasks"]
+                if task["status"] == "DEFERRED"
+            ][:8],
+        }
+
     def add_task(self, run_id: str, task: dict[str, Any], actor: str = "coordinator") -> dict[str, Any]:
         task_id = require_id(str(task.get("id", "")), "task id")
 
@@ -741,6 +1025,18 @@ class RunStore:
             existing_ids = {existing["id"] for existing in state["tasks"]}
             if not set(dependencies).issubset(existing_ids):
                 raise RuntimeFailure("INVALID_TASK", "task dependencies must already exist")
+            superseded_dependencies = [
+                dependency
+                for dependency in dependencies
+                if find_task(state, dependency).get("objectiveVersion", state["objective"]["version"])
+                != state["objective"]["version"]
+            ]
+            if superseded_dependencies:
+                raise RuntimeFailure(
+                    "OBJECTIVE_SUPERSEDED",
+                    "new tasks cannot depend on superseded objective work",
+                    details={"tasks": superseded_dependencies},
+                )
             mutable_paths = [safe_relative_path(path, "mutable path") for path in task.get("mutablePaths", [])]
             side_effect = task.get("sideEffect")
             if side_effect is not None:
@@ -764,17 +1060,67 @@ class RunStore:
             risk = str(task.get("risk") or evaluation_block.get("defaultRisk") or "R1")
             if risk not in RISK_CLASSES:
                 raise RuntimeFailure("INVALID_TASK", f"invalid risk: {risk}")
+            work_kind = str(task.get("workKind") or "product")
+            if work_kind not in WORK_KINDS:
+                raise RuntimeFailure("INVALID_TASK", f"invalid work kind: {work_kind}")
+            change_kind = str(task.get("changeKind") or "normal")
+            if change_kind not in {"normal", "replacement-architecture", "new-compatibility-constraint"}:
+                raise RuntimeFailure("INVALID_TASK", f"invalid change kind: {change_kind}")
+            if change_kind != "normal":
+                reuse = state.get("reuseBaseline")
+                if not reuse or reuse.get("status") != "TESTED" or not reuse.get("difference"):
+                    raise RuntimeFailure(
+                        "REUSE_FIRST_REQUIRED",
+                        "existing working implementation must be inspected, diffed, and tested before replacement",
+                    )
+            lane = str(task.get("lane") or "product")
+            active_lane_ids = {item["id"] for item in state["lanes"]["active"]}
+            deferred_lane_ids = {item["id"] for item in state["lanes"]["deferred"]}
+            deferred_reason = None
+            if lane not in active_lane_ids:
+                unrelated = work_kind in {"communications", "research", "infrastructure"}
+                if unrelated or len(active_lane_ids) >= state["lanes"]["maxActive"]:
+                    deferred_reason = "unrelated lane deferred behind active product objective"
+                    if lane not in deferred_lane_ids:
+                        state["lanes"]["deferred"].append(
+                            {"id": lane, "kind": work_kind, "objectiveVersion": state["objective"]["version"]}
+                        )
+                else:
+                    state["lanes"]["active"].append(
+                        {"id": lane, "kind": work_kind, "objectiveVersion": state["objective"]["version"]}
+                    )
+            minimal_test = bool(task.get("isMinimalAcceptanceTest", False))
+            large_change = bool(task.get("largeChange", False))
+            if not state["focus"]["minimalSliceProven"] and risk != "R4":
+                if work_kind in {"infrastructure", "review"}:
+                    deferred_reason = "minimal vertical slice must be proven before hardening or review"
+                elif work_kind == "diagnostic" and not minimal_test:
+                    deferred_reason = "diagnosis must begin with the cheapest discriminating acceptance test"
+                elif large_change:
+                    deferred_reason = "large change is blocked until the minimal end-to-end path is reproduced"
+            if work_kind == "review" and state["focus"]["reviewReopens"] >= 2:
+                deferred_reason = "review findings must be batched before another review"
+            operations = list(dict.fromkeys(str(value) for value in task.get("operations") or []))
             normalized = {
                 "id": task_id,
                 "title": str(task.get("title") or task_id),
                 "objective": str(task.get("objective") or "").strip(),
-                "status": "NOT_READY" if dependencies else "READY",
+                "status": "DEFERRED" if deferred_reason else ("NOT_READY" if dependencies else "READY"),
                 "dependencies": dependencies,
                 "workerProfile": worker_profile,
                 "workspace": task.get("workspace"),
                 "mutablePaths": mutable_paths,
                 "tools": list(dict.fromkeys(task.get("tools") or [])),
                 "risk": risk,
+                "objectiveVersion": state["objective"]["version"],
+                "lane": lane,
+                "workKind": work_kind,
+                "changeKind": change_kind,
+                "operations": operations,
+                "targetIdentity": copy.deepcopy(task.get("targetIdentity")),
+                "isMinimalAcceptanceTest": minimal_test,
+                "largeChange": large_change,
+                "deferredReason": deferred_reason,
                 "acceptanceCriteria": acceptance,
                 "requiredArtifacts": list(dict.fromkeys(task.get("requiredArtifacts") or [])),
                 "gate": task.get("gate"),
@@ -807,7 +1153,13 @@ class RunStore:
             state["tasks"].append(normalized)
             validate_task_graph(state["tasks"])
             state["status"] = "PLANNING" if state["status"] == "CREATED" else state["status"]
-            return {"taskId": task_id, "status": normalized["status"]}
+            return {
+                "taskId": task_id,
+                "status": normalized["status"],
+                "objectiveVersion": normalized["objectiveVersion"],
+                "lane": lane,
+                "deferredReason": deferred_reason,
+            }
 
         return self._transaction(run_id, mutate, event_type="task.created", actor=actor, task_id=task_id)
 
@@ -1095,8 +1447,24 @@ class RunStore:
                     "cannot start a task while the Run is paused; call resume() explicitly first",
                 )
             task = find_task(state, task_id)
+            if task.get("objectiveVersion", state["objective"]["version"]) != state["objective"]["version"]:
+                raise RuntimeFailure("OBJECTIVE_SUPERSEDED", "task belongs to a superseded objective")
+            if task.get("lane", "product") not in {item["id"] for item in state["lanes"]["active"]}:
+                raise RuntimeFailure("LANE_DEFERRED", "task lane is not active")
             if task["status"] != "READY":
                 raise RuntimeFailure("TASK_NOT_READY", f"task {task_id} is {task['status']}")
+            if TARGET_OPERATIONS.intersection(task.get("operations") or []):
+                identity = state.get("targetIdentity")
+                if not identity or identity.get("status") != "VERIFIED":
+                    raise RuntimeFailure("TARGET_IDENTITY_REQUIRED", "launch/test/install requires verified target identity")
+                expected_identity = task.get("targetIdentity") or {}
+                mismatches = {
+                    key: {"expected": value, "actual": identity["observed"].get(key)}
+                    for key, value in expected_identity.items()
+                    if identity["observed"].get(key) != value
+                }
+                if mismatches:
+                    raise RuntimeFailure("TARGET_IDENTITY_MISMATCH", "task target does not match verified identity", details=mismatches)
             if task["attempts"] >= task["retryPolicy"]["maxAttempts"]:
                 raise RuntimeFailure("RETRY_EXHAUSTED", f"task {task_id} exhausted its retry policy")
             if task.get("retryNotBefore") and parse_iso(task["retryNotBefore"]) > dt.datetime.now(dt.timezone.utc):
@@ -1626,13 +1994,16 @@ class RunStore:
                             )
             criterion["status"] = status
             criterion["evidenceRefs"] = list(dict.fromkeys(evidence_refs))
+            if status == "PASS" and criterion_id in state["objective"]["acceptanceCriteria"]:
+                state["focus"]["minimalSliceProven"] = True
+                state["focus"]["reviewReopens"] = 0
             state["status"] = derive_run_status(state)
             return {"criterionId": criterion_id, "status": status}
 
         return self._transaction(
             run_id,
             mutate,
-            event_type="acceptance.updated",
+            event_type="product.progress" if status == "PASS" else "acceptance.updated",
             actor=actor,
             evidence_refs=evidence_refs,
         )
@@ -1929,6 +2300,11 @@ class RunStore:
             for task in state["tasks"]:
                 if task["status"] != "RUNNING":
                     continue
+                if task.get("objectiveVersion", state["objective"]["version"]) != state["objective"]["version"]:
+                    task["status"] = "DEFERRED"
+                    task["lease"] = None
+                    task["deferredReason"] = "superseded objective"
+                    continue
                 lease = task.get("lease")
                 if lease:
                     worker = next((item for item in state["workers"] if item["id"] == lease["owner"]), None)
@@ -1974,7 +2350,10 @@ class RunStore:
                 )
             ]
             incomplete_tasks = [
-                task["id"] for task in state["tasks"] if task["status"] not in {"COMPLETED", "SKIPPED"}
+                task["id"]
+                for task in state["tasks"]
+                if task.get("objectiveVersion", state["objective"]["version"]) == state["objective"]["version"]
+                and task["status"] not in {"COMPLETED", "SKIPPED", "DEFERRED", "CANCELLED"}
             ]
             pending_external = [
                 checkpoint["id"]
@@ -2226,6 +2605,7 @@ def validate_run(state: dict[str, Any]) -> None:
         "updatedAt",
         "goal",
         "status",
+        "objective",
         "autonomy",
         "policy",
         "outcome",
@@ -2237,6 +2617,10 @@ def validate_run(state: dict[str, Any]) -> None:
         "artifacts",
         "workers",
         "gateResults",
+        "reuseBaseline",
+        "focus",
+        "lanes",
+        "targetIdentity",
         "eventLog",
         "eventCursor",
         "pendingEvent",
@@ -2267,6 +2651,19 @@ def validate_run(state: dict[str, Any]) -> None:
     outcome_ids = {item.get("id") for item in state["outcome"].get("requiredCriteria", [])}
     if not outcome_ids or not outcome_ids.issubset(criteria_ids):
         raise RuntimeFailure("RUN_INVALID", "Outcome references unknown acceptance criteria")
+    objective = state["objective"]
+    if (
+        not isinstance(objective.get("version"), int)
+        or objective["version"] < 1
+        or not str(objective.get("description") or "").strip()
+        or not set(objective.get("acceptanceCriteria") or []).issubset(criteria_ids)
+    ):
+        raise RuntimeFailure("RUN_INVALID", "canonical objective is invalid")
+    if not isinstance(state["focus"].get("reviewReopens"), int):
+        raise RuntimeFailure("RUN_INVALID", "focus state is invalid")
+    lanes = state["lanes"]
+    if int(lanes.get("maxActive", 0)) < 1 or len(lanes.get("active") or []) > lanes["maxActive"]:
+        raise RuntimeFailure("RUN_INVALID", "active lane limit exceeded")
     validate_task_graph(state["tasks"])
     for task in state["tasks"]:
         if task["risk"] not in RISK_CLASSES or task["status"] not in TASK_STATUSES:
@@ -2277,6 +2674,10 @@ def validate_run(state: dict[str, Any]) -> None:
             safe_relative_path(path, "mutable path")
         for path in task["workPacket"]["contextBundle"]:
             safe_relative_path(path, "context path")
+        if task.get("workKind", "product") not in WORK_KINDS:
+            raise RuntimeFailure("RUN_INVALID", f"task {task['id']} work kind is invalid")
+        if int(task.get("objectiveVersion", objective["version"])) < 1:
+            raise RuntimeFailure("RUN_INVALID", f"task {task['id']} objective version is invalid")
     checkpoint_ids = [item.get("id") for item in state["checkpoints"]]
     external_ids = [item.get("id") for item in state["externalCheckpoints"]]
     if len(checkpoint_ids) != len(set(checkpoint_ids)) or len(external_ids) != len(set(external_ids)):
@@ -2367,8 +2768,14 @@ def mutable_scopes_overlap(left: Sequence[str], right: Sequence[str]) -> bool:
 
 def refresh_task_readiness(state: dict[str, Any]) -> list[str]:
     newly_ready: list[str] = []
+    active_lanes = {item["id"] for item in state["lanes"]["active"]}
     for task in state["tasks"]:
-        if task["status"] == "NOT_READY" and dependencies_completed(state, task):
+        if (
+            task["status"] == "NOT_READY"
+            and task.get("objectiveVersion", state["objective"]["version"]) == state["objective"]["version"]
+            and task.get("lane", "product") in active_lanes
+            and dependencies_completed(state, task)
+        ):
             task["status"] = "READY"
             newly_ready.append(task["id"])
     return newly_ready
@@ -2377,7 +2784,12 @@ def refresh_task_readiness(state: dict[str, Any]) -> list[str]:
 def derive_run_status(state: dict[str, Any]) -> str:
     if state["status"] in {"COMPLETED", "FAILED", "CANCELLED"}:
         return state["status"]
-    statuses = {task["status"] for task in state["tasks"]}
+    current_tasks = [
+        task
+        for task in state["tasks"]
+        if task.get("objectiveVersion", state["objective"]["version"]) == state["objective"]["version"]
+    ]
+    statuses = {task["status"] for task in current_tasks}
     if "RUNNING" in statuses:
         return "RUNNING"
     if "READY" in statuses:
@@ -2387,11 +2799,14 @@ def derive_run_status(state: dict[str, Any]) -> str:
         return "WAITING_EXTERNAL"
     if "WAITING_RESOURCE" in statuses:
         return "WAITING_RESOURCE"
-    if statuses and statuses.issubset({"COMPLETED", "SKIPPED"}):
+    executable_statuses = statuses - {"DEFERRED", "CANCELLED"}
+    if executable_statuses and executable_statuses.issubset({"COMPLETED", "SKIPPED"}):
         return "VERIFYING"
     if "FAILED" in statuses:
         return "FAILED"
-    return "PLANNING" if state["tasks"] else "CREATED"
+    if statuses and statuses.issubset({"DEFERRED", "CANCELLED"}):
+        return "PAUSED"
+    return "PLANNING" if current_tasks else "CREATED"
 
 
 def append_checkpoint(state: dict[str, Any], task_id: str | None, kind: str) -> None:
@@ -2592,6 +3007,8 @@ def state_summary(state: dict[str, Any]) -> dict[str, Any]:
         "runId": state["runId"],
         "status": state["status"],
         "revision": state["revision"],
+        "objectiveVersion": state["objective"]["version"],
+        "objective": state["objective"]["description"],
         "autonomy": state["autonomy"]["scope"],
         "readyTasks": [task["id"] for task in state["tasks"] if task["status"] == "READY"],
         "runningTasks": [task["id"] for task in state["tasks"] if task["status"] == "RUNNING"],
@@ -2599,6 +3016,8 @@ def state_summary(state: dict[str, Any]) -> dict[str, Any]:
             checkpoint["id"] for checkpoint in state["externalCheckpoints"] if checkpoint["status"] == "PENDING"
         ],
         "acceptance": {criterion["id"]: criterion["status"] for criterion in state["acceptanceCriteria"]},
+        "activeLanes": [lane["id"] for lane in state["lanes"]["active"]],
+        "nextCheapestTest": state["focus"]["nextCheapestTest"],
         "eventCursor": state["eventCursor"],
     }
 
@@ -2617,7 +3036,7 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--confirmation-required", action="append", default=[])
     create.add_argument("--run-id")
 
-    for command in ("status", "inspect", "events", "ready", "resume", "verify"):
+    for command in ("status", "inspect", "events", "ready", "resume", "verify", "checkpoint"):
         current = subparsers.add_parser(command)
         current.add_argument("run_id", nargs="?")
         if command == "resume":
@@ -2634,12 +3053,43 @@ def build_parser() -> argparse.ArgumentParser:
     task_add.add_argument("--mutable-path", action="append", default=[])
     task_add.add_argument("--tool", action="append", default=[])
     task_add.add_argument("--risk", choices=sorted(RISK_CLASSES), default="R1")
+    task_add.add_argument("--lane", default="product")
+    task_add.add_argument("--work-kind", choices=sorted(WORK_KINDS), default="product")
+    task_add.add_argument("--change-kind", choices=["normal", "replacement-architecture", "new-compatibility-constraint"], default="normal")
+    task_add.add_argument("--operation", action="append", default=[])
+    task_add.add_argument("--target-json")
+    task_add.add_argument("--minimal-test", action="store_true")
+    task_add.add_argument("--large-change", action="store_true")
     task_add.add_argument("--criteria", required=True)
     task_add.add_argument("--artifact", action="append", default=[])
     task_add.add_argument("--gate")
     task_add.add_argument("--max-attempts", type=int, default=1)
     task_add.add_argument("--side-effect", help="OPERATION@TARGET")
-    task_add.add_argument("--command", nargs=argparse.REMAINDER, help="deterministic shell argv (must be last)")
+    task_add.add_argument("--command", dest="execution_command", nargs=argparse.REMAINDER, help="deterministic shell argv (must be last)")
+
+    objective = subparsers.add_parser("objective-replace")
+    objective.add_argument("run_id")
+    objective.add_argument("--outcome", required=True)
+    objective.add_argument("--criterion", action="append", required=True)
+    objective.add_argument("--correction", required=True)
+    objective.add_argument("--next-test", required=True)
+
+    reuse = subparsers.add_parser("reuse-record")
+    reuse.add_argument("run_id")
+    reuse.add_argument("--path", required=True)
+    reuse.add_argument("--difference", required=True)
+    reuse.add_argument("--evidence", action="append", required=True)
+
+    target = subparsers.add_parser("target-verify")
+    target.add_argument("run_id")
+    target.add_argument("--intended-json", required=True)
+    target.add_argument("--observed-json", required=True)
+    target.add_argument("--evidence", action="append", required=True)
+
+    review = subparsers.add_parser("review-record")
+    review.add_argument("run_id")
+    review.add_argument("--verdict", choices=["PASS", "REVISE", "FAIL"], required=True)
+    review.add_argument("--evidence", action="append", default=[])
 
     task_start = subparsers.add_parser("task-start")
     task_start.add_argument("run_id")
@@ -2739,6 +3189,8 @@ def cli(argv: Sequence[str] | None = None) -> int:
             output = store.load(args.run_id)
         elif command == "events":
             output = store.events(args.run_id)
+        elif command == "checkpoint":
+            output = store.human_checkpoint(args.run_id)
         elif command == "ready":
             output = {"tasks": store.ready_tasks(args.run_id)}
         elif command == "resume":
@@ -2751,6 +3203,43 @@ def cli(argv: Sequence[str] | None = None) -> int:
             if not completed:
                 print(json.dumps({"status": "incomplete", "result": output}, indent=2))
                 return 1
+        elif command == "objective-replace":
+            output = state_summary(
+                store.replace_objective(
+                    args.run_id,
+                    outcome=args.outcome,
+                    criteria=[parse_criterion(item) for item in args.criterion],
+                    correction=args.correction,
+                    next_cheapest_test=args.next_test,
+                    explicit_user_direction=True,
+                )
+            )
+        elif command == "reuse-record":
+            output = state_summary(
+                store.record_reuse_baseline(
+                    args.run_id,
+                    path=args.path,
+                    difference=args.difference,
+                    evidence_refs=args.evidence,
+                )
+            )
+        elif command == "target-verify":
+            output = state_summary(
+                store.verify_target_identity(
+                    args.run_id,
+                    intended=json.loads(args.intended_json),
+                    observed=json.loads(args.observed_json),
+                    evidence_refs=args.evidence,
+                )
+            )
+        elif command == "review-record":
+            output = state_summary(
+                store.record_review_result(
+                    args.run_id,
+                    verdict=args.verdict,
+                    product_evidence_refs=args.evidence,
+                )
+            )
         elif command == "task-add":
             side_effect = None
             if args.side_effect:
@@ -2770,6 +3259,13 @@ def cli(argv: Sequence[str] | None = None) -> int:
                     "mutablePaths": args.mutable_path,
                     "tools": args.tool,
                     "risk": args.risk,
+                    "lane": args.lane,
+                    "workKind": args.work_kind,
+                    "changeKind": args.change_kind,
+                    "operations": args.operation,
+                    "targetIdentity": json.loads(args.target_json) if args.target_json else None,
+                    "isMinimalAcceptanceTest": args.minimal_test,
+                    "largeChange": args.large_change,
                     "acceptanceCriteria": split_csv(args.criteria),
                     "requiredArtifacts": args.artifact,
                     "gate": args.gate,
@@ -2777,11 +3273,11 @@ def cli(argv: Sequence[str] | None = None) -> int:
                     "sideEffect": side_effect,
                     "workPacket": {
                         "execution": {
-                            "command": args.command,
+                            "command": args.execution_command,
                             "cwd": None,
                             "environment": [],
                         }
-                    } if args.command else None,
+                    } if args.execution_command else None,
                 },
             )
             output = state_summary(state)

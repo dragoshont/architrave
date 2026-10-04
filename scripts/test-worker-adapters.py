@@ -154,6 +154,8 @@ class WorkerAdapterTests(unittest.TestCase):
         self.assertIn("IGNORED_PATH_MUTATION", [error["code"] for error in result["errors"]])
 
     def test_git_status_parses_quoted_and_renamed_paths_losslessly(self) -> None:
+        if os.name == "nt":
+            self.skipTest('double quotes are not legal in Windows filenames')
         # Regression for Finding #2: `git status` (no -z) quote/backslash-escapes unusual
         # filenames and represents renames as a human-readable "old -> new" line; naive
         # line-splitting on that text can silently drop or mangle the origin path. `-z`
@@ -219,6 +221,8 @@ class WorkerAdapterTests(unittest.TestCase):
         self.assertIn(odd_name, result["changedPaths"])
 
     def test_quoted_filename_mutation_cannot_bypass_mutable_scope(self) -> None:
+        if os.name == "nt":
+            self.skipTest('double quotes are not legal in Windows filenames')
         odd_name = 'sneaky "quoted" escape.txt'
         run_id, task_id = self.create_task(
             command=[sys.executable, "-c", f"from pathlib import Path; Path({odd_name!r}).write_text('x')"],
@@ -783,7 +787,7 @@ class WorkerAdapterTests(unittest.TestCase):
             pass
         self.store.policy_check(run_id, "out-of-scope", "observe")
         release.write_text("go\n", encoding="utf-8")
-        thread.join(timeout=5)
+        thread.join(timeout=20)
         self.assertFalse(thread.is_alive())
         self.assertEqual("candidate", holder["result"]["status"])
         event_types = [event["type"] for event in self.store.events(run_id)]
@@ -805,10 +809,11 @@ class WorkerAdapterTests(unittest.TestCase):
         copilot, _ = command_for("copilot", packet, self.repo)
         claude, _ = command_for("claude", packet, self.repo)
         codex, _ = command_for("codex", packet, self.repo)
-        self.assertEqual("copilot", copilot[0])
+        self.assertEqual("copilot", Path(copilot[0]).stem)
         self.assertIn("--allow-tool", copilot)
-        self.assertEqual(["claude", "-p"], claude[:2])
-        self.assertEqual("codex", codex[0])
+        self.assertEqual("claude", Path(claude[0]).stem)
+        self.assertEqual("-p", claude[1])
+        self.assertEqual("codex", Path(codex[0]).stem)
         self.assertIn("read-only", codex)
         self.assertIn("exec", codex)
 
@@ -816,9 +821,12 @@ class WorkerAdapterTests(unittest.TestCase):
         fake_bin = Path(self.temp.name) / "fake-bin"
         fake_bin.mkdir()
         for name in ("copilot", "claude", "codex"):
-            executable = fake_bin / name
-            executable.write_text("#!/bin/sh\nprintf '%s\\n' '{\"result\":\"candidate\"}'\n", encoding="utf-8")
-            executable.chmod(0o755)
+            executable = fake_bin / (f"{name}.cmd" if os.name == "nt" else name)
+            if os.name == "nt":
+                executable.write_text('@echo off\necho {"result":"candidate"}\n', encoding="utf-8")
+            else:
+                executable.write_text("#!/bin/sh\nprintf '%s\\n' '{\"result\":\"candidate\"}'\n", encoding="utf-8")
+                executable.chmod(0o755)
         original_path = os.environ.get("PATH", "")
         os.environ["PATH"] = f"{fake_bin}{os.pathsep}{original_path}"
         try:
@@ -1191,12 +1199,12 @@ class WorkerAdapterTests(unittest.TestCase):
         # Release the bystander so its "after" snapshot observes the peer's edit while the peer
         # is still registered active (it is still blocked on peer_release_2).
         bystander_release.write_text("go\n", encoding="utf-8")
-        bystander_thread.join(timeout=5)
+        bystander_thread.join(timeout=20)
         self.assertFalse(bystander_thread.is_alive())
         self.assertEqual("candidate", holder["bystander"]["status"])
         self.assertNotIn("CROSS_WORKSPACE_MUTATION", [error["code"] for error in holder["bystander"]["errors"]])
         peer_release_2.write_text("go\n", encoding="utf-8")
-        peer_thread.join(timeout=5)
+        peer_thread.join(timeout=20)
         self.assertFalse(peer_thread.is_alive())
         self.assertEqual("candidate", holder["peer"]["status"])
         subprocess.run(

@@ -1,20 +1,20 @@
-#!/usr/bin/env pwsh
 [CmdletBinding()]
-param([Parameter(Mandatory=$true)][string]$RunDir,[switch]$Execute)
-$ErrorActionPreference='Stop'
-if (-not (Test-Path $RunDir -PathType Container)) { [Console]::Error.WriteLine('tournament-review: run dir not found'); exit 2 }
-$agentFile = if (Test-Path 'agents/tournament-analyst.agent.md') { 'agents/tournament-analyst.agent.md' } elseif (Test-Path '.github/agents/tournament-analyst.agent.md') { '.github/agents/tournament-analyst.agent.md' } else { [Console]::Error.WriteLine('tournament-review: canonical Tournament Analyst not found'); exit 2 }
-$body=@"
-Read canonical state and governing repository sources for the Architrave run at $RunDir.
-Compare viable options using the canonical Tournament Analyst instructions.
-Do not edit files or authorize mutations. End with one line exactly TOURNAMENT: COMPLETE.
-"@
-if (-not $Execute) { Write-Host "suggested command (host-selected model): claude --tools Read,Grep,Glob --allowedTools Read,Grep,Glob --append-system-prompt-file `"$agentFile`" -p <review-prompt>"; exit 0 }
-$nonceFile=[System.IO.Path]::GetTempFileName()
-try {
-  $nonce=[guid]::NewGuid().ToString('D').ToLowerInvariant(); [IO.File]::WriteAllText($nonceFile,$nonce+"`n",[Text.UTF8Encoding]::new($false))
-  $body=$body+"`nRead $nonceFile and include EVIDENCE_NONCE: <value>; the value is absent from this prompt."
-  $output=(& claude --tools Read,Grep,Glob --allowedTools Read,Grep,Glob --append-system-prompt-file $agentFile -p $body 2>&1 | Out-String); Write-Host $output -NoNewline
-  $lines=@($output -split "`r?`n"); $nonEmpty=@($lines|Where-Object{$_.Trim().Length -gt 0}); $nonceLines=@($lines|Where-Object{$_ -eq "EVIDENCE_NONCE: $nonce"}); $complete=@($lines|Where-Object{$_ -eq 'TOURNAMENT: COMPLETE'})
-  if ($LASTEXITCODE -ne 0 -or $nonceLines.Count -ne 1 -or $complete.Count -ne 1 -or $nonEmpty[-1] -ne 'TOURNAMENT: COMPLETE') { [Console]::Error.WriteLine('tournament-review: unverified result'); exit 1 }
-} finally { Remove-Item $nonceFile -Force -ErrorAction SilentlyContinue }
+param([Parameter(Mandatory=$true)][string]$RunDir, [switch]$Execute)
+$root = Split-Path $MyInvocation.MyCommand.Path -Parent
+$Forwarded = @('--run', $RunDir)
+if ($Execute) { $Forwarded += '--execute' }
+foreach ($candidate in @(
+  [pscustomobject]@{ Name = 'py'; Prefix = @('-3') },
+  [pscustomobject]@{ Name = 'python3'; Prefix = @() },
+  [pscustomobject]@{ Name = 'python'; Prefix = @() }
+)) {
+  $command = Get-Command $candidate.Name -ErrorAction SilentlyContinue
+  if (-not $command) { continue }
+  $prefix = @($candidate.Prefix)
+  & $command.Source @prefix -c 'import sys' *> $null
+  if ($LASTEXITCODE -ne 0) { continue }
+  & $command.Source @prefix (Join-Path $root 'architrave_cli.py') tournament-review @Forwarded
+  exit $LASTEXITCODE
+}
+[Console]::Error.WriteLine('tournament-review: Python 3 is required. Install from https://www.python.org/downloads/windows/ and enable the Python launcher or add Python to PATH.')
+exit 2

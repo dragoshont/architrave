@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import shutil
 import subprocess
 import sys
 import threading
@@ -69,7 +70,7 @@ def command_for(adapter: str, packet: dict[str, Any], workspace: Path) -> tuple[
         if not packet["mutablePaths"] and any(tool.lower() in MUTATING_TOOL_NAMES for tool in packet["tools"]):
             raise RuntimeFailure("WORKER_PERMISSION", "read-only Copilot WorkPacket requests a mutating tool")
         command = [
-            "copilot",
+            shutil.which("copilot") or "copilot",
             "-C",
             str(workspace),
             "--output-format",
@@ -85,16 +86,31 @@ def command_for(adapter: str, packet: dict[str, Any], workspace: Path) -> tuple[
         return command, workspace
     if adapter == "claude":
         permission_mode = "acceptEdits" if packet["mutablePaths"] else "plan"
-        return ["claude", "-p", prompt, "--output-format", "json", "--permission-mode", permission_mode], workspace
+        return [shutil.which("claude") or "claude", "-p", prompt, "--output-format", "json", "--permission-mode", permission_mode], workspace
     sandbox = "workspace-write" if packet["mutablePaths"] else "read-only"
-    return ["codex", "-C", str(workspace), "-s", sandbox, "-a", "never", "exec", "--json", prompt], workspace
+    return [shutil.which("codex") or "codex", "-C", str(workspace), "-s", sandbox, "-a", "never", "exec", "--json", prompt], workspace
 
 
 def bounded_environment(packet: dict[str, Any]) -> dict[str, str]:
-    allowed = {"PATH", "HOME", "USERPROFILE", "TMPDIR", "TEMP", "TMP", "LANG", "LC_ALL", "TERM"}
+    allowed = {
+        "PATH",
+        "HOME",
+        "USERPROFILE",
+        "TMPDIR",
+        "TEMP",
+        "TMP",
+        "LANG",
+        "LC_ALL",
+        "TERM",
+        "SystemRoot",
+        "WINDIR",
+        "ComSpec",
+        "PATHEXT",
+    }
     execution = packet.get("execution") or {}
     allowed.update(execution.get("environment") or [])
-    return {name: value for name, value in os.environ.items() if name in allowed}
+    allowed_names = {name.casefold() for name in allowed}
+    return {name: value for name, value in os.environ.items() if name.casefold() in allowed_names}
 
 
 # Registered only for the exact duration of this coordinator process's own
