@@ -195,6 +195,15 @@ The caller cannot supply observed JSON. The runtime validates the exact result
 schema and identity, then atomically registers and consumes the external proof.
 The bundled exact-target observer only hashes a declared regular file and checks
 an exact existing-or-absent workspace; it never launches or mutates the target.
+For a target on another trusted host, the same observer has one fixed SSH relay
+mode: an absolute pinned SSH client uses strict pinned `known_hosts`, a
+relay-specific pinned copied identity under the user trust root,
+batch/identities-only operation, and isolated remote Python. The pinned local
+adapter streams a fixed Python 3.9-compatible launcher over stdin. The launcher
+independently hashes the installed remote observer before loading it; no
+self-reported adapter digest or caller-provided command is trusted. The bounded
+request and result remain end-to-end; Run state and runtime keys never move
+hosts.
 
 ## Worker adapters
 

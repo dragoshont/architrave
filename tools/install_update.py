@@ -148,7 +148,9 @@ def trusted_user_state_root() -> Path:
 
 
 def _ensure_private_directory(path: Path, label: str) -> None:
-    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if not path.parent.is_dir():
+        raise InstallerError(f"{label}: trusted state parent is unavailable or unsafe")
+    path.mkdir(mode=0o700, exist_ok=True)
     info = path.lstat()
     if not _is_real_dir(info):
         raise InstallerError(f"{label}: trusted state directory is unsafe")
@@ -176,33 +178,46 @@ def _atomic_private_json(path: Path, value: dict[str, object]) -> None:
             pass
 
 
+def _replace_private_bytes(content: bytes, destination: Path, label: str) -> None:
+    _ensure_private_directory(destination.parent, label)
+    descriptor, temporary = tempfile.mkstemp(prefix=f".{destination.name}.", dir=destination.parent)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if os.name != "nt":
+            os.chmod(temporary, 0o600)
+        _ensure_private_directory(destination.parent, label)
+        os.replace(temporary, destination)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+
+
 def install_exact_target_executor(args: argparse.Namespace, kit: Path) -> int:
     source = kit / "trusted" / "exact_target_observer.py"
     require_source_file(source, "executor-install")
+    source_bytes = source.read_bytes()
     state_root = trusted_user_state_root()
     executors_root = state_root / "executors"
-    executor_root = executors_root / "exact-target-v1"
-    _ensure_private_directory(state_root, "executor-install")
-    _ensure_private_directory(executors_root, "executor-install")
-    _ensure_private_directory(executor_root, "executor-install")
+    source_digest = hashlib.sha256(source_bytes).hexdigest()
+    executor_root = executors_root / "exact-target-v1" / source_digest[:32]
     adapter = executor_root / "observer.py"
-    temporary = executor_root / f".observer.{uuid.uuid4().hex}.tmp"
-    try:
-        shutil.copyfile(source, temporary)
-        if os.name != "nt":
-            temporary.chmod(0o700)
-        os.replace(temporary, adapter)
-    finally:
-        try:
-            temporary.unlink()
-        except FileNotFoundError:
-            pass
     executable = Path(sys.executable).resolve()
     if not executable.is_absolute() or not _is_regular_file(executable.lstat()):
         raise InstallerError("executor-install: Python executable is unsafe")
-    artifact_path = Path(args.artifact_path).expanduser()
-    workspace = Path(args.workspace).expanduser()
-    if not artifact_path.is_absolute() or not workspace.is_absolute():
+    remote = bool(args.ssh_host)
+    artifact_path_value = args.artifact_path if remote else str(Path(args.artifact_path).expanduser())
+    workspace_value = args.workspace if remote else str(Path(args.workspace).expanduser())
+    paths_are_absolute = (
+        PurePosixPath(artifact_path_value).is_absolute() and PurePosixPath(workspace_value).is_absolute()
+        if remote
+        else Path(artifact_path_value).is_absolute() and Path(workspace_value).is_absolute()
+    )
+    if not paths_are_absolute:
         raise InstallerError("executor-install: artifact path and workspace must be absolute", code=2)
     if not re.fullmatch(r"[0-9a-f]{64}", args.sha256):
         raise InstallerError("executor-install: target SHA-256 must be 64 lowercase hex characters", code=2)
@@ -212,7 +227,7 @@ def install_exact_target_executor(args: argparse.Namespace, kit: Path) -> int:
         "version": args.version,
         "sha256": args.sha256,
         "environment": args.environment,
-        "workspace": str(workspace),
+        "workspace": workspace_value,
         "acceptanceTarget": args.acceptance_target,
     }
     if any(not isinstance(value, str) or not value for value in identity.values()) or set(identity) != TARGET_IDENTITY_FIELDS:
@@ -237,10 +252,79 @@ def install_exact_target_executor(args: argparse.Namespace, kit: Path) -> int:
     else:
         registry = {"schema": EXECUTOR_REGISTRY_SCHEMA, "exactTarget": {"targets": []}}
         targets = registry["exactTarget"]["targets"]
+    ssh_settings = None
+    identity_source = None
+    known_hosts_source = None
+    identity_bytes = None
+    known_hosts_bytes = None
+    ssh_base = None
+    ssh_root = None
+    if remote:
+        required_remote = {
+            "ssh_user": args.ssh_user,
+            "ssh_executable": args.ssh_executable,
+            "ssh_identity": args.ssh_identity,
+            "ssh_known_hosts": args.ssh_known_hosts,
+            "ssh_remote_python": args.ssh_remote_python,
+            "ssh_remote_adapter": args.ssh_remote_adapter,
+            "ssh_remote_adapter_sha256": args.ssh_remote_adapter_sha256,
+        }
+        if any(not value for value in required_remote.values()):
+            raise InstallerError("executor-install: all SSH trust settings are required for a remote target", code=2)
+        if (
+            not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", args.ssh_host)
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", args.ssh_user)
+            or not re.fullmatch(r"/[A-Za-z0-9_./+-]+", args.ssh_remote_python)
+            or not re.fullmatch(r"/[A-Za-z0-9_./+-]+", args.ssh_remote_adapter)
+            or not re.fullmatch(r"[0-9a-f]{64}", args.ssh_remote_adapter_sha256)
+        ):
+            raise InstallerError("executor-install: SSH host, user, remote paths, or adapter pin are invalid", code=2)
+        ssh_executable = Path(args.ssh_executable).expanduser().resolve()
+        identity_source = Path(args.ssh_identity).expanduser().resolve()
+        known_hosts_source = Path(args.ssh_known_hosts).expanduser().resolve()
+        for path, label in (
+            (ssh_executable, "SSH executable"),
+            (identity_source, "SSH identity"),
+            (known_hosts_source, "SSH known-hosts"),
+        ):
+            if not path.is_absolute() or not _is_regular_file(path.lstat()):
+                raise InstallerError(f"executor-install: {label} is unsafe")
+        identity_bytes = identity_source.read_bytes()
+        known_hosts_bytes = known_hosts_source.read_bytes()
+        identity_digest = hashlib.sha256(identity_bytes).hexdigest()
+        known_hosts_digest = hashlib.sha256(known_hosts_bytes).hexdigest()
+        relay_id = hashlib.sha256(
+            (
+                f"{args.ssh_user}@{args.ssh_host}:{args.ssh_port}\0"
+                f"{identity_digest}\0{known_hosts_digest}\0"
+                f"{json.dumps(identity, separators=(',', ':'), sort_keys=True)}\0"
+                f"{artifact_path_value}\0{workspace_value}"
+            ).encode("utf-8")
+        ).hexdigest()[:16]
+        ssh_base = state_root / "ssh"
+        ssh_root = ssh_base / relay_id
+        identity_path = ssh_root / "identity"
+        known_hosts = ssh_root / "known_hosts"
+        ssh_settings = {
+            "executable": str(ssh_executable),
+            "executableSha256": sha256_file(ssh_executable),
+            "host": args.ssh_host,
+            "port": args.ssh_port,
+            "user": args.ssh_user,
+            "identityFile": str(identity_path),
+            "identityFileSha256": identity_digest,
+            "knownHosts": str(known_hosts),
+            "knownHostsSha256": known_hosts_digest,
+            "remotePython": args.ssh_remote_python,
+            "remoteAdapter": args.ssh_remote_adapter,
+            "remoteAdapterSha256": args.ssh_remote_adapter_sha256,
+        }
     target = {
         "identity": identity,
-        "artifactPath": str(artifact_path),
+        "transport": "ssh" if remote else "local",
+        "artifactPath": artifact_path_value,
         "workspaceMode": args.workspace_mode,
+        "ssh": ssh_settings,
     }
     targets[:] = [
         item
@@ -257,11 +341,23 @@ def install_exact_target_executor(args: argparse.Namespace, kit: Path) -> int:
             and isinstance(item["identity"].get("provider"), str)
         }
     )
+    _ensure_private_directory(state_root, "executor-install")
+    _ensure_private_directory(executors_root, "executor-install")
+    _ensure_private_directory(executors_root / "exact-target-v1", "executor-install")
+    _ensure_private_directory(executor_root, "executor-install")
+    _replace_private_bytes(source_bytes, adapter, "executor-install")
+    if remote:
+        assert ssh_base is not None and ssh_root is not None
+        assert identity_bytes is not None and known_hosts_bytes is not None
+        _ensure_private_directory(ssh_base, "executor-install")
+        _ensure_private_directory(ssh_root, "executor-install")
+        _replace_private_bytes(identity_bytes, Path(ssh_settings["identityFile"]), "executor-install")
+        _replace_private_bytes(known_hosts_bytes, Path(ssh_settings["knownHosts"]), "executor-install")
     registry["exactTarget"] = {
         "executable": str(executable),
         "executableSha256": sha256_file(executable),
         "adapter": str(adapter.resolve()),
-        "adapterSha256": sha256_file(adapter),
+        "adapterSha256": source_digest,
         "allowedProviders": providers,
         "allowedCheckpointTypes": ["SAFE_WRITE_TARGET_REQUIRED"],
         "timeoutSeconds": args.timeout_seconds,
@@ -1110,6 +1206,15 @@ def parser() -> argparse.ArgumentParser:
         default="exact-directory",
     )
     executor.add_argument("--timeout-seconds", type=int, choices=range(1, 31), default=10)
+    executor.add_argument("--ssh-host")
+    executor.add_argument("--ssh-port", type=int, choices=range(1, 65536), default=22)
+    executor.add_argument("--ssh-user")
+    executor.add_argument("--ssh-executable")
+    executor.add_argument("--ssh-identity")
+    executor.add_argument("--ssh-known-hosts")
+    executor.add_argument("--ssh-remote-python")
+    executor.add_argument("--ssh-remote-adapter")
+    executor.add_argument("--ssh-remote-adapter-sha256")
     return result
 
 

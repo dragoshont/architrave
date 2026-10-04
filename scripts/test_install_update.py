@@ -4,8 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import ast
+import contextlib
 import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -26,6 +29,16 @@ def load_cli_module():
     spec = importlib.util.spec_from_file_location("architrave_install_update", CLI)
     if spec is None or spec.loader is None:
         raise RuntimeError("cannot load install_update.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def load_observer_module():
+    path = ROOT / "trusted" / "exact_target_observer.py"
+    spec = importlib.util.spec_from_file_location("architrave_exact_target_observer", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("cannot load exact_target_observer.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -60,6 +73,7 @@ class InstallUpdateTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.module = load_cli_module()
+        cls.observer = load_observer_module()
 
     def setUp(self) -> None:
         self.workspace = ROOT / f".install-update-test-{uuid.uuid4().hex}"
@@ -172,6 +186,7 @@ class InstallUpdateTests(unittest.TestCase):
 
     def test_executor_install_uses_private_user_state_and_pins_exact_target(self) -> None:
         state = self.workspace / "user state" / ".architrave"
+        state.parent.mkdir()
         artifact = self.workspace / "target.bin"
         artifact.write_bytes(b"exact target")
         workspace = self.workspace / "future prefix"
@@ -186,6 +201,15 @@ class InstallUpdateTests(unittest.TestCase):
             acceptance_target="exact target smoke",
             workspace_mode="absent-or-exact-directory",
             timeout_seconds=3,
+            ssh_host=None,
+            ssh_port=22,
+            ssh_user=None,
+            ssh_executable=None,
+            ssh_identity=None,
+            ssh_known_hosts=None,
+            ssh_remote_python=None,
+            ssh_remote_adapter=None,
+            ssh_remote_adapter_sha256=None,
         )
         with mock.patch.object(self.module, "trusted_user_state_root", return_value=state):
             self.assertEqual(0, self.module.install_exact_target_executor(args, ROOT))
@@ -200,6 +224,397 @@ class InstallUpdateTests(unittest.TestCase):
         self.assertEqual(digest(Path(exact["adapter"])), exact["adapterSha256"])
         self.assertEqual(digest(Path(exact["executable"])), exact["executableSha256"])
         self.assertTrue(Path(exact["adapter"]).is_relative_to(state / "executors"))
+
+    def test_executor_install_enrolls_pinned_ssh_relay_target(self) -> None:
+        state = self.workspace / "remote user state" / ".architrave"
+        state.parent.mkdir()
+        identity_file = self.workspace / "id_ed25519"
+        known_hosts = self.workspace / "known_hosts"
+        identity_file.write_text("fixture identity\n", encoding="utf-8")
+        known_hosts.write_text("fixture host key\n", encoding="utf-8")
+        args = argparse.Namespace(
+            provider="provider-remote",
+            artifact="remote target",
+            artifact_path="/srv/target.bin",
+            version="3",
+            sha256="a" * 64,
+            environment="trusted-mac",
+            workspace="/srv/future-prefix",
+            acceptance_target="remote exact target",
+            workspace_mode="absent-or-exact-directory",
+            timeout_seconds=10,
+            ssh_host="trusted-host",
+            ssh_port=22,
+            ssh_user="operator",
+            ssh_executable=sys.executable,
+            ssh_identity=str(identity_file),
+            ssh_known_hosts=str(known_hosts),
+            ssh_remote_python="/usr/bin/python3",
+            ssh_remote_adapter="/Users/operator/.architrave/executors/exact-target-v1/observer.py",
+            ssh_remote_adapter_sha256="b" * 64,
+        )
+        with mock.patch.object(self.module, "trusted_user_state_root", return_value=state):
+            self.assertEqual(0, self.module.install_exact_target_executor(args, ROOT))
+            first_registry = json.loads((state / "executors.json").read_text(encoding="utf-8"))
+            first_target = first_registry["exactTarget"]["targets"][0]
+            identity_destination = Path(first_target["ssh"]["identityFile"])
+            known_hosts_destination = Path(first_target["ssh"]["knownHosts"])
+            external_identity = self.workspace / "external-identity"
+            external_known_hosts = self.workspace / "external-known-hosts"
+            external_identity.write_text("external identity sentinel\n", encoding="utf-8")
+            external_known_hosts.write_text("external hosts sentinel\n", encoding="utf-8")
+            identity_destination.unlink()
+            known_hosts_destination.unlink()
+            os.link(external_identity, identity_destination)
+            os.link(external_known_hosts, known_hosts_destination)
+            self.assertEqual(0, self.module.install_exact_target_executor(args, ROOT))
+            self.assertEqual("external identity sentinel\n", external_identity.read_text(encoding="utf-8"))
+            self.assertEqual("external hosts sentinel\n", external_known_hosts.read_text(encoding="utf-8"))
+            second = argparse.Namespace(**vars(args))
+            second.artifact = "second remote target"
+            second.artifact_path = "/srv/second-target.bin"
+            second.workspace = "/srv/second-prefix"
+            second.sha256 = "c" * 64
+            self.assertEqual(0, self.module.install_exact_target_executor(second, ROOT))
+            before_invalid = snapshot(state)
+            invalid = argparse.Namespace(**vars(args))
+            invalid.ssh_user = "-operator"
+            with self.assertRaises(self.module.InstallerError):
+                self.module.install_exact_target_executor(invalid, ROOT)
+            self.assertEqual(before_invalid, snapshot(state))
+        registry = json.loads((state / "executors.json").read_text(encoding="utf-8"))
+        target, second_target = registry["exactTarget"]["targets"]
+        self.assertEqual("ssh", target["transport"])
+        self.assertEqual("/srv/target.bin", target["artifactPath"])
+        self.assertEqual("trusted-host", target["ssh"]["host"])
+        self.assertEqual("b" * 64, target["ssh"]["remoteAdapterSha256"])
+        self.assertTrue(Path(target["ssh"]["identityFile"]).is_relative_to(state / "ssh"))
+        self.assertTrue(Path(target["ssh"]["knownHosts"]).is_relative_to(state / "ssh"))
+        self.assertNotEqual(
+            Path(target["ssh"]["identityFile"]).parent,
+            Path(second_target["ssh"]["identityFile"]).parent,
+        )
+
+    def test_ssh_relay_streams_fixed_helper_and_preserves_binding(self) -> None:
+        identity_file = self.workspace / "relay_identity"
+        known_hosts = self.workspace / "relay_known_hosts"
+        identity_file.write_text("fixture identity\n", encoding="utf-8")
+        known_hosts.write_text("fixture host key\n", encoding="utf-8")
+        binding = {
+            "runId": "run-a",
+            "objectiveVersion": 1,
+            "revision": 4,
+            "taskId": "task-a",
+            "checkpointId": "checkpoint-a",
+            "checkpointType": "SAFE_WRITE_TARGET_REQUIRED",
+            "provider": "provider-remote",
+            "principal": "operator",
+            "challengeHash": "a" * 64,
+        }
+        intended = {
+            "provider": "provider-remote",
+            "artifact": "remote target",
+            "version": "3",
+            "sha256": "b" * 64,
+            "environment": "trusted-mac",
+            "workspace": "/srv/future-prefix",
+            "acceptanceTarget": "remote exact target",
+        }
+        request = {
+            "schema": "architrave.exact-target-request.v1",
+            "binding": binding,
+            "intended": intended,
+            "target": {
+                "transport": "ssh",
+                "artifactPath": "/srv/target.bin",
+                "workspaceMode": "absent-or-exact-directory",
+                "ssh": None,
+            },
+        }
+        remote_result = {
+            "schema": "architrave.exact-target-result.v1",
+            "status": "observed",
+            "binding": binding,
+            "observed": intended,
+            "observation": {"transport": "ssh"},
+        }
+        captured: dict[str, object] = {}
+
+        class Sink:
+            def __init__(self) -> None:
+                self.value = bytearray()
+
+            def write(self, value: bytes) -> int:
+                self.value.extend(value)
+                return len(value)
+
+            def close(self) -> None:
+                captured["stdin"] = bytes(self.value)
+
+        class Process:
+            returncode = 0
+
+            def __init__(self, argv: list[str]) -> None:
+                captured["argv"] = argv
+                self.stdin = Sink()
+                self.stdout = io.BytesIO(json.dumps(remote_result).encode("utf-8"))
+                self.stderr = io.BytesIO()
+
+            def poll(self) -> int:
+                return 0
+
+            def wait(self) -> int:
+                return 0
+
+            def kill(self) -> None:
+                self.returncode = -9
+
+        def popen(argv: list[str], **kwargs: object) -> Process:
+            captured["kwargs"] = kwargs
+            return Process(argv)
+
+        ssh = {
+            "executable": sys.executable,
+            "executableSha256": digest(Path(sys.executable)),
+            "host": "trusted-host",
+            "port": 22,
+            "user": "operator",
+            "identityFile": str(identity_file),
+            "identityFileSha256": digest(identity_file),
+            "knownHosts": str(known_hosts),
+            "knownHostsSha256": digest(known_hosts),
+            "remotePython": "/usr/bin/python3",
+            "remoteAdapter": "/Users/operator/.architrave/executors/exact-target-v1/observer.py",
+            "remoteAdapterSha256": "c" * 64,
+        }
+        with mock.patch.object(self.observer.subprocess, "Popen", side_effect=popen):
+            result = self.observer.invoke_ssh(ssh, request)
+        self.assertEqual(binding, result["binding"])
+        expected_argv = [
+            sys.executable,
+            "-F",
+            "NUL" if os.name == "nt" else "/dev/null",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "IdentitiesOnly=yes",
+            "-o",
+            "StrictHostKeyChecking=yes",
+            "-o",
+            f"UserKnownHostsFile={known_hosts}",
+            "-i",
+            str(identity_file),
+            "-p",
+            "22",
+            "operator@trusted-host",
+            "/usr/bin/python3",
+            "-I",
+            "-S",
+            "-",
+        ]
+        self.assertEqual(expected_argv, captured["argv"])
+        kwargs = captured["kwargs"]
+        self.assertEqual({"stdin", "stdout", "stderr", "shell", "env"}, set(kwargs))
+        self.assertEqual(subprocess.PIPE, kwargs["stdin"])
+        self.assertEqual(subprocess.PIPE, kwargs["stdout"])
+        self.assertEqual(subprocess.PIPE, kwargs["stderr"])
+        self.assertFalse(kwargs["shell"])
+        self.assertEqual(
+            {
+                key: value
+                for key, value in os.environ.items()
+                if key.upper() in {"SYSTEMROOT", "WINDIR", "TMP", "TEMP", "TMPDIR"}
+            },
+            kwargs["env"],
+        )
+        ast.parse(self.observer.REMOTE_HELPER, feature_version=(3, 9))
+        ast.parse(
+            (ROOT / "trusted" / "exact_target_observer.py").read_text(encoding="utf-8"),
+            feature_version=(3, 9),
+        )
+        unsafe_user = dict(ssh)
+        unsafe_user["user"] = "-operator"
+        with self.assertRaises(ValueError):
+            self.observer.invoke_ssh(unsafe_user, request)
+        unsafe_digest = dict(ssh)
+        unsafe_digest["remoteAdapterSha256"] = "z" * 64
+        with self.assertRaises(ValueError):
+            self.observer.invoke_ssh(unsafe_digest, request)
+
+    def test_streamed_helper_independently_rejects_modified_remote_adapter(self) -> None:
+        artifact = self.workspace / "remote-target.bin"
+        artifact.write_bytes(b"remote target")
+        adapter = self.workspace / "observer.py"
+        shutil.copyfile(ROOT / "trusted" / "exact_target_observer.py", adapter)
+        request = {
+            "schema": "architrave.exact-target-request.v1",
+            "binding": {
+                "runId": "run-a",
+                "objectiveVersion": 1,
+                "revision": 4,
+                "taskId": "task-a",
+                "checkpointId": "checkpoint-a",
+                "checkpointType": "SAFE_WRITE_TARGET_REQUIRED",
+                "provider": "provider-remote",
+                "principal": "operator",
+                "challengeHash": "a" * 64,
+            },
+            "intended": {
+                "provider": "provider-remote",
+                "artifact": "remote target",
+                "version": "3",
+                "sha256": digest(artifact),
+                "environment": "trusted-mac",
+                "workspace": str(self.workspace / "future-prefix"),
+                "acceptanceTarget": "remote exact target",
+            },
+            "target": {
+                "transport": "local",
+                "artifactPath": str(artifact),
+                "workspaceMode": "absent-or-exact-directory",
+                "ssh": None,
+            },
+        }
+        helper = self.observer.REMOTE_HELPER.replace(
+            "__REQUEST__",
+            self.observer.base64.b64encode(
+                json.dumps(request, separators=(",", ":"), sort_keys=True).encode("utf-8")
+            ).decode("ascii"),
+        ).replace(
+            "__ADAPTER__",
+            adapter.as_posix(),
+        ).replace(
+            "__ADAPTER_SHA256__",
+            digest(adapter),
+        )
+        passed = subprocess.run(
+            [sys.executable, "-I", "-S", "-"],
+            input=helper,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(0, passed.returncode, passed.stderr)
+        adapter.write_text(adapter.read_text(encoding="utf-8") + "\n# modified\n", encoding="utf-8")
+        rejected = subprocess.run(
+            [sys.executable, "-I", "-S", "-"],
+            input=helper,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertNotEqual(0, rejected.returncode)
+        self.assertIn("remote adapter SHA-256 does not match", rejected.stderr)
+
+    def test_observer_rejects_linked_workspace_ancestor(self) -> None:
+        artifact = self.workspace / "target.bin"
+        artifact.write_bytes(b"target")
+        linked_parent = self.workspace / "linked-parent"
+        external = self.workspace / "external-workspace"
+        external.mkdir()
+        if os.name == "nt":
+            completed = subprocess.run(
+                [os.environ.get("ComSpec", "cmd.exe"), "/c", "mklink", "/J", str(linked_parent), str(external)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            if completed.returncode:
+                self.skipTest(f"directory junctions are unavailable: {completed.stderr!r}")
+        else:
+            os.symlink(external, linked_parent, target_is_directory=True)
+        request = {
+            "binding": {
+                "runId": "run-a",
+                "objectiveVersion": 1,
+                "revision": 1,
+                "taskId": "task-a",
+                "checkpointId": "checkpoint-a",
+                "checkpointType": "SAFE_WRITE_TARGET_REQUIRED",
+                "provider": "provider-a",
+                "principal": "operator",
+                "challengeHash": "a" * 64,
+            },
+            "intended": {
+                "provider": "provider-a",
+                "artifact": "target.bin",
+                "version": "1",
+                "sha256": digest(artifact),
+                "environment": "test",
+                "workspace": str(linked_parent / "future-prefix"),
+                "acceptanceTarget": "exact target",
+            },
+            "target": {
+                "transport": "local",
+                "artifactPath": str(artifact),
+                "workspaceMode": "absent-or-exact-directory",
+                "ssh": None,
+            },
+        }
+        with self.assertRaisesRegex(ValueError, "workspace path contains"):
+            self.observer.observe_local(request)
+
+    def test_observer_self_installer_is_python39_compatible_and_pinned(self) -> None:
+        state = self.workspace / "observer state" / ".architrave"
+        state.parent.mkdir()
+        stdout = io.StringIO()
+        with mock.patch.object(self.observer, "trusted_user_state_root", return_value=state):
+            with contextlib.redirect_stdout(stdout):
+                self.assertEqual(0, self.observer.install_self())
+        installed = json.loads(stdout.getvalue())
+        adapter = Path(installed["adapter"])
+        self.assertEqual(digest(adapter), installed["sha256"])
+        self.assertTrue(adapter.is_relative_to(state / "executors"))
+
+    def test_executor_and_observer_reject_linked_trust_root(self) -> None:
+        home = self.workspace / "linked home"
+        external = self.workspace / "external trust"
+        home.mkdir()
+        external.mkdir()
+        sentinel = external / "sentinel.txt"
+        sentinel.write_text("unchanged\n", encoding="utf-8")
+        state = home / ".architrave"
+        if os.name == "nt":
+            completed = subprocess.run(
+                [os.environ.get("ComSpec", "cmd.exe"), "/c", "mklink", "/J", str(state), str(external)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            if completed.returncode:
+                self.skipTest(f"directory junctions are unavailable: {completed.stderr!r}")
+        else:
+            os.symlink(external, state, target_is_directory=True)
+        artifact = self.workspace / "linked-target.bin"
+        artifact.write_bytes(b"target")
+        args = argparse.Namespace(
+            provider="provider-a",
+            artifact="target",
+            artifact_path=str(artifact),
+            version="1",
+            sha256=digest(artifact),
+            environment="test",
+            workspace=str(self.workspace / "future-prefix"),
+            acceptance_target="target",
+            workspace_mode="absent-or-exact-directory",
+            timeout_seconds=3,
+            ssh_host=None,
+            ssh_port=22,
+            ssh_user=None,
+            ssh_executable=None,
+            ssh_identity=None,
+            ssh_known_hosts=None,
+            ssh_remote_python=None,
+            ssh_remote_adapter=None,
+            ssh_remote_adapter_sha256=None,
+        )
+        with mock.patch.object(self.module, "trusted_user_state_root", return_value=state):
+            with self.assertRaises(self.module.InstallerError):
+                self.module.install_exact_target_executor(args, ROOT)
+        with mock.patch.object(self.observer, "trusted_user_state_root", return_value=state):
+            with self.assertRaises(OSError):
+                self.observer.install_self()
+        self.assertEqual("unchanged\n", sentinel.read_text(encoding="utf-8"))
 
     def test_symlink_and_path_escape_fail_without_writes(self) -> None:
         target = self.workspace / "linked target"

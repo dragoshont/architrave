@@ -110,6 +110,24 @@ class FocusControlTests(unittest.TestCase):
         self.assertEqual(expected, 0)
         return runtime_module.state_summary(state)
 
+    def trusted_start(self, run_id: str, task_id: str, worker_id: str, *, expected: int = 0) -> dict[str, object]:
+        with mock.patch.object(
+            runtime_module.RunStore,
+            "_executor_registry_path",
+            return_value=self.home / ".architrave" / "executors.json",
+        ), mock.patch.object(
+            runtime_module,
+            "trusted_user_state_root",
+            return_value=self.home / ".architrave",
+        ):
+            try:
+                state = self.store.start_task(run_id, task_id, worker_id=worker_id)
+            except runtime_module.RuntimeFailure as exc:
+                self.assertEqual(expected, exc.exit_code)
+                return {"code": exc.code, "message": exc.message, "details": exc.details}
+        self.assertEqual(expected, 0)
+        return runtime_module.state_summary(state)
+
     def evidence(self, run_id: str, artifact_id: str = "baseline-evidence") -> str:
         path = self.store.run_dir(run_id) / "evidence" / f"{artifact_id}.json"
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -247,6 +265,15 @@ class FocusControlTests(unittest.TestCase):
             acceptance_target=intended["acceptanceTarget"],
             workspace_mode="absent-or-exact-directory",
             timeout_seconds=1,
+            ssh_host=None,
+            ssh_port=22,
+            ssh_user=None,
+            ssh_executable=None,
+            ssh_identity=None,
+            ssh_known_hosts=None,
+            ssh_remote_python=None,
+            ssh_remote_adapter=None,
+            ssh_remote_adapter_sha256=None,
         )
         with mock.patch.object(
             self.installer,
@@ -371,7 +398,7 @@ class FocusControlTests(unittest.TestCase):
             "task-start", run_id, "launch-intended-build", "--worker-id", "launcher",
             expected=1,
         )
-        self.assertEqual("TASK_NOT_READY", blocked["code"])
+        self.assertEqual("TARGET_IDENTITY_REQUIRED", blocked["code"])
         with mock.patch("architrave_runtime.secrets.token_urlsafe", return_value="-formerly-leading"):
             challenge = "arc_" + runtime_module.secrets.token_urlsafe(32)
         self.assertEqual("arc_-formerly-leading", challenge)
@@ -408,7 +435,7 @@ class FocusControlTests(unittest.TestCase):
             expected=1,
         )
         self.assertEqual("TARGET_IDENTITY_REQUIRED", wrong_task["code"])
-        self.cli("task-start", run_id, "target-task-valid", "--worker-id", "verified-worker")
+        self.trusted_start(run_id, "target-task-valid", "verified-worker")
         replay = self.trusted_cli(
             "target-attest",
             run_id,
@@ -444,7 +471,7 @@ class FocusControlTests(unittest.TestCase):
             "stale-worker",
             expected=1,
         )
-        self.assertEqual("TARGET_IDENTITY_STALE", stale["code"])
+        self.assertEqual("TARGET_IDENTITY_REQUIRED", stale["code"])
 
         changed_run, changed_challenge, changed_intended, changed_artifact = self.target_wait(suffix="-changed")
         self.install_executor(changed_intended, changed_artifact)
@@ -459,15 +486,42 @@ class FocusControlTests(unittest.TestCase):
             "human:synthetic-user",
         )
         changed_artifact.write_bytes(b"changed after attestation")
-        changed = self.cli(
-            "task-start",
-            changed_run,
-            "target-task-changed",
-            "--worker-id",
-            "changed-worker",
+        changed = self.trusted_start(changed_run, "target-task-changed", "changed-worker", expected=1)
+        self.assertEqual("EXECUTOR_FAILED", changed["code"])
+
+        workspace_run, workspace_challenge, workspace_intended, workspace_artifact = self.target_wait(suffix="-workspace")
+        self.install_executor(workspace_intended, workspace_artifact)
+        self.trusted_cli(
+            "target-attest",
+            workspace_run,
+            "--checkpoint-id",
+            "target-check-workspace",
+            "--challenge",
+            workspace_challenge,
+            "--actor",
+            "human:synthetic-user",
+        )
+        workspace = Path(workspace_intended["workspace"])
+        external = Path(self.temp.name) / "external-workspace"
+        external.mkdir()
+        if os.name == "nt":
+            completed = subprocess.run(
+                [os.environ.get("ComSpec", "cmd.exe"), "/c", "mklink", "/J", str(workspace), str(external)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            if completed.returncode:
+                self.skipTest(f"directory junctions are unavailable: {completed.stderr!r}")
+        else:
+            os.symlink(external, workspace, target_is_directory=True)
+        workspace_changed = self.trusted_start(
+            workspace_run,
+            "target-task-workspace",
+            "workspace-worker",
             expected=1,
         )
-        self.assertEqual("TARGET_IDENTITY_STALE", changed["code"])
+        self.assertEqual("EXECUTOR_FAILED", workspace_changed["code"])
 
     def test_public_target_attest_rejects_forgery_modified_pin_and_binding_mismatches(self) -> None:
         run_id, challenge, intended, artifact = self.target_wait(suffix="-security")

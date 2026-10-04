@@ -207,6 +207,38 @@ is either the exact existing directory or, when explicitly enrolled that way,
 still absent. It never launches, installs, creates, terminates, or mutates the
 target.
 
+When the canonical Run and target are on different trusted hosts, install the
+observer on the target with its Python 3.9-compatible self-installer:
+
+```bash
+python3 /path/to/trusted/exact_target_observer.py --install
+```
+
+Then enroll the fixed SSH relay on the Run host. SSH uses an absolute pinned client, a
+relay-specific copied-and-pinned identity file and `known_hosts` under
+`~/.architrave/ssh/`, strict host-key checking, batch mode, isolated remote
+Python, and the same bounded request/result schema:
+
+```bash
+python /path/to/installed/architrave/tools/install_update.py executor-install \
+  ...the same exact target fields... \
+  --ssh-host trusted-target.example \
+  --ssh-user operator \
+  --ssh-executable "/absolute/path/to/ssh" \
+  --ssh-identity "/absolute/path/to/id_ed25519" \
+  --ssh-known-hosts "/absolute/path/to/known_hosts" \
+  --ssh-remote-python "/usr/bin/python3" \
+  --ssh-remote-adapter "/Users/operator/.architrave/executors/exact-target-v1/observer.py" \
+  --ssh-remote-adapter-sha256 "<self-installer-sha256>"
+```
+
+The relay accepts only restricted host/user/path atoms, supplies no repository
+cwd or caller-provided command, and streams a fixed Python 3.9-compatible
+read-only launcher from the pinned local adapter to the trusted host. That
+launcher independently hashes the installed observer before loading it and
+performing the filesystem observation. The result returns directly to the
+canonical Run host.
+
 ## How It Works
 
 Open your assistant, pick the **Architrave** agent, and describe the change in plain language:

@@ -16,7 +16,7 @@ import hashlib
 import hmac
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import subprocess
 import sys
@@ -490,12 +490,50 @@ class RunStore:
         if len(matches) != 1:
             raise RuntimeFailure("EXECUTOR_TARGET_NOT_TRUSTED", "intended target is not uniquely enrolled in the trusted executor registry")
         target = matches[0]
-        if set(target) != {"identity", "artifactPath", "workspaceMode"}:
+        if set(target) != {"identity", "transport", "artifactPath", "workspaceMode", "ssh"}:
             raise RuntimeFailure("EXECUTOR_REGISTRY_INVALID", "trusted target entry is invalid")
-        artifact_path = Path(str(target["artifactPath"]))
         workspace_mode = target["workspaceMode"]
-        if not artifact_path.is_absolute() or workspace_mode not in {"exact-directory", "absent-or-exact-directory"}:
+        transport = target["transport"]
+        artifact_path_value = str(target["artifactPath"])
+        path_is_absolute = (
+            Path(artifact_path_value).is_absolute()
+            if transport == "local"
+            else PurePosixPath(artifact_path_value).is_absolute()
+        )
+        if transport not in {"local", "ssh"} or not path_is_absolute or workspace_mode not in {"exact-directory", "absent-or-exact-directory"}:
             raise RuntimeFailure("EXECUTOR_REGISTRY_INVALID", "trusted target path or workspace mode is invalid")
+        if transport == "local":
+            if target["ssh"] is not None:
+                raise RuntimeFailure("EXECUTOR_REGISTRY_INVALID", "local trusted target cannot declare SSH settings")
+        else:
+            ssh = target["ssh"]
+            ssh_fields = {
+                "executable",
+                "executableSha256",
+                "host",
+                "port",
+                "user",
+                "identityFile",
+                "identityFileSha256",
+                "knownHosts",
+                "knownHostsSha256",
+                "remotePython",
+                "remoteAdapter",
+                "remoteAdapterSha256",
+            }
+            if not isinstance(ssh, dict) or set(ssh) != ssh_fields:
+                raise RuntimeFailure("EXECUTOR_REGISTRY_INVALID", "trusted SSH target settings are invalid")
+            _verify_pinned_executable(ssh["executable"], ssh["executableSha256"], "SSH executable")
+            identity_file = _verify_pinned_executable(ssh["identityFile"], ssh["identityFileSha256"], "SSH identity")
+            known_hosts = _verify_pinned_executable(ssh["knownHosts"], ssh["knownHostsSha256"], "SSH known-hosts")
+            for trusted_path, label in ((identity_file, "SSH identity"), (known_hosts, "SSH known-hosts")):
+                try:
+                    trusted_path.relative_to(trust_root)
+                except ValueError as exc:
+                    raise RuntimeFailure(
+                        "EXECUTOR_TRUST_ROOT_INVALID",
+                        f"trusted {label} must live under the private user trust root",
+                    ) from exc
         return {
             **executor,
             "executable": str(executable),
@@ -1535,8 +1573,10 @@ class RunStore:
             "binding": binding,
             "intended": intended,
             "target": {
+                "transport": trusted_target["transport"],
                 "artifactPath": trusted_target["artifactPath"],
                 "workspaceMode": trusted_target["workspaceMode"],
+                "ssh": trusted_target["ssh"],
             },
         }
         result = self._invoke_exact_target_executor(executor, request)
@@ -1642,6 +1682,7 @@ class RunStore:
                 "verifiedAt": utc_now(),
                 "verifiedRevision": state["revision"] + 1,
                 "artifactPath": result["observation"].get("artifactPath"),
+                "transport": result["observation"].get("transport"),
                 "evidenceRef": evidence_ref,
             }
             state["status"] = derive_run_status(state)
@@ -2204,6 +2245,60 @@ class RunStore:
         actor: str = "coordinator",
     ) -> dict[str, Any]:
         require_id(worker_id, "worker id")
+        preflight_revision: int | None = None
+        preflight_observation: dict[str, Any] | None = None
+        snapshot = self.load(run_id)
+        snapshot_task = find_task(snapshot, task_id)
+        if TARGET_OPERATIONS.intersection(snapshot_task.get("operations") or []):
+            identity = snapshot.get("targetIdentity")
+            if (
+                not isinstance(identity, dict)
+                or identity.get("status") != "VERIFIED"
+                or identity.get("taskId") != task_id
+                or identity.get("verifiedRevision") != snapshot["revision"]
+            ):
+                raise RuntimeFailure("TARGET_IDENTITY_REQUIRED", "launch/test/install requires current task-bound target identity")
+            checkpoint = next(
+                (
+                    item
+                    for item in snapshot["externalCheckpoints"]
+                    if item["id"] == identity.get("checkpointId")
+                ),
+                None,
+            )
+            intended = snapshot_task.get("targetIdentity")
+            if checkpoint is None or not isinstance(intended, dict):
+                raise RuntimeFailure("TARGET_IDENTITY_REQUIRED", "verified target checkpoint is unavailable")
+            executor, trusted_target = self._trusted_exact_target_executor(checkpoint, intended)
+            binding = {
+                "runId": run_id,
+                "objectiveVersion": snapshot["objective"]["version"],
+                "revision": snapshot["revision"],
+                "taskId": task_id,
+                "checkpointId": checkpoint["id"],
+                "checkpointType": checkpoint["type"],
+                "provider": checkpoint["provider"],
+                "principal": checkpoint["principal"],
+                "challengeHash": checkpoint["challengeHash"],
+            }
+            result = self._invoke_exact_target_executor(
+                executor,
+                {
+                    "schema": EXACT_TARGET_REQUEST_SCHEMA,
+                    "binding": binding,
+                    "intended": intended,
+                    "target": {
+                        "transport": trusted_target["transport"],
+                        "artifactPath": trusted_target["artifactPath"],
+                        "workspaceMode": trusted_target["workspaceMode"],
+                        "ssh": trusted_target["ssh"],
+                    },
+                },
+            )
+            if result["observed"] != intended:
+                raise RuntimeFailure("TARGET_IDENTITY_MISMATCH", "trusted executor observed a different target identity")
+            preflight_revision = snapshot["revision"]
+            preflight_observation = result["observation"]
 
         def mutate(state: dict[str, Any]) -> dict[str, Any]:
             self._assert_repository_baseline(state)
@@ -2222,6 +2317,8 @@ class RunStore:
             if task["status"] != "READY":
                 raise RuntimeFailure("TASK_NOT_READY", f"task {task_id} is {task['status']}")
             if TARGET_OPERATIONS.intersection(task.get("operations") or []):
+                if preflight_revision != state["revision"] or preflight_observation is None:
+                    raise RuntimeFailure("TARGET_IDENTITY_STALE", "target observation became stale before task start")
                 identity = state.get("targetIdentity")
                 if not identity or identity.get("status") != "VERIFIED":
                     raise RuntimeFailure("TARGET_IDENTITY_REQUIRED", "launch/test/install requires verified target identity")
@@ -2238,7 +2335,7 @@ class RunStore:
                 if mismatches:
                     raise RuntimeFailure("TARGET_IDENTITY_MISMATCH", "task target does not match verified identity", details=mismatches)
                 artifact_path_value = identity.get("artifactPath")
-                if artifact_path_value:
+                if identity.get("transport") == "local" and artifact_path_value:
                     artifact_path = Path(str(artifact_path_value))
                     try:
                         artifact_info = artifact_path.lstat()

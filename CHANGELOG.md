@@ -20,6 +20,8 @@ Releases at or before **v0.8.12** are on the
 - Stdlib-only exact filesystem observer and `executor-install` enrollment path
   with absolute Python/adapter paths, SHA-256 pins, exact provider/checkpoint
   allowlists, and exact target identities outside the target repository.
+- Fixed SSH relay mode for canonical Runs whose exact read-only target is on a
+  different trusted host, without copying Run state or runtime keys.
 - End-to-end regressions for repository-local and modified adapters, provider,
   principal, task/challenge and observed-identity mismatches, replay, timeout,
   malformed output, oversize output, and successful atomic proof consumption.
