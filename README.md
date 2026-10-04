@@ -223,6 +223,7 @@ Python, and the same bounded request/result schema:
 python /path/to/installed/architrave/tools/install_update.py executor-install \
   ...the same exact target fields... \
   --ssh-host trusted-target.example \
+  --ssh-host-key-alias trusted-target-key \
   --ssh-user operator \
   --ssh-executable "/absolute/path/to/ssh" \
   --ssh-identity "/absolute/path/to/id_ed25519" \

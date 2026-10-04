@@ -266,6 +266,7 @@ class FocusControlTests(unittest.TestCase):
             workspace_mode="absent-or-exact-directory",
             timeout_seconds=1,
             ssh_host=None,
+            ssh_host_key_alias=None,
             ssh_port=22,
             ssh_user=None,
             ssh_executable=None,
@@ -631,8 +632,11 @@ class FocusControlTests(unittest.TestCase):
             "import json,sys\n"
             "request=json.load(sys.stdin)\n"
             "observed=dict(request['intended']); observed['version']='wrong'\n"
+            "observation={'artifactPath':request['target']['artifactPath'],'artifactSha256':request['intended']['sha256'],"
+            "'artifactSize':1,'workspacePath':request['intended']['workspace'],'workspaceState':'absent',"
+            "'observerSha256':'a'*64,'transport':'local'}\n"
             "print(json.dumps({'schema':'architrave.exact-target-result.v1','status':'observed',"
-            "'binding':request['binding'],'observed':observed,'observation':{}}))\n",
+            "'binding':request['binding'],'observed':observed,'observation':observation}))\n",
             encoding="utf-8",
         )
         registry["exactTarget"]["adapter"] = str(adapter)
@@ -656,6 +660,25 @@ class FocusControlTests(unittest.TestCase):
             if item["id"] == "target-check-security"
         )
         self.assertEqual("PENDING", checkpoint["status"])
+
+        adapter.write_text(adapter.read_text(encoding="utf-8").replace(
+            "'transport':'local'",
+            "'transport':'local','extra':'forged'",
+        ), encoding="utf-8")
+        registry["exactTarget"]["adapterSha256"] = hashlib.sha256(adapter.read_bytes()).hexdigest()
+        self.write_registry(registry_path, registry)
+        extra_observation = self.trusted_cli(
+            "target-attest",
+            run_id,
+            "--checkpoint-id",
+            "target-check-security",
+            "--challenge",
+            challenge,
+            "--actor",
+            "human:synthetic-user",
+            expected=1,
+        )
+        self.assertEqual("EXECUTOR_RESULT_INVALID", extra_observation["code"])
 
         other_run, other_challenge, other_intended, other_artifact = self.target_wait(suffix="-other")
         self.install_executor(other_intended, other_artifact)

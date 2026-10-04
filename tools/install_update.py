@@ -209,6 +209,7 @@ def install_exact_target_executor(args: argparse.Namespace, kit: Path) -> int:
     executable = Path(sys.executable).resolve()
     if not executable.is_absolute() or not _is_regular_file(executable.lstat()):
         raise InstallerError("executor-install: Python executable is unsafe")
+    executable_digest = sha256_file(executable)
     remote = bool(args.ssh_host)
     artifact_path_value = args.artifact_path if remote else str(Path(args.artifact_path).expanduser())
     workspace_value = args.workspace if remote else str(Path(args.workspace).expanduser())
@@ -262,6 +263,7 @@ def install_exact_target_executor(args: argparse.Namespace, kit: Path) -> int:
     if remote:
         required_remote = {
             "ssh_user": args.ssh_user,
+            "ssh_host_key_alias": args.ssh_host_key_alias,
             "ssh_executable": args.ssh_executable,
             "ssh_identity": args.ssh_identity,
             "ssh_known_hosts": args.ssh_known_hosts,
@@ -273,6 +275,7 @@ def install_exact_target_executor(args: argparse.Namespace, kit: Path) -> int:
             raise InstallerError("executor-install: all SSH trust settings are required for a remote target", code=2)
         if (
             not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", args.ssh_host)
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", args.ssh_host_key_alias)
             or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", args.ssh_user)
             or not re.fullmatch(r"/[A-Za-z0-9_./+-]+", args.ssh_remote_python)
             or not re.fullmatch(r"/[A-Za-z0-9_./+-]+", args.ssh_remote_adapter)
@@ -309,6 +312,7 @@ def install_exact_target_executor(args: argparse.Namespace, kit: Path) -> int:
             "executable": str(ssh_executable),
             "executableSha256": sha256_file(ssh_executable),
             "host": args.ssh_host,
+            "hostKeyAlias": args.ssh_host_key_alias,
             "port": args.ssh_port,
             "user": args.ssh_user,
             "identityFile": str(identity_path),
@@ -355,7 +359,7 @@ def install_exact_target_executor(args: argparse.Namespace, kit: Path) -> int:
         _replace_private_bytes(known_hosts_bytes, Path(ssh_settings["knownHosts"]), "executor-install")
     registry["exactTarget"] = {
         "executable": str(executable),
-        "executableSha256": sha256_file(executable),
+        "executableSha256": executable_digest,
         "adapter": str(adapter.resolve()),
         "adapterSha256": source_digest,
         "allowedProviders": providers,
@@ -1207,6 +1211,7 @@ def parser() -> argparse.ArgumentParser:
     )
     executor.add_argument("--timeout-seconds", type=int, choices=range(1, 31), default=10)
     executor.add_argument("--ssh-host")
+    executor.add_argument("--ssh-host-key-alias")
     executor.add_argument("--ssh-port", type=int, choices=range(1, 65536), default=22)
     executor.add_argument("--ssh-user")
     executor.add_argument("--ssh-executable")

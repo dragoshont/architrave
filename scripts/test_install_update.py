@@ -202,6 +202,7 @@ class InstallUpdateTests(unittest.TestCase):
             workspace_mode="absent-or-exact-directory",
             timeout_seconds=3,
             ssh_host=None,
+            ssh_host_key_alias=None,
             ssh_port=22,
             ssh_user=None,
             ssh_executable=None,
@@ -244,6 +245,7 @@ class InstallUpdateTests(unittest.TestCase):
             workspace_mode="absent-or-exact-directory",
             timeout_seconds=10,
             ssh_host="trusted-host",
+            ssh_host_key_alias="trusted-key-alias",
             ssh_port=22,
             ssh_user="operator",
             ssh_executable=sys.executable,
@@ -287,6 +289,7 @@ class InstallUpdateTests(unittest.TestCase):
         self.assertEqual("ssh", target["transport"])
         self.assertEqual("/srv/target.bin", target["artifactPath"])
         self.assertEqual("trusted-host", target["ssh"]["host"])
+        self.assertEqual("trusted-key-alias", target["ssh"]["hostKeyAlias"])
         self.assertEqual("b" * 64, target["ssh"]["remoteAdapterSha256"])
         self.assertTrue(Path(target["ssh"]["identityFile"]).is_relative_to(state / "ssh"))
         self.assertTrue(Path(target["ssh"]["knownHosts"]).is_relative_to(state / "ssh"))
@@ -377,6 +380,7 @@ class InstallUpdateTests(unittest.TestCase):
             "executable": sys.executable,
             "executableSha256": digest(Path(sys.executable)),
             "host": "trusted-host",
+            "hostKeyAlias": "trusted-key-alias",
             "port": 22,
             "user": "operator",
             "identityFile": str(identity_file),
@@ -402,6 +406,8 @@ class InstallUpdateTests(unittest.TestCase):
             "StrictHostKeyChecking=yes",
             "-o",
             f"UserKnownHostsFile={known_hosts}",
+            "-o",
+            "HostKeyAlias=trusted-key-alias",
             "-i",
             str(identity_file),
             "-p",
@@ -599,6 +605,7 @@ class InstallUpdateTests(unittest.TestCase):
             workspace_mode="absent-or-exact-directory",
             timeout_seconds=3,
             ssh_host=None,
+            ssh_host_key_alias=None,
             ssh_port=22,
             ssh_user=None,
             ssh_executable=None,
@@ -615,6 +622,46 @@ class InstallUpdateTests(unittest.TestCase):
             with self.assertRaises(OSError):
                 self.observer.install_self()
         self.assertEqual("unchanged\n", sentinel.read_text(encoding="utf-8"))
+
+    def test_executor_digest_failure_writes_nothing(self) -> None:
+        state = self.workspace / "digest failure home" / ".architrave"
+        state.parent.mkdir()
+        artifact = self.workspace / "digest-target.bin"
+        artifact.write_bytes(b"target")
+        args = argparse.Namespace(
+            provider="provider-a",
+            artifact="target",
+            artifact_path=str(artifact),
+            version="1",
+            sha256=digest(artifact),
+            environment="test",
+            workspace=str(self.workspace / "future-prefix"),
+            acceptance_target="target",
+            workspace_mode="absent-or-exact-directory",
+            timeout_seconds=3,
+            ssh_host=None,
+            ssh_host_key_alias=None,
+            ssh_port=22,
+            ssh_user=None,
+            ssh_executable=None,
+            ssh_identity=None,
+            ssh_known_hosts=None,
+            ssh_remote_python=None,
+            ssh_remote_adapter=None,
+            ssh_remote_adapter_sha256=None,
+        )
+        original = self.module.sha256_file
+
+        def fail_executable(path: Path) -> str:
+            if path.resolve() == Path(sys.executable).resolve():
+                raise OSError("injected executable read failure")
+            return original(path)
+
+        with mock.patch.object(self.module, "trusted_user_state_root", return_value=state):
+            with mock.patch.object(self.module, "sha256_file", side_effect=fail_executable):
+                with self.assertRaises(OSError):
+                    self.module.install_exact_target_executor(args, ROOT)
+        self.assertFalse(state.exists())
 
     def test_symlink_and_path_escape_fail_without_writes(self) -> None:
         target = self.workspace / "linked target"

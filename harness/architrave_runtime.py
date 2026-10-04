@@ -511,6 +511,7 @@ class RunStore:
                 "executable",
                 "executableSha256",
                 "host",
+                "hostKeyAlias",
                 "port",
                 "user",
                 "identityFile",
@@ -630,6 +631,36 @@ class RunStore:
             or not isinstance(result.get("observation"), dict)
         ):
             raise RuntimeFailure("EXECUTOR_RESULT_INVALID", "trusted executor result schema or binding is invalid")
+        observation = result["observation"]
+        common_observation = {
+            "artifactPath",
+            "artifactSha256",
+            "artifactSize",
+            "workspacePath",
+            "workspaceState",
+            "observerSha256",
+            "transport",
+        }
+        expected_observation = (
+            common_observation
+            if request["target"]["transport"] == "local"
+            else common_observation | {"sshHost"}
+        )
+        if (
+            set(observation) != expected_observation
+            or observation.get("transport") != request["target"]["transport"]
+            or not isinstance(observation.get("artifactPath"), str)
+            or not isinstance(observation.get("workspacePath"), str)
+            or not isinstance(observation.get("artifactSize"), int)
+            or isinstance(observation.get("artifactSize"), bool)
+            or observation["artifactSize"] < 0
+            or observation.get("workspaceState") not in {"absent", "directory"}
+            or not re.fullmatch(r"[0-9a-f]{64}", str(observation.get("artifactSha256", "")))
+            or not re.fullmatch(r"[0-9a-f]{64}", str(observation.get("observerSha256", "")))
+            or (request["target"]["transport"] == "ssh" and observation.get("sshHost") != request["target"]["ssh"]["host"])
+            or redact(observation) != observation
+        ):
+            raise RuntimeFailure("EXECUTOR_RESULT_INVALID", "trusted executor observation schema is invalid")
         return result
 
     def _state_hash(self, state: dict[str, Any]) -> str:

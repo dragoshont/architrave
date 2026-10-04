@@ -127,6 +127,7 @@ def invoke_ssh(ssh: dict[str, Any], request: dict[str, Any]) -> dict[str, Any]:
         "executable",
         "executableSha256",
         "host",
+        "hostKeyAlias",
         "port",
         "user",
         "identityFile",
@@ -147,6 +148,8 @@ def invoke_ssh(ssh: dict[str, Any], request: dict[str, Any]) -> dict[str, Any]:
     if (
         not isinstance(ssh["host"], str)
         or not safe_atom.fullmatch(ssh["host"])
+        or not isinstance(ssh["hostKeyAlias"], str)
+        or not safe_atom.fullmatch(ssh["hostKeyAlias"])
         or not isinstance(ssh["user"], str)
         or not safe_atom.fullmatch(ssh["user"])
         or not isinstance(ssh["port"], int)
@@ -194,6 +197,8 @@ def invoke_ssh(ssh: dict[str, Any], request: dict[str, Any]) -> dict[str, Any]:
             "StrictHostKeyChecking=yes",
             "-o",
             f"UserKnownHostsFile={known_hosts}",
+            "-o",
+            f"HostKeyAlias={ssh['hostKeyAlias']}",
             "-i",
             str(identity),
             "-p",
