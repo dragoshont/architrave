@@ -444,6 +444,7 @@ class InstallUpdateTests(unittest.TestCase):
                     "USERPROFILE",
                     "HOMEDRIVE",
                     "HOMEPATH",
+                    "PROGRAMDATA",
                 }
             },
             kwargs["env"],

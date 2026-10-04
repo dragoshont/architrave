@@ -566,6 +566,7 @@ class RunStore:
                 "USERPROFILE",
                 "HOMEDRIVE",
                 "HOMEPATH",
+                "PROGRAMDATA",
             }
         }
         try:

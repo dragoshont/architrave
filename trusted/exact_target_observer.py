@@ -223,6 +223,7 @@ def invoke_ssh(ssh: dict[str, Any], request: dict[str, Any]) -> dict[str, Any]:
                 "USERPROFILE",
                 "HOMEDRIVE",
                 "HOMEPATH",
+                "PROGRAMDATA",
             }
         },
     )
