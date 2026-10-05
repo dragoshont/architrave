@@ -5,14 +5,8 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from pathlib import Path
-import shlex
-import shutil
-import subprocess
 import sys
-import tempfile
-import uuid
 
 from architrave_runtime import cli as runtime_cli
 from validate_learning import validate as validate_learning
@@ -50,147 +44,37 @@ def validate_run(path: Path | None) -> int:
     return 0
 
 
-def command_text(arguments: list[str]) -> str:
-        return subprocess.list2cmdline(arguments) if os.name == "nt" else shlex.join(arguments)
-
-
-def final_review_text(label: str, output: str) -> str:
-        if label == "claude":
-            try:
-                return str(json.loads(output).get("result") or "")
-            except json.JSONDecodeError:
-                return ""
-        messages = []
-        for line in output.splitlines():
-            try:
-                event = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if event.get("type") == "assistant.message":
-                messages.append(str((event.get("data") or {}).get("content") or ""))
-        return messages[-1] if messages else ""
-
-
-def verified_pass(content: str, nonce: str, terminal: str) -> bool:
-        lines = [line.rstrip("\r") for line in content.splitlines()]
-        nonempty = [line for line in lines if line.strip()]
-        return (
-            lines.count(f"EVIDENCE_NONCE: {nonce}") == 1
-            and sum(line.startswith("VERDICT: ") for line in lines) == 1
-            and bool(nonempty)
-            and nonempty[-1] == terminal
-        )
-
-
 def semantic_review(run_dir: Path, provider: str, execute: bool) -> int:
-        if not run_dir.is_dir():
-            print("semantic-review: run dir not found", file=sys.stderr)
-            return 2
-        root = Path.cwd()
-        agent = root / "agents" / "adversarial-judge.agent.md"
-        if not agent.is_file():
-            agent = root / ".github" / "agents" / "adversarial-judge.agent.md"
-        if not agent.is_file():
-            print("semantic-review: adversarial judge agent not found", file=sys.stderr)
-            return 2
-        body = (
-            f"Review canonical state and referenced evidence in {run_dir} against gates/rubric.md.\n"
-            "Focus on Outcome/acceptance coverage, TaskGraph scope, repository contract fit, "
-            "deterministic and runtime evidence, safety, capability honesty, and missing tests.\n"
-            "Return concise findings ordered by severity, then VERDICT: PASS|REVISE|FAIL."
-        )
-        commands = {
-            "copilot": [
-                shutil.which("copilot") or "copilot", "-C", str(root), "--agent",
-                "architrave:adversarial-judge", "--available-tools", "view,grep,glob",
-                "--allow-tool", "view", "--allow-tool", "grep", "--allow-tool", "glob",
-                "--no-ask-user", "--output-format", "json", "--stream", "off", "--silent",
-                "--no-color", "-p", body,
-            ],
-            "claude": [
-                shutil.which("claude") or "claude", "--tools", "Read,Grep,Glob",
-                "--allowedTools", "Read,Grep,Glob", "--append-system-prompt-file", str(agent),
-                "--output-format", "json", "-p", body,
-            ],
-        }
-        selected = ["copilot", "claude"] if provider == "both" else [provider]
-        if not execute:
-            print("suggested command(s) (host-selected model):")
-            for label in selected:
-                print(f"  {command_text(commands[label])}")
-            return 0
-        nonce = str(uuid.uuid4()).lower()
-        with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as handle:
-            handle.write(nonce + "\n")
-            nonce_path = Path(handle.name)
-        try:
-            failed = False
-            for label in selected:
-                command = list(commands[label])
-                command[-1] = body + (
-                    f"\n\nRead {nonce_path} and include EVIDENCE_NONCE: <value>. "
-                    "End with exactly VERDICT: PASS, VERDICT: REVISE, or VERDICT: FAIL."
-                )
-                process = subprocess.run(command, text=True, capture_output=True, check=False)
-                content = final_review_text(label, process.stdout)
-                if content:
-                    print(content)
-                if process.returncode != 0 or not verified_pass(content, nonce, "VERDICT: PASS"):
-                    print(f"semantic-review: {label} reviewer did not return a verified PASS", file=sys.stderr)
-                    failed = True
-            return 1 if failed else 0
-        finally:
-            nonce_path.unlink(missing_ok=True)
+    if not run_dir.is_dir():
+        print("semantic-review: run dir not found", file=sys.stderr)
+        return 2
+    if execute:
+        print("NATIVE_HOST_REQUIRED: invoke the adversarial judge through the current host; agent CLI launchers are prohibited.",
+              file=sys.stderr)
+        return 2
+    print(json.dumps({
+        "status": "advisory", "agent": "architrave:adversarial-judge", "run": str(run_dir),
+        "prompt": "Review canonical state and referenced evidence against gates/rubric.md. "
+                  "Return evidence-grounded PASS, REVISE or FAIL through host-native structured invocation.",
+        "execution": "host-owned; this helper cannot execute or attest a reviewer",
+    }, indent=2))
+    return 0
 
 
 def tournament_review(run_dir: Path, execute: bool) -> int:
-        if not run_dir.is_dir():
-            print("tournament-review: run dir not found", file=sys.stderr)
-            return 2
-        root = Path.cwd()
-        agent = root / "agents" / "tournament-analyst.agent.md"
-        if not agent.is_file():
-            agent = root / ".github" / "agents" / "tournament-analyst.agent.md"
-        if not agent.is_file():
-            print("tournament-review: Tournament Analyst agent not found", file=sys.stderr)
-            return 2
-        body = (
-            f"Read canonical state and governing repository sources for the Architrave run at {run_dir}.\n"
-            "Compare viable options using the canonical Tournament Analyst instructions.\n"
-            "Do not edit files or authorize mutations. End with one line exactly TOURNAMENT: COMPLETE."
-        )
-        command = [
-            shutil.which("claude") or "claude", "--tools", "Read,Grep,Glob", "--allowedTools",
-            "Read,Grep,Glob", "--append-system-prompt-file", str(agent), "-p", body,
-        ]
-        if not execute:
-            print("suggested command (host-selected model):")
-            print(f"  {command_text(command)}")
-            return 0
-        nonce = str(uuid.uuid4()).lower()
-        with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as handle:
-            handle.write(nonce + "\n")
-            nonce_path = Path(handle.name)
-        try:
-            command[-1] = body + f"\n\nRead {nonce_path} and include EVIDENCE_NONCE: <value>."
-            process = subprocess.run(command, text=True, capture_output=True, check=False)
-            content = process.stdout.replace("\r\n", "\n").rstrip("\r")
-            if content:
-                print(content)
-            lines = [line for line in content.splitlines() if line.strip()]
-            valid = (
-                process.returncode == 0
-                and content.splitlines().count(f"EVIDENCE_NONCE: {nonce}") == 1
-                and content.splitlines().count("TOURNAMENT: COMPLETE") == 1
-                and bool(lines)
-                and lines[-1] == "TOURNAMENT: COMPLETE"
-            )
-            if not valid:
-                print("tournament-review: unverified result", file=sys.stderr)
-                return 1
-            return 0
-        finally:
-            nonce_path.unlink(missing_ok=True)
+    if not run_dir.is_dir():
+        print("tournament-review: run dir not found", file=sys.stderr)
+        return 2
+    if execute:
+        print("NATIVE_HOST_REQUIRED: invoke Tournament Analyst through the current host; agent CLI launchers are prohibited.",
+              file=sys.stderr)
+        return 2
+    print(json.dumps({
+        "status": "advisory", "agent": "architrave:tournament-analyst", "run": str(run_dir),
+        "prompt": "Compare viable options against canonical state and governing repository sources; do not edit or authorize mutations.",
+        "execution": "host-owned; this helper cannot execute or attest a reviewer",
+    }, indent=2))
+    return 0
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)

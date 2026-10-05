@@ -23,11 +23,11 @@
     }
   },
   "workers": {
-    "defaultAdapter": "copilot",
+    "defaultAdapter": "native",
     "maxParallel": 2,
     "worktreeRoot": ".architrave/worktrees",
     "cleanupCompletedWorktrees": true,
-    "enabledAdapters": ["copilot", "claude", "codex", "shell"]
+    "enabledAdapters": ["native", "shell"]
   },
   "runtime": {
     "boot": "npm run dev",

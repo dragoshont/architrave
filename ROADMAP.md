@@ -97,6 +97,9 @@
 ## Milestone 8 - Host-owned Execution Policy
 - [x] Canonical agents, Run state, WorkPackets, docs, and templates contain no model class, tier, provider, reasoning, or context recommendations.
 - [x] Host-native custom-agent/subagent delegation is used only for bounded isolation, parallelism, permissions, expertise, or independent review.
+- [x] Durable Copilot WorkPackets use a minimal joined-session tasks RPC extension,
+  with independent observed gates, source-bound evidence, orphan cleanup and
+  side-effect-free recovery. No nested agent CLIs or provider/model overrides.
 - [x] Risk-based verification requires deterministic evidence and independent reviewer identities without constraining host model choice.
 - [x] Compact Run v2 artifacts replace eager per-agent plans, reports, status files, and per-transition snapshots.
 

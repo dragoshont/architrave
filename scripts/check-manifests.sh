@@ -305,7 +305,7 @@ done
 
 echo "== python syntax =="
 if python3 -m py_compile \
-  harness/architrave_runtime.py harness/worker_adapters.py harness/invariant_engine.py \
+  harness/architrave_runtime.py harness/worker_adapters.py harness/native_host.py harness/invariant_engine.py \
   harness/legibility.py harness/workspaces.py harness/validate_run_v2.py \
   scripts/bench-architrave.py scripts/judge-bench.py scripts/summarize-bench.py \
   scripts/test-benchmark-tools.py \
@@ -331,6 +331,7 @@ runtime_test_output="$(mktemp)"
 for test_script in \
   scripts/test-runtime-v2.py \
   scripts/test-worker-adapters.py \
+  scripts/test-native-host.py \
   scripts/test-invariant-engine.py \
   scripts/test-legibility.py \
   scripts/test-workspaces.py \

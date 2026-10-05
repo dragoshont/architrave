@@ -9,6 +9,7 @@ make_repo() {
   local repo="$1"
   mkdir -p "$repo/.architrave/learning" "$repo/harness"
   cp harness/validate-learning.sh harness/promote-lesson.sh "$repo/harness/"
+  cp harness/*.py "$repo/harness/"
   chmod +x "$repo"/harness/*.sh
   cat > "$repo/.architrave/learning/repo-profile.md" <<'MD'
 # Repo Profile

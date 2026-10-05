@@ -1,0 +1,106 @@
+#!/usr/bin/env python3
+"""One invocation's private stdio bridge to the joined Copilot extension.
+
+This is not a daemon or a JSON receipt importer. The installed extension owns
+stdin and independently obtains task outcomes from its existing host connection.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from architrave_runtime import RunStore, RuntimeFailure, find_task, redact, state_summary
+from worker_adapters import render_prompt
+
+
+def receive():
+    line = sys.stdin.buffer.readline(65537)
+    if not line:
+        raise RuntimeFailure(
+            "NATIVE_HOST_REQUIRED",
+            "No joined native host owns this pipe. Invoke the installed extension in a supported Copilot session; no CLI fallback.",
+            exit_code=2,
+        )
+    if len(line) > 65536:
+        raise RuntimeFailure("NATIVE_TRANSPORT_INVALID", "native host message exceeded its bound")
+    value = json.loads(line)
+    if not isinstance(value, dict):
+        raise RuntimeFailure("NATIVE_TRANSPORT_INVALID", "native host message must be an object")
+    return value
+
+
+def emit(value):
+    print(json.dumps(redact(value), separators=(",", ":")), flush=True)
+
+
+def main():
+    if sys.argv[1:] == ["--help"]:
+        print("Architrave native host bridge: owned by the installed Copilot extension's joined tasks RPC.")
+        print("This private per-invocation pipe is not a worker CLI or result importer. No host: NATIVE_HOST_REQUIRED.")
+        return 0
+    ticket = None
+    store = None
+    try:
+        request = receive()
+        store = RunStore(request["repo"])
+        action = request["action"]
+        run_id = request["runId"]
+        if action == "status":
+            emit({"status": "ok", "result": state_summary(store.load(run_id))})
+            return 0
+        if action == "recover":
+            if request.get("checkpointId"):
+                store.recover_native_checkpoint(run_id, request["checkpointId"], host_owner=request["owner"])
+            emit({"status": "ok", "result": state_summary(store.recover_workers(run_id, task_id=request.get("taskId")))})
+            return 0
+        if action == "gate":
+            emit({"status": "ok", "result": store.execute_gate(
+                run_id, request["taskId"], recipe=request.get("recipe", "test"), ci_run_id=request.get("ciRunId"))})
+            return 0
+        if action != "dispatch":
+            raise RuntimeFailure("NATIVE_TRANSPORT_INVALID", "unknown native host action")
+        task_id = request["taskId"]
+        ticket = store.begin_native_worker(run_id, task_id, host_owner=request["owner"])
+        task = find_task(store.load(run_id), task_id)
+        packet = task["workPacket"]
+        emit({
+            "status": "prepared", "binding": ticket.binding,
+            "prompt": render_prompt(packet) + "\n"
+            + f"Use ONLY this isolated workspace, with absolute paths: {task['workspace']}\n"
+            + "Do not launch another agent CLI, commit, mutate the source checkout, or change Run state.\n"
+            + "Do not call Architrave control-plane extension tools. Return a candidate, never claim gate PASS.",
+            "agentType": "general-purpose" if task["mutablePaths"] else "explore",
+            "timeoutSeconds": packet["budget"]["timeoutSeconds"],
+            "expiresAt": task["lease"]["expiresAt"],
+        })
+        admitted = receive()
+        if admitted.get("status") != "admitted":
+            raise RuntimeFailure("NATIVE_ADMISSION_FAILED", admitted.get("error", "host did not admit the worker"))
+        store.bind_native_owner(ticket, admitted["hostTaskId"])
+        emit({"status": "bound", "binding": ticket.binding})
+        observed = receive()
+        result = store.accept_native_candidate(
+            ticket, host_task_id=observed["hostTaskId"],
+            host_status=observed["hostStatus"], text=observed.get("text", ""),
+        )
+        emit({"status": "failed" if result["status"] == "failed" else "ok", "result": result})
+        return 0 if result["status"] == "candidate" else 1
+    except (RuntimeFailure, OSError, ValueError, KeyError) as exc:
+        cleanup_error = None
+        if ticket is not None and not ticket.consumed and store is not None:
+            try:
+                store.fail_task(ticket.binding["runId"], ticket.binding["taskId"], f"native bridge failed: {exc}")
+            except RuntimeFailure as cleanup:
+                cleanup_error = cleanup.code
+        emit({"status": "failed", "error": {
+            "code": exc.code if isinstance(exc, RuntimeFailure) else "NATIVE_TRANSPORT_INVALID",
+            "message": str(exc), "cleanupError": cleanup_error,
+        }})
+        return exc.exit_code if isinstance(exc, RuntimeFailure) else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

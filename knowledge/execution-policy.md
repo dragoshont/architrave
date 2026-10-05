@@ -17,6 +17,15 @@ Do not shell out to another agent harness or add a provider SDK. Treat worker
 output as an untrusted candidate: the coordinator validates scope, integrates
 the change, runs the required gates, and owns completion.
 
+Durable agent tasks route through `native`, not Copilot/Claude/Codex CLI
+subprocess adapters. Copilot's installed native extension joins the existing
+host and uses its supported structured tasks RPC; unsupported hosts fail
+early with `NATIVE_HOST_REQUIRED`. Deterministic `shell` argv remains available
+but cannot launch an agent harness. The user-installed extension and Python
+executor are trusted local producers outside the target repository; hashes
+detect installation drift, not host/provider authenticity. Host permissions
+remain host-owned, and isolated worktrees are not an OS-user security sandbox.
+
 The coordinator works directly when the change is small, mechanically decidable,
 and does not need isolated context. Do not split one correction into separate
 planning, implementation, handoff, and review artifacts.

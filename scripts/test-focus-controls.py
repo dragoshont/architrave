@@ -36,7 +36,8 @@ def load_installer_module():
 class FocusControlTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
-        self.repo = Path(self.temp.name) / "repo"
+        self.temp_root = Path(self.temp.name).resolve()
+        self.repo = self.temp_root / "repo"
         self.repo.mkdir()
         subprocess.run(["git", "init", "-q"], cwd=self.repo, check=True)
         subprocess.run(["git", "config", "user.email", "architrave@example.invalid"], cwd=self.repo, check=True)
@@ -46,7 +47,7 @@ class FocusControlTests(unittest.TestCase):
         subprocess.run(["git", "commit", "-qm", "fixture"], cwd=self.repo, check=True)
         self.store = RunStore(self.repo)
         self.runtime = ROOT / "harness" / "architrave_runtime.py"
-        self.home = Path(self.temp.name) / "home"
+        self.home = self.temp_root / "home"
         self.home.mkdir()
         self.cli_env = {
             **os.environ,
@@ -186,6 +187,7 @@ class FocusControlTests(unittest.TestCase):
             "task-add", run_id, "--id", task_id, "--title", task_id,
             "--objective", f"Complete {task_id}.", "--criteria",
             ",".join(overrides.get("acceptanceCriteria", ["ACCEPT-001"])),
+            "--worker", "shell",
         ]
         if overrides.get("workKind"):
             arguments.extend(["--work-kind", str(overrides["workKind"])])
@@ -211,7 +213,7 @@ class FocusControlTests(unittest.TestCase):
         principal: str = "synthetic-user",
         suffix: str = "",
     ) -> tuple[str, str, dict[str, str], Path]:
-        artifact = Path(self.temp.name) / f"target{suffix}.bin"
+        artifact = self.temp_root / f"target{suffix}.bin"
         artifact.write_bytes(f"trusted target {suffix}".encode("utf-8"))
         intended = {
             "provider": provider,
@@ -219,7 +221,7 @@ class FocusControlTests(unittest.TestCase):
             "version": "2",
             "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
             "environment": "test",
-            "workspace": str(Path(self.temp.name) / f"prefix{suffix}"),
+            "workspace": str(self.temp_root / f"prefix{suffix}"),
             "acceptanceTarget": "exact local target",
         }
         run_id = self.create(
@@ -615,7 +617,7 @@ class FocusControlTests(unittest.TestCase):
             "human:synthetic-user",
         )
         workspace = Path(workspace_intended["workspace"])
-        external = Path(self.temp.name) / "external-workspace"
+        external = self.temp_root / "external-workspace"
         external.mkdir()
         if os.name == "nt":
             completed = subprocess.run(
@@ -929,9 +931,9 @@ class FocusControlTests(unittest.TestCase):
                     "--status",
                     "FAILED",
                 )
-                artifact = Path(self.temp.name) / f"{suffix}-history.json"
+                artifact = self.temp_root / f"{suffix}-history.json"
                 artifact.write_text(json.dumps({"historical": outcome}) + "\n", encoding="utf-8")
-                workspace = Path(self.temp.name) / f"{suffix}-workspace"
+                workspace = self.temp_root / f"{suffix}-workspace"
                 workspace.mkdir()
                 self.install_reconciliation(
                     run_id,

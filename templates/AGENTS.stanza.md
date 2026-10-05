@@ -58,6 +58,10 @@ context tier, provider, or concrete model. The user and active host harness own
 those choices. Use structured subagent invocation only when isolation,
 parallelism, permissions, expertise, or independent context justify it; never
 shell out to another agent harness or depend on a provider SDK.
+Durable agent WorkPackets use `native`; install the user-scope native-host
+extension once and reload supported Copilot host extensions. `shell` is only
+for deterministic argv, never an agent CLI fallback. Native worker completion
+is a candidate; execute and register the real configured gate independently.
 
 Low-risk mechanical work may close on deterministic checks when every criterion
 is mechanically covered. Semantic, UI, contract, architecture, migration,

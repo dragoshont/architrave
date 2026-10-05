@@ -224,11 +224,55 @@ hosts.
 
 ## Worker adapters
 
-`harness/worker_adapters.py` supports Copilot, Claude Code, Codex, and structured
-shell argv. It bounds timeout/output, redacts artifacts, validates mutable paths,
-protects canonical Run state, and normalizes candidate results. Native agent
-sandboxes and tool permissioning remain defense layers; custom roles are not
-security boundaries.
+Agent WorkPackets use `native`; deterministic executable argv uses `shell`.
+Legacy Copilot/Claude/Codex task records remain readable, but the worker CLI
+returns `NATIVE_HOST_REQUIRED` instead of spawning those agent CLIs. Shell argv
+and configured recipes reject agent-CLI launch recipes.
+Old config adapter names remain compatibility aliases for native transport,
+not host/model selection; updates preserve user config and allow the new native
+route without silently rewriting it. New configs use only `native` and `shell`.
+
+On a supported Copilot host, explicitly install the minimal user-scope extension
+with `python tools/install_update.py native-host-install`, then reload host
+extensions. Its joined SDK session uses the actual `session.rpc.tasks`
+start/list/sendMessage/cancel transport, with no provider/model override.
+`architrave_native_dispatch` admits the canonical task, creates its isolated
+worktree, and returns only a bounded candidate. An optional `owner_handle` is
+an existing idle agent task in the same joined host session, not an app root
+session ID. Its context is retained; results must belong to the delivered
+WorkPacket. Other hosts fail visibly before admission; there is no shell fallback
+or fake human-judgment checkpoint.
+
+**Trust boundary:** the user installs the extension and pinned Python bridge
+outside target repositories. The extension, not repository JSON or a claimed
+actor, observes results over its existing host-owned RPC connection. A private
+per-invocation pipe and process-local ticket bind Run/objective/revision/task/
+WorkPacket/lease/host owner; replay, stale revisions, mismatched owners, scope
+escape and history changes fail closed. Installation hashes detect local drift;
+they do not authenticate a remote provider. This is not a sandbox against
+malicious same-OS-user code. The host owns permissions and execution context;
+the tasks RPC has no per-task cwd/sandbox parameter, so absolute isolated paths
+and post-execution scope checks are defense layers, not an invented host sandbox.
+Native workers cannot execute registered side effects.
+
+`architrave_native_gate` / `gate-execute` executes the installed quick gate or
+configured build/test through the trusted Python executor, or observes an exact
+GitHub workflow Run for the current source commit. It records actual
+command/exit/source identities, and registers a task/objective/risk-bound gate.
+It accepts no claimed result. Candidate completion never sets criteria PASS;
+the coordinator sets a criterion only using its matching verified gate, then
+completes the task and derives Run completion. Source drift invalidates this
+evidence. Existing unrelated evidence stays historical.
+
+`worker-recover` closes expired/orphaned workers without replaying side effects.
+An explicitly named failed, side-effect-free task may be released for a new
+attempt, retaining prior attempts, results, events and workspaces. The native
+extension can additionally withdraw only the known obsolete
+`native-adapter-required` tooling wait, with its exact provider/reason/task
+guards; it cannot resolve human sign-in, policy amendment or target checkpoints.
+Repository baseline changes still require explicit `resume --accept-commit`.
+`status` reports revision, source, freshness and active/historical/stale workers
+on demand instead of generating continually stale prose.
 
 ## Application and deployment legibility
 

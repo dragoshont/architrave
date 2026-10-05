@@ -6,6 +6,7 @@ trap 'rm -rf "$tmp"' EXIT
 repo="$tmp/repo"
 mkdir -p "$repo/.architrave/learning" "$repo/harness"
 cp harness/validate-learning.sh harness/promote-lesson.sh harness/promote-lesson-picker.sh "$repo/harness/"
+cp harness/*.py "$repo/harness/"
 chmod +x "$repo"/harness/*.sh
 printf '# Repo Profile\n' > "$repo/.architrave/learning/repo-profile.md"
 cat > "$repo/.architrave/learning/repo-lessons.md" <<'MD'

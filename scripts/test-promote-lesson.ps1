@@ -10,6 +10,7 @@ try {
   $Repo = Join-Path $Tmp 'repo'
   New-Item -ItemType Directory -Force -Path (Join-Path $Repo '.architrave/learning'),(Join-Path $Repo 'harness') | Out-Null
   Copy-Item harness/validate-learning.ps1,harness/promote-lesson.ps1 -Destination (Join-Path $Repo 'harness')
+  Copy-Item harness/*.py -Destination (Join-Path $Repo 'harness')
   Set-Content -Path (Join-Path $Repo '.architrave/learning/repo-profile.md') -Value '# Repo Profile' -Encoding utf8
   Set-Content -Path (Join-Path $Repo '.architrave/learning/repo-lessons.md') -Value '# Repo Lessons' -Encoding utf8
   Push-Location $Repo

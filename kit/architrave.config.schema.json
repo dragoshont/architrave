@@ -134,13 +134,16 @@
       "description": "Optional worker routing and isolated workspace defaults. The runtime remains usable with built-in defaults when omitted.",
       "additionalProperties": false,
       "properties": {
-        "defaultAdapter": { "type": "string", "enum": ["copilot", "claude", "codex", "shell"] },
+        "defaultAdapter": {
+          "type": "string", "enum": ["native", "shell", "copilot", "claude", "codex"],
+          "description": "Use native or deterministic shell. Old agent names are compatibility aliases for host-native transport, never CLI launchers or model/provider selection."
+        },
         "maxParallel": { "type": "integer", "minimum": 1 },
         "worktreeRoot": { "type": "string", "minLength": 1 },
         "cleanupCompletedWorktrees": { "type": "boolean" },
         "enabledAdapters": {
           "type": "array",
-          "items": { "type": "string", "enum": ["copilot", "claude", "codex", "shell"] },
+          "items": { "type": "string", "enum": ["native", "shell", "copilot", "claude", "codex"] },
           "minItems": 1,
           "uniqueItems": true
         }

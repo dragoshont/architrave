@@ -7,12 +7,9 @@ import importlib.util
 import io
 import json
 from pathlib import Path
-import re
-import subprocess
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,47 +29,24 @@ class ReviewLauncherTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp.cleanup()
 
-    def response(self, command: list[str], *, tournament: bool = False) -> subprocess.CompletedProcess[str]:
-        prompt = command[-1]
-        match = re.search(r"Read (.+?) and include EVIDENCE_NONCE", prompt)
-        nonce = Path(match.group(1)).read_text(encoding="utf-8").strip() if match else ""
-        if tournament:
-            output = f"EVIDENCE_NONCE: {nonce}\nTOURNAMENT: COMPLETE\n"
-        else:
-            content = f"EVIDENCE_NONCE: {nonce}\nVERDICT: PASS"
-            output = (
-                json.dumps({"result": content})
-                if Path(command[0]).stem == "claude"
-                else json.dumps({"type": "assistant.message", "data": {"content": content}})
-            ) + "\n"
-        return subprocess.CompletedProcess(command, 0, output, "")
-
-    def test_semantic_review_inherits_host_model_and_verifies_both(self) -> None:
+    def test_semantic_review_is_native_advisory_only(self) -> None:
         buffer = io.StringIO()
         with contextlib.redirect_stdout(buffer):
             self.assertEqual(0, CLI.semantic_review(self.run_dir, "both", False))
         self.assertNotRegex(buffer.getvalue(), r"--model|--effort|--reasoning-effort")
-        with patch.object(CLI.subprocess, "run", side_effect=lambda command, **_: self.response(command)):
-            self.assertEqual(0, CLI.semantic_review(self.run_dir, "both", True))
+        self.assertEqual("advisory", json.loads(buffer.getvalue())["status"])
+        self.assertEqual(2, CLI.semantic_review(self.run_dir, "both", True))
 
     def test_semantic_review_fails_closed(self) -> None:
-        def fail(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
-            return subprocess.CompletedProcess(command, 1, "", "failed")
+        self.assertEqual(2, CLI.semantic_review(self.run_dir, "copilot", True))
 
-        with patch.object(CLI.subprocess, "run", side_effect=fail):
-            self.assertEqual(1, CLI.semantic_review(self.run_dir, "copilot", True))
-
-    def test_tournament_review_inherits_host_model_and_verifies_completion(self) -> None:
+    def test_tournament_review_is_native_advisory_only(self) -> None:
         buffer = io.StringIO()
         with contextlib.redirect_stdout(buffer):
             self.assertEqual(0, CLI.tournament_review(self.run_dir, False))
         self.assertNotRegex(buffer.getvalue(), r"--model|--effort|--reasoning-effort")
-        with patch.object(
-            CLI.subprocess,
-            "run",
-            side_effect=lambda command, **_: self.response(command, tournament=True),
-        ):
-            self.assertEqual(0, CLI.tournament_review(self.run_dir, True))
+        self.assertEqual("advisory", json.loads(buffer.getvalue())["status"])
+        self.assertEqual(2, CLI.tournament_review(self.run_dir, True))
 
 
 if __name__ == "__main__":

@@ -655,9 +655,28 @@
       "additionalProperties": false,
       "properties": {
         "id": { "$ref": "#/definitions/id" },
-        "adapter": { "type": "string", "enum": ["copilot", "claude", "codex", "shell"] },
+        "adapter": { "type": "string", "enum": ["native", "copilot", "claude", "codex", "shell"] },
         "status": { "type": "string", "enum": ["IDLE", "RUNNING", "FINISHED", "FAILED"] },
         "workspace": { "type": ["string", "null"] },
+        "taskId": { "$ref": "#/definitions/id" },
+        "finishedAt": { "type": "string" },
+        "reason": { "type": "string" },
+        "nativeBinding": {
+          "type": "object",
+          "required": ["runId", "taskId", "workerId", "workPacketId", "objectiveVersion", "revision", "acquiredAt", "owner", "hostTaskId"],
+          "additionalProperties": false,
+          "properties": {
+            "runId": { "$ref": "#/definitions/id" },
+            "taskId": { "$ref": "#/definitions/id" },
+            "workerId": { "$ref": "#/definitions/id" },
+            "workPacketId": { "$ref": "#/definitions/id" },
+            "objectiveVersion": { "type": "integer", "minimum": 1 },
+            "revision": { "type": "integer", "minimum": 0 },
+            "acquiredAt": { "type": "string" },
+            "owner": { "type": "string" },
+            "hostTaskId": { "type": ["string", "null"] }
+          }
+        },
         "mutablePaths": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 },

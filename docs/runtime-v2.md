@@ -39,6 +39,58 @@ An `approved-program` Run crosses internal phase/task boundaries automatically.
 It still stops for policy denial, failure, exhausted retry, unavailable worker or
 resource, cancellation, and typed external checkpoints.
 
+## Native workers and observed gates
+
+Install the explicit user-scope Copilot integration from the kit:
+
+```bash
+python3 tools/install_update.py native-host-install
+```
+
+Reload extensions through the supported host tool. `architrave_native_dispatch`
+takes `repo`, `run_id`, `task_id` and optionally an existing idle native
+`owner_handle` in this same host session. It admits one bounded canonical
+WorkPacket, creates the isolated workspace before task start, observes the
+actual host result and binds a compact candidate to the Run. No model settings
+or caller-authored result JSON are accepted. Unsupported hosts return an early
+capability error without inventing a human authorization checkpoint.
+
+Then invoke `architrave_native_gate` (same repo/Run/task, `recipe` =
+`test`, `build`, `quick` or `ci`) or the public CLI:
+
+```bash
+python3 harness/architrave_runtime.py gate-execute <run-id> <task-id> --recipe test
+python3 harness/architrave_runtime.py criterion-set <run-id> <criterion-id> \
+  --status PASS --evidence gate:<observed-gate-id>
+python3 harness/architrave_runtime.py task-complete <run-id> <task-id> \
+  --evidence gate:<observed-gate-id>
+python3 harness/architrave_runtime.py verify <run-id>
+```
+
+For CI milestones, `gate-execute ... --recipe ci --ci-run-id <workflow-run-id>`
+queries the origin's GitHub workflow through the installed CLI and requires the
+exact current commit, workflow id, completed status and successful conclusion.
+Unrelated/historical CI or caller-provided CI JSON cannot prove this Run.
+For a side-effect-free deterministic `shell` task, `--recipe task` independently
+executes its already stored structured argv; it never accepts a new command or
+imports a claimed result.
+
+The executor runs a real configured command and binds source/exit/objective/task/
+risk identities. Criteria, risk gates and completion remain independently
+checked; a candidate or an arbitrary registered file is insufficient.
+
+For an existing stalled Run, the owner updates the copied kit (preserving config
+and Run data), explicitly reconciles baseline drift with `resume --accept-commit`,
+and uses `worker-recover <run-id> --task-id <failed-side-effect-free-task>`.
+The installed `architrave_native_recover` tool additionally supports the one
+obsolete `native-adapter-required` integration wait. It cancels that tooling
+wait, never resolves human product/sign-in/target/policy authority, and leaves
+unverified criteria open. Neither recovery path executes a command or replays a
+side effect; uncertain side effects still need their existing reconciliation.
+
+The trust/capability boundary and same-user limitations are explicit in
+[`knowledge/runtime-v2.md`](../knowledge/runtime-v2.md#worker-adapters).
+
 ## Policy amendment
 
 Run policy remains immutable except for an additive, challenge-bound amendment.

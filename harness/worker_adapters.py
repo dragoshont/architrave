@@ -12,7 +12,6 @@ import json
 import os
 from pathlib import Path
 import signal
-import shutil
 import subprocess
 import sys
 import threading
@@ -21,10 +20,11 @@ import uuid
 from typing import Any, Sequence
 
 from architrave_runtime import FileLock, RunStore, RuntimeFailure, derive_run_status, find_task, redact, safe_relative_path
+from platform_launch import LaunchError, reject_agent_harness
 
 
 RESULT_SCHEMA = "architrave.worker-result.v1"
-ADAPTERS = {"copilot", "claude", "codex", "shell"}
+ADAPTERS = {"native", "shell"}
 MUTATING_TOOL_NAMES = {"edit", "execute", "shell", "write", "apply_patch", "run_in_terminal"}
 
 
@@ -47,6 +47,12 @@ def render_prompt(packet: dict[str, Any]) -> str:
 
 
 def command_for(adapter: str, packet: dict[str, Any], workspace: Path) -> tuple[list[str], Path]:
+    if adapter in {"native", "copilot", "claude", "codex"}:
+        raise RuntimeFailure(
+            "NATIVE_HOST_REQUIRED",
+            "agent workers require the installed Architrave native-host extension; no agent CLI is launched",
+            exit_code=2,
+        )
     if adapter not in ADAPTERS:
         raise RuntimeFailure("WORKER_ADAPTER", f"unknown worker adapter: {adapter}")
     execution = packet.get("execution")
@@ -63,32 +69,11 @@ def command_for(adapter: str, packet: dict[str, Any], workspace: Path) -> tuple[
                 raise RuntimeFailure("PATH_ESCAPE", "execution cwd escapes the workspace") from exc
         if not cwd.is_dir():
             raise RuntimeFailure("WORKER_ADAPTER", f"execution cwd does not exist: {cwd}")
+        try:
+            reject_agent_harness(execution["command"])
+        except LaunchError as exc:
+            raise RuntimeFailure("AGENT_HARNESS_DENIED", str(exc), exit_code=2) from exc
         return list(execution["command"]), cwd
-
-    prompt = render_prompt(packet)
-    if adapter == "copilot":
-        if not packet["mutablePaths"] and any(tool.lower() in MUTATING_TOOL_NAMES for tool in packet["tools"]):
-            raise RuntimeFailure("WORKER_PERMISSION", "read-only Copilot WorkPacket requests a mutating tool")
-        command = [
-            shutil.which("copilot") or "copilot",
-            "-C",
-            str(workspace),
-            "--output-format",
-            "json",
-            "--stream",
-            "off",
-            "--no-ask-user",
-            "-p",
-            prompt,
-        ]
-        for tool in packet["tools"]:
-            command.extend(["--allow-tool", tool])
-        return command, workspace
-    if adapter == "claude":
-        permission_mode = "acceptEdits" if packet["mutablePaths"] else "plan"
-        return [shutil.which("claude") or "claude", "-p", prompt, "--output-format", "json", "--permission-mode", permission_mode], workspace
-    sandbox = "workspace-write" if packet["mutablePaths"] else "read-only"
-    return [shutil.which("codex") or "codex", "-C", str(workspace), "-s", sandbox, "-a", "never", "exec", "--json", prompt], workspace
 
 
 def bounded_environment(packet: dict[str, Any]) -> dict[str, str]:
@@ -301,7 +286,7 @@ def git_status(workspace: Path) -> set[str]:
     return paths
 
 
-def workspace_fingerprint(workspace: Path) -> str:
+def workspace_fingerprint(workspace: Path, *, include_ignored: bool = True) -> str:
     head = subprocess.run(
         ["git", "rev-parse", "HEAD"],
         cwd=workspace,
@@ -334,7 +319,8 @@ def workspace_fingerprint(workspace: Path) -> str:
         if candidate.is_file() and not candidate.is_symlink():
             digest.update(path.encode("utf-8"))
             digest.update(hashlib.sha256(candidate.read_bytes()).digest())
-    digest.update(bytes.fromhex(ignored_fingerprint(workspace)))
+    if include_ignored:
+        digest.update(bytes.fromhex(ignored_fingerprint(workspace)))
     return digest.hexdigest()
 
 
@@ -459,6 +445,15 @@ def execute_work_packet(store: RunStore, run_id: str, task_id: str, worker_id: s
             try:
                 _, current_state = store._load_locked(run_id)
             except RuntimeFailure as exc:
+                cleanup_error = None
+                if not args.dry_run:
+                    try:
+                        state = store.load(args.run_id)
+                        task = find_task(state, args.task_id)
+                        if task["status"] == "RUNNING" and (task.get("lease") or {}).get("owner") == args.worker_id:
+                            store.fail_task(args.run_id, args.task_id, exc.code)
+                    except RuntimeFailure as cleanup:
+                        cleanup_error = cleanup.code
                 if exc.code != "RUN_STATE_TAMPERED_RECOVERED":
                     raise RuntimeFailure(
                         "WORKER_RUNTIME_CORRUPTION",
@@ -771,12 +766,14 @@ def cli(argv: Sequence[str] | None = None) -> int:
             output = {"adapter": task["workerProfile"], "command": command, "cwd": str(cwd)}
         else:
             output = execute_work_packet(store, args.run_id, args.task_id, args.worker_id)
-        print(json.dumps({"status": "ok", "result": redact(output)}, indent=2))
-        return 0
+        print(json.dumps({"status": "ok" if args.dry_run or output["status"] == "candidate" else "failed",
+                          "result": redact(output)}, indent=2))
+        return 0 if args.dry_run or output["status"] == "candidate" else 1
     except RuntimeFailure as exc:
         print(
             json.dumps(
-                {"status": "failed", "error": {"code": exc.code, "message": exc.message, "details": redact(exc.details)}},
+                {"status": "failed", "error": {"code": exc.code, "message": exc.message,
+                                             "details": redact(exc.details), "cleanupError": cleanup_error}},
                 indent=2,
             ),
             file=sys.stderr,

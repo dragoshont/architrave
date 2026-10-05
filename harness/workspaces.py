@@ -69,6 +69,8 @@ class WorkspaceManager:
         # isolation: a worker may forge canonical Run state or read secrets (e.g. the runtime
         # signing key) if it can reach the coordinator's real working tree.
         path = (self.worktree_root / run_id / task_id).resolve()
+        if path.exists() and task["attempts"] > 0:
+            path = path.with_name(f"{task_id}-recovery-{uuid.uuid4().hex[:8]}")
         try:
             path.relative_to(self.worktree_root)
         except ValueError as exc:
@@ -108,7 +110,8 @@ class WorkspaceManager:
         artifact_dir = run_dir / "workspaces" / task_id
         artifact_dir.mkdir(parents=True, exist_ok=True)
         patch_path = artifact_dir / "candidate.patch"
-        patch_path.write_text(patch, encoding="utf-8", newline="\n")
+        with patch_path.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(patch)
         suffix = uuid.uuid4().hex[:10]
         patch_artifact_id = f"workspace-patch-{task_id}-{suffix}"
         self.store._record_workspace_artifact(

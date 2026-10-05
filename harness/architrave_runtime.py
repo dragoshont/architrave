@@ -19,6 +19,7 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import subprocess
+import shutil
 import sys
 import tempfile
 import uuid
@@ -371,10 +372,21 @@ class _PolicyAuthorization:
         self.challenge = challenge
 
 
+class NativeWorkerTicket:
+    """Process-local authority held by the trusted host bridge, never serialized."""
+
+    def __init__(self, issuer: object, binding: dict[str, Any], snapshot: dict[str, Any]):
+        self.issuer = issuer
+        self.binding = binding
+        self.snapshot = snapshot
+        self.consumed = False
+
+
 class RunStore:
     def __init__(self, repository: Path | str):
         self.repository = Path(repository).resolve()
         self.runs_root = self.repository / ".architrave" / "runs"
+        self.__native_issuer = object()
         self.key_path = self.repository / ".architrave" / "runtime.key"
         self.__objective_capability = object()
         self.__policy_capability = object()
@@ -1887,7 +1899,10 @@ class RunStore:
             evaluation_block = config.get("evaluation") or {}
             worker_profile = str(task.get("workerProfile") or workers_config.get("defaultAdapter") or "shell")
             enabled_adapters = workers_config.get("enabledAdapters")
-            if enabled_adapters and worker_profile not in enabled_adapters:
+            native_aliases = {"native", "copilot", "claude", "codex"}
+            enabled_profiles = {"native" if item in native_aliases else item for item in enabled_adapters or []}
+            routed_profile = "native" if worker_profile in native_aliases else worker_profile
+            if enabled_adapters and routed_profile not in enabled_profiles:
                 raise RuntimeFailure(
                     "INVALID_TASK",
                     f"worker adapter is not enabled for this repository: {worker_profile}",
@@ -2391,6 +2406,8 @@ class RunStore:
                 raise RuntimeFailure("LANE_DEFERRED", "task lane is not active")
             if task["status"] != "READY":
                 raise RuntimeFailure("TASK_NOT_READY", f"task {task_id} is {task['status']}")
+            if task_has_pending_checkpoint(state, task_id):
+                raise RuntimeFailure("EXTERNAL_CHECKPOINT_PENDING", "task still has an unresolved external checkpoint")
             if TARGET_OPERATIONS.intersection(task.get("operations") or []):
                 if preflight_revision != state["revision"] or preflight_observation is None:
                     raise RuntimeFailure("TARGET_IDENTITY_STALE", "target observation became stale before task start")
@@ -2498,7 +2515,7 @@ class RunStore:
             task["status"] = "RUNNING"
             worker = next((item for item in state["workers"] if item["id"] == worker_id), None)
             if worker is None:
-                adapter = task["workerProfile"] if task["workerProfile"] in {"copilot", "claude", "codex", "shell"} else "shell"
+                adapter = "shell" if task["workerProfile"] == "shell" else "native"
                 state["workers"].append(
                     {
                         "id": worker_id,
@@ -2506,6 +2523,7 @@ class RunStore:
                         "status": "RUNNING",
                         "workspace": task["workspace"],
                         "mutablePaths": task["mutablePaths"],
+                        "taskId": task_id,
                     }
                 )
             else:
@@ -2514,6 +2532,7 @@ class RunStore:
                 worker["status"] = "RUNNING"
                 worker["workspace"] = task["workspace"]
                 worker["mutablePaths"] = task["mutablePaths"]
+                worker["taskId"] = task_id
             state["status"] = "RUNNING"
             return {"taskId": task_id, "workerId": worker_id, "attempt": task["attempts"]}
 
@@ -2551,7 +2570,8 @@ class RunStore:
         policy = task["retryPolicy"]
         retryable = not policy["retryable"] or reason in policy["retryable"]
         if retryable and task["attempts"] < policy["maxAttempts"]:
-            task["status"] = "READY" if dependencies_completed(state, task) else "NOT_READY"
+            task["status"] = ("WAITING_EXTERNAL" if task_has_pending_checkpoint(state, task["id"])
+                              else "READY" if dependencies_completed(state, task) else "NOT_READY")
             backoff = max(0.0, float(policy["backoffSeconds"]))
             if backoff:
                 retry_at = dt.datetime.now(dt.timezone.utc) + dt.timedelta(seconds=backoff)
@@ -2577,6 +2597,7 @@ class RunStore:
         worker_id: str,
         status: str,
         artifact_refs: Sequence[str] = (),
+        native_ticket: NativeWorkerTicket | None = None,
     ) -> dict[str, Any]:
         if status not in {"FINISHED", "FAILED"}:
             raise RuntimeFailure("INVALID_WORKER_RESULT", "worker status must be FINISHED or FAILED")
@@ -2595,6 +2616,8 @@ class RunStore:
             worker = next((item for item in state["workers"] if item["id"] == worker_id), None)
             if worker is None:
                 raise RuntimeFailure("WORKER_OWNERSHIP", "worker is not registered")
+            if worker["adapter"] == "native":
+                self._require_native_ticket(native_ticket, state, task)
             worker["status"] = status
             task["lease"] = None
             if status == "FAILED":
@@ -2675,6 +2698,7 @@ class RunStore:
                     "task required artifacts are missing",
                     details={"requirements": missing_artifacts},
                 )
+            self.assert_gate_sources_current(state, evidence_refs)
             task["status"] = "COMPLETED"
             task["lease"] = None
             if task["checkpointPolicy"]["afterCompletion"]:
@@ -2705,6 +2729,7 @@ class RunStore:
             task = find_task(state, task_id)
             if task["status"] in TERMINAL_TASK_STATUSES:
                 raise RuntimeFailure("TASK_TERMINAL", f"task {task_id} is already terminal")
+            close_task_workers(state, task, reason)
             task["lease"] = None
             if task["sideEffect"] and task["sideEffect"]["state"] == "PENDING":
                 task["sideEffect"]["state"] = "UNCERTAIN"
@@ -2716,6 +2741,381 @@ class RunStore:
             return {"taskId": task_id, "reason": reason, "taskStatus": task["status"]}
 
         return self._transaction(run_id, mutate, event_type="task.failed", actor=actor, task_id=task_id)
+
+    def _require_native_ticket(
+        self, ticket: NativeWorkerTicket | None, state: dict[str, Any], task: dict[str, Any],
+        *, allow_expired_failure: bool = False,
+    ) -> None:
+        if (
+            not isinstance(ticket, NativeWorkerTicket)
+            or ticket.issuer is not self.__native_issuer
+            or ticket.consumed
+        ):
+            raise RuntimeFailure("NATIVE_RESULT_UNTRUSTED", "native results require a live host-owned bridge invocation")
+        binding = ticket.binding
+        lease = task.get("lease")
+        if (
+            state["runId"] != binding["runId"]
+            or state["objective"]["version"] != binding["objectiveVersion"]
+            or state["revision"] != binding["revision"]
+            or task["id"] != binding["taskId"]
+            or task["workPacket"]["workPacketId"] != binding["workPacketId"]
+            or task["status"] != "RUNNING"
+            or not lease
+            or lease["owner"] != binding["workerId"]
+            or lease["acquiredAt"] != binding["acquiredAt"]
+            or (not allow_expired_failure and parse_iso(lease["expiresAt"]) <= dt.datetime.now(dt.timezone.utc))
+        ):
+            raise RuntimeFailure("NATIVE_RESULT_STALE", "native objective/revision/lease binding is stale or replayed")
+
+    def begin_native_worker(self, run_id: str, task_id: str, *, host_owner: str) -> NativeWorkerTicket:
+        """Admit one bounded task before the bridge invokes the current host."""
+        from worker_adapters import git_status, ignored_fingerprint, workspace_fingerprint
+        from workspaces import WorkspaceManager
+
+        state = self.load(run_id)
+        task = find_task(state, task_id)
+        if task["workerProfile"] not in {"native", "copilot", "claude", "codex"}:
+            raise RuntimeFailure("NATIVE_PROFILE_REQUIRED", "task is not a native agent WorkPacket")
+        if task["sideEffect"] is not None:
+            raise RuntimeFailure("NATIVE_SIDE_EFFECT_DENIED", "native candidates cannot execute registered side effects")
+        if task["workPacket"].get("execution"):
+            raise RuntimeFailure("NATIVE_EXECUTION_DENIED", "agent WorkPackets cannot carry shell execution recipes")
+        packet = task["workPacket"]
+        if (
+            packet["mutablePaths"] != task["mutablePaths"]
+            or packet["acceptanceCriteria"] != task["acceptanceCriteria"]
+            or packet["risk"] != task["risk"]
+            or not 1 <= packet["budget"]["timeoutSeconds"] <= 3600
+            or not 1 <= packet["budget"]["maxOutputBytes"] <= 1024 * 1024
+        ):
+            raise RuntimeFailure("NATIVE_PACKET_INVALID", "native WorkPacket scope/criteria/risk/budget must match its canonical task")
+        if not host_owner or len(host_owner) > 256:
+            raise RuntimeFailure("NATIVE_OWNER_REQUIRED", "a live host owner handle is required")
+        if not task.get("workspace"):
+            WorkspaceManager(self.repository).create(run_id, task_id)
+            task = find_task(self.load(run_id), task_id)
+        workspace = Path(task["workspace"]).resolve()
+        if workspace == self.repository or not workspace.is_dir() or git_status(workspace):
+            raise RuntimeFailure("WORKSPACE_NOT_ISOLATED", "native admission requires a clean isolated worktree")
+        snapshot = {
+            "workspace": str(workspace),
+            "head": run_command(["git", "rev-parse", "HEAD"], workspace),
+            "ignored": ignored_fingerprint(workspace),
+        }
+        worker_id = f"native-{uuid.uuid4().hex}"
+        state = self.start_task(
+            run_id, task_id, worker_id=worker_id,
+            lease_seconds=task["workPacket"]["budget"]["timeoutSeconds"], actor="native-host",
+        )
+        snapshot["source"] = workspace_fingerprint(self.repository)
+        task = find_task(state, task_id)
+        binding = {
+            "runId": run_id, "taskId": task_id, "workerId": worker_id,
+            "workPacketId": task["workPacket"]["workPacketId"],
+            "objectiveVersion": state["objective"]["version"], "revision": state["revision"],
+            "acquiredAt": task["lease"]["acquiredAt"], "owner": host_owner, "hostTaskId": None,
+        }
+        return NativeWorkerTicket(self.__native_issuer, binding, snapshot)
+
+    def bind_native_owner(self, ticket: NativeWorkerTicket, host_task_id: str) -> dict[str, Any]:
+        if not isinstance(host_task_id, str) or not host_task_id or len(host_task_id) > 256:
+            raise RuntimeFailure("NATIVE_OWNER_REQUIRED", "host did not admit an agent task")
+        def mutate(state: dict[str, Any]) -> dict[str, Any]:
+            task = find_task(state, ticket.binding["taskId"])
+            self._require_native_ticket(ticket, state, task, allow_expired_failure=True)
+            if ticket.binding["hostTaskId"] is not None:
+                raise RuntimeFailure("NATIVE_RESULT_STALE", "native owner is already bound")
+            worker = next(item for item in state["workers"] if item["id"] == ticket.binding["workerId"])
+            worker["nativeBinding"] = {**ticket.binding, "hostTaskId": host_task_id, "revision": state["revision"] + 1}
+            return {"workerId": worker["id"], "hostTaskId": host_task_id}
+        state = self._transaction(
+            ticket.binding["runId"], mutate, event_type="worker.admitted", actor="native-host",
+            task_id=ticket.binding["taskId"],
+        )
+        ticket.binding["hostTaskId"] = host_task_id
+        ticket.binding["revision"] = state["revision"]
+        return state
+
+    def accept_native_candidate(
+        self, ticket: NativeWorkerTicket, *, host_task_id: str, host_status: str, text: str
+    ) -> dict[str, Any]:
+        """Accept only a result independently observed on the joined host RPC connection."""
+        from worker_adapters import git_status, ignored_fingerprint, path_allowed, workspace_fingerprint
+
+        if not isinstance(ticket, NativeWorkerTicket):
+            raise RuntimeFailure("NATIVE_RESULT_UNTRUSTED", "serialized native results are not accepted")
+        state = self.load(ticket.binding["runId"])
+        task = find_task(state, ticket.binding["taskId"])
+        self._require_native_ticket(ticket, state, task, allow_expired_failure=host_status == "cancelled")
+        if host_task_id != ticket.binding["hostTaskId"] or host_status not in {"completed", "idle", "failed", "cancelled"}:
+            raise RuntimeFailure("NATIVE_RESULT_UNTRUSTED", "result does not match the admitted host task")
+        workspace = Path(ticket.snapshot["workspace"])
+        changed = sorted(git_status(workspace))
+        errors = []
+        if host_status in {"failed", "cancelled"}:
+            errors.append(f"host worker {host_status}")
+        if any(not path_allowed(path, task["mutablePaths"]) for path in changed):
+            errors.append("worker changed paths outside its WorkPacket")
+        if run_command(["git", "rev-parse", "HEAD"], workspace) != ticket.snapshot["head"]:
+            errors.append("worker changed workspace history")
+        if ignored_fingerprint(workspace) != ticket.snapshot["ignored"]:
+            errors.append("worker changed ignored files")
+        if workspace_fingerprint(self.repository) != ticket.snapshot["source"]:
+            errors.append("worker changed the coordinator workspace")
+        limit = min(task["workPacket"]["budget"]["maxOutputBytes"], 8192)
+        bounded = text.encode("utf-8")[:limit].decode("utf-8", "replace")
+        artifact_id = f"native-result-{uuid.uuid4().hex}"
+        path = self.run_dir(state["runId"]) / "workers" / f"{artifact_id}.json"
+        result = {
+            "schema": "architrave.native-candidate.v1", "binding": ticket.binding,
+            "status": "failed" if errors else "candidate", "observedHostStatus": host_status,
+            "summary": redact(bounded), "truncated": len(text.encode("utf-8")) > limit,
+            "changedPaths": changed, "errors": errors, "observedAt": utc_now(),
+        }
+        self._atomic_write(path, result)
+        def mutate(current: dict[str, Any]) -> dict[str, Any]:
+            current_task = find_task(current, task["id"])
+            self._require_native_ticket(ticket, current, current_task, allow_expired_failure=host_status == "cancelled")
+            worker = next(item for item in current["workers"] if item["id"] == ticket.binding["workerId"])
+            worker["status"] = "FAILED" if errors else "FINISHED"
+            worker["finishedAt"] = utc_now()
+            worker["reason"] = "; ".join(errors) or "candidate only"
+            current_task["lease"] = None
+            if errors:
+                self._apply_task_retry_or_terminate(current, current_task, "WORKER_FAILURE")
+            else:
+                current_task["status"] = "WAITING_RESOURCE"
+                append_checkpoint(current, task["id"], "WORKER_COMPLETION")
+            artifact = {
+                "id": artifact_id, "kind": "worker-result", "producer": "worker",
+                "path": path.relative_to(self.repository).as_posix(), "createdAt": utc_now(),
+                "sha256": sha256_file(path), "evidenceRefs": [f"task:{task['id']}"],
+                "consumedByTask": None,
+            }
+            artifact["attestation"] = self._artifact_attestation(artifact)
+            current["artifacts"].append(artifact)
+            current["status"] = derive_run_status(current)
+            return {"workerId": worker["id"], "hostTaskId": host_task_id, "candidateStatus": result["status"]}
+        try:
+            self._transaction(
+                state["runId"], mutate, event_type="worker.finished", actor="native-host",
+                task_id=task["id"],
+            )
+        except RuntimeFailure:
+            path.unlink(missing_ok=True)
+            raise
+        ticket.consumed = True
+        return {**result, "artifactRef": f"artifact:{artifact_id}"}
+
+    def recover_workers(self, run_id: str, *, task_id: str | None = None) -> dict[str, Any]:
+        """Close orphan/expired records; an explicit failed task recovery never runs commands."""
+        def mutate(state: dict[str, Any]) -> dict[str, Any]:
+            closed = []
+            now = dt.datetime.now(dt.timezone.utc)
+            for task in state["tasks"]:
+                if task["status"] == "RUNNING" and (
+                    not task.get("lease") or parse_iso(task["lease"]["expiresAt"]) <= now
+                ):
+                    close_task_workers(state, task, "lease expired")
+                    task["lease"] = None
+                    if task.get("sideEffect") and task["sideEffect"]["state"] in {"PENDING", "UNCERTAIN"}:
+                        task["sideEffect"]["state"] = "UNCERTAIN"
+                        task["status"] = "WAITING_RESOURCE"
+                        append_checkpoint(state, task["id"], "SIDE_EFFECT_AMBIGUITY")
+                    else:
+                        task["status"] = "FAILED"
+                    closed.append(task["id"])
+            active = {task["lease"]["owner"] for task in state["tasks"]
+                      if task["status"] == "RUNNING" and task.get("lease")}
+            for worker in state["workers"]:
+                if worker["status"] == "RUNNING" and worker["id"] not in active:
+                    worker["status"] = "FAILED"
+                    worker["finishedAt"] = utc_now()
+                    worker["reason"] = "orphaned worker without active task lease"
+            if task_id:
+                if state["status"] in {"COMPLETED", "CANCELLED"}:
+                    raise RuntimeFailure("RECOVERY_UNSAFE", "cannot revive a terminal Run")
+                task = find_task(state, task_id)
+                if task["status"] != "FAILED" or task.get("sideEffect") is not None:
+                    raise RuntimeFailure("RECOVERY_UNSAFE", "explicit recovery requires a failed task with no side effect")
+                if task["objectiveVersion"] != state["objective"]["version"]:
+                    raise RuntimeFailure("OBJECTIVE_SUPERSEDED", "cannot recover a historical task")
+                if any(gate["taskId"] == task_id and gate["status"] == "FAIL" for gate in state["gateResults"]):
+                    raise RuntimeFailure("RECOVERY_GATE_FAILED", "a failed deterministic/product gate needs separate reconciliation")
+                task["retryPolicy"]["maxAttempts"] = max(task["retryPolicy"]["maxAttempts"], task["attempts"] + 1)
+                task["status"] = ("WAITING_EXTERNAL" if task_has_pending_checkpoint(state, task["id"])
+                                  else "READY" if dependencies_completed(state, task) else "NOT_READY")
+                task["retryNotBefore"] = None
+                task["workspace"] = None
+            if state["status"] not in {"COMPLETED", "CANCELLED"}:
+                state["status"] = "RECOVERING"
+                state["status"] = derive_run_status(state)
+            return {"closedTasks": closed, "recoveredTask": task_id, "sideEffectsReplayed": False}
+        return self._transaction(run_id, mutate, event_type="worker.recovered", actor="coordinator", task_id=task_id)
+
+    def recover_native_checkpoint(self, run_id: str, checkpoint_id: str, *, host_owner: str) -> dict[str, Any]:
+        """Withdraw an obsolete integration wait, not resolve human/product authority."""
+        if not host_owner:
+            raise RuntimeFailure("NATIVE_OWNER_REQUIRED", "live joined host required")
+        def mutate(state: dict[str, Any]) -> dict[str, Any]:
+            checkpoint = next((item for item in state["externalCheckpoints"] if item["id"] == checkpoint_id), None)
+            if (
+                checkpoint is None or checkpoint_id != "native-adapter-required"
+                or checkpoint["status"] != "PENDING"
+                or checkpoint["type"] != "HUMAN_JUDGMENT_REQUIRED"
+                or checkpoint.get("policyAmendment") is not None
+                or checkpoint["objectiveVersion"] != state["objective"]["version"]
+                or "native" not in checkpoint["reason"].lower()
+                or "adapter" not in checkpoint["reason"].lower()
+                or checkpoint["provider"] != "copilot-host"
+                or "spawn agent CLIs forbidden by execution-policy" not in checkpoint["reason"]
+                or "No package sign deploy launch auth grant." not in checkpoint["reason"]
+            ):
+                raise RuntimeFailure("RECOVERY_UNSAFE", "only the obsolete native-adapter integration wait can be withdrawn")
+            task = find_task(state, checkpoint["taskId"])
+            if (task.get("sideEffect") is not None or task.get("lease")
+                or task["attempts"] != 0 or task.get("operations") or task.get("targetIdentity")
+                or task["status"] != "WAITING_EXTERNAL"):
+                raise RuntimeFailure("RECOVERY_UNSAFE", "integration recovery cannot bypass side-effect reconciliation")
+            checkpoint["status"] = "CANCELLED"
+            checkpoint["resolvedAt"] = utc_now()
+            checkpoint["resolvedBy"] = "native-host"
+            checkpoint["resolutionRef"] = None
+            task["status"] = ("WAITING_EXTERNAL" if task_has_pending_checkpoint(state, task["id"])
+                              else "READY" if dependencies_completed(state, task) else "NOT_READY")
+            state["status"] = "RECOVERING"
+            state["status"] = derive_run_status(state)
+            return {"withdrawnCheckpoint": checkpoint_id, "owner": host_owner, "criteriaSatisfied": []}
+        return self._transaction(run_id, mutate, event_type="worker.integration_recovered", actor="native-host")
+
+    def execute_gate(
+        self, run_id: str, task_id: str, *, recipe: str = "test", ci_run_id: int | None = None
+    ) -> dict[str, Any]:
+        """Run a configured deterministic gate; accept no caller-authored result or command."""
+        from platform_launch import configured_shell_command, LaunchError
+        from worker_adapters import command_for, git_status, run_bounded, workspace_fingerprint
+
+        before = self.load(run_id)
+        task = find_task(before, task_id)
+        self._assert_repository_baseline(before)
+        if task["objectiveVersion"] != before["objective"]["version"]:
+            raise RuntimeFailure("OBJECTIVE_SUPERSEDED", "cannot gate a historical task")
+        if task["status"] != "WAITING_RESOURCE":
+            raise RuntimeFailure("GATE_NOT_READY", "gate execution requires a finished candidate")
+        config = repository_config(str(self.repository))
+        ci_environment = None
+        gate_cwd = self.repository
+        if recipe == "ci":
+            if git_status(self.repository):
+                raise RuntimeFailure("CI_SOURCE_DIRTY", "CI cannot verify staged, unstaged, or untracked local source")
+            if not isinstance(ci_run_id, int) or isinstance(ci_run_id, bool) or ci_run_id <= 0:
+                raise RuntimeFailure("CI_BINDING_REQUIRED", "CI observation requires an exact positive workflow Run id")
+            remote = run_command(["git", "remote", "get-url", "origin"], self.repository)
+            match = re.fullmatch(r"(?:https://|git@)([A-Za-z0-9.-]+)[/:]([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?", remote)
+            if not match:
+                raise RuntimeFailure("CI_SOURCE_UNSUPPORTED", "CI observation requires an exact GitHub origin")
+            host, repository = match.groups()
+            gh = shutil.which("gh")
+            if not gh:
+                raise RuntimeFailure("CI_EXECUTOR_REQUIRED", "installed GitHub CLI is required to observe CI")
+            command = [gh, "run", "view", str(ci_run_id), "--repo", repository,
+                       "--json", "databaseId,headSha,conclusion,status,url"]
+            ci_environment = {name: value for name, value in os.environ.items()
+                              if name not in {"GH_TOKEN", "GITHUB_TOKEN"}}
+            ci_environment["GH_HOST"] = host
+        elif recipe == "task":
+            if task["workerProfile"] != "shell" or task.get("sideEffect") is not None:
+                raise RuntimeFailure("GATE_RECIPE_DENIED", "task argv gates require a deterministic side-effect-free shell WorkPacket")
+            command, gate_cwd = command_for("shell", task["workPacket"], self.repository)
+        elif recipe == "quick":
+            runner = Path(__file__).resolve().parents[1] / "gates" / "gate_runner.py"
+            command = [sys.executable, str(runner), "checks", "--quick", "--repo", str(self.repository)]
+        elif recipe in {"test", "build"} and isinstance(config.get(recipe), str) and config[recipe].strip():
+            try:
+                command = configured_shell_command(config[recipe])
+            except LaunchError as exc:
+                raise RuntimeFailure("GATE_RECIPE_DENIED", str(exc)) from exc
+        else:
+            raise RuntimeFailure("GATE_RECIPE_REQUIRED", "choose quick, CI, stored deterministic task argv, or configured build/test")
+        source = workspace_fingerprint(self.repository, include_ignored=False)
+        result = run_bounded(
+            command, cwd=gate_cwd, environment=ci_environment or dict(os.environ),
+            timeout_seconds=task["workPacket"]["budget"]["timeoutSeconds"],
+            max_output_bytes=min(task["workPacket"]["budget"]["maxOutputBytes"], 8192),
+        )
+        after = self.load(run_id)
+        if (
+            after["revision"] != before["revision"]
+            or after["objective"]["version"] != before["objective"]["version"]
+            or workspace_fingerprint(self.repository, include_ignored=False) != source
+            or (recipe == "ci" and git_status(self.repository))
+        ):
+            raise RuntimeFailure("GATE_RESULT_STALE", "Run or source changed during deterministic observation")
+        passed = result["exitCode"] == 0 and not result["timedOut"]
+        ci_observation = None
+        if recipe == "ci" and passed:
+            try:
+                ci_observation = json.loads(result["stdout"])
+            except ValueError as exc:
+                raise RuntimeFailure("CI_RESULT_INVALID", "GitHub did not return a bounded workflow observation") from exc
+            if (ci_observation.get("databaseId") != ci_run_id
+                or ci_observation.get("headSha") != before["baseline"]["commit"]):
+                raise RuntimeFailure("CI_SOURCE_MISMATCH", "CI Run does not belong to this exact source commit")
+            if ci_observation.get("status") != "completed":
+                raise RuntimeFailure("CI_PENDING", "CI is still running; no result has been registered", exit_code=2)
+            passed = ci_observation.get("status") == "completed" and ci_observation.get("conclusion") == "success"
+        gate_id = f"gate-{recipe}-{uuid.uuid4().hex}"
+        receipt = {
+            "schema": "architrave.deterministic-observation.v1",
+            "binding": {"runId": run_id, "taskId": task_id, "objectiveVersion": before["objective"]["version"],
+                        "revision": before["revision"], "criteria": task["acceptanceCriteria"], "risk": task["risk"]},
+            "source": {"commit": before["baseline"]["commit"], "sha256": source, "scope": "git-visible-source"},
+            "command": command, "cwd": str(gate_cwd), "recipe": recipe, "status": "pass" if passed else "fail",
+            "observedAt": utc_now(), **redact(result),
+            "ci": ci_observation,
+        }
+        path = self.run_dir(run_id) / "deterministic" / f"{gate_id}.json"
+        self._atomic_write(path, receipt)
+        self._record_artifact(
+            run_id, artifact_id=gate_id, kind="deterministic-result",
+            path=path.relative_to(self.repository).as_posix(), evidence_refs=[f"task:{task_id}"],
+            actor="deterministic-executor", producer="deterministic",
+        )
+        artifact_ref = f"artifact:{gate_id}"
+        self.record_gate(
+            run_id, gate_id=gate_id, task_id=task_id, gate_type="deterministic",
+            status="PASS" if passed else "FAIL", evidence_refs=[artifact_ref] if artifact_ref else [],
+            criteria=task["acceptanceCriteria"], actor="deterministic-executor",
+        )
+        return {"gateRef": f"gate:{gate_id}", "artifactRef": artifact_ref,
+                "status": "PASS" if passed else "FAIL", "exitCode": result["exitCode"],
+                "source": receipt["source"], "observedAt": receipt["observedAt"]}
+
+    def assert_gate_sources_current(self, state: dict[str, Any], references: Sequence[str]) -> None:
+        from worker_adapters import workspace_fingerprint
+        gate_ids = {ref.split(":", 1)[1] for ref in references if ref.startswith("gate:")}
+        refs = {ref for gate in state["gateResults"] if gate["id"] in gate_ids for ref in gate["evidenceRefs"]}
+        observed_source = None
+        for artifact in state["artifacts"]:
+            if f"artifact:{artifact['id']}" not in refs or artifact["producer"] != "deterministic":
+                continue
+            receipt = self._read_json_receipt(artifact["path"], "deterministic")
+            if receipt.get("schema") != "architrave.deterministic-observation.v1":
+                continue
+            if observed_source is None:
+                observed_source = workspace_fingerprint(self.repository, include_ignored=False)
+            binding = receipt["binding"]
+            task = find_task(state, binding["taskId"])
+            if (
+                binding["runId"] != state["runId"]
+                or binding["objectiveVersion"] != state["objective"]["version"]
+                or binding["risk"] != task["risk"]
+                or binding["criteria"] != task["acceptanceCriteria"]
+                or receipt["source"]["commit"] != state["baseline"]["commit"]
+                or receipt["source"]["sha256"] != observed_source
+            ):
+                raise RuntimeFailure("EVIDENCE_SOURCE_STALE", "deterministic evidence no longer matches current source/objective/task/risk")
 
     def record_gate(
         self,
@@ -2787,6 +3187,13 @@ class RunStore:
                         "PASS gate evidence has an untrusted producer",
                         details={"gateType": gate_type, "producers": sorted(producers)},
                     )
+                if gate_type == "deterministic":
+                    for artifact in state["artifacts"]:
+                        if artifact["id"] not in artifact_ids or artifact["producer"] != "deterministic":
+                            continue
+                        receipt = self._read_json_receipt(artifact["path"], "deterministic")
+                        if receipt.get("status") != "pass" or receipt.get("exitCode") != 0:
+                            raise RuntimeFailure("DETERMINISTIC_RECEIPT", "PASS requires a passing observed command receipt")
                 if gate_type == "semantic":
                     for artifact in state["artifacts"]:
                         if artifact["id"] not in artifact_ids:
@@ -2915,6 +3322,7 @@ class RunStore:
             if criterion is None:
                 raise RuntimeFailure("CRITERION_NOT_FOUND", f"criterion not found: {criterion_id}")
             if status in {"PASS", "NOT_APPLICABLE"}:
+                self.assert_gate_sources_current(state, evidence_refs)
                 require_evidence_refs(state, evidence_refs, allowed={"gate", "external"})
                 for reference in evidence_refs:
                     kind, identifier = reference.split(":", 1)
@@ -3728,6 +4136,7 @@ class RunStore:
             for task in state["tasks"]:
                 if task["status"] != "RUNNING":
                     continue
+                close_task_workers(state, task, "resume abandoned the prior worker lease")
                 if task.get("objectiveVersion", state["objective"]["version"]) != state["objective"]["version"]:
                     task["status"] = "DEFERRED"
                     task["lease"] = None
@@ -3748,6 +4157,13 @@ class RunStore:
                     task["status"] = "READY" if dependencies_completed(state, task) else "NOT_READY"
                     recovered.append(task["id"])
             refresh_task_readiness(state)
+            active_workers = {task["lease"]["owner"] for task in state["tasks"]
+                              if task["status"] == "RUNNING" and task.get("lease")}
+            for worker in state["workers"]:
+                if worker["status"] == "RUNNING" and worker["id"] not in active_workers:
+                    worker["status"] = "FAILED"
+                    worker["finishedAt"] = utc_now()
+                    worker["reason"] = "resume closed orphaned worker"
             state["status"] = derive_run_status(state)
             if state["status"] == "PAUSED" and state["autonomy"]["scope"] == "current-task":
                 state["status"] = "RUNNING" if any(task["status"] == "READY" for task in state["tasks"]) else state["status"]
@@ -3760,6 +4176,7 @@ class RunStore:
 
         def mutate(state: dict[str, Any]) -> dict[str, Any]:
             required = [criterion for criterion in state["acceptanceCriteria"] if criterion["blocking"]]
+            self.assert_gate_sources_current(state, [ref for criterion in required for ref in criterion["evidenceRefs"]])
             deterministic_failures = [
                 gate["id"]
                 for gate in state["gateResults"]
@@ -4287,6 +4704,23 @@ def find_task(state: dict[str, Any], task_id: str) -> dict[str, Any]:
     return task
 
 
+def close_task_workers(state: dict[str, Any], task: dict[str, Any], reason: str) -> None:
+    owner = (task.get("lease") or {}).get("owner")
+    for worker in state["workers"]:
+        if worker["status"] == "RUNNING" and (
+            worker["id"] == owner or worker.get("taskId") == task["id"]
+        ):
+            worker["status"] = "FAILED"
+            worker["finishedAt"] = utc_now()
+            worker["reason"] = reason
+
+
+def task_has_pending_checkpoint(state: dict[str, Any], task_id: str) -> bool:
+    return any(checkpoint["status"] == "PENDING"
+               and task_id in {checkpoint["taskId"], checkpoint["resumeTask"]}
+               for checkpoint in state["externalCheckpoints"])
+
+
 def dependencies_completed(state: dict[str, Any], task: dict[str, Any]) -> bool:
     statuses = {item["id"]: item["status"] for item in state["tasks"]}
     return all(statuses.get(dependency) in {"COMPLETED", "SKIPPED"} for dependency in task["dependencies"])
@@ -4555,6 +4989,32 @@ def split_csv(value: str | None) -> list[str]:
 
 
 def state_summary(state: dict[str, Any]) -> dict[str, Any]:
+    from worker_adapters import workspace_fingerprint
+
+    now = dt.datetime.now(dt.timezone.utc)
+    active_worker_ids = {task["lease"]["owner"] for task in state["tasks"]
+                         if task["status"] == "RUNNING" and task.get("lease")
+                         and parse_iso(task["lease"]["expiresAt"]) > now}
+    repository = Path(state["baseline"]["repository"])
+    current_commit = run_command(["git", "rev-parse", "HEAD"], repository)
+    source_sha = workspace_fingerprint(repository, include_ignored=False)
+    evidence = []
+    for artifact in state["artifacts"]:
+        item = {"id": artifact["id"], "producer": artifact["producer"],
+                "sha256": artifact["sha256"], "createdAt": artifact["createdAt"],
+                "bindings": artifact["evidenceRefs"], "freshness": "historical"}
+        if artifact["producer"] == "deterministic":
+            receipt = json.loads((repository / artifact["path"]).read_text(encoding="utf-8"))
+            if receipt.get("schema") == "architrave.deterministic-observation.v1":
+                item["source"] = receipt["source"]
+                item["objectiveVersion"] = receipt["binding"]["objectiveVersion"]
+                item["freshness"] = (
+                    "current" if receipt["source"]["sha256"] == source_sha
+                    and receipt["source"]["commit"] == current_commit
+                    and receipt["binding"]["objectiveVersion"] == state["objective"]["version"]
+                    else "stale"
+                )
+        evidence.append(item)
     return {
         "runId": state["runId"],
         "status": state["status"],
@@ -4571,6 +5031,17 @@ def state_summary(state: dict[str, Any]) -> dict[str, Any]:
         "activeLanes": [lane["id"] for lane in state["lanes"]["active"]],
         "nextCheapestTest": state["focus"]["nextCheapestTest"],
         "eventCursor": state["eventCursor"],
+        "observedAt": utc_now(),
+        "source": {"commit": state["baseline"]["commit"], "branch": state["baseline"]["branch"],
+                   "observedCommit": current_commit, "sha256": source_sha,
+                   "baselineFresh": state["baseline"]["commit"] == current_commit},
+        "activeWorkers": [worker["id"] for worker in state["workers"]
+                          if worker["status"] == "RUNNING" and worker["id"] in active_worker_ids],
+        "historicalWorkers": {worker["id"]: worker["status"] for worker in state["workers"]
+                              if worker["status"] != "RUNNING"},
+        "staleWorkers": [worker["id"] for worker in state["workers"]
+                        if worker["status"] == "RUNNING" and worker["id"] not in active_worker_ids],
+        "evidence": evidence,
     }
 
 
@@ -4594,13 +5065,23 @@ def build_parser() -> argparse.ArgumentParser:
         if command == "resume":
             current.add_argument("--accept-commit", action="store_true")
 
+    recover = subparsers.add_parser("worker-recover", help="close expired/orphan workers without replaying side effects")
+    recover.add_argument("run_id")
+    recover.add_argument("--task-id", help="explicitly release one failed, side-effect-free task for a new candidate")
+
+    execute = subparsers.add_parser("gate-execute", help="observe a real configured command, never import a claimed PASS")
+    execute.add_argument("run_id")
+    execute.add_argument("task_id")
+    execute.add_argument("--recipe", choices=["quick", "build", "test", "ci", "task"], default="test")
+    execute.add_argument("--ci-run-id", type=int)
+
     task_add = subparsers.add_parser("task-add")
     task_add.add_argument("run_id")
     task_add.add_argument("--id", required=True)
     task_add.add_argument("--title", required=True)
     task_add.add_argument("--objective", required=True)
     task_add.add_argument("--depends-on")
-    task_add.add_argument("--worker", choices=["copilot", "claude", "codex", "shell"], default="shell")
+    task_add.add_argument("--worker", choices=["native", "shell"], default="native")
     task_add.add_argument("--workspace")
     task_add.add_argument("--mutable-path", action="append", default=[])
     task_add.add_argument("--tool", action="append", default=[])
@@ -4778,6 +5259,13 @@ def cli(argv: Sequence[str] | None = None) -> int:
             output = state_summary(state)
         elif command == "status":
             output = state_summary(store.load(args.run_id))
+        elif command == "worker-recover":
+            output = state_summary(store.recover_workers(args.run_id, task_id=args.task_id))
+        elif command == "gate-execute":
+            output = store.execute_gate(args.run_id, args.task_id, recipe=args.recipe, ci_run_id=args.ci_run_id)
+            if output["status"] != "PASS":
+                print(json.dumps({"status": "failed", "result": output}, indent=2))
+                return 1
         elif command == "inspect":
             output = store.load(args.run_id)
         elif command == "events":

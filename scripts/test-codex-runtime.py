@@ -66,7 +66,7 @@ def provider_config() -> tuple[str, dict[str, object]]:
         if key in auth
     }
     return provider_name, {
-        "model": source.get("model", "gpt-5.6-sol"),
+        "model": source.get("model"),
         "provider": allowed_provider,
         "auth": allowed_auth,
     }
@@ -95,9 +95,8 @@ def write_config(
     provider = values["provider"]
     auth = values["auth"]
     lines = [
-        f"model = {quote(values['model'])}",
+        *([f"model = {quote(values['model'])}"] if isinstance(values.get("model"), str) else []),
         f"model_provider = {quote(provider_name)}",
-        'model_reasoning_effort = "max"',
         'history.persistence = "none"',
         'analytics.enabled = false',
         'features.multi_agent = true',

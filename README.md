@@ -311,8 +311,10 @@ Goal → Outcome → Acceptance Matrix → TaskGraph → WorkPackets
         HMAC-authenticated with an ignored local runtime key.
 - `current-task`, `approved-program`, and `advisory-only` separate autonomy from
         phase observability. The Phase Ledger is generated from TaskGraph state.
-- Copilot, Claude, Codex, and deterministic shell adapters return bounded
-        candidate results. Mutating parallel work uses isolated git worktrees.
+- One host-native structured worker path and deterministic shell argv return
+        bounded candidates. Agent CLI subprocess adapters are prohibited.
+        Copilot's minimal installed extension joins its existing tasks RPC;
+        unsupported hosts fail early. WorkPackets use isolated git worktrees.
 - Repository-wide leases serialize overlapping mutable scopes across Runs;
         mutation receipts are task-bound, outcome-bound, and single-use.
 - Typed external checkpoints pause OAuth/MFA/consent/signing/human judgment
@@ -330,6 +332,14 @@ See [`docs/runtime-v2.md`](docs/runtime-v2.md),
 [`docs/migration-run-v1-v2.md`](docs/migration-run-v1-v2.md). The measured
 Pi/OpenCode comparison and basic-sh before/after footprint are in
 [`docs/orchestration-audit.md`](docs/orchestration-audit.md).
+
+For durable Copilot workers, run `python tools/install_update.py native-host-install`
+from the installed kit once, then use the supported extensions reload. Invoke
+`architrave_native_dispatch` with the absolute adopted repo, Run and task IDs;
+`architrave_native_gate` independently observes the configured test/build or
+installed quick gate. `status` is a fresh projection; worker done is never PASS.
+The copied kit/bridge supports Python 3.9+ (including macOS system 3.9.6);
+optional `--codex` role adoption still requires Python 3.11+.
 
 **Full-stack is built in.** Set a `backend` and/or `iac` block in `architrave.config.json` and the same conductor extends past UI. Repos without a service, infra, or runtime lane simply omit those blocks.
 

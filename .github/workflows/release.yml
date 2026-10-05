@@ -51,6 +51,7 @@ jobs:
         shell: powershell
         run: |
           python scripts/test_install_update.py
+          python scripts/test-native-host.py
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-config-profiles.ps1
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-validate-run.ps1
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-validate-learning.ps1

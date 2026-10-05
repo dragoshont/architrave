@@ -15,7 +15,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "harness"))
 
-from architrave_runtime import RunStore
+from architrave_runtime import RunStore, RuntimeFailure
 from worker_adapters import command_for, execute_work_packet, git_status
 
 
@@ -794,7 +794,7 @@ class WorkerAdapterTests(unittest.TestCase):
         self.assertIn("mutation.denied", event_types)
         self.assertIn("worker.finished", event_types)
 
-    def test_agent_command_shapes_are_adapter_native(self) -> None:
+    def test_legacy_agent_commands_require_host_native_transport(self) -> None:
         packet = {
             "workPacketId": "wp-shape",
             "taskId": "shape",
@@ -806,16 +806,10 @@ class WorkerAdapterTests(unittest.TestCase):
             "expectedArtifacts": [],
             "execution": None,
         }
-        copilot, _ = command_for("copilot", packet, self.repo)
-        claude, _ = command_for("claude", packet, self.repo)
-        codex, _ = command_for("codex", packet, self.repo)
-        self.assertEqual("copilot", Path(copilot[0]).stem)
-        self.assertIn("--allow-tool", copilot)
-        self.assertEqual("claude", Path(claude[0]).stem)
-        self.assertEqual("-p", claude[1])
-        self.assertEqual("codex", Path(codex[0]).stem)
-        self.assertIn("read-only", codex)
-        self.assertIn("exec", codex)
+        for adapter in ("native", "copilot", "claude", "codex"):
+            with self.assertRaises(RuntimeFailure) as error:
+                command_for(adapter, packet, self.repo)
+            self.assertEqual("NATIVE_HOST_REQUIRED", error.exception.code)
 
     def test_agent_adapters_execute_and_normalize_candidates(self) -> None:
         fake_bin = Path(self.temp.name) / "fake-bin"
@@ -837,12 +831,9 @@ class WorkerAdapterTests(unittest.TestCase):
                         mutable_paths=[],
                         adapter=adapter,
                     )
-                    result = execute_work_packet(self.store, run_id, task_id, "worker-1")
-                    self.assertEqual("candidate", result["status"])
-                    self.assertEqual(adapter, result["adapter"])
-                    self.assertIn("candidate", result["summary"])
-                    task = next(item for item in self.store.load(run_id)["tasks"] if item["id"] == task_id)
-                    self.assertEqual("WAITING_RESOURCE", task["status"])
+                    with self.assertRaises(RuntimeFailure) as error:
+                        execute_work_packet(self.store, run_id, task_id, "worker-1")
+                    self.assertEqual("NATIVE_HOST_REQUIRED", error.exception.code)
         finally:
             os.environ["PATH"] = original_path
 

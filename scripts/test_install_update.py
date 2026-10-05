@@ -159,6 +159,7 @@ class InstallUpdateTests(unittest.TestCase):
         ):
             self.assertTrue((knowledge / relative).is_file(), relative)
 
+    @unittest.skipIf(sys.version_info < (3, 11), "optional Codex role installation requires Python 3.11+")
     def test_update_agents_codex_and_idempotency(self) -> None:
         target = self.workspace / "codex knowledge"
         target.mkdir()
@@ -398,8 +399,8 @@ class InstallUpdateTests(unittest.TestCase):
             return Process(argv)
 
         ssh = {
-            "executable": sys.executable,
-            "executableSha256": digest(Path(sys.executable)),
+            "executable": str(Path(sys.executable).resolve()),
+            "executableSha256": digest(Path(sys.executable).resolve()),
             "host": "trusted-host",
             "hostKeyAlias": "trusted-key-alias",
             "port": 22,
@@ -416,7 +417,7 @@ class InstallUpdateTests(unittest.TestCase):
             result = self.observer.invoke_ssh(ssh, request)
         self.assertEqual(binding, result["binding"])
         expected_argv = [
-            sys.executable,
+            str(Path(sys.executable).resolve()),
             "-F",
             "NUL" if os.name == "nt" else "/dev/null",
             "-o",

@@ -55,6 +55,7 @@ APPLICATION_CONFIG = """{
   "applyTo": ["src/**"],
   "build": "npm run build",
   "test": "npm test",
+  "workers": { "defaultAdapter": "native", "enabledAdapters": ["native", "shell"] },
   "learning": {
     "runArtifactsPath": ".architrave/runs",
     "repoProfilePath": ".architrave/learning/repo-profile.md",
@@ -199,6 +200,50 @@ def _replace_private_bytes(content: bytes, destination: Path, label: str) -> Non
             os.unlink(temporary)
         except FileNotFoundError:
             pass
+
+
+def install_native_host(kit: Path) -> int:
+    """Explicit user-scope install; repository adoption never grants host capability."""
+    if sys.version_info < (3, 9):
+        raise InstallerError("native-host-install requires Python 3.9+", 2)
+    extension = kit / "extensions" / "architrave-native" / "extension.mjs"
+    require_source_file(extension, "native-host-install")
+    files = [(source, source.relative_to(kit).as_posix()) for source in sorted((kit / "harness").glob("*.py"))]
+    files.append((kit / "gates" / "gate_runner.py", "gates/gate_runner.py"))
+    for source, _ in files:
+        require_source_file(source, "native-host-install")
+    digest = hashlib.sha256(extension.read_bytes())
+    for source, relative in files:
+        digest.update(relative.encode("utf-8"))
+        digest.update(source.read_bytes())
+    state_root = trusted_user_state_root()
+    _ensure_private_directory(state_root, "native-host-install")
+    _ensure_private_directory(state_root / "native-host", "native-host-install")
+    root = state_root / "native-host" / digest.hexdigest()
+    _ensure_private_directory(root, "native-host-install")
+    installed_files = {}
+    for source, relative in files:
+        destination = root / relative
+        _replace_private_bytes(source.read_bytes(), destination, "native-host-install")
+        installed_files[str(destination)] = sha256_file(destination)
+    python = Path(sys.executable).resolve()
+    copilot = state_root.parent / ".copilot"
+    _ensure_private_directory(copilot, "native-host-install")
+    _ensure_private_directory(copilot / "extensions", "native-host-install")
+    active = copilot / "extensions" / "architrave-native"
+    _ensure_private_directory(active, "native-host-install")
+    content = extension.read_bytes()
+    manifest = {
+        "schema": "architrave.native-installation.v1", "version": plugin_version(kit, "native-host-install"),
+        "root": str(root), "python": str(python), "pythonSha256": sha256_file(python),
+        "extensionSha256": hashlib.sha256(content).hexdigest(), "files": installed_files,
+    }
+    _atomic_private_json(active / "installation.json", manifest)
+    _replace_private_bytes(content, active / "extension.mjs", "native-host-install")
+    print(json.dumps({"status": "installed", "extension": str(active), **manifest}, indent=2))
+    print("Reload supported host extensions. Older hosts without tasks RPC fail early; there is no agent CLI fallback.",
+          file=sys.stderr)
+    return 0
 
 
 def install_exact_target_executor(args: argparse.Namespace, kit: Path) -> int:
@@ -643,12 +688,12 @@ class ManagedRoot:
 
     def replace_file(self, source: Path, relative: str) -> None:
         require_source_file(source, self.label)
-        source_info = source.stat(follow_symlinks=False)
+        source_info = source.lstat()
         self.replace_bytes(relative, source.read_bytes(), stat.S_IMODE(source_info.st_mode))
 
     def create_file(self, source: Path, relative: str) -> None:
         require_source_file(source, self.label)
-        source_info = source.stat(follow_symlinks=False)
+        source_info = source.lstat()
         self.create_bytes(relative, source.read_bytes(), stat.S_IMODE(source_info.st_mode))
 
     def remove_file(self, relative: str) -> None:
@@ -972,6 +1017,7 @@ def copy_shared_assets(managed: ManagedRoot, kit: Path) -> None:
     managed.ensure_dir("harness")
     managed.copy_tree(kit / "harness", "harness")
     print("  ok harness")
+    print("  native agent workers require one user-scope setup: python <kit>/tools/install_update.py native-host-install")
 
 
 def active_hook(kit: Path, entrypoint: str) -> Path:
@@ -1264,6 +1310,7 @@ def parser() -> argparse.ArgumentParser:
     executor.add_argument("--reconcile-target")
     executor.add_argument("--reconcile-outcome", choices=("applied-closed", "closed-unknown"))
     executor.add_argument("--reconcile-process-id", type=int)
+    subcommands.add_parser("native-host-install", help="install the minimal joined Copilot host extension and pinned Python bridge")
     return result
 
 
@@ -1275,6 +1322,8 @@ def main(argv: list[str] | None = None) -> int:
             return install(args, kit)
         if args.command == "update":
             return update(args, kit)
+        if args.command == "native-host-install":
+            return install_native_host(kit)
         return install_exact_target_executor(args, kit)
     except InstallerError as exc:
         if str(exc):
