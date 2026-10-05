@@ -22,6 +22,10 @@ sys.path.insert(0, str(ROOT / "harness"))
 import architrave_runtime as runtime_module
 from architrave_runtime import RunStore
 
+_fixture_add_task = RunStore.add_task
+RunStore.add_task = lambda self, run_id, task, actor="coordinator": _fixture_add_task(
+    self, run_id, {"pushback": "KEEP:test fixture", **task}, actor)
+
 
 def load_installer_module():
     path = ROOT / "tools" / "install_update.py"
@@ -189,6 +193,9 @@ class FocusControlTests(unittest.TestCase):
             ",".join(overrides.get("acceptanceCriteria", ["ACCEPT-001"])),
             "--worker", "shell",
         ]
+        pushback = overrides.get("pushback", "KEEP:test fixture")
+        if pushback:
+            arguments.extend(["--pushback", str(pushback)])
         if overrides.get("workKind"):
             arguments.extend(["--work-kind", str(overrides["workKind"])])
         if overrides.get("lane"):
@@ -404,12 +411,12 @@ class FocusControlTests(unittest.TestCase):
         run_id = self.primary_run()
         self.add_task(run_id, "login-fix", acceptanceCriteria=["LOGIN-001"])
         self.add_task(run_id, "pin-package", acceptanceCriteria=["PKG-001"])
-        for index in range(4):
+        for index in range(2):
             self.commit(f"packaging/pin-{index}.txt", f"{index}\n")
         status = self.cli("status", run_id)
-        self.assertEqual(4, status["primaryCriterion"]["untouchedStreak"])
+        self.assertEqual(2, status["primaryCriterion"]["untouchedStreak"])
         self.assertNotIn("escalation", status)
-        self.commit("packaging/pin-4.txt", "4\n")
+        self.commit("packaging/pin-2.txt", "2\n")
         status = self.cli("resume", run_id, "--accept-commit")
         self.assertEqual("STALLED_PRIMARY_CRITERION", status["escalation"]["code"])
         error = self.cli("task-start", run_id, "pin-package", "--worker-id", "w-pin", expected=1)
@@ -427,10 +434,9 @@ class FocusControlTests(unittest.TestCase):
             "--criterion", "PKG-001|Package is pinned|product|R1|deterministic",
         )["runId"]
         self.assertNotIn("primaryCriterion", self.cli("status", run_id))
-        self.assertNotIn("primaryCriterion", self.store.load(run_id)["focus"])
         error = self.cli("primary-set", run_id, "--criterion", "NOPE-001", "--path", "auth", expected=1)
         self.assertEqual("INVALID_PRIMARY_CRITERION", error["code"])
-        self.cli("primary-set", run_id, "--criterion", "LOGIN-001", "--path", "auth/**", "--threshold", "3")
+        self.cli("primary-set", run_id, "--criterion", "LOGIN-001", "--path", "auth/**")
         for index in range(3):
             self.add_task(run_id, f"receipt-{index}", acceptanceCriteria=["PKG-001"])
             self.store.fail_task(run_id, f"receipt-{index}", "verifier refused the receipt format")
@@ -442,60 +448,132 @@ class FocusControlTests(unittest.TestCase):
         self.assertEqual(0, status["primaryCriterion"]["untouchedStreak"])
         self.assertNotIn("escalation", status)
 
-    def test_primary_criterion_rejects_ci_evidence(self) -> None:
+    def proof(self, run_id: str, artifact_id: str, payload: dict[str, object]) -> Path:
+        path = self.store.run_dir(run_id) / "evidence" / f"{artifact_id}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+        return path
+
+    def test_primary_criterion_passes_only_on_observed_product_outcome(self) -> None:
         run_id = self.primary_run()
         error = self.cli("primary-set", run_id, "--criterion", "PKG-001", "--path", "pkg", expected=1)
         self.assertEqual("INVALID_PRIMARY_CRITERION", error["code"])
+        self.add_task(run_id, "login-mfa", acceptanceCriteria=["LOGIN-001"])
+        ci = self.evidence(run_id, "ci-totals")
         self.store.record_gate(run_id, gate_id="ci-green", task_id=None, gate_type="deterministic", status="PASS",
-                               evidence_refs=[self.evidence(run_id)], criteria=["LOGIN-001"])
+                               evidence_refs=[ci], criteria=["LOGIN-001"])
         with self.assertRaises(runtime_module.RuntimeFailure) as raised:
-            self.store.set_criterion(run_id, "LOGIN-001", "PASS", ["gate:ci-green"])
-        self.assertEqual("PRIMARY_EVIDENCE_NOT_OBSERVED", raised.exception.code)
+            self.store.record_gate(run_id, gate_id="self-authored", task_id=None, gate_type="reality",
+                                   status="PASS", evidence_refs=[ci], criteria=["LOGIN-001"])
+        self.assertEqual("EVIDENCE_PROVENANCE", raised.exception.code)
+        _, challenge = self.store.wait_external(
+            run_id, checkpoint_id="mfa", task_id="login-mfa", checkpoint_type="MFA_REQUIRED",
+            principal="owner", provider="microsoft", reason="Approve sign-in.")
+        mfa = self.proof(run_id, "mfa-proof", {"checkpointId": "mfa", "principal": "owner", "provider": "microsoft"})
+        self.store._record_external_proof(run_id, artifact_id="mfa-proof",
+                                          path=mfa.relative_to(self.repo).as_posix(), evidence_refs=[])
+        self.store.resolve_external(run_id, checkpoint_id="mfa", resolution_ref="artifact:mfa-proof",
+                                    challenge=challenge, actor="human:owner")
+        for refs in (["gate:ci-green"], ["external:mfa"]):
+            with self.assertRaises(runtime_module.RuntimeFailure) as raised:
+                self.store.set_criterion(run_id, "LOGIN-001", "PASS", refs)
+            self.assertEqual("PRIMARY_EVIDENCE_NOT_OBSERVED", raised.exception.code, refs)
+        screenshot = self.proof(run_id, "login-web", {"surface": "web", "status": "pass", "failed": [], "results": [
+            {"name": "runtime.health", "status": "pass"}, {"name": "web.e2e", "status": "pass"}]})
+        self.store._record_legibility_result(run_id, kind="web-legibility", artifact_id="login-web",
+                                             path=screenshot.relative_to(self.repo).as_posix(), evidence_refs=[])
+        self.store.record_gate(run_id, gate_id="login-observed", task_id=None, gate_type="reality", status="PASS",
+                               evidence_refs=["artifact:login-web"], criteria=["LOGIN-001"])
+        self.store.set_criterion(run_id, "LOGIN-001", "PASS", ["gate:login-observed"])
+        self.assertEqual("PASS", self.cli("status", run_id)["acceptance"]["LOGIN-001"])
 
-    def test_failed_primary_attempts_hit_the_loop_cap(self) -> None:
+    def test_three_primary_failures_block_the_fourth_despite_commits(self) -> None:
         run_id = self.primary_run()
-        self.cli("primary-set", run_id, "--criterion", "LOGIN-001", "--path", "auth", "--threshold", "3")
         for index in range(3):
             self.add_task(run_id, f"login-try-{index}", acceptanceCriteria=["LOGIN-001"])
-            self.store.fail_task(run_id, f"login-try-{index}", "bridge rejected an unknown message")
+            self.store.fail_task(run_id, f"login-try-{index}", f"bridge rejected message {index}")
+            self.commit(f"auth/Login{index}.swift", f"reworded attempt {index}\n")
+            self.store.resume(run_id, accept_commit=True)
+        self.add_task(run_id, "login-try-3", acceptanceCriteria=["LOGIN-001"])
         status = self.cli("status", run_id)
-        self.assertEqual(3, status["primaryCriterion"]["untouchedStreak"])
-        self.assertEqual("STALLED_PRIMARY_CRITERION", status["escalation"]["code"])
+        self.assertEqual(0, status["primaryCriterion"]["untouchedStreak"])
+        self.assertEqual("PRIMARY_STALLED", status["escalation"]["code"])
+        self.assertEqual("login-try-2", status["escalation"]["bestAttempt"]["taskId"])
+        self.assertEqual(3, len(status["escalation"]["caveats"]))
+        error = self.cli("task-start", run_id, "login-try-3", "--worker-id", "w-4", expected=1)
+        self.assertEqual("PRIMARY_STALLED", error["code"])
 
-    def test_budget_reports_80_and_100_from_real_counters(self) -> None:
+    def test_budget_signals_each_real_limit_and_unknown_history(self) -> None:
         run_id = self.create()
         self.assertNotIn("budget", self.cli("status", run_id))
-        (self.repo / "architrave.config.json").write_text(
-            json.dumps({"evaluation": {"budget": {"maxCommits": 5}}}), encoding="utf-8")
-        for index in range(4):
-            self.commit(f"work-{index}.txt", "x\n")
-        budget = self.cli("status", run_id)["budget"]
-        self.assertEqual((4, "BUDGET_80", ["commits"]), (budget["counters"]["commits"], budget["signal"], budget["over"]))
-        self.commit("work-4.txt", "x\n")
-        self.assertEqual("BUDGET_100", self.cli("status", run_id)["budget"]["signal"])
+        config = self.repo / "architrave.config.json"
 
-    def test_pushback_verdicts_are_recorded_and_missing_ones_flagged(self) -> None:
+        def signal(limit: dict[str, int]) -> dict[str, object]:
+            config.write_text(json.dumps({"evaluation": {"budget": limit}}), encoding="utf-8")
+            return self.cli("status", run_id)["budget"]
+
+        turns = self.store.load(run_id)["eventCursor"]["sequence"]
+        self.assertEqual(("BUDGET_100", ["turns"]), tuple(signal({"maxTurns": turns})[key] for key in ("signal", "over")))
+        self.commit("work.txt", "x\n")
+        self.assertEqual("BUDGET_100", signal({"maxCommits": 1})["signal"])
+        self.cli("resume", run_id, "--accept-commit")
+        self.add_task(run_id, "first")
+        self.add_task(run_id, "second")
+        self.assertIsNone(signal({"maxDispatches": 1})["signal"])
+        self.cli("task-start", run_id, "first", "--worker-id", "w-1")
+        self.assertEqual("BUDGET_100", signal({"maxDispatches": 1})["signal"])
+        self.assertEqual("BUDGET_100", self.cli("task-start", run_id, "second", "--worker-id", "w-2", expected=1)["code"])
+        state = self.store.load(run_id)
+        state["createdAt"] = "2000-01-01T00:00:00Z"
+        config.write_text(json.dumps({"evaluation": {"budget": {"maxMinutes": 60}}}), encoding="utf-8")
+        self.assertEqual("BUDGET_100", runtime_module.budget_signal(state, [], self.repo)["signal"])
+        subprocess.run(["git", "checkout", "-q", "--orphan", "rewritten"], cwd=self.repo, check=True)
+        subprocess.run(["git", "commit", "-qm", "rewritten history"], cwd=self.repo, check=True)
+        unknown = signal({"maxCommits": 5})
+        self.assertEqual(("BUDGET_UNKNOWN", None), (unknown["signal"], unknown["counters"]["commits"]))
+
+    def test_pushback_is_required_before_dispatch(self) -> None:
         run_id = self.create()
-        self.add_task(run_id, "unreviewed")
-        self.cli("task-add", run_id, "--id", "kept", "--title", "kept", "--objective", "Fix login.",
-                 "--criteria", "ACCEPT-001", "--worker", "shell", "--pushback", "KEEP:fixes the failing path")
-        self.cli("task-add", run_id, "--id", "restart", "--title", "restart", "--objective", "Add host restart.",
-                 "--criteria", "ACCEPT-001", "--worker", "shell", "--pushback", "CUT:reload already covers it")
+        self.add_task(run_id, "unreviewed", pushback=None)
+        self.add_task(run_id, "kept", pushback="KEEP:fixes the failing path")
+        self.add_task(run_id, "restart", pushback="CUT:reload already covers it")
         error = self.cli("task-add", run_id, "--id", "bad", "--title", "bad", "--objective", "x",
                          "--criteria", "ACCEPT-001", "--worker", "shell", "--pushback", "MAYBE:", expected=1)
         self.assertEqual("INVALID_PUSHBACK", error["code"])
         self.assertEqual(["unreviewed"], self.cli("status", run_id)["missingPushback"])
+        self.assertEqual("PUSHBACK_MISSING", self.cli("task-start", run_id, "unreviewed", "--worker-id", "w-1", expected=1)["code"])
+        self.assertEqual("PUSHBACK_NOT_KEPT", self.cli("task-start", run_id, "restart", "--worker-id", "w-2", expected=1)["code"])
         tasks = {task["id"]: task for task in self.store.load(run_id)["tasks"]}
         self.assertEqual(("KEEP", "SKIPPED"), (tasks["kept"]["pushback"]["verdict"], tasks["restart"]["status"]))
 
-    def test_owner_message_lint_fails_dense_identifiers(self) -> None:
-        gate = ROOT / "gates" / "gate_runner.py"
-        noisy = "Run rev20/cursor21 pid=4412 receipt 9be3f0a1c2d4e5f6 and 383104e451fd25fbc4e7c4547db5acd03d734410."
-        plain = "Login now works on the Mac build. I pushed the fix as commit ba02609."
-        for text, expected in ((noisy, 1), (plain, 0)):
-            process = subprocess.run([sys.executable, str(gate), "message-lint"], input=text,
-                                     capture_output=True, text=True, check=False)
-            self.assertEqual(expected, process.returncode, process.stdout)
+    def test_owner_summary_lint_fails_identifier_walls(self) -> None:
+        wall = ("Recover run-20261005-abc on 383104e451fd25fbc4e7c4547db5acd03d734410 pid=4412 "
+                "session 252b3340-17ea-4589-b4ff-932524f42e8f")
+        noisy = self.create(wall)
+        self.assertEqual("OWNER_MESSAGE_LINT_FAIL", self.cli("status", noisy)["ownerMessageLint"]["code"])
+        self.assertEqual("OWNER_MESSAGE_LINT_FAIL", self.cli("checkpoint", noisy)["ownerMessageLint"]["code"])
+        plain = self.create("Make Microsoft sign-in work; the last fix was commit ba02609.")
+        self.assertNotIn("ownerMessageLint", self.cli("status", plain))
+        process = subprocess.run([sys.executable, str(ROOT / "gates" / "gate_runner.py"), "message-lint"], input=wall,
+                                 capture_output=True, text=True, check=False)
+        self.assertEqual(1, process.returncode, process.stdout)
+
+    def test_effort_maps_to_host_controls_or_is_a_no_op(self) -> None:
+        run_id = self.primary_run()
+        self.add_task(run_id, "mechanical", acceptanceCriteria=["PKG-001"])
+        self.add_task(run_id, "login", acceptanceCriteria=["LOGIN-001"])
+        state = self.store.load(run_id)
+        tasks = {task["id"]: task for task in state["tasks"]}
+        self.assertEqual("low", runtime_module.requested_effort(state, tasks["mechanical"]))
+        self.assertEqual("default", runtime_module.requested_effort(state, {**tasks["login"], "risk": "R2"}))
+        self.assertEqual("high", runtime_module.requested_effort(state, tasks["login"], stalled=True))
+        self.assertEqual({"autoTier": "intelligence"},
+                         runtime_module.map_effort("high", {"autoTier": True})["effective"])
+        self.assertEqual({"reasoning_effort": "low"},
+                         runtime_module.map_effort("low", {"reasoningLevels": ["low", "high"]})["effective"])
+        copilot_tasks = runtime_module.map_effort("high", {})
+        self.assertEqual(("high", None), (copilot_tasks["requested"], copilot_tasks["effective"]))
+        self.assertNotIn("model", json.dumps(copilot_tasks))
 
     def test_correction_keeps_product_objective_and_defers_bridge_lane(self) -> None:
         run_id = self.create("Run the requested free-engine game acceptance test.")

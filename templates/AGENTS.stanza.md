@@ -43,8 +43,8 @@ When `kind` is absent, use the application fields and optional `backend`, `iac`,
 - Runtime: use `harness/invariant_engine.py` and configured
 	`harness/legibility.py` Web/Electron/iOS/deployment checks. Compile is not a
 	product reality gate.
-- Semantic: scale by R0-R4. R3/R4 require two distinct independent reviewer
-	identities; R4 also requires security and policy review.
+- Semantic: scale by R0-R4. R3/R4 need one independent review (two different
+	families only with `review.crossFamily`); R4 also requires security and policy review.
 
 **Learning loop:** Keep private Run evidence under `.architrave/runs/`, isolated
 workers under `.architrave/worktrees/`, and the HMAC key at
@@ -65,8 +65,8 @@ is a candidate; execute and register the real configured gate independently.
 
 Low-risk mechanical work may close on deterministic checks when every criterion
 is mechanically covered. Semantic, UI, contract, architecture, migration,
-security/trust, IaC, and high-blast-radius work adds one or two independent
-reviewers according to risk, without specifying their models.
+security/trust, IaC, and high-blast-radius work adds one independent
+reviewer according to risk, without specifying their models.
 
 **Focus controls:** The latest explicit user direction owns one versioned
 objective. Corrections replace it and defer/cancel prior active work. Reuse an
@@ -74,7 +74,7 @@ identified working implementation before replacement architecture; a
 replacement starts with a parity test against that reference on the real flow.
 Consult architrave:cto at start and on stall. Push back before building: record
 KEEP/CUT/DEFER with a one-line reason (`task-add --pushback`). Declare the failing user-visible
-criterion with `primary-set`; five commits/worker results that miss its code
+criterion with `primary-set`; three commits/worker results that miss its code
 path raise `STALLED_PRIMARY_CRITERION`. Keep at most
 two active lanes; communications/research/infrastructure stay deferred unless
 explicitly promoted. Two review reopens without product evidence require one

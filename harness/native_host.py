@@ -12,7 +12,8 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from architrave_runtime import RunStore, RuntimeFailure, find_task, redact, state_summary
+from architrave_runtime import (RunStore, RuntimeFailure, find_task, map_effort, primary_criterion_status, redact,
+                                requested_effort, state_summary)
 from worker_adapters import render_prompt
 
 
@@ -64,8 +65,12 @@ def main():
             raise RuntimeFailure("NATIVE_TRANSPORT_INVALID", "unknown native host action")
         task_id = request["taskId"]
         ticket = store.begin_native_worker(run_id, task_id, host_owner=request["owner"])
-        task = find_task(store.load(run_id), task_id)
+        state = store.load(run_id)
+        task = find_task(state, task_id)
         packet = task["workPacket"]
+        stall = primary_criterion_status(state, store.events(run_id), store.repository)
+        effort = map_effort(requested_effort(state, task, bool(stall and stall["stalled"])),
+                            request.get("hostEffort") or {})
         emit({
             "status": "prepared", "binding": ticket.binding,
             "prompt": render_prompt(packet) + "\n"
@@ -75,6 +80,7 @@ def main():
             "agentType": "general-purpose" if task["mutablePaths"] else "explore",
             "timeoutSeconds": packet["budget"]["timeoutSeconds"],
             "expiresAt": task["lease"]["expiresAt"],
+            "effort": effort,
         })
         admitted = receive()
         if admitted.get("status") != "admitted":

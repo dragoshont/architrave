@@ -61,7 +61,31 @@ def semantic_review(run_dir: Path, provider: str, execute: bool) -> int:
     return 0
 
 
-def tournament_review(run_dir: Path, execute: bool) -> int:
+def validate_tournament_result(result: object) -> list[str]:
+    """Typed tournament result: DO_NOTHING and SMALLEST_VIABLE baselines plus why the winner beats doing nothing."""
+    errors = []
+    options = result.get("options") if isinstance(result, dict) else None
+    kinds = {item.get("kind") for item in options or [] if isinstance(item, dict)}
+    for kind in ("DO_NOTHING", "SMALLEST_VIABLE"):
+        if kind not in kinds:
+            errors.append(f"options must include kind {kind}")
+    if not isinstance(result, dict) or not result.get("winner"):
+        errors.append("winner is required")
+    if not isinstance(result, dict) or not str(result.get("winnerBeatsDoNothing") or "").strip():
+        errors.append("winnerBeatsDoNothing must explain why the winner beats doing nothing")
+    return errors
+
+
+def tournament_review(run_dir: Path, execute: bool, result_path: Path | None = None) -> int:
+    if result_path is not None:
+        try:
+            errors = validate_tournament_result(json.loads(result_path.read_text(encoding="utf-8")))
+        except (OSError, json.JSONDecodeError) as exc:
+            errors = [f"unreadable tournament result ({exc})"]
+        for error in errors:
+            print(f"FAIL  {error}")
+        print("TOURNAMENT-RESULT: FAIL" if errors else "TOURNAMENT-RESULT: PASS")
+        return 1 if errors else 0
     if not run_dir.is_dir():
         print("tournament-review: run dir not found", file=sys.stderr)
         return 2
@@ -71,7 +95,8 @@ def tournament_review(run_dir: Path, execute: bool) -> int:
         return 2
     print(json.dumps({
         "status": "advisory", "agent": "architrave:tournament-analyst", "run": str(run_dir),
-        "prompt": "Compare viable options against canonical state and governing repository sources; do not edit or authorize mutations.",
+        "prompt": "Compare viable options against canonical state and governing repository sources; do not edit or authorize mutations. "
+                  "Options must include kinds DO_NOTHING and SMALLEST_VIABLE; return winner and winnerBeatsDoNothing.",
         "execution": "host-owned; this helper cannot execute or attest a reviewer",
     }, indent=2))
     return 0
@@ -89,8 +114,9 @@ def main(argv: list[str] | None = None) -> int:
     semantic.add_argument("--run", dest="run_dir")
     semantic.add_argument("--execute", action="store_true")
     tournament = subparsers.add_parser("tournament-review")
-    tournament.add_argument("--run", dest="run_dir", required=True)
+    tournament.add_argument("--run", dest="run_dir")
     tournament.add_argument("--execute", action="store_true")
+    tournament.add_argument("--result", help="validate a returned tournament result JSON")
     args = parser.parse_args(argv)
     if args.command == "runtime":
         return runtime_cli(args.arguments)
@@ -114,7 +140,10 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         return semantic_review(run_dir, args.provider, args.execute)
     if args.command == "tournament-review":
-        return tournament_review(Path(args.run_dir).resolve(), args.execute)
+        if not args.result and not args.run_dir:
+            parser.error("tournament-review needs --run or --result")
+        return tournament_review(Path(args.run_dir or ".").resolve(), args.execute,
+                                 Path(args.result) if args.result else None)
     return 2
 
 

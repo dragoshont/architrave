@@ -138,25 +138,6 @@ def check_product_copy(root: Path, config: dict[str, object]) -> bool:
     return not findings
 
 
-MESSAGE_NOISE = (
-    ("hash/id", re.compile(r"\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{12,}\b|\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-", re.IGNORECASE)),
-    ("pid", re.compile(r"\bpids?\s*[=:#]?\s*\d+", re.IGNORECASE)),
-    ("compressed status", re.compile(r"\b[A-Za-z]+\d+/[A-Za-z]+\d+\b")),
-)
-
-
-def message_lint(text: str) -> int:
-    """Fail owner-facing text dense with hashes, PIDs, IDs, or compressed status."""
-    findings = [(label, match.group(0)) for label, pattern in MESSAGE_NOISE for match in pattern.finditer(text)]
-    if len(findings) >= 3:
-        for label, token in findings:
-            print(f"FAIL  owner message {label}: {token}")
-        print("message-lint: FAIL - rewrite in plain sentences; keep at most two identifiers")
-        return 1
-    print("message-lint: PASS")
-    return 0
-
-
 def checks(root: Path, quick: bool) -> int:
     try:
         config = load_config(root)
@@ -272,8 +253,14 @@ def main() -> int:
     parser.add_argument("--file", help="message-lint: text file to check (default stdin)")
     args = parser.parse_args()
     if args.gate == "message-lint":
+        from architrave_runtime import owner_message_lint
+
         text = Path(args.file).read_text(encoding="utf-8") if args.file else sys.stdin.read()
-        return message_lint(text)
+        lint = owner_message_lint(text)
+        for finding in (lint or {}).get("findings", []):
+            print(f"FAIL  owner message identifier: {finding}")
+        print(f"message-lint: {lint['code']} - {lint['message']}" if lint else "message-lint: PASS")
+        return 1 if lint else 0
     try:
         root = repository_root(Path(args.repo))
     except ValueError as exc:

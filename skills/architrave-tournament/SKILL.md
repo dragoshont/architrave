@@ -10,6 +10,7 @@ assumptions.
 Require two to four options with benefits, drawbacks, blast radius, durability,
 security/data risk, complexity, and verification burden. The options always
 include a "do nothing" baseline and a "smallest viable" option alongside the
-others. Return one recommended plan, explicit non-goals, and why the chosen
+others, typed as `DO_NOTHING` and `SMALLEST_VIABLE`, plus `winner` and
+`winnerBeatsDoNothing` (`tournament-review --result` checks the shape). Return one recommended plan, explicit non-goals, and why the chosen
 option beats doing nothing. The result is advisory; it does not authorize edits
 or runtime mutation.

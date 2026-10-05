@@ -317,6 +317,14 @@
         "requiresApprovalFor": { "type": "array", "description": "Operations that require explicit human approval, e.g. mutations, reconcile, restart, secret-access, network-change.", "items": { "type": "string" } }
       }
     },
+    "review": {
+      "type": "object",
+      "description": "Optional review policy. crossFamily (default false) requires two independent reviewers of different families for R3/R4; otherwise one independent review suffices and the host picks the model.",
+      "additionalProperties": false,
+      "properties": {
+        "crossFamily": { "type": "boolean" }
+      }
+    },
     "productCopy": {
       "type": "object",
       "description": "Optional product-copy lint run by gates/checks (and the quality-gate hook). Scans shipping UI string files for internal evidence/spec/status/certification language.",

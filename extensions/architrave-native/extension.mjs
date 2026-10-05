@@ -154,7 +154,7 @@ const tools = [
           if (observed.status === "idle") await session.rpc.tasks.cancel({ id: hostTaskId });
           await session.rpc.tasks.remove({ id: hostTaskId });
         }
-        return result({ ...candidate, hostTaskId, timedOut: Boolean(timeout) });
+        return result({ ...candidate, hostTaskId, timedOut: Boolean(timeout), effort: prepared.effort });
       } catch (error) {
         let cancellation;
         if (hostTaskId) cancellation = await session.rpc.tasks.cancel({ id: hostTaskId });

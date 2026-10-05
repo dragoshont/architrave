@@ -48,6 +48,15 @@ class ReviewLauncherTests(unittest.TestCase):
         self.assertEqual("advisory", json.loads(buffer.getvalue())["status"])
         self.assertEqual(2, CLI.tournament_review(self.run_dir, True))
 
+    def test_tournament_result_requires_do_nothing_and_smallest_viable(self) -> None:
+        fixture = json.loads((ROOT / "scripts" / "fixtures" / "tournament-result.json").read_text(encoding="utf-8"))
+        self.assertEqual([], CLI.validate_tournament_result(fixture))
+        missing = {**fixture, "options": [item for item in fixture["options"] if item["kind"] != "DO_NOTHING"],
+                   "winnerBeatsDoNothing": ""}
+        errors = CLI.validate_tournament_result(missing)
+        self.assertIn("options must include kind DO_NOTHING", errors)
+        self.assertIn("winnerBeatsDoNothing must explain why the winner beats doing nothing", errors)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

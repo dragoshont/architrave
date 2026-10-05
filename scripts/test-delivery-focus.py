@@ -13,6 +13,7 @@ lead_skill = (root / "skills/architrave/SKILL.md").read_text(encoding="utf-8")
 cto_agent = (root / "agents/cto.agent.md").read_text(encoding="utf-8")
 cto_skill = (root / "skills/architrave-cto/SKILL.md").read_text(encoding="utf-8")
 tournament_skill = (root / "skills/architrave-tournament/SKILL.md").read_text(encoding="utf-8")
+review_skill = (root / "skills/architrave-review/SKILL.md").read_text(encoding="utf-8")
 tournament_agent = (root / "agents/tournament-analyst.agent.md").read_text(encoding="utf-8")
 generator = (root / "scripts/generate-codex-agents.py").read_text(encoding="utf-8")
 codex_roles = "\n".join(
@@ -48,6 +49,10 @@ required = {
     "agent push-back": (agent, "step inline (no extra agent): record KEEP/CUT/DEFER"),
     "tournament skill baselines": (tournament_skill, 'include a "do nothing" baseline and a "smallest viable" option'),
     "tournament skill beats nothing": (tournament_skill, "why the chosen\noption beats doing nothing"),
+    "tournament typed result": (tournament_skill, "typed as `DO_NOTHING` and `SMALLEST_VIABLE`"),
+    "review prefers host-native": (review_skill, "Prefer the host-native reviewer"),
+    "review records reviewer": (review_skill, "--reviewer\nhost-native|architrave-judge --family"),
+    "agent host-native review": (agent, "never both; record `--reviewer` and"),
     "tournament agent baselines": (tournament_agent, 'include a "do nothing" baseline and a "smallest viable" option'),
 }
 

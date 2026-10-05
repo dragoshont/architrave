@@ -27,6 +27,10 @@ from architrave_runtime import (
     utc_now,
 )
 
+_fixture_add_task = RunStore.add_task
+RunStore.add_task = lambda self, run_id, task, actor="coordinator": _fixture_add_task(
+    self, run_id, {"pushback": "KEEP:test fixture", **task}, actor)
+
 
 class RuntimeV2Tests(unittest.TestCase):
     def setUp(self) -> None:
@@ -1856,6 +1860,37 @@ class RuntimeV2Tests(unittest.TestCase):
         self.assertTrue(completed)
         self.assertEqual("COMPLETED", completed_state["status"])
         self.assertEqual("run.completed", self.store.events(run_id)[-1]["type"])
+
+    def test_review_records_reviewer_kind_and_flags_duplicate_family(self) -> None:
+        state = self.create(risk="R3", verification="reality")
+        run_id = str(state["runId"])
+        (self.repo / "architrave.config.json").write_text(json.dumps({"review": {"crossFamily": True}}), encoding="utf-8")
+        for gate_id, reviewer in (("judge-gpt", "host-native"), ("judge-claude", "architrave-judge")):
+            self.store.record_gate(run_id, gate_id=gate_id, task_id=None, gate_type="semantic",
+                                   family=gate_id.split("-")[1], reviewer=reviewer, status="PASS", effort="high:none",
+                                   evidence_refs=[self.evidence(run_id, f"{gate_id}-evidence", producer="semantic-judge")])
+        gates = {gate["id"]: gate for gate in self.store.load(run_id)["gateResults"]}
+        self.assertEqual({"judge-gpt": "host-native", "judge-claude": "architrave-judge"},
+                         {key: gate["reviewer"] for key, gate in gates.items()})
+        self.assertEqual({"requested": "high", "effective": "none"}, gates["judge-gpt"]["effort"])
+        with self.assertRaisesRegex(RuntimeFailure, "already passed"):
+            self.store.record_gate(run_id, gate_id="judge-gpt-again", task_id=None, gate_type="semantic",
+                                   family="gpt", reviewer="host-native", status="PASS",
+                                   evidence_refs=[self.evidence(run_id, "judge-gpt-again-evidence", producer="semantic-judge")])
+
+    def test_one_independent_review_passes_r3_without_cross_family(self) -> None:
+        state = self.create(risk="R3", verification="reality")
+        run_id = str(state["runId"])
+        self.add_task(run_id, "product", risk="R3")
+        self.finish_task(run_id, "product", "worker-product")
+        self.store.record_gate(run_id, gate_id="reality", task_id="product", gate_type="reality", status="PASS",
+                               evidence_refs=[self.evidence(run_id, "reality-evidence", task_id="product", producer="legibility")])
+        self.store.set_criterion(run_id, "OUTCOME-001", "PASS", ["gate:reality"])
+        self.store.record_gate(run_id, gate_id="judge-native", task_id=None, gate_type="semantic", family="gpt",
+                               reviewer="host-native", status="PASS",
+                               evidence_refs=[self.evidence(run_id, "judge-native-evidence", producer="semantic-judge")])
+        _, completed = self.store.verify(run_id)
+        self.assertTrue(completed)
 
     def test_path_escape_is_rejected(self) -> None:
         state = self.create(allow=[{"scope": "repository", "operations": ["edit"]}])

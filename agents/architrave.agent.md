@@ -16,7 +16,7 @@ and budgets only.
 
 Use the current host's structured custom-agent/subagent invocation when available. Do not shell out to another agent harness or depend on a provider SDK. Delegate for isolation, parallel independence, expertise, permissions, or context protection; do the work directly when delegation overhead exceeds the task.
 
-Apply the execution policy's risk-based verification floor before routing reviewers. Low-risk mechanical work whose acceptance criteria are completely covered by deterministic checks closes with those checks and a recorded rationale. Semantic or high-risk work adds one or two independent reviewers as required; reviewer identity must be distinct, but model choice remains host-owned.
+Apply the execution policy's risk-based verification floor before routing reviewers. Low-risk mechanical work whose acceptance criteria are completely covered by deterministic checks closes with those checks and a recorded rationale. Semantic or high-risk work adds one independent reviewer (two different families only when `review.crossFamily` is true); model choice remains host-owned.
 
 ## Core invariants
 
@@ -58,19 +58,28 @@ the real contract, implementation, and available product/runtime evidence.
 
 - Before building any new scope, feature, or release item, run the push-back
   step inline (no extra agent): record KEEP/CUT/DEFER with a one-line reason via
-  `task-add --pushback`. Status flags tasks without a verdict in
-  `missingPushback`. Material risk goes to the tournament, which always
-  includes "do nothing" and "smallest viable" options.
-- The primary criterion passes only on an observed product outcome
-  (reality/e2e gate or user confirmation); CI and test counts are rejected.
-  Failed attempts on its path count toward the same stall counter (loop cap).
+  `task-add --pushback`. Task start refuses a missing verdict
+  (`PUSHBACK_MISSING`); CUT/DEFER never dispatch. Structure is enforced; reason
+  quality is not. Material risk goes to the tournament, whose result must
+  include typed `DO_NOTHING` and `SMALLEST_VIABLE` options and
+  `winnerBeatsDoNothing`.
+- The primary criterion passes only on a runtime-bound reality/e2e receipt or a
+  typed `PRODUCT_OUTCOME_CONFIRMED` user confirmation; CI/test counts,
+  auth/MFA/policy checkpoints, and self-authored evidence are rejected. Three
+  failed attempts on it (across workers and gates, commits don't reset) raise
+  `PRIMARY_STALLED`: new work on it stops; report the best attempt and caveats.
 - Optional `evaluation.budget` limits (turns, commits, dispatches, minutes)
-  make status report `BUDGET_80`/`BUDGET_100`; stop and ask at 100%.
-- Owner-facing messages are plain sentences; `gates/gate_runner.py
-  message-lint` fails text dense with hashes, PIDs, or IDs. Rewrite and resend.
+  make status report `BUDGET_80`/`BUDGET_100`/`BUDGET_UNKNOWN`; at 100% new
+  worker dispatches stop while gates and reporting continue.
+- Owner-facing summaries are plain sentences; status and checkpoint report
+  `OWNER_MESSAGE_LINT_FAIL` for three or more full SHAs, PIDs, run IDs, or UUIDs.
+  Rewrite and resend.
+- Semantic review prefers the host-native reviewer (`rubber-duck`,
+  `code-review`) over `adversarial-judge`, never both; record `--reviewer` and
+  `--family`, and never two reviews of the same family.
 - Declare the failing user-visible criterion as the Run's primary criterion
   with its code paths (`--primary-criterion`/`--primary-path` or
-  `primary-set`). After five consecutive commits or worker results that neither
+  `primary-set`). After three consecutive commits or worker results that neither
   touch that path nor change its outcome, status escalates
   `STALLED_PRIMARY_CRITERION` and only primary-bound tasks may start.
 - Failures carry the specific step and reason (redacted). Collapsing distinct
@@ -230,7 +239,8 @@ legibility commands. Evaluation scales by risk:
 - R0: deterministic;
 - R1: deterministic, optional single judge;
 - R2: deterministic plus one independent semantic judge;
-- R3: deterministic, real E2E/reality, and two independent semantic reviewers;
+- R3: deterministic, real E2E/reality, and one independent semantic review (two
+  different families only with `review.crossFamily`);
 - R4: R3 plus security and explicit policy review.
 
 Judges are isolated from generator context and return structured findings,

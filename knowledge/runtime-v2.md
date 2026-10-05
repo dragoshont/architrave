@@ -110,19 +110,28 @@ ID --primary-path PATH` or `primary-set`). Status merges commits since the
 declaration with later Run events into one timeline. A commit touching a
 primary path, or a gate/criterion/task result bound to the criterion, resets the
 streak; other commits and worker/task results extend it. At the threshold
-(default 5) while the criterion is not PASS, status reports
+(default 3) while the criterion is not PASS, status reports
 `STALLED_PRIMARY_CRITERION` and `task-start` refuses tasks not bound to it.
 `objective-replace` clears the declaration. Runs without it are unchanged.
-The primary criterion must use `reality`, `e2e`, or `external` verification and
-passes only on such observed evidence (`PRIMARY_EVIDENCE_NOT_OBSERVED`
-otherwise). Failed attempts bound to it extend the same streak, which is the
-loop cap.
+The primary criterion must use `reality`, `e2e`, or `external` verification. It
+passes only on a runtime-bound reality/e2e receipt (legibility, mutation, or
+external-proof producer, created after Run start) or a resolved
+`PRODUCT_OUTCOME_CONFIRMED` checkpoint; anything else raises
+`PRIMARY_EVIDENCE_NOT_OBSERVED`. The loop cap counts failed attempts on the
+criterion (task failures, failed workers, failed gates, observed FAIL) since its
+last observed PASS or objective replacement; commits do not reset it. At the
+threshold (default 3) status reports `PRIMARY_STALLED` with the best attempt and
+caveats, and task-start refuses new work on that criterion.
 
-Status also flags tasks without a push-back verdict (`missingPushback`;
-`task-add --pushback KEEP|CUT|DEFER:reason`; CUT skips, DEFER defers). When
+New Runs set `focus.pushbackRequired`: `task-start` refuses tasks without a
+push-back verdict (`PUSHBACK_MISSING`) and never dispatches CUT/DEFER; status
+lists them in `missingPushback`. Legacy Runs are flagged but not blocked. When
 `evaluation.budget` sets limits, status reports real counters (Run transitions
 as turns, commits since baseline, task starts as dispatches, minutes since
-creation) and `BUDGET_80`/`BUDGET_100`. No credit meter is invented.
+creation) and `BUDGET_80`/`BUDGET_100`, or `BUDGET_UNKNOWN` when history
+diverged from the baseline. At 100% task-start refuses (`BUDGET_100`); gates and
+status still run. Status and checkpoint add `OWNER_MESSAGE_LINT_FAIL` when
+owner-facing text carries three or more full SHAs, PIDs, run IDs, or UUIDs.
 
 Launch/test/install tasks require a verified target identity: provider/store,
 artifact or executable, version/build, SHA-256, environment, workspace/prefix,
@@ -311,7 +320,8 @@ Risk controls cost:
 - R0 deterministic;
 - R1 deterministic, optional one judge;
 - R2 deterministic plus one semantic judge;
-- R3 deterministic, E2E/reality, and two independent semantic reviewers;
+- R3 deterministic, E2E/reality, and one independent semantic review (two
+  different families only with `review.crossFamily`);
 - R4 R3 plus security and policy review.
 
 Repository `evaluation.riskPolicy` may tune this. Deterministic, invariant, E2E,

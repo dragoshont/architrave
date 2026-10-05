@@ -191,7 +191,7 @@ def plugin_checks(base: Path, live: bool) -> None:
     if live:
         cases = {
             "architrave:architrave": ("architrave/SKILL.md", "Run the repository's Architrave workflow"),
-            "architrave:architrave-review": ("architrave-review/SKILL.md", "Request `architrave_judge`"),
+            "architrave:architrave-review": ("architrave-review/SKILL.md", "Prefer the host-native reviewer"),
             "architrave:architrave-tournament": ("architrave-tournament/SKILL.md", "Request `architrave_tournament`"),
         }
         for skill, (relative_skill_path, expected_instruction) in cases.items():

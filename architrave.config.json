@@ -1,0 +1,6 @@
+{
+  "kind": "knowledge",
+  "build": "git diff --check",
+  "test": "python3 scripts/test-delivery-focus.py",
+  "review": { "crossFamily": true }
+}

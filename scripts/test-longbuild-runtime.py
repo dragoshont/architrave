@@ -16,6 +16,10 @@ sys.path.insert(0, str(ROOT / "harness"))
 
 from architrave_runtime import RunStore, missing_gate_requirements
 
+_fixture_add_task = RunStore.add_task
+RunStore.add_task = lambda self, run_id, task, actor="coordinator": _fixture_add_task(
+    self, run_id, {"pushback": "KEEP:test fixture", **task}, actor)
+
 
 class LongBuildRuntimeTests(unittest.TestCase):
     def setUp(self) -> None:

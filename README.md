@@ -122,8 +122,8 @@ or credential settings. Python 3.11+ is the kit runtime on every platform.
 
 Codex roles are specialized contexts, not mandatory security gates: their
 `sandbox_mode = "read-only"` constrains command filesystem/network access, while
-the parent permission mode, skills, and MCP servers still apply. Mandatory high-risk review uses two independent reviewer identities while model
-selection remains entirely host- or user-owned.
+the parent permission mode, skills, and MCP servers still apply. Mandatory high-risk review uses one independent reviewer (two families only with
+`review.crossFamily`) while model selection remains entirely host- or user-owned.
 
 Edit `architrave.config.json` to point at the repo's Storybook/design source, build/test commands, optional backend, optional IaC, optional runtime observation, and optional learning paths. Then ask the **Architrave** agent to build a feature.
 
@@ -326,7 +326,7 @@ Goal → Outcome → Acceptance Matrix → TaskGraph → WorkPackets
 - Evidence is executor-produced, HMAC-attested, digest-checked, and bound to the
         exact criterion/gate; arbitrary registered files cannot manufacture PASS.
 - Risk class scales evaluation cost from deterministic-only R0 to R4 security,
-        policy, E2E/reality, and two independent semantic reviewers.
+        policy, E2E/reality, and an independent semantic review.
 
 See [`docs/runtime-v2.md`](docs/runtime-v2.md),
 [`docs/application-legibility.md`](docs/application-legibility.md), and
@@ -354,8 +354,8 @@ risk-based verification only.
 
 Low-risk mechanical work can close on deterministic evidence when every
 criterion is machine-checked. Semantic, UI, contract, architecture, migration,
-security/trust, IaC, and high-blast-radius work add one or two independent
-reviewers according to risk, without constraining which models the host uses.
+security/trust, IaC, and high-blast-radius work add one independent
+reviewer according to risk, without constraining which models the host uses.
 
 **Learning is explicit.** Set the optional `learning` block and Architrave keeps per-run evidence, a concise repo profile, and candidate repeated lessons. Lessons only become standing repo guidance after validation and review.
 

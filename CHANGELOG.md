@@ -13,25 +13,36 @@ Releases at or before **v0.8.12** are on the
 
 ## [0.12.3] - 2026-10-05
 
-Deterministic only: no new agents, workflows, or model calls. Feature freeze
-after this release.
+Deterministic only: no new agents, workflows, dependencies, or model calls.
+Feature freeze after this release.
 
 ### Added
-- Push-back verdicts: `task-add --pushback KEEP|CUT|DEFER:reason` (CUT skips,
-  DEFER defers); status lists tasks without one in `missingPushback`. The CTO
-  skill and conductor run the checklist inline; the tournament always includes
-  "do nothing" and "smallest viable" options.
+- Push-back verdicts: `task-add --pushback KEEP|CUT|DEFER:reason`. New Runs
+  refuse to start a task without one (`PUSHBACK_MISSING`), and CUT/DEFER never
+  dispatch. Structure is enforced; reason quality is not. Tournament results
+  must include typed `DO_NOTHING` and `SMALLEST_VIABLE` options and
+  `winnerBeatsDoNothing` (`tournament-review --result`).
 - Run budget from real signals: optional `evaluation.budget` limits for turns
-  (Run transitions), commits, dispatches, and minutes; status reports
-  `BUDGET_80`/`BUDGET_100`.
-- `gates/gate_runner.py message-lint` fails owner-facing text dense with
-  hashes, PIDs, IDs, or compressed status.
+  (Run transitions), commits, dispatches, and minutes. Status reports
+  `BUDGET_80`/`BUDGET_100`/`BUDGET_UNKNOWN` (diverged history). At 100%, new
+  dispatches stop.
+- Owner-summary lint in status and checkpoint (`OWNER_MESSAGE_LINT_FAIL` for
+  three or more full SHAs, PIDs, run IDs, or UUIDs), also available as
+  `gates/gate_runner.py message-lint`.
+- Semantic reviews record `reviewer: host-native|architrave-judge` and their
+  family. The review skill prefers the host-native reviewer over
+  `adversarial-judge` (never both), and a duplicate same-family R3/R4 PASS is
+  rejected (`DUPLICATE_REVIEW_FAMILY`).
+- `PRODUCT_OUTCOME_CONFIRMED` external checkpoint type for typed user
+  confirmation of a product outcome.
 
 ### Changed
-- The primary criterion must use reality/e2e/external verification and passes
-  only on an observed product outcome; CI/test gates are rejected
-  (`PRIMARY_EVIDENCE_NOT_OBSERVED`).
-- Loop cap: failed attempts on the primary path extend the stall counter.
+- The primary criterion passes only on a runtime-bound reality/e2e receipt or
+  `PRODUCT_OUTCOME_CONFIRMED`; CI/test results, auth/MFA/policy checkpoints, and
+  self-authored evidence are rejected (`PRIMARY_EVIDENCE_NOT_OBSERVED`).
+- Loop cap: three failed attempts on the primary criterion (commits don't
+  reset) raise `PRIMARY_STALLED` with the best attempt and caveats, and block
+  new work on it. The default stall threshold is now 3.
 
 ## [0.12.2] - 2026-10-05
 

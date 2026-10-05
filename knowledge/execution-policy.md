@@ -46,8 +46,8 @@ model label:
 - R0-R1: deterministic checks when every criterion has mechanical ground truth.
 - R2: deterministic checks plus one independent semantic review when a semantic
   criterion remains.
-- R3: deterministic checks, real E2E or runtime evidence, and two independent
-  semantic reviewers with distinct reviewer identities.
+- R3: deterministic checks, real E2E or runtime evidence, and one independent
+  semantic review (two of different families only with `review.crossFamily`).
 - R4: R3 plus security and policy review.
 
 Repository policy may raise these floors. Deterministic, invariant, E2E,
@@ -56,6 +56,15 @@ replaces a required check, and changing the host-selected model never counts as
 verification evidence.
 
 ## Proportional ceremony
+
+WorkPackets and reviews may carry a capability signal, `effort: low|default|high`,
+never a model name. Defaults: R0/R1 and mechanical work `low`, normal work
+`default`, R3/R4 reviews and the failing primary criterion after a stall `high`.
+Map it only to a control the host exposes (Copilot `auto` tier
+efficiency/balance/intelligence, or a supported `reasoning_effort`); otherwise
+it is a no-op and the host default is inherited. Record the requested effort
+and the effective mapping in the result (`task-add --effort`, `gate-record
+--effort high:<mapping>`).
 
 Ceremony scales with risk, not with anxiety. R0/R1 single-path fixes need no
 per-change pin, receipt, or qualification Run; the focused test plus normal CI

@@ -1,0 +1,10 @@
+{
+  "decision": "Restore Microsoft sign-in in the macOS app",
+  "options": [
+    { "kind": "DO_NOTHING", "summary": "Keep the current Swift host; sign-in stays broken." },
+    { "kind": "SMALLEST_VIABLE", "summary": "Reuse the working upstream webview and ignore unknown bridge messages." },
+    { "kind": "ALTERNATIVE", "summary": "Rewrite the bridge with a strict message schema." }
+  ],
+  "winner": "SMALLEST_VIABLE",
+  "winnerBeatsDoNothing": "Doing nothing leaves login broken; the smallest option restores it with one parity test and no new code paths."
+}

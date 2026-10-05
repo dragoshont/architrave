@@ -8,7 +8,7 @@ one correction: objective, last evidence, blocker, next cheapest action.
 
 1. **Outcome over ceremony.** Judge by the user-visible criterion ("login
    works"), not by CI, pin, receipt, or review counts. If N commits or turns
-   (default 5) do not touch the failing path, escalate `STALLED_PRIMARY_CRITERION`
+   (default 3) do not touch the failing path, escalate `STALLED_PRIMARY_CRITERION`
    and steer back to that path.
 2. **Reference parity first.** Before rewriting working code, diff it against
    the known-working reference and prove parity on the real flow. Hardening

@@ -191,7 +191,7 @@ def receipt(store, repo: Path, run_id: str, task_id: str, argv: list[str]) -> st
 
 def run_task(store, manager, execute, repo: Path, run_id: str, spec: dict[str, object]) -> None:
     task_id = str(spec["id"])
-    store.add_task(run_id, spec)
+    store.add_task(run_id, {"pushback": "KEEP:required product slice", **spec})
     workspace = Path(manager.create(run_id, task_id)["workspace"])
     worker_id = f"worker-{task_id}"
     store.start_task(run_id, task_id, worker_id=worker_id)

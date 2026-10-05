@@ -21,7 +21,9 @@ Run the repository's Architrave workflow as the lead conductor.
    recurring-failure risk.
 6. Route bounded WorkPackets through the native worker adapter and isolated
    worktrees. Worker `done` is candidate completion; the coordinator gates it.
-7. Scale gates by R0-R4. Complete R3/R4 semantic gates require independent GPT
-   and Claude families; R4 also requires security/policy review.
+7. Scale gates by R0-R4. R3/R4 need one independent semantic review, preferably
+   the host-native reviewer; two different families are required only when
+   `review.crossFamily` is true (as in the Architrave repo). R4 also requires
+   security/policy review. The host picks the model.
 8. Mutation is default-deny. An explicit scoped Run grant may authorize deploy
    or runtime mutation; record checkpoint, receipt, and live verification.
