@@ -72,6 +72,16 @@ try {
   $InvalidConfig | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $InvalidDesign 'architrave.config.json') -Encoding utf8
   Expect-Code 'checks-invalid-design-json' $InvalidDesign { ./gates/checks.ps1 -Quick } 1
 
+  $CopyRepo = Join-Path $Tmp 'product-copy'; Make-Repo $CopyRepo
+  New-Item -ItemType Directory -Force -Path (Join-Path $CopyRepo 'strings') | Out-Null
+  Set-Content -Path (Join-Path $CopyRepo 'strings/en.json') -Encoding utf8 -Value '{"signIn": "Sign in with Microsoft"}'
+  $CopyConfig = Get-Content (Join-Path $CopyRepo 'architrave.config.json') -Raw | ConvertFrom-Json
+  $CopyConfig | Add-Member -NotePropertyName productCopy -NotePropertyValue ([ordered]@{ paths = @('strings/*.json') })
+  $CopyConfig | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $CopyRepo 'architrave.config.json') -Encoding utf8
+  Expect-Code 'product-copy-clean' $CopyRepo { ./gates/checks.ps1 -Quick } 0
+  Set-Content -Path (Join-Path $CopyRepo 'strings/en.json') -Encoding utf8 -Value '{"status": "Registry only - not ownership evidence"}'
+  Expect-Code 'product-copy-internal-language' $CopyRepo { ./gates/quality-gate.ps1 } 2
+
   $KnowledgeRepo = Join-Path $Tmp 'knowledge'; Make-Repo $KnowledgeRepo
   Set-Content -Path (Join-Path $KnowledgeRepo 'architrave.config.json') -Encoding utf8 -Value @'
 {

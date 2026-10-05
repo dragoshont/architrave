@@ -42,4 +42,23 @@ set -e
 [ "$hook_status" -eq 2 ]
 [ ! -s "$tmp/hook-fail.out" ]
 grep -q 'quality-gate: BLOCKING' "$tmp/hook-fail.err"
+
+mkdir -p "$repo/strings"
+printf '{"signIn": "Sign in with Microsoft"}\n' > "$repo/strings/en.json"
+cat > "$repo/architrave.config.json" <<'JSON'
+{
+  "kind": "knowledge",
+  "build": "printf build > build.ran",
+  "test": "printf test > test.ran",
+  "productCopy": { "paths": ["strings/*.json"] }
+}
+JSON
+(cd "$repo" && ./gates/checks.sh --quick | grep -q 'ok    product copy (1 files)')
+printf '{"status": "Registry only - not certified"}\n' > "$repo/strings/en.json"
+set +e
+copy_out="$(cd "$repo" && ./gates/checks.sh --quick)"
+copy_status=$?
+set -e
+[ "$copy_status" -eq 1 ]
+grep -q "strings/en.json:1: 'Registry only'" <<<"$copy_out"
 echo "GATES: PASS"

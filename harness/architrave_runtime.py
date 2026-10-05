@@ -12,6 +12,7 @@ import argparse
 import contextlib
 import copy
 import datetime as dt
+import fnmatch
 import hashlib
 import hmac
 import json
@@ -131,6 +132,11 @@ SURFACE_VALUES = {"web", "electron", "ios", "deployment", "runtime"}
 SURFACE_VERIFICATION_TYPES = {"reality", "e2e"}
 WORK_KINDS = {"product", "diagnostic", "infrastructure", "review", "research", "communications"}
 TARGET_OPERATIONS = {"launch", "test", "install"}
+PRIMARY_STALL_THRESHOLD = 5
+PRIMARY_RESULT_EVENTS = {"worker.finished", "task.completed", "task.failed"}
+PRIMARY_BOUND_EVENTS = PRIMARY_RESULT_EVENTS | {
+    "gate.passed", "gate.failed", "gate.recorded", "acceptance.updated", "product.progress",
+}
 TARGET_IDENTITY_FIELDS = {
     "provider",
     "artifact",
@@ -1242,6 +1248,9 @@ class RunStore:
         policy_allow: Sequence[dict[str, Any]] | None = None,
         confirmation_required: Sequence[str] | None = None,
         run_id: str | None = None,
+        primary_criterion: str | None = None,
+        primary_paths: Sequence[str] = (),
+        primary_threshold: int = PRIMARY_STALL_THRESHOLD,
     ) -> dict[str, Any]:
         # Explicit arguments always win; an omitted (None) argument falls back to the
         # repository's configured `autonomy` defaults, and only then to the built-in default.
@@ -1325,6 +1334,10 @@ class RunStore:
                 "eventCursor": {"sequence": 0, "lastHash": ZERO_HASH},
                 "pendingEvent": None,
             }
+            if primary_criterion:
+                state["focus"]["primaryCriterion"] = normalize_primary_criterion(
+                    state, primary_criterion, primary_paths, primary_threshold, state["baseline"]["commit"],
+                )
             self._create_human_artifacts(run_dir, state)
             return self._commit_locked(
                 run_dir,
@@ -1453,6 +1466,7 @@ class RunStore:
             state["focus"]["minimalSliceProven"] = False
             state["focus"]["nextCheapestTest"] = next_cheapest_test.strip()
             state["focus"]["lastResetReason"] = correction.strip()
+            state["focus"].pop("primaryCriterion", None)
             state["lanes"]["deferred"].extend(
                 lane for lane in state["lanes"]["active"] if lane["id"] != "product"
             )
@@ -1477,6 +1491,27 @@ class RunStore:
             }
 
         return self._transaction(run_id, mutate, event_type="objective.replaced", actor=actor)
+
+    def set_primary_criterion(
+        self,
+        run_id: str,
+        *,
+        criterion_id: str,
+        paths: Sequence[str],
+        threshold: int = PRIMARY_STALL_THRESHOLD,
+        actor: str = "coordinator",
+    ) -> dict[str, Any]:
+        head = run_command(["git", "rev-parse", "HEAD"], self.repository)
+
+        def mutate(state: dict[str, Any]) -> dict[str, Any]:
+            if state["status"] in {"COMPLETED", "FAILED", "CANCELLED"}:
+                raise RuntimeFailure("RUN_TERMINAL", "cannot declare a primary criterion on a terminal Run")
+            state["focus"]["primaryCriterion"] = normalize_primary_criterion(
+                state, criterion_id, paths, threshold, head,
+            )
+            return copy.deepcopy(state["focus"]["primaryCriterion"])
+
+        return self._transaction(run_id, mutate, event_type="focus.primary_declared", actor=actor)
 
     def record_reuse_baseline(
         self,
@@ -2014,6 +2049,13 @@ class RunStore:
             }
             if not normalized["objective"]:
                 raise RuntimeFailure("INVALID_TASK", "task objective is required")
+            if change_kind != "normal":
+                # Reference parity is the first gate: the replacement is bound to the tested baseline.
+                normalized["reference"] = {
+                    "path": state["reuseBaseline"]["path"],
+                    "difference": state["reuseBaseline"]["difference"],
+                    "evidenceRefs": list(state["reuseBaseline"]["evidenceRefs"]),
+                }
             state["tasks"].append(normalized)
             validate_task_graph(state["tasks"])
             state["status"] = "PLANNING" if state["status"] == "CREATED" else state["status"]
@@ -2338,6 +2380,12 @@ class RunStore:
         preflight_observation: dict[str, Any] | None = None
         snapshot = self.load(run_id)
         snapshot_task = find_task(snapshot, task_id)
+        primary = snapshot["focus"].get("primaryCriterion")
+        if primary and primary["id"] not in snapshot_task["acceptanceCriteria"]:
+            stall = primary_criterion_status(snapshot, self.events(run_id), self.repository)
+            if stall and stall["stalled"]:
+                escalation = stalled_primary_escalation(stall)
+                raise RuntimeFailure(escalation["code"], escalation["message"], details=stall)
         if TARGET_OPERATIONS.intersection(snapshot_task.get("operations") or []):
             identity = snapshot.get("targetIdentity")
             if (
@@ -4612,6 +4660,16 @@ def validate_run(state: dict[str, Any]) -> None:
         raise RuntimeFailure("RUN_INVALID", "canonical objective is invalid")
     if not isinstance(state["focus"].get("reviewReopens"), int):
         raise RuntimeFailure("RUN_INVALID", "focus state is invalid")
+    primary = state["focus"].get("primaryCriterion")
+    if primary is not None and (
+        not isinstance(primary, dict)
+        or primary.get("id") not in criteria_ids
+        or not primary.get("paths")
+        or not isinstance(primary.get("threshold"), int)
+        or primary["threshold"] < 1
+        or not isinstance(primary.get("eventSequence"), int)
+    ):
+        raise RuntimeFailure("RUN_INVALID", "primary criterion focus is invalid")
     lanes = state["lanes"]
     if int(lanes.get("maxActive", 0)) < 1 or len(lanes.get("active") or []) > lanes["maxActive"]:
         raise RuntimeFailure("RUN_INVALID", "active lane limit exceeded")
@@ -4988,6 +5046,116 @@ def split_csv(value: str | None) -> list[str]:
     return [item.strip() for item in (value or "").split(",") if item.strip()]
 
 
+def normalize_primary_criterion(
+    state: dict[str, Any],
+    criterion_id: str,
+    paths: Sequence[str],
+    threshold: int,
+    since_commit: str,
+) -> dict[str, Any]:
+    if criterion_id not in state["objective"]["acceptanceCriteria"]:
+        raise RuntimeFailure("INVALID_PRIMARY_CRITERION", "primary criterion must be a current objective criterion")
+    normalized_paths = list(dict.fromkeys(safe_relative_path(str(path), "primary path") for path in paths))
+    if not normalized_paths:
+        raise RuntimeFailure("INVALID_PRIMARY_CRITERION", "primary criterion requires at least one code path")
+    if int(threshold) < 1:
+        raise RuntimeFailure("INVALID_PRIMARY_CRITERION", "stall threshold must be at least 1")
+    return {
+        "id": criterion_id,
+        "paths": normalized_paths,
+        "threshold": int(threshold),
+        "sinceCommit": since_commit,
+        "declaredAt": utc_now(),
+        "eventSequence": state["eventCursor"]["sequence"] + 1,
+    }
+
+
+def _path_touches(changed: str, declared: str) -> bool:
+    declared = declared.rstrip("/")
+    return changed == declared or changed.startswith(declared + "/") or fnmatch.fnmatchcase(changed, declared)
+
+
+def _primary_commits(repository: Path, primary: dict[str, Any]) -> list[tuple[dt.datetime, int, str, bool]]:
+    since = primary["sinceCommit"]
+    ancestor = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", since, "HEAD"], cwd=repository, capture_output=True, check=False,
+    ).returncode == 0
+    selector = [f"{since}..HEAD"] if ancestor else [f"--since={primary['declaredAt']}", "HEAD"]
+    output = run_command(
+        ["git", "-c", "core.quotepath=false", "log", "--reverse", "--no-merges",
+         "--format=%x1e%H%x1f%cI", "--name-only", *selector],
+        repository,
+    )
+    commits: list[tuple[dt.datetime, int, str, bool]] = []
+    for record in output.split("\x1e"):
+        lines = [line.strip() for line in record.strip().splitlines() if line.strip()]
+        if not lines:
+            continue
+        sha, committed = lines[0].split("\x1f", 1)
+        touched = any(_path_touches(name, path) for name in lines[1:] for path in primary["paths"])
+        commits.append((parse_iso(committed), 0, f"commit:{sha[:12]}", touched))
+    return commits
+
+
+def primary_criterion_status(
+    state: dict[str, Any], events: Sequence[dict[str, Any]], repository: Path,
+) -> dict[str, Any] | None:
+    """Count consecutive commits/worker results that neither touch nor move the primary criterion."""
+    primary = state["focus"].get("primaryCriterion")
+    if not primary:
+        return None
+    criterion = next((item for item in state["acceptanceCriteria"] if item["id"] == primary["id"]), None)
+    criterion_status = criterion["status"] if criterion else "NOT_APPLICABLE"
+    tasks = {task["id"]: task for task in state["tasks"]}
+    gates = {gate["id"]: gate for gate in state["gateResults"]}
+    timeline = _primary_commits(repository, primary)
+    for event in events:
+        if event["sequence"] <= primary["eventSequence"] or event["type"] not in PRIMARY_BOUND_EVENTS:
+            continue
+        payload = event.get("payload") or {}
+        task = tasks.get(str(event.get("taskId") or ""))
+        gate = gates.get(str(payload.get("gateId") or ""))
+        bound = (
+            payload.get("criterionId") == primary["id"]
+            or (gate is not None and primary["id"] in gate["criteria"])
+            or (task is not None and primary["id"] in task["acceptanceCriteria"])
+        )
+        if bound:
+            timeline.append((parse_iso(event["timestamp"]), 1, f"event:{event['sequence']}", True))
+        elif event["type"] in PRIMARY_RESULT_EVENTS:
+            timeline.append((parse_iso(event["timestamp"]), 1, f"task:{event.get('taskId')}", False))
+    streak = 0
+    counted: set[str] = set()
+    last_touch = None
+    for _, _, label, touched in sorted(timeline, key=lambda item: (item[0], item[1])):
+        if touched:
+            streak, counted, last_touch = 0, set(), label
+        elif label not in counted:
+            counted.add(label)
+            streak += 1
+    return {
+        "id": primary["id"],
+        "criterionStatus": criterion_status,
+        "paths": list(primary["paths"]),
+        "threshold": primary["threshold"],
+        "untouchedStreak": streak,
+        "lastTouch": last_touch,
+        "stalled": criterion_status not in {"PASS", "NOT_APPLICABLE"} and streak >= primary["threshold"],
+    }
+
+
+def stalled_primary_escalation(stall: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "code": "STALLED_PRIMARY_CRITERION",
+        "criterion": stall["id"],
+        "message": (
+            f"{stall['untouchedStreak']} consecutive commits/worker results did not touch "
+            f"{stall['id']} ({', '.join(stall['paths'])}) or change its outcome; return to its "
+            "code path or ask the user to replace the objective"
+        ),
+    }
+
+
 def state_summary(state: dict[str, Any]) -> dict[str, Any]:
     from worker_adapters import workspace_fingerprint
 
@@ -5015,7 +5183,7 @@ def state_summary(state: dict[str, Any]) -> dict[str, Any]:
                     else "stale"
                 )
         evidence.append(item)
-    return {
+    summary = {
         "runId": state["runId"],
         "status": state["status"],
         "revision": state["revision"],
@@ -5043,6 +5211,13 @@ def state_summary(state: dict[str, Any]) -> dict[str, Any]:
                         if worker["status"] == "RUNNING" and worker["id"] not in active_worker_ids],
         "evidence": evidence,
     }
+    if state["focus"].get("primaryCriterion"):
+        store = RunStore(repository)
+        stall = primary_criterion_status(state, store._read_events(store.run_dir(state["runId"])), repository)
+        summary["primaryCriterion"] = stall
+        if stall and stall["stalled"]:
+            summary["escalation"] = stalled_primary_escalation(stall)
+    return summary
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -5058,6 +5233,15 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--allow", action="append", default=[])
     create.add_argument("--confirmation-required", action="append", default=[])
     create.add_argument("--run-id")
+    create.add_argument("--primary-criterion", help="failing user-visible criterion watched by the stall detector")
+    create.add_argument("--primary-path", action="append", default=[], help="repository path/glob of its code path")
+    create.add_argument("--stall-threshold", type=int, default=PRIMARY_STALL_THRESHOLD)
+
+    primary = subparsers.add_parser("primary-set", help="declare the failing primary criterion and its code paths")
+    primary.add_argument("run_id")
+    primary.add_argument("--criterion", required=True)
+    primary.add_argument("--path", action="append", required=True)
+    primary.add_argument("--threshold", type=int, default=PRIMARY_STALL_THRESHOLD)
 
     for command in ("status", "inspect", "events", "ready", "resume", "verify", "checkpoint"):
         current = subparsers.add_parser(command)
@@ -5255,6 +5439,9 @@ def cli(argv: Sequence[str] | None = None) -> int:
                 policy_allow=[parse_policy_allow(item) for item in args.allow],
                 confirmation_required=args.confirmation_required,
                 run_id=args.run_id,
+                primary_criterion=args.primary_criterion,
+                primary_paths=args.primary_path,
+                primary_threshold=args.stall_threshold,
             )
             output = state_summary(state)
         elif command == "status":
@@ -5295,6 +5482,12 @@ def cli(argv: Sequence[str] | None = None) -> int:
                     checkpoint_id=args.checkpoint_id,
                     challenge=args.challenge,
                     actor=args.actor,
+                )
+            )
+        elif command == "primary-set":
+            output = state_summary(
+                store.set_primary_criterion(
+                    args.run_id, criterion_id=args.criterion, paths=args.path, threshold=args.threshold,
                 )
             )
         elif command == "reuse-verify":

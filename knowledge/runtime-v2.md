@@ -89,7 +89,9 @@ When a working baseline is identified, `reuseBaseline` must record its path,
 registered test/diff evidence, and the exact difference being evaluated before a
 replacement architecture or compatibility constraint can enter the TaskGraph.
 `reuse-verify` executes the declared baseline test and binds its path digest and
-difference. `objective-replace` requires a `HUMAN_JUDGMENT_REQUIRED` challenge;
+difference. A replacement or port task records that baseline as its
+`reference`; the first gate is a parity test against the reference on the real
+flow, before any hardening. `objective-replace` requires a `HUMAN_JUDGMENT_REQUIRED` challenge;
 `target-resolve` requires a `SAFE_WRITE_TARGET_REQUIRED` challenge bound to the
 provider/principal. Neither flow accepts a repository-authored self-attestation.
 
@@ -101,6 +103,16 @@ Except for immediate R4 safety/security work, extensive diagnostics,
 infrastructure, large refactors, and review are deferred until a minimal
 acceptance slice is proven. Two review reopens without new product evidence
 force one coherent fix batch before another review.
+
+A Run may declare its failing user-visible criterion as
+`focus.primaryCriterion` with repository code paths (`run --primary-criterion
+ID --primary-path PATH` or `primary-set`). Status merges commits since the
+declaration with later Run events into one timeline. A commit touching a
+primary path, or a gate/criterion/task result bound to the criterion, resets the
+streak; other commits and worker/task results extend it. At the threshold
+(default 5) while the criterion is not PASS, status reports
+`STALLED_PRIMARY_CRITERION` and `task-start` refuses tasks not bound to it.
+`objective-replace` clears the declaration. Runs without it are unchanged.
 
 Launch/test/install tasks require a verified target identity: provider/store,
 artifact or executable, version/build, SHA-256, environment, workspace/prefix,
@@ -303,6 +315,8 @@ python3 harness/architrave_runtime.py run --goal "..." --outcome "..." \
 python3 harness/architrave_runtime.py task-add <run-id> --id task-1 \
   --title "..." --objective "..." --criteria ID
 python3 harness/architrave_runtime.py ready <run-id>
+python3 harness/architrave_runtime.py primary-set <run-id> --criterion LOGIN-001 \
+  --path Sources/Auth --threshold 5
 python3 harness/architrave_runtime.py resume <run-id>
 python3 harness/architrave_runtime.py policy-amend-request <run-id> \
   --id <checkpoint-id> --task-id <task-id> --principal <principal> \

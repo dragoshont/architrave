@@ -53,6 +53,17 @@ Score each **Pass / Concern / Fail** with a severity and cite evidence (a spec l
     tasks, repeated full gates on unchanged source without a hypothesis, or
     status reporting led by artifact counts is a Major concern and becomes a
     Blocker when it displaces an available product acceptance criterion.
+    Rewriting known-working behavior without a recorded reference and a parity
+    test on the real flow before hardening is a Major concern.
+
+16. **Diagnostics, protocol leniency, and product copy** — failures carry the
+    specific step and reason (redacted); collapsing distinct causes into one
+    generic failure code is a Major concern and a Blocker on the primary
+    criterion's path. Third-party protocol input is parsed leniently (unknown
+    fields/messages ignored, failure only on malformed required data);
+    exact-key-set parsing or catch-all rejection of a third-party bridge is a
+    Major concern. Internal evidence, spec, status, certification, or receipt
+    language in user-facing UI strings is a Major concern.
 
 ### Backend‑lane dimensions (apply when `config.backend` / `config.iac` are set — see `knowledge/backend.md`)
 15. **Contract conformance** — the implementation honors the agreed contract (`config.backend.contracts`): shapes, errors, auth scope, pagination; UI and backend bind to the *same* contract (no drift); capability honesty (nothing claimed that the service can't perform). For operational/admin work, the contract includes capability matrix, preflight, operation/job schema, readiness/health source, diagnostic evidence, audit, and scarce-limit fields from `knowledge/operations-ux.md`.

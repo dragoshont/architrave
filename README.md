@@ -57,6 +57,7 @@ using the [update instructions](#install).
 | Agent | Invoke | What it owns |
 |---|---|---|
 | **Architrave** | directly | Leads the durable Run: Outcome, Acceptance Matrix, TaskGraph, policy, bounded workers, resume, gates, and final status. |
+| **CTO** | at Run start and on stall | Keeps the Run outcome-driven and lean; returns one correction (objective, last evidence, blocker, next cheapest action) and routes to specialists. Never implements. |
 | **Product Research** | under the hood | Finds shipped product/workflow patterns, competitor references, and domain-specific traps before planning. |
 | **Operations UX** | under the hood | Turns admin/operations research into setup, offboarding, inventory, catalog/upload, RBAC, health, diagnostics, queue/job, and audit patterns with contract requirements. |
 | **UX Architect** | directly | Information architecture, navigation, flows, interaction model, keyboard/input behavior, and empty/loading/error states. |
@@ -684,7 +685,7 @@ knowledge/
         learning-loop.md            ← durable run artifacts + repo profile + lesson promotion — cited
         yagni.md                    ← minimum-sufficient-change ladder + Ponytail/Caveman research — cited
         runtime-v2.md               ← durable Run/TaskGraph/EventLog/policy/worker semantics
-agents/                       ← Architrave · Product Research · Operations UX · UX Architect · UI Visual · Platform Design · Tournament Analyst · Adversarial Judge
+agents/                       ← Architrave · CTO · Product Research · Operations UX · UX Architect · UI Visual · Platform Design · Tournament Analyst · Adversarial Judge
                                  + backend lane: Service Architect · Backend Planner · Backend Implementer · Infra Engineer
                                  + runtime lane: Runtime Observer
 gates/                        ← rubric.md · checks.{sh,ps1} · reconcile.{sh,ps1} · quality-gate.{sh,ps1} · backend-checks.{sh,ps1} · hooks/

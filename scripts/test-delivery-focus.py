@@ -9,6 +9,9 @@ learning = (root / "knowledge/learning-loop.md").read_text(encoding="utf-8")
 stanza = (root / "templates/AGENTS.stanza.md").read_text(encoding="utf-8")
 readme = (root / "README.md").read_text(encoding="utf-8")
 roadmap = (root / "ROADMAP.md").read_text(encoding="utf-8")
+lead_skill = (root / "skills/architrave/SKILL.md").read_text(encoding="utf-8")
+cto_agent = (root / "agents/cto.agent.md").read_text(encoding="utf-8")
+cto_skill = (root / "skills/architrave-cto/SKILL.md").read_text(encoding="utf-8")
 generator = (root / "scripts/generate-codex-agents.py").read_text(encoding="utf-8")
 codex_roles = "\n".join(
     path.read_text(encoding="utf-8") for path in sorted((root / ".codex/agents").glob("*.toml"))
@@ -27,6 +30,18 @@ required = {
     "README bounded tournament": (readme, "A full\n**Tournament of Options** is reserved"),
     "README host-owned execution": (readme, "Execution stays host-owned"),
     "roadmap bounded tournament": (roadmap, "a Tournament of Options only for materially ambiguous or high-risk choices"),
+    "agent reference parity": (agent, "parity test against that reference on the real\n   flow, before any hardening"),
+    "agent primary stall": (agent, "`STALLED_PRIMARY_CRITERION`"),
+    "agent diagnostic specificity": (agent, "Collapsing distinct\n  causes into one generic failure code is a gate finding"),
+    "execution lenient parsing": (execution, "Default-deny is not a parsing policy"),
+    "execution proportional ceremony": (execution, "R0/R1 single-path fixes need no\nper-change pin, receipt, or qualification Run"),
+    "execution approved quit": (execution, "escalate a graceful quit to SIGTERM after a timeout without a new hold"),
+    "rubric product copy": (rubric, "Internal evidence, spec, status, certification, or receipt\n    language in user-facing UI strings"),
+    "agent consults cto": (agent, "Consult architrave:cto at start and on stall"),
+    "skill consults cto": (lead_skill, "Consult architrave:cto at start and on stall"),
+    "stanza consults cto": (stanza, "Consult architrave:cto at start and on stall"),
+    "cto agent routes": (cto_agent, "never implements"),
+    "cto skill outcome": (cto_skill, "Outcome over ceremony"),
 }
 
 missing = [name for name, (text, phrase) in required.items() if phrase not in text]
@@ -75,6 +90,15 @@ for path in sorted((root / "agents").glob("*.agent.md")):
     text = path.read_text(encoding="utf-8")
     if "disable-model-invocation" in text or "\nmodel:" in text:
         missing.append(f"{path.relative_to(root)} still contains model-selection metadata")
+if '"CTO"' not in agent.split("---", 2)[1]:
+    missing.append("conductor does not route to the CTO agent")
+if not cto_agent.startswith('---\nname: "CTO"\n') or not cto_skill.startswith("---\nname: architrave-cto\n"):
+    missing.append("CTO agent or skill frontmatter is not registered")
+if not (root / "skills/architrave-cto/agents/openai.yaml").is_file():
+    missing.append("CTO skill metadata is missing")
+installer = (root / "tools/install_update.py").read_text(encoding="utf-8")
+if '"cto",' not in installer.split("GATE_FILES", 1)[0]:
+    missing.append("installer does not ship the CTO agent to every profile")
 if missing:
     raise SystemExit("delivery-focus validation failed: " + ", ".join(missing))
 

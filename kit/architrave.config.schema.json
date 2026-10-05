@@ -306,6 +306,16 @@
         "requiresApprovalFor": { "type": "array", "description": "Operations that require explicit human approval, e.g. mutations, reconcile, restart, secret-access, network-change.", "items": { "type": "string" } }
       }
     },
+    "productCopy": {
+      "type": "object",
+      "description": "Optional product-copy lint run by gates/checks (and the quality-gate hook). Scans shipping UI string files for internal evidence/spec/status/certification language.",
+      "additionalProperties": false,
+      "required": ["paths"],
+      "properties": {
+        "paths": { "type": "array", "minItems": 1, "description": "Repository-relative globs of user-facing string files, e.g. Resources/**/*.xcstrings or src/i18n/*.json.", "items": { "type": "string", "minLength": 1 } },
+        "forbidden": { "type": "array", "description": "Optional case-insensitive regexes replacing the default internal-vocabulary list.", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
     "learning": {
       "type": "object",
       "description": "Optional learning-loop settings. Durable run artifacts, repo profile, and repeated repo lessons live outside the config; stable lessons are promoted into config/docs only after review.",

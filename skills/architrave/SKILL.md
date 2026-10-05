@@ -6,8 +6,11 @@ description: Use for non-trivial repository changes that need config-first intak
 Run the repository's Architrave workflow as the lead conductor.
 
 1. Read `AGENTS.md`, `architrave.config.json`, and `knowledge/runtime-v2.md`.
+   Consult architrave:cto at start and on stall (or apply the `architrave-cto`
+   checklist when the host cannot nest agents).
 2. Create or resume canonical `architrave.run.v2`; do not manually edit Run
-   state or events. Treat the phase ledger as a projection.
+   state or events. Treat the phase ledger as a projection. Declare the failing
+   user-visible criterion with `--primary-criterion`/`primary-set`.
 3. Under `approved-program`, continue dependency-ready, in-scope tasks without
    asking at internal phase boundaries. Stop only for policy, failure, resource,
    or typed external checkpoints.

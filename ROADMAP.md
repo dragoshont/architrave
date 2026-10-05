@@ -15,6 +15,7 @@
 - [x] `agents/architrave.agent.md` — the config‑driven, judge‑gated harness (understand → propose → judge → implement → reconcile → tests → judge → verify).
 - [x] `agents/adversarial-judge.agent.md` — LLM‑as‑judge against `gates/rubric.md` (cross‑platform).
 - [x] `agents/tournament-analyst.agent.md` — isolated, read-only option comparison for materially risky decisions.
+- [x] `agents/cto.agent.md` + `skills/architrave-cto` — consulted at Run start and on stall; keeps the Run outcome-driven and lean.
 
 ## Milestone 3 — Gates (DONE)
 - [x] `gates/rubric.md` — cross‑platform evaluation rubric (spec / design‑language / platform / adversarial / security / a11y / reconcile / tests / verification).

@@ -11,6 +11,26 @@ Releases at or before **v0.8.12** are on the
 - Add a public Run cancel/supersede transition and make invalid unstarted-task
   intake terminal instead of retry-ready.
 
+## [0.12.2] - 2026-10-05
+
+### Added
+- **CTO** agent (`architrave:cto`) and `architrave-cto` skill checklist. The
+  conductor consults it at Run start and on stall.
+- Primary-criterion stall detector: `run --primary-criterion/--primary-path` or
+  `primary-set`. After 5 consecutive commits/worker results that miss the
+  criterion's code path, status reports `STALLED_PRIMARY_CRITERION` and
+  `task-start` refuses unrelated tasks.
+- Replacement/port tasks record their tested `reference`; parity on the real
+  flow is the first gate.
+- Opt-in `productCopy` check in `gates/checks` (and the quality-gate hook) for
+  internal evidence/spec/status language in UI strings.
+
+### Changed
+- Policy text: default-deny covers mutation and side effects only; parse
+  third-party protocol input leniently; failures carry a specific step and
+  reason; R0/R1 fixes need only the focused test plus CI; approved operations
+  may escalate a graceful quit to SIGTERM without a new hold.
+
 ## [0.11.3] - 2026-10-05
 
 ### Added

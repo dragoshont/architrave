@@ -380,6 +380,67 @@ class FocusControlTests(unittest.TestCase):
         state = self.store.load(run_id)
         framework = next(task for task in state["tasks"] if task["id"] == "diagnostic-framework")
         self.assertEqual("DEFERRED", framework["status"])
+        replacement = next(task for task in state["tasks"] if task["id"] == "minimal-login-test")
+        self.assertEqual("existing-login.txt", replacement["reference"]["path"])
+        self.assertEqual(difference, replacement["reference"]["difference"])
+        self.assertNotIn("reference", framework)
+
+    def commit(self, path: str, content: str) -> None:
+        target = self.repo / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+        subprocess.run(["git", "add", "--", path], cwd=self.repo, check=True)
+        subprocess.run(["git", "commit", "-qm", f"change {path}"], cwd=self.repo, check=True)
+
+    def primary_run(self) -> str:
+        return self.cli(
+            "run", "--goal", "Login works", "--outcome", "Login works", "--autonomy", "approved-program",
+            "--criterion", "LOGIN-001|Sign-in completes|product|R2|deterministic",
+            "--criterion", "PKG-001|Package is pinned|product|R1|deterministic",
+            "--primary-criterion", "LOGIN-001", "--primary-path", "auth/",
+        )["runId"]
+
+    def test_primary_criterion_stalls_after_untouched_commits(self) -> None:
+        run_id = self.primary_run()
+        self.add_task(run_id, "login-fix", acceptanceCriteria=["LOGIN-001"])
+        self.add_task(run_id, "pin-package", acceptanceCriteria=["PKG-001"])
+        for index in range(4):
+            self.commit(f"packaging/pin-{index}.txt", f"{index}\n")
+        status = self.cli("status", run_id)
+        self.assertEqual(4, status["primaryCriterion"]["untouchedStreak"])
+        self.assertNotIn("escalation", status)
+        self.commit("packaging/pin-4.txt", "4\n")
+        status = self.cli("resume", run_id, "--accept-commit")
+        self.assertEqual("STALLED_PRIMARY_CRITERION", status["escalation"]["code"])
+        error = self.cli("task-start", run_id, "pin-package", "--worker-id", "w-pin", expected=1)
+        self.assertEqual("STALLED_PRIMARY_CRITERION", error["code"])
+        self.cli("task-start", run_id, "login-fix", "--worker-id", "w-login")
+        self.commit("auth/LoginHost.swift", "fixed\n")
+        status = self.cli("status", run_id)
+        self.assertEqual(0, status["primaryCriterion"]["untouchedStreak"])
+        self.assertNotIn("escalation", status)
+
+    def test_primary_criterion_counts_worker_results_and_resets_on_bound_outcome(self) -> None:
+        run_id = self.cli(
+            "run", "--goal", "Login works", "--outcome", "Login works", "--autonomy", "approved-program",
+            "--criterion", "LOGIN-001|Sign-in completes|product|R2|deterministic",
+            "--criterion", "PKG-001|Package is pinned|product|R1|deterministic",
+        )["runId"]
+        self.assertNotIn("primaryCriterion", self.cli("status", run_id))
+        self.assertNotIn("primaryCriterion", self.store.load(run_id)["focus"])
+        error = self.cli("primary-set", run_id, "--criterion", "NOPE-001", "--path", "auth", expected=1)
+        self.assertEqual("INVALID_PRIMARY_CRITERION", error["code"])
+        self.cli("primary-set", run_id, "--criterion", "LOGIN-001", "--path", "auth/**", "--threshold", "3")
+        for index in range(3):
+            self.add_task(run_id, f"receipt-{index}", acceptanceCriteria=["PKG-001"])
+            self.store.fail_task(run_id, f"receipt-{index}", "verifier refused the receipt format")
+        status = self.cli("status", run_id)
+        self.assertEqual(3, status["primaryCriterion"]["untouchedStreak"])
+        self.assertEqual("STALLED_PRIMARY_CRITERION", status["escalation"]["code"])
+        self.store.set_criterion(run_id, "LOGIN-001", "FAIL", [])
+        status = self.cli("status", run_id)
+        self.assertEqual(0, status["primaryCriterion"]["untouchedStreak"])
+        self.assertNotIn("escalation", status)
 
     def test_correction_keeps_product_objective_and_defers_bridge_lane(self) -> None:
         run_id = self.create("Run the requested free-engine game acceptance test.")

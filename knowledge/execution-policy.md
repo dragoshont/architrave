@@ -55,6 +55,20 @@ runtime, security, and policy failures override semantic PASS. A reviewer never
 replaces a required check, and changing the host-selected model never counts as
 verification evidence.
 
+## Proportional ceremony
+
+Ceremony scales with risk, not with anxiety. R0/R1 single-path fixes need no
+per-change pin, receipt, or qualification Run; the focused test plus normal CI
+is enough. Default-deny and `confirmationRequired` govern mutation and side
+effects only. A user-approved operation (for example, replacing a running app)
+may escalate a graceful quit to SIGTERM after a timeout without a new hold; a
+failed graceful step inside an approved operation is not a new blocker.
+
+Default-deny is not a parsing policy. Parse third-party protocol input
+leniently: ignore unknown fields and messages, and fail only on malformed data
+the flow actually needs. Every failure carries its specific step and reason
+(redacted); never collapse distinct causes into one generic code.
+
 ## Durable records
 
 Persist canonical Run state, authenticated typed events, compact evidence

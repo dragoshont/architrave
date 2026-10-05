@@ -126,7 +126,20 @@
         "nextCheapestTest": { "type": ["string", "null"] },
         "lastResetReason": { "type": ["string", "null"] },
         "minimalSliceProven": { "type": "boolean" },
-        "reviewReopens": { "type": "integer", "minimum": 0 }
+        "reviewReopens": { "type": "integer", "minimum": 0 },
+        "primaryCriterion": {
+          "type": "object",
+          "required": ["id", "paths", "threshold", "sinceCommit", "declaredAt", "eventSequence"],
+          "additionalProperties": false,
+          "properties": {
+            "id": { "$ref": "#/definitions/id" },
+            "paths": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+            "threshold": { "type": "integer", "minimum": 1 },
+            "sinceCommit": { "type": "string", "minLength": 1 },
+            "declaredAt": { "$ref": "#/definitions/timestamp" },
+            "eventSequence": { "type": "integer", "minimum": 1 }
+          }
+        }
       }
     },
     "lanes": {
@@ -510,6 +523,16 @@
               "enum": ["NONE", "PENDING", "UNCERTAIN", "CONFIRMED"]
             },
             "reconciliation": { "type": ["string", "null"] }
+          }
+        },
+        "reference": {
+          "type": "object",
+          "required": ["path", "difference", "evidenceRefs"],
+          "additionalProperties": false,
+          "properties": {
+            "path": { "type": "string", "minLength": 1 },
+            "difference": { "type": "string", "minLength": 1 },
+            "evidenceRefs": { "type": "array", "items": { "type": "string" } }
           }
         }
       }

@@ -148,8 +148,10 @@ class InstallUpdateTests(unittest.TestCase):
         )
         self.assertEqual(
             len(list((knowledge / ".github/agents").glob("*.agent.md"))),
-            5,
+            6,
         )
+        self.assertTrue((knowledge / ".github/agents/cto.agent.md").is_file())
+        self.assertTrue((application / ".github/agents/cto.agent.md").is_file())
         self.assertFalse((knowledge / ".github/agents/ui-visual.agent.md").exists())
         self.assertFalse(any(knowledge.glob("constitution-*.md")))
         for relative in (

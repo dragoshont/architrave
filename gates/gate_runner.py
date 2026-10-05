@@ -8,6 +8,7 @@ import contextlib
 import io
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 
@@ -15,6 +16,20 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "harness"))
 from platform_launch import LaunchError, configured_shell_command
+
+# Internal delivery vocabulary that must not leak into shipping UI strings.
+DEFAULT_FORBIDDEN_COPY = (
+    r"\bevidence\b",
+    r"\breceipts?\b",
+    r"\battest(?:s|ed|ation)?\b",
+    r"\bqualification\b",
+    r"\bcertif(?:ied|ication)\b",
+    r"\bprovenance\b",
+    r"\bregistry only\b",
+    r"\bUNTESTED\b",
+    r"\bacceptance criteri(?:on|a)\b",
+    r"\bspec (?:status|only|compliant)\b",
+)
 
 
 def repository_root(start: Path) -> Path:
@@ -90,6 +105,39 @@ def check_json_reference(root: Path, value: object, label: str) -> bool:
     return True
 
 
+def check_product_copy(root: Path, config: dict[str, object]) -> bool:
+    block = config.get("productCopy")
+    if block is None:
+        return True
+    if not isinstance(block, dict) or not isinstance(block.get("paths"), list) or not block["paths"]:
+        print("FAIL  productCopy requires a non-empty paths list")
+        return False
+    try:
+        patterns = [re.compile(str(item), re.IGNORECASE) for item in block.get("forbidden") or DEFAULT_FORBIDDEN_COPY]
+    except re.error as exc:
+        print(f"FAIL  productCopy forbidden pattern ({exc})")
+        return False
+    files: set[Path] = set()
+    for pattern in block["paths"]:
+        if not isinstance(pattern, str) or not pattern or Path(pattern).is_absolute() or ".." in Path(pattern).parts:
+            print(f"FAIL  productCopy path must be repository-relative: {pattern}")
+            return False
+        files.update(path for path in root.glob(pattern) if path.is_file())
+    findings = []
+    for path in sorted(files):
+        text = path.read_text(encoding="utf-8-sig", errors="replace")
+        for number, line in enumerate(text.splitlines(), 1):
+            for compiled in patterns:
+                match = compiled.search(line)
+                if match:
+                    findings.append(f"{path.relative_to(root).as_posix()}:{number}: '{match.group(0)}'")
+    for finding in findings:
+        print(f"FAIL  product copy uses internal language {finding}")
+    if not findings:
+        print(f"ok    product copy ({len(files)} files)")
+    return not findings
+
+
 def checks(root: Path, quick: bool) -> int:
     try:
         config = load_config(root)
@@ -112,6 +160,8 @@ def checks(root: Path, quick: bool) -> int:
             return 1
         if not check_json_reference(root, config.get("tokens"), "tokens"):
             return 1
+    if not check_product_copy(root, config):
+        return 1
     if quick:
         print("ARCHITRAVE-CHECKS: PASS")
         return 0

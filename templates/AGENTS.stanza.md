@@ -70,10 +70,21 @@ reviewers according to risk, without specifying their models.
 
 **Focus controls:** The latest explicit user direction owns one versioned
 objective. Corrections replace it and defer/cancel prior active work. Reuse an
-identified working implementation before replacement architecture. Keep at most
+identified working implementation before replacement architecture; a
+replacement starts with a parity test against that reference on the real flow.
+Consult architrave:cto at start and on stall. Declare the failing user-visible
+criterion with `primary-set`; five commits/worker results that miss its code
+path raise `STALLED_PRIMARY_CRITERION`. Keep at most
 two active lanes; communications/research/infrastructure stay deferred unless
 explicitly promoted. Two review reopens without product evidence require one
 coherent fix batch. Verify target provider, artifact, version/hash,
 environment/workspace, and acceptance target before launch/test/install.
+
+**Proportional ceremony:** R0/R1 single-path fixes need only the focused test
+plus normal CI, not a per-change pin, receipt, or qualification Run. Default-deny
+covers mutation and side effects, not parsing: read third-party protocol input
+leniently and give every failure its specific step and reason. Approved
+operations may escalate a graceful quit to SIGTERM without a new hold. Keep
+internal evidence/spec/status language out of UI strings (`productCopy`).
 
 **Never:** invent an unconfigured lane, introduce platform-foreign UI, use raw values where a token exists, create parallel backend abstractions, manually edit canonical Run state, let workers escalate policy or complete tasks, blindly retry uncertain side effects, mutate outside scoped policy, materialize secrets, run apply-shaped IaC commands, or claim compile/plan/simulation or an unsupported capability as a shipped reality.

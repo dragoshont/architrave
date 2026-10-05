@@ -23,6 +23,7 @@ BEGIN = "<!-- architrave:begin -->"
 END = "<!-- architrave:end -->"
 KNOWLEDGE_AGENTS = (
     "architrave",
+    "cto",
     "adversarial-judge",
     "tournament-analyst",
     "product-research",

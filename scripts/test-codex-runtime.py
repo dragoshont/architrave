@@ -180,7 +180,7 @@ def plugin_checks(base: Path, live: bool) -> None:
     payload = json.loads(installed.stdout)
     installed_path = Path(payload["installedPath"])
     skills = sorted(path.parent.name for path in (installed_path / "skills").glob("*/SKILL.md"))
-    if skills != ["architrave", "architrave-review", "architrave-tournament"]:
+    if skills != ["architrave", "architrave-cto", "architrave-review", "architrave-tournament"]:
         raise RuntimeError(f"installed plugin skills differ: {skills}")
     if (repo / ".agents/skills").exists():
         raise RuntimeError("plugin check unexpectedly created project skills")
