@@ -236,8 +236,9 @@ class WorkspaceManagerTests(unittest.TestCase):
         second = threading.Thread(target=start, args=(second_run, "two", "worker-two"))
         first.start()
         second.start()
-        first.join(timeout=5)
-        second.join(timeout=5)
+        # Generous bound: start_task does git/HMAC work that is slow on loaded Windows hosts.
+        first.join(timeout=120)
+        second.join(timeout=120)
         self.assertFalse(first.is_alive() or second.is_alive())
         self.assertEqual(["RESOURCE_CONFLICT", "STARTED"], sorted(outcomes))
 

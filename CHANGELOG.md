@@ -11,6 +11,29 @@ Releases at or before **v0.8.12** are on the
 - Add a public Run cancel/supersede transition and make invalid unstarted-task
   intake terminal instead of retry-ready.
 
+## Highlights since 0.11.0 (0.12.x)
+- Slim footprint: generated orchestration is about 82% fewer files and 85% fewer
+  bytes than v0.11.0, pinned and re-measured from source on every release.
+- Native host worker: agent WorkPackets run through the joined Copilot host's
+  tasks RPC with bounded candidates and independently observed gates; there is
+  no agent CLI fallback.
+- Outcome rules and the stall detector: reference parity first, lenient
+  third-party parsing, specific diagnostics, proportional ceremony, and
+  `STALLED_PRIMARY_CRITERION` when work stops touching the failing path.
+- CTO role: `architrave:cto` and its checklist are consulted at Run start and
+  on stall, and return one plain correction.
+- Deterministic outcome controls: observed-only primary evidence, a loop cap of
+  three failed attempts, a real-signal budget, push-back verdicts before work,
+  and owner-message lint.
+- Host-native review: the host's own reviewer is preferred over the Architrave
+  judge; two model families are required only with `review.crossFamily`.
+
+## [0.12.4] - 2026-10-06
+
+### Fixed
+- The Windows workspaces concurrency test is now load-tolerant (test-only; no
+  runtime change).
+
 ## [0.12.3] - 2026-10-05
 
 Deterministic only: no new agents, workflows, dependencies, or model calls.
@@ -35,6 +58,13 @@ Feature freeze after this release.
   rejected (`DUPLICATE_REVIEW_FAMILY`).
 - `PRODUCT_OUTCOME_CONFIRMED` external checkpoint type for typed user
   confirmation of a product outcome.
+- `review.crossFamily` config (default false): R3/R4 need one independent review
+  on the host default or auto model; two different families only when set, as
+  in Architrave's own repository config.
+- `effort: low|default|high` capability signal on tasks (`task-add --effort`)
+  and reviews (`gate-record --effort`). It maps to the host auto tier or
+  reasoning effort when exposed, and is a recorded no-op on Copilot native
+  tasks today. It never names a model.
 
 ### Changed
 - The primary criterion passes only on a runtime-bound reality/e2e receipt or
@@ -63,6 +93,28 @@ Feature freeze after this release.
   third-party protocol input leniently; failures carry a specific step and
   reason; R0/R1 fixes need only the focused test plus CI; approved operations
   may escalate a graceful quit to SIGTERM without a new hold.
+
+## [0.12.1] - 2026-10-05
+
+### Fixed
+- Structured worker CLI failures clean up outside the CLI catch: locked tamper
+  recovery takes no CLI arguments, and preparation-failure workers close through
+  public APIs.
+
+## [0.12.0] - 2026-10-05
+
+### Changed
+- Durable agent WorkPackets use the native host adapter (joined Copilot tasks
+  RPC) with bounded candidates, observed source-bound gates, safe orphan and
+  tooling recovery, and preserved human holds. Nested agent CLI recipes were
+  removed.
+- Portable adoption on Windows and macOS with Python 3.9+, plus a refreshed,
+  source-pinned orchestration footprint benchmark.
+
+### Added
+- Trusted external target attestation (including cross-host SSH), closed-resource
+  reconciliation, challenge-bound policy amendments, and public challenge
+  renewal.
 
 ## [0.11.3] - 2026-10-05
 
