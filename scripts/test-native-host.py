@@ -94,6 +94,34 @@ class NativeHostTests(unittest.TestCase):
                     command_for(adapter, packet, self.repo)
                 self.assertEqual("NATIVE_HOST_REQUIRED", error.exception.code)
 
+    def test_public_native_worker_cli_fails_clearly_without_host(self):
+        run_id, task_id = self.task()
+        before = self.store.load(run_id)
+        result = subprocess.run([
+            sys.executable, str(ROOT / "harness" / "worker_adapters.py"), "--repo", str(self.repo),
+            run_id, task_id, "--worker-id", "no-host", "--dry-run",
+        ], capture_output=True, text=True)
+        self.assertEqual(2, result.returncode, result.stderr)
+        self.assertEqual("NATIVE_HOST_REQUIRED", json.loads(result.stderr)["error"]["code"])
+        self.assertEqual(before["revision"], self.store.load(run_id)["revision"])
+
+    def test_public_preparation_failure_closes_worker_without_running_argv(self):
+        run_id, task_id = self.task("shell", {
+            "command": [sys.executable, "-c", "from pathlib import Path; Path('must-not-run').write_text('bad')"],
+            "cwd": None, "environment": [],
+        })
+        self.store.start_task(run_id, task_id, worker_id="unassigned-worker")
+        result = subprocess.run([
+            sys.executable, str(ROOT / "harness" / "worker_adapters.py"), "--repo", str(self.repo),
+            run_id, task_id, "--worker-id", "unassigned-worker",
+        ], capture_output=True, text=True)
+        self.assertEqual(1, result.returncode, result.stderr)
+        self.assertEqual("WORKSPACE_NOT_ISOLATED", json.loads(result.stderr)["error"]["code"])
+        state = self.store.load(run_id)
+        self.assertEqual("FAILED", state["workers"][0]["status"])
+        self.assertIsNone(state["tasks"][0]["lease"])
+        self.assertFalse((self.repo / "must-not-run").exists())
+
     def test_preserved_legacy_config_allows_native_without_cli_fallback(self):
         config = {"workers": {"defaultAdapter": "copilot", "enabledAdapters": ["copilot", "claude", "codex", "shell"]}}
         path = self.repo / "architrave.config.json"

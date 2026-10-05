@@ -444,15 +444,6 @@ def execute_work_packet(store: RunStore, run_id: str, task_id: str, worker_id: s
             try:
                 _, current_state = store._load_locked(run_id)
             except RuntimeFailure as exc:
-                cleanup_error = None
-                if not args.dry_run:
-                    try:
-                        state = store.load(args.run_id)
-                        task = find_task(state, args.task_id)
-                        if task["status"] == "RUNNING" and (task.get("lease") or {}).get("owner") == args.worker_id:
-                            store.fail_task(args.run_id, args.task_id, exc.code)
-                    except RuntimeFailure as cleanup:
-                        cleanup_error = cleanup.code
                 if exc.code != "RUN_STATE_TAMPERED_RECOVERED":
                     raise RuntimeFailure(
                         "WORKER_RUNTIME_CORRUPTION",
@@ -769,6 +760,15 @@ def cli(argv: Sequence[str] | None = None) -> int:
                           "result": redact(output)}, indent=2))
         return 0 if args.dry_run or output["status"] == "candidate" else 1
     except RuntimeFailure as exc:
+        cleanup_error = None
+        if not args.dry_run:
+            try:
+                state = store.load(args.run_id)
+                task = find_task(state, args.task_id)
+                if task["status"] == "RUNNING" and (task.get("lease") or {}).get("owner") == args.worker_id:
+                    store.fail_task(args.run_id, args.task_id, exc.code)
+            except RuntimeFailure as cleanup:
+                cleanup_error = cleanup.code
         print(
             json.dumps(
                 {"status": "failed", "error": {"code": exc.code, "message": exc.message,

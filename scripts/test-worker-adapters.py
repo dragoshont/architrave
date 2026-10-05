@@ -342,6 +342,23 @@ class WorkerAdapterTests(unittest.TestCase):
         self.assertEqual([], restored["policy"]["allow"])
         self.assertEqual("FAILED", next(task for task in restored["tasks"] if task["id"] == "tamper")["status"])
 
+    def test_worker_semantic_state_tamper_uses_locked_recovery_without_cli_args(self) -> None:
+        runs = self.repo / ".architrave" / "runs"
+        command = (
+            "import json; from pathlib import Path; "
+            f"p=next(Path({str(runs)!r}).glob('*/run.json')); "
+            "value=json.loads(p.read_text()); value['status']='COMPLETED'; "
+            "p.write_text(json.dumps(value))"
+        )
+        run_id, task_id = self.create_task(command=[sys.executable, "-c", command], mutable_paths=[])
+        result = execute_work_packet(self.store, run_id, task_id, "worker-1")
+        self.assertEqual("failed", result["status"])
+        self.assertIn("RUNTIME_STATE_MUTATION", [error["code"] for error in result["errors"]])
+        state = self.store.load(run_id)
+        self.assertEqual("FAILED", state["tasks"][0]["status"])
+        self.assertEqual("FAILED", state["workers"][0]["status"])
+        self.assertEqual("UNTESTED", state["acceptanceCriteria"][0]["status"])
+
     def test_worker_cannot_forge_its_own_completion_via_runtime_cli(self) -> None:
         # Finding #1 regression: a worker's command running as a same-OS-user subprocess can
         # discover the real repository path (e.g. via git worktree introspection) and shell out
