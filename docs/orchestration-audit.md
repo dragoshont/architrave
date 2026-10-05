@@ -18,11 +18,11 @@ and the UI to fetch that endpoint and render an accessible live status target.
 | Metric | Baseline | After | Reduction |
 |---|---:|---:|---:|
 | Orchestration files | 55 | 10 | **81.82%** |
-| Orchestration bytes | 227,187 | 34,006 | **85.03%** |
-| Approximate tokens (`bytes / 4`) | 56,797 | 8,502 | **85.03%** |
+| Orchestration bytes | 227,187 | 34,310 | **84.90%** |
+| Approximate tokens (`bytes / 4`) | 56,797 | 8,578 | **84.90%** |
 | Actual-code files | 3 | 3 | 0% |
 | Actual-code bytes | 482 | 482 | 0% |
-| Orchestration:code bytes | 471.342:1 | 70.552:1 | **85.03% lower** |
+| Orchestration:code bytes | 471.342:1 | 71.183:1 | **84.90% lower** |
 
 Both runs completed with `API-001=PASS`, `UI-001=PASS`,
 `Run status=COMPLETED`, and `python tests/verify.py` printing
@@ -37,10 +37,10 @@ Reproduction command used for both runs:
 
 ```bash
 git worktree add --detach ../architrave-metrics-baseline 165da5284e0fff5ecfa7b1fff18593c949ad8fd3
-git worktree add --detach ../architrave-metrics-after 1ace742ee05eaeb2b97950722c3c51f99eb55c74
+git worktree add --detach ../architrave-metrics-after 8c415eadd043a94385255aa74fccfeb881c64c60
 python scripts/measure-basic-sh-sdd.py --source ../architrave-metrics-baseline --output ../architrave-metrics --label baseline --manifest benchmarks/results/orchestration-baseline.json
 python scripts/measure-basic-sh-sdd.py --source ../architrave-metrics-after --output ../architrave-metrics --label after --manifest benchmarks/results/orchestration-after.json
-python scripts/validate-orchestration-metrics.py --expected-after 1ace742ee05eaeb2b97950722c3c51f99eb55c74
+python scripts/validate-orchestration-metrics.py --expected-after 8c415eadd043a94385255aa74fccfeb881c64c60
 git worktree remove --force ../architrave-metrics-baseline
 git worktree remove --force ../architrave-metrics-after
 ```
@@ -93,7 +93,7 @@ Implemented controls:
 
 | Failure mode | Enforced control | Metric / footprint impact |
 |---|---|---|
-| Corrections leave old tasks active | Versioned canonical objective; `objective.replaced` defers old tasks, releases leases, fails active workers, resets lanes/target, and requires a next cheapest test | Adds compact state fields; native-host repair keeps 10 artifacts and 85.03% byte reduction |
+| Corrections leave old tasks active | Versioned canonical objective; `objective.replaced` defers old tasks, releases leases, fails active workers, resets lanes/target, and requires a next cheapest test | Adds compact state fields; v0.12.3 push-back verdicts keep 10 artifacts and an 84.90% byte reduction |
 | Working baseline bypassed | Replacement architecture/compatibility tasks require registered reuse path, evidence, and exact difference under test | Evidence references only; no duplicated baseline prose |
 | Hardening/review before acceptance | Non-security infrastructure/review, large changes, and non-minimal diagnostics are deferred until the minimal slice passes; two review reopens force a batch | Prevents repeated micro-review artifacts |
 | Wrong provider/build | Target preflight binds provider/store, artifact, version/hash, environment/workspace, and acceptance target; mismatch pauses and blocks launch/test/install | One compact identity object plus referenced evidence |

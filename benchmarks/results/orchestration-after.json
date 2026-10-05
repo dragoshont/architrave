@@ -1,7 +1,7 @@
 {
   "schema": "architrave.orchestration-metrics.v1",
   "label": "after",
-  "sourceSha": "1ace742ee05eaeb2b97950722c3c51f99eb55c74",
+  "sourceSha": "8c415eadd043a94385255aa74fccfeb881c64c60",
   "platform": {
     "system": "Windows",
     "release": "11",
@@ -9,8 +9,8 @@
     "python": "3.13.15"
   },
   "orchestrationFiles": 10,
-  "orchestrationBytes": 34006,
-  "approxTokens": 8502,
+  "orchestrationBytes": 34310,
+  "approxTokens": 8578,
   "actualCodeFiles": 3,
   "actualCodeBytes": 482,
   "runStatus": "COMPLETED",
@@ -41,13 +41,13 @@
     },
     {
       "path": ".architrave/runs/basic-sh-after/recovery.json",
-      "bytes": 9832,
-      "sha256": "1235a70b8ea8e8ff62ea3633861c794cede9cd66df1c1e9db13fca833862aab1"
+      "bytes": 9984,
+      "sha256": "fc37cdd567b07bac944a1df0d286d72b069630fe59b6868b393c96a40d31a6d5"
     },
     {
       "path": ".architrave/runs/basic-sh-after/run.json",
-      "bytes": 9832,
-      "sha256": "1235a70b8ea8e8ff62ea3633861c794cede9cd66df1c1e9db13fca833862aab1"
+      "bytes": 9984,
+      "sha256": "fc37cdd567b07bac944a1df0d286d72b069630fe59b6868b393c96a40d31a6d5"
     },
     {
       "path": ".architrave/runs/basic-sh-after/workers/wp-backend/result.json",
