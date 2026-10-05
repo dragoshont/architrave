@@ -5,8 +5,10 @@ cd "$(dirname "$0")/.."
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 repo="$tmp/repo"
-mkdir -p "$repo/gates"
+mkdir -p "$repo/gates" "$repo/harness"
 cp gates/*.sh gates/rubric.md "$repo/gates/"
+cp gates/gate_runner.py "$repo/gates/"
+cp harness/platform_launch.py "$repo/harness/"
 cat > "$repo/architrave.config.json" <<'JSON'
 {
   "kind": "knowledge",

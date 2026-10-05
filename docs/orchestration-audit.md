@@ -1,6 +1,7 @@
 # Orchestration audit
 
-Audit date: 2026-10-04. The comparison pins
+Audit date: 2026-10-04; source-derived footprint refreshed for the native-host
+repair on 2026-10-05. The comparison pins
 [Pi `2003871`](https://github.com/earendil-works/pi/tree/200387122ca450d6387f033949423114a270b96c)
 and
 [OpenCode `907b3bc`](https://github.com/anomalyco/opencode/tree/907b3bc518fa48e90e8ec24dd327d13eee71c36c).
@@ -17,11 +18,11 @@ and the UI to fetch that endpoint and render an accessible live status target.
 | Metric | Baseline | After | Reduction |
 |---|---:|---:|---:|
 | Orchestration files | 55 | 10 | **81.82%** |
-| Orchestration bytes | 227,187 | 33,940 | **85.06%** |
-| Approximate tokens (`bytes / 4`) | 56,797 | 8,485 | **85.06%** |
+| Orchestration bytes | 227,187 | 34,006 | **85.03%** |
+| Approximate tokens (`bytes / 4`) | 56,797 | 8,502 | **85.03%** |
 | Actual-code files | 3 | 3 | 0% |
 | Actual-code bytes | 482 | 482 | 0% |
-| Orchestration:code bytes | 471.342:1 | 70.415:1 | **85.06% lower** |
+| Orchestration:code bytes | 471.342:1 | 70.552:1 | **85.03% lower** |
 
 Both runs completed with `API-001=PASS`, `UI-001=PASS`,
 `Run status=COMPLETED`, and `python tests/verify.py` printing
@@ -36,10 +37,10 @@ Reproduction command used for both runs:
 
 ```bash
 git worktree add --detach ../architrave-metrics-baseline 165da5284e0fff5ecfa7b1fff18593c949ad8fd3
-git worktree add --detach ../architrave-metrics-after f6f28575f2a31474944e559ab441b55670ed30e6
+git worktree add --detach ../architrave-metrics-after 03509458bf650b3de8e46d7b3063015edea2096b
 python scripts/measure-basic-sh-sdd.py --source ../architrave-metrics-baseline --output ../architrave-metrics --label baseline --manifest benchmarks/results/orchestration-baseline.json
 python scripts/measure-basic-sh-sdd.py --source ../architrave-metrics-after --output ../architrave-metrics --label after --manifest benchmarks/results/orchestration-after.json
-python scripts/validate-orchestration-metrics.py --expected-after f6f28575f2a31474944e559ab441b55670ed30e6
+python scripts/validate-orchestration-metrics.py --expected-after 03509458bf650b3de8e46d7b3063015edea2096b
 git worktree remove --force ../architrave-metrics-baseline
 git worktree remove --force ../architrave-metrics-after
 ```
@@ -48,7 +49,7 @@ The runner creates a fresh git fixture for each label and uses the checkout's
 actual `RunStore`, `WorkspaceManager`, and `execute_work_packet` implementations.
 Scratch trial output is intentionally outside the repository.
 
-Validation completed:
+Initial slimming validation (historical; release validation is rerun for each repair):
 
 - `python scripts/test-runtime-v2.py`: 58 passed, 1 platform skip.
 - `python scripts/test-workspaces.py`: 12 passed.
@@ -92,7 +93,7 @@ Implemented controls:
 
 | Failure mode | Enforced control | Metric / footprint impact |
 |---|---|---|
-| Corrections leave old tasks active | Versioned canonical objective; `objective.replaced` defers old tasks, releases leases, fails active workers, resets lanes/target, and requires a next cheapest test | Adds compact state fields; artifact count remains 10 and byte reduction remains 85.06% |
+| Corrections leave old tasks active | Versioned canonical objective; `objective.replaced` defers old tasks, releases leases, fails active workers, resets lanes/target, and requires a next cheapest test | Adds compact state fields; native-host repair keeps 10 artifacts and 85.03% byte reduction |
 | Working baseline bypassed | Replacement architecture/compatibility tasks require registered reuse path, evidence, and exact difference under test | Evidence references only; no duplicated baseline prose |
 | Hardening/review before acceptance | Non-security infrastructure/review, large changes, and non-minimal diagnostics are deferred until the minimal slice passes; two review reopens force a batch | Prevents repeated micro-review artifacts |
 | Wrong provider/build | Target preflight binds provider/store, artifact, version/hash, environment/workspace, and acceptance target; mismatch pauses and blocks launch/test/install | One compact identity object plus referenced evidence |

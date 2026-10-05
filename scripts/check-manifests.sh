@@ -244,11 +244,11 @@ echo "== agent frontmatter (YAML parses + has name/description) =="
 if command -v ruby >/dev/null 2>&1; then
   for a in agents/*.agent.md; do
     if ruby -ryaml -e '
-      parts = File.read(ARGV[0]).split("---", 3)
+      parts = File.read(ARGV[0], encoding: "UTF-8").split("---", 3)
       abort "no frontmatter" if parts.length < 3
       d = YAML.safe_load(parts[1])
       %w[name description].each { |k| abort "missing #{k}" if d[k].to_s.strip.empty? }
-    ' "$a" 2>/dev/null; then ok "$a"; else err "frontmatter problem: $a"; fi
+    ' "$a"; then ok "$a"; else err "frontmatter problem: $a"; fi
   done
 else
   echo "  • ruby not found — skipping frontmatter check"
@@ -258,14 +258,14 @@ echo "== Codex skills and generated roles =="
 if command -v ruby >/dev/null 2>&1; then
   for skill in skills/*/SKILL.md; do
     if ruby -ryaml -e '
-      parts = File.read(ARGV[0]).split("---", 3)
+      parts = File.read(ARGV[0], encoding: "UTF-8").split("---", 3)
       abort "no frontmatter" if parts.length < 3
       d = YAML.safe_load(parts[1])
       %w[name description].each { |k| abort "missing #{k}" if d[k].to_s.strip.empty? }
-    ' "$skill" 2>/dev/null; then ok "$skill"; else err "skill frontmatter problem: $skill"; fi
+    ' "$skill"; then ok "$skill"; else err "skill frontmatter problem: $skill"; fi
   done
   for metadata in skills/*/agents/openai.yaml; do
-    if ruby -ryaml -e 'd=YAML.safe_load(File.read(ARGV[0])); abort "missing interface" unless d["interface"].is_a?(Hash); abort "missing policy" unless d["policy"].is_a?(Hash)' "$metadata" 2>/dev/null; then ok "$metadata"; else err "skill metadata problem: $metadata"; fi
+    if ruby -ryaml -e 'd=YAML.safe_load(File.read(ARGV[0], encoding: "UTF-8")); abort "missing interface" unless d["interface"].is_a?(Hash); abort "missing policy" unless d["policy"].is_a?(Hash)' "$metadata"; then ok "$metadata"; else err "skill metadata problem: $metadata"; fi
   done
 else
   echo "  • ruby not found — skipping skill YAML checks"
