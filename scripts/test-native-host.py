@@ -74,6 +74,16 @@ class NativeHostTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("ARCHITRAVE-CHECKS: PASS", result.stdout)
 
+    @unittest.skipIf(sys.version_info >= (3, 11), "explicit older-interpreter optional Codex rejection")
+    def test_optional_codex_rejects_python39_before_writing(self):
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "tools" / "install_update.py"), "install", "--codex", str(self.repo)],
+            capture_output=True, text=True)
+        self.assertEqual(2, result.returncode)
+        self.assertIn("--codex requires Python 3.11+", result.stderr)
+        self.assertFalse((self.repo / "architrave.config.json").exists())
+        self.assertFalse((self.repo / "harness").exists())
+
     def test_agent_cli_adapters_cannot_launch_another_harness(self):
         packet = {"workPacketId": "wp", "taskId": "task", "objective": "read",
                   "acceptanceCriteria": ["FIX"], "contextBundle": [], "mutablePaths": [],

@@ -25,7 +25,6 @@ from platform_launch import LaunchError, reject_agent_harness
 
 RESULT_SCHEMA = "architrave.worker-result.v1"
 ADAPTERS = {"native", "shell"}
-MUTATING_TOOL_NAMES = {"edit", "execute", "shell", "write", "apply_patch", "run_in_terminal"}
 
 
 def render_prompt(packet: dict[str, Any]) -> str:

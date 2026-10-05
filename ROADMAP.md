@@ -24,7 +24,10 @@
 - [x] `gates/hooks/design-guard.json` (POSIX) + `design-guard.windows.json` (pwsh) — PostToolUse JSON‑validity guard.
 - [x] `harness/init-run.*` + `validate-run.*` + `semantic-review.*` — durable run artifacts, learning notes, and optional judge prompt helper.
 
-> **Cross‑platform:** every gate ships a POSIX `.sh` (jq) **and** a PowerShell `.ps1` (native `ConvertFrom-Json`, no jq needed on Windows) variant. Both verified to produce identical PASS / FAIL / BLOCK / DRIFT exit codes (0 / 1 / 2 / 1).
+> **Cross-platform:** every gate ships thin POSIX `.sh` and PowerShell `.ps1`
+> launchers for the same canonical Python CLI. Both preserve PASS / FAIL / BLOCK /
+> DRIFT exit codes (0 / 1 / 2 / 1); macOS needs no PowerShell. Copied core paths
+> support Python 3.9+, while optional Codex role adoption requires Python 3.11+.
 
 ## Milestone 4 — Distribution
 - [x] **Plugin packaging** — `plugin.json` + `.github/plugin/marketplace.json`. Verified end‑to‑end with the real Copilot CLI (v1.0.64): both `copilot plugin install <path>` and the future‑proof `copilot plugin marketplace add dragoshont/architrave` + `copilot plugin install architrave@architrave` load the agent crew. The shared `~/.copilot` runtime ⇒ also reaches the Copilot app + VS Code.

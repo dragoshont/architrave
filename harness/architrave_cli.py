@@ -85,7 +85,7 @@ def main(argv: list[str] | None = None) -> int:
     learning = subparsers.add_parser("validate-learning")
     learning.add_argument("root", nargs="?", default=".")
     semantic = subparsers.add_parser("semantic-review")
-    semantic.add_argument("--provider", choices=["copilot", "claude", "both"], default="both")
+    semantic.add_argument("--provider", choices=["copilot", "claude", "both"], default="both", help=argparse.SUPPRESS)
     semantic.add_argument("--run", dest="run_dir")
     semantic.add_argument("--execute", action="store_true")
     tournament = subparsers.add_parser("tournament-review")

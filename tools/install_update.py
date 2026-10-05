@@ -208,6 +208,10 @@ def install_native_host(kit: Path) -> int:
         raise InstallerError("native-host-install requires Python 3.9+", 2)
     extension = kit / "extensions" / "architrave-native" / "extension.mjs"
     require_source_file(extension, "native-host-install")
+    for relative in ("harness/native_host.py", "harness/architrave_runtime.py",
+                     "harness/worker_adapters.py", "harness/workspaces.py",
+                     "harness/platform_launch.py", "gates/gate_runner.py"):
+        require_source_file(kit / relative, "native-host-install")
     files = [(source, source.relative_to(kit).as_posix()) for source in sorted((kit / "harness").glob("*.py"))]
     files.append((kit / "gates" / "gate_runner.py", "gates/gate_runner.py"))
     for source, _ in files:
@@ -1067,6 +1071,8 @@ def assert_required_tree_staged(transaction: ManagedTransaction) -> None:
     staged = {str(item["relative"]) for item in transaction.operations if item["kind"] == "write"}
     required = {
         "harness/architrave_runtime.py",
+        "harness/native_host.py",
+        "gates/gate_runner.py",
         "knowledge/execution-policy.md",
         "gates/hooks/design-guard.json",
     }
