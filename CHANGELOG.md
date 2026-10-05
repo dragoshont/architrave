@@ -25,6 +25,8 @@ Releases at or before **v0.8.12** are on the
 - Public trusted historical side-effect reconciliation for exact
   `applied-closed` and `closed-unknown` outcomes without replay or
   repository-local self-attestation.
+- Public one-use challenge renewal for unchanged, unstarted pending exact-target
+  checkpoints when the original returned nonce is lost.
 - End-to-end regressions for repository-local and modified adapters, provider,
   principal, task/challenge and observed-identity mismatches, replay, timeout,
   malformed output, oversize output, and successful atomic proof consumption.

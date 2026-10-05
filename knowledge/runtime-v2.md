@@ -205,6 +205,12 @@ The caller cannot supply observed JSON. The runtime validates the exact result
 schema and identity, then atomically registers and consumes the external proof.
 The bundled exact-target observer only hashes a declared regular file and checks
 an exact existing-or-absent workspace; it never launches or mutates the target.
+If an unconsumed target challenge is lost before task start,
+`checkpoint-renew <run-id> <checkpoint-id> --actor human:<principal>` rotates
+the challenge and target binding atomically. Renewal is limited to the same
+pending target checkpoint while its task is still `WAITING_EXTERNAL`, has zero
+attempts, and has no lease; terminal, started, superseded, policy, and other
+checkpoint types fail closed. The prior challenge becomes invalid immediately.
 For a target on another trusted host, the same observer has one fixed SSH relay
 mode: an absolute pinned SSH client uses strict pinned `known_hosts`, a
 relay-specific pinned copied identity under the user trust root,
@@ -263,6 +269,8 @@ python3 harness/architrave_runtime.py policy-amend <run-id> <checkpoint-id> \
   --actor human:<principal> --add-allow repository:edit
 python3 harness/architrave_runtime.py target-attest <run-id> \
   --checkpoint-id <checkpoint-id> --challenge <challenge> \
+  --actor human:<principal>
+python3 harness/architrave_runtime.py checkpoint-renew <run-id> <checkpoint-id> \
   --actor human:<principal>
 python3 harness/architrave_runtime.py reconcile-attest <run-id> <task-id>
 python3 harness/architrave_runtime.py events <run-id>

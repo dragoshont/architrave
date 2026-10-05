@@ -202,6 +202,18 @@ python harness/architrave_runtime.py target-attest <run-id> \
   --actor human:<principal>
 ```
 
+If that one-time challenge is lost before any task attempt, renew the unchanged
+pending target checkpoint publicly:
+
+```bash
+python harness/architrave_runtime.py checkpoint-renew <run-id> <checkpoint-id> \
+  --actor human:<principal>
+```
+
+Renewal is denied after task start, lease acquisition, resolution, objective
+supersession, or for non-target checkpoint types. The old challenge and target
+binding stop working immediately.
+
 The observer hashes the exact artifact and checks that the declared workspace
 is either the exact existing directory or, when explicitly enrolled that way,
 still absent. It never launches, installs, creates, terminates, or mutates the

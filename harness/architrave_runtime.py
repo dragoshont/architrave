@@ -3059,6 +3059,74 @@ class RunStore:
         )
         return state, challenge
 
+    def renew_target_checkpoint(
+        self,
+        run_id: str,
+        *,
+        checkpoint_id: str,
+        actor: str,
+    ) -> tuple[dict[str, Any], str]:
+        challenge = "arc_" + secrets.token_urlsafe(32)
+        challenge_hash = hashlib.sha256(challenge.encode("utf-8")).hexdigest()
+
+        def mutate(state: dict[str, Any]) -> dict[str, Any]:
+            checkpoint = next(
+                (item for item in state["externalCheckpoints"] if item["id"] == checkpoint_id),
+                None,
+            )
+            task = find_task(state, checkpoint["taskId"]) if checkpoint else None
+            if (
+                checkpoint is None
+                or task is None
+                or checkpoint["status"] != "PENDING"
+                or checkpoint["type"] != "SAFE_WRITE_TARGET_REQUIRED"
+                or checkpoint["objectiveVersion"] != state["objective"]["version"]
+                or task["status"] != "WAITING_EXTERNAL"
+                or task["attempts"] != 0
+                or task.get("lease") is not None
+                or actor != f"human:{checkpoint['principal']}"
+                or checkpoint.get("policyAmendment") is not None
+            ):
+                raise RuntimeFailure(
+                    "CHECKPOINT_RENEWAL_DENIED",
+                    "only an unchanged unstarted pending target checkpoint can be renewed",
+                )
+            intended = task.get("targetIdentity")
+            if (
+                not isinstance(intended, dict)
+                or set(intended) != TARGET_IDENTITY_FIELDS
+                or intended["provider"] != checkpoint["provider"]
+            ):
+                raise RuntimeFailure("TARGET_IDENTITY_REQUIRED", "renewed checkpoint target identity is invalid")
+            checkpoint["challengeHash"] = challenge_hash
+            checkpoint["targetBindingHash"] = sha256_value(
+                {
+                    "runId": state["runId"],
+                    "objectiveVersion": state["objective"]["version"],
+                    "taskId": task["id"],
+                    "provider": checkpoint["provider"],
+                    "principal": checkpoint["principal"],
+                    "intended": intended,
+                    "challengeHash": challenge_hash,
+                }
+            )
+            checkpoint["createdAt"] = utc_now()
+            checkpoint["reason"] = f"{checkpoint['reason']} (challenge renewed)"
+            return {
+                "checkpointId": checkpoint_id,
+                "taskId": task["id"],
+                "provider": checkpoint["provider"],
+                "principal": checkpoint["principal"],
+            }
+
+        state = self._transaction(
+            run_id,
+            mutate,
+            event_type="external.challenge_renewed",
+            actor=actor,
+        )
+        return state, challenge
+
     def resolve_external(
         self,
         run_id: str,
@@ -4636,6 +4704,11 @@ def build_parser() -> argparse.ArgumentParser:
     wait.add_argument("--provider", required=True)
     wait.add_argument("--reason", required=True)
 
+    renew = subparsers.add_parser("checkpoint-renew")
+    renew.add_argument("run_id")
+    renew.add_argument("checkpoint_id")
+    renew.add_argument("--actor", required=True)
+
     resolve = subparsers.add_parser("external-resolve")
     resolve.add_argument("run_id")
     resolve.add_argument("checkpoint_id")
@@ -4865,6 +4938,13 @@ def cli(argv: Sequence[str] | None = None) -> int:
                 principal=args.principal,
                 provider=args.provider,
                 reason=args.reason,
+            )
+            output = {**state_summary(state), "resolutionChallenge": challenge}
+        elif command == "checkpoint-renew":
+            state, challenge = store.renew_target_checkpoint(
+                args.run_id,
+                checkpoint_id=args.checkpoint_id,
+                actor=args.actor,
             )
             output = {**state_summary(state), "resolutionChallenge": challenge}
         elif command == "external-resolve":

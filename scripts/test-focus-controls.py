@@ -464,6 +464,58 @@ class FocusControlTests(unittest.TestCase):
             challenge = "arc_" + runtime_module.secrets.token_urlsafe(32)
         self.assertEqual("arc_-formerly-leading", challenge)
 
+    def test_public_checkpoint_renew_rotates_unconsumed_target_challenge(self) -> None:
+        run_id, old_challenge, intended, artifact = self.target_wait(suffix="-renew")
+        self.install_executor(intended, artifact)
+        before = self.store.load(run_id)
+        old_checkpoint = next(
+            item for item in before["externalCheckpoints"] if item["id"] == "target-check-renew"
+        )
+        with mock.patch("architrave_runtime.secrets.token_urlsafe", return_value="renewed"):
+            renewed, new_challenge = self.store.renew_target_checkpoint(
+                run_id,
+                checkpoint_id="target-check-renew",
+                actor="human:synthetic-user",
+            )
+        self.assertEqual("arc_renewed", new_challenge)
+        new_checkpoint = next(
+            item for item in renewed["externalCheckpoints"] if item["id"] == "target-check-renew"
+        )
+        self.assertNotEqual(old_checkpoint["challengeHash"], new_checkpoint["challengeHash"])
+        self.assertNotEqual(old_checkpoint["targetBindingHash"], new_checkpoint["targetBindingHash"])
+        old = self.trusted_cli(
+            "target-attest",
+            run_id,
+            "--checkpoint-id",
+            "target-check-renew",
+            "--challenge",
+            old_challenge,
+            "--actor",
+            "human:synthetic-user",
+            expected=1,
+        )
+        self.assertEqual("TARGET_IDENTITY_INVALID", old["code"])
+        renewed_result = self.trusted_cli(
+            "target-attest",
+            run_id,
+            "--checkpoint-id",
+            "target-check-renew",
+            "--challenge",
+            new_challenge,
+            "--actor",
+            "human:synthetic-user",
+        )
+        self.assertEqual([], renewed_result["pendingExternal"])
+        denied = self.cli(
+            "checkpoint-renew",
+            run_id,
+            "target-check-renew",
+            "--actor",
+            "human:synthetic-user",
+            expected=1,
+        )
+        self.assertEqual("CHECKPOINT_RENEWAL_DENIED", denied["code"])
+
     def test_public_target_attest_uses_pinned_external_executor_and_consumes_once(self) -> None:
         run_id, challenge, intended, artifact = self.target_wait(suffix="-valid")
         self.add_task(
