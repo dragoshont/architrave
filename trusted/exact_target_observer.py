@@ -171,6 +171,7 @@ def invoke_ssh(ssh: dict[str, Any], request: dict[str, Any]) -> dict[str, Any]:
             "artifactPath": request["target"]["artifactPath"],
             "workspaceMode": request["target"]["workspaceMode"],
             "ssh": None,
+            "reconciliation": request["target"].get("reconciliation"),
         },
     }
     encoded_request = json.dumps(remote_request, separators=(",", ":"), sort_keys=True).encode("utf-8")
@@ -294,16 +295,34 @@ def observe_local(request: dict[str, Any]) -> dict[str, Any]:
     if (
         not isinstance(binding, dict)
         or set(binding) != binding_fields
-        or binding.get("checkpointType") != "SAFE_WRITE_TARGET_REQUIRED"
+        or binding.get("checkpointType") not in {
+            "SAFE_WRITE_TARGET_REQUIRED",
+            "SIDE_EFFECT_RECONCILIATION_REQUIRED",
+        }
         or not isinstance(intended, dict)
         or set(intended) != IDENTITY_FIELDS
         or not isinstance(target, dict)
-        or set(target) != {"transport", "artifactPath", "workspaceMode", "ssh"}
+        or set(target) != {"transport", "artifactPath", "workspaceMode", "ssh", "reconciliation"}
         or target.get("transport") != "local"
         or target.get("ssh") is not None
         or binding.get("provider") != intended.get("provider")
     ):
         raise ValueError("request binding is invalid")
+    reconciliation = target.get("reconciliation")
+    if binding["checkpointType"] == "SIDE_EFFECT_RECONCILIATION_REQUIRED":
+        if (
+            not isinstance(reconciliation, dict)
+            or set(reconciliation) != {"runId", "taskId", "operation", "target", "outcome", "processId"}
+            or reconciliation.get("runId") != binding["runId"]
+            or reconciliation.get("taskId") != binding["taskId"]
+            or reconciliation.get("outcome") not in {"applied-closed", "closed-unknown"}
+            or not isinstance(reconciliation.get("processId"), int)
+            or isinstance(reconciliation.get("processId"), bool)
+            or reconciliation["processId"] <= 0
+        ):
+            raise ValueError("reconciliation binding is invalid")
+    elif reconciliation is not None:
+        raise ValueError("target preflight cannot include reconciliation settings")
     artifact = Path(str(target["artifactPath"]))
     workspace = Path(str(intended["workspace"]))
     if not artifact.is_absolute() or not workspace.is_absolute():
@@ -368,6 +387,29 @@ def observe_local(request: dict[str, Any]) -> dict[str, Any]:
             "transport": "local",
         },
     }
+    if reconciliation is not None:
+        process_id = reconciliation["processId"]
+        try:
+            os.kill(process_id, 0)
+        except ProcessLookupError:
+            process_state = "closed"
+        except PermissionError:
+            process_state = "running"
+        except OSError:
+            if os.name != "nt":
+                raise
+            process_state = "closed"
+        else:
+            process_state = "running"
+        if process_state != "closed":
+            raise ValueError("reconciled process is still running")
+        result["observation"].update(
+            {
+                "processId": process_id,
+                "processState": process_state,
+                "reconciliationOutcome": reconciliation["outcome"],
+            }
+        )
     return result
 
 

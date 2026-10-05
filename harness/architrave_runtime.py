@@ -490,8 +490,12 @@ class RunStore:
         if len(matches) != 1:
             raise RuntimeFailure("EXECUTOR_TARGET_NOT_TRUSTED", "intended target is not uniquely enrolled in the trusted executor registry")
         target = matches[0]
-        if set(target) != {"identity", "transport", "artifactPath", "workspaceMode", "ssh"}:
+        if set(target) not in (
+            {"identity", "transport", "artifactPath", "workspaceMode", "ssh"},
+            {"identity", "transport", "artifactPath", "workspaceMode", "ssh", "reconciliation"},
+        ):
             raise RuntimeFailure("EXECUTOR_REGISTRY_INVALID", "trusted target entry is invalid")
+        target.setdefault("reconciliation", None)
         workspace_mode = target["workspaceMode"]
         transport = target["transport"]
         artifact_path_value = str(target["artifactPath"])
@@ -660,6 +664,9 @@ class RunStore:
             if request["target"]["transport"] == "local"
             else common_observation | {"sshHost"}
         )
+        reconciliation = request["target"].get("reconciliation")
+        if reconciliation is not None:
+            expected_observation |= {"processId", "processState", "reconciliationOutcome"}
         expected_observer_sha256 = (
             executor["adapterSha256"]
             if request["target"]["transport"] == "local"
@@ -685,6 +692,14 @@ class RunStore:
             or observation.get("artifactPath") != request["target"]["artifactPath"]
             or observation.get("workspacePath") != request["intended"]["workspace"]
             or observation.get("observerSha256") != expected_observer_sha256
+            or (
+                reconciliation is not None
+                and (
+                    observation.get("processId") != reconciliation["processId"]
+                    or observation.get("processState") != "closed"
+                    or observation.get("reconciliationOutcome") != reconciliation["outcome"]
+                )
+            )
             or redact(observation) != observation
         ):
             raise RuntimeFailure("EXECUTOR_RESULT_INVALID", "trusted executor observation schema is invalid")
@@ -1635,6 +1650,7 @@ class RunStore:
                 "artifactPath": trusted_target["artifactPath"],
                 "workspaceMode": trusted_target["workspaceMode"],
                 "ssh": trusted_target["ssh"],
+                "reconciliation": trusted_target.get("reconciliation"),
             },
         }
         result = self._invoke_exact_target_executor(executor, request)
@@ -2350,6 +2366,7 @@ class RunStore:
                         "artifactPath": trusted_target["artifactPath"],
                         "workspaceMode": trusted_target["workspaceMode"],
                         "ssh": trusted_target["ssh"],
+                        "reconciliation": trusted_target.get("reconciliation"),
                     },
                 },
             )
@@ -3411,6 +3428,141 @@ class RunStore:
             task["status"] = "WAITING_RESOURCE" if result == "applied" else "READY"
             state["status"] = derive_run_status(state)
             return {"taskId": task_id, "result": result}
+
+        return self._transaction(
+            run_id,
+            mutate,
+            event_type="mutation.reconciled",
+            actor=actor,
+            task_id=task_id,
+            evidence_refs=[evidence_ref],
+        )
+
+    def attest_side_effect_reconciliation(
+        self,
+        run_id: str,
+        task_id: str,
+        *,
+        actor: str = "coordinator",
+    ) -> dict[str, Any]:
+        before = self.load(run_id)
+        task = find_task(before, task_id)
+        side_effect = task.get("sideEffect")
+        if side_effect is None or side_effect.get("state") != "UNCERTAIN":
+            raise RuntimeFailure("RECONCILIATION_NOT_REQUIRED", "task has no uncertain side effect")
+        registry = self._read_executor_registry()["exactTarget"]
+        enrolled = [
+            target
+            for target in registry.get("targets") or []
+            if isinstance(target, dict)
+            and (target.get("reconciliation") or {}).get("runId") == run_id
+            and (target.get("reconciliation") or {}).get("taskId") == task_id
+            and (target.get("reconciliation") or {}).get("operation") == side_effect["operation"]
+            and (target.get("reconciliation") or {}).get("target") == side_effect["target"]
+        ]
+        if len(enrolled) != 1:
+            raise RuntimeFailure(
+                "RECONCILIATION_TARGET_NOT_TRUSTED",
+                "uncertain side effect is not uniquely enrolled for trusted reconciliation",
+            )
+        trusted_identity = enrolled[0].get("identity")
+        if not isinstance(trusted_identity, dict) or set(trusted_identity) != TARGET_IDENTITY_FIELDS:
+            raise RuntimeFailure("EXECUTOR_REGISTRY_INVALID", "trusted reconciliation identity is invalid")
+        checkpoint = {
+            "provider": trusted_identity["provider"],
+            "type": "SIDE_EFFECT_RECONCILIATION_REQUIRED",
+        }
+        executor, trusted_target = self._trusted_exact_target_executor(checkpoint, trusted_identity)
+        reconciliation = trusted_target.get("reconciliation")
+        binding = {
+            "runId": run_id,
+            "objectiveVersion": before["objective"]["version"],
+            "revision": before["revision"],
+            "taskId": task_id,
+            "checkpointId": f"reconcile:{task_id}",
+            "checkpointType": "SIDE_EFFECT_RECONCILIATION_REQUIRED",
+            "provider": trusted_identity["provider"],
+            "principal": actor,
+            "challengeHash": sha256_value(reconciliation),
+        }
+        result = self._invoke_exact_target_executor(
+            executor,
+            {
+                "schema": EXACT_TARGET_REQUEST_SCHEMA,
+                "binding": binding,
+                "intended": trusted_identity,
+                "target": {
+                    "transport": trusted_target["transport"],
+                    "artifactPath": trusted_target["artifactPath"],
+                    "workspaceMode": trusted_target["workspaceMode"],
+                    "ssh": trusted_target["ssh"],
+                    "reconciliation": reconciliation,
+                },
+            },
+        )
+        outcome = reconciliation["outcome"]
+        artifact_id = f"reconciliation-{uuid.uuid4().hex}"
+        evidence_ref = f"artifact:{artifact_id}"
+        receipt_relative = (
+            Path(".architrave") / "runs" / run_id / "evidence" / f"{artifact_id}.json"
+        ).as_posix()
+        receipt_path = self.repository / receipt_relative
+        receipt = {
+            "runId": run_id,
+            "objectiveVersion": before["objective"]["version"],
+            "revision": before["revision"],
+            "taskId": task_id,
+            "operation": side_effect["operation"],
+            "target": side_effect["target"],
+            "outcome": outcome,
+            "observedAt": utc_now(),
+            "observation": result["observation"],
+            "historicalEvidence": trusted_identity,
+        }
+        receipt_bytes = (canonical_json(receipt) + "\n").encode("utf-8")
+        receipt_sha256 = hashlib.sha256(receipt_bytes).hexdigest()
+
+        def mutate(state: dict[str, Any]) -> dict[str, Any]:
+            current_task = find_task(state, task_id)
+            current_side_effect = current_task.get("sideEffect")
+            if (
+                state["revision"] != before["revision"]
+                or state["objective"]["version"] != before["objective"]["version"]
+                or current_side_effect is None
+                or current_side_effect.get("state") != "UNCERTAIN"
+                or current_side_effect.get("operation") != reconciliation["operation"]
+                or current_side_effect.get("target") != reconciliation["target"]
+            ):
+                raise RuntimeFailure("RECONCILIATION_STALE", "side-effect reconciliation became stale")
+            receipt_path.parent.mkdir(parents=True, exist_ok=True)
+            descriptor, temporary = tempfile.mkstemp(prefix=f".{receipt_path.name}.", dir=receipt_path.parent)
+            try:
+                with os.fdopen(descriptor, "wb") as handle:
+                    handle.write(receipt_bytes)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(temporary, receipt_path)
+            finally:
+                with contextlib.suppress(FileNotFoundError):
+                    os.unlink(temporary)
+            artifact = {
+                "id": artifact_id,
+                "kind": "reconciliation-receipt",
+                "producer": "reconciliation",
+                "path": receipt_relative,
+                "createdAt": utc_now(),
+                "sha256": receipt_sha256,
+                "evidenceRefs": [f"task:{task_id}"],
+                "consumedByTask": task_id,
+            }
+            artifact["attestation"] = self._artifact_attestation(artifact)
+            state["artifacts"].append(artifact)
+            current_side_effect["state"] = "CONFIRMED" if outcome == "applied-closed" else "NONE"
+            current_side_effect["reconciliation"] = evidence_ref
+            current_task["status"] = "FAILED"
+            current_task["lease"] = None
+            state["status"] = derive_run_status(state)
+            return {"taskId": task_id, "outcome": outcome, "evidenceRef": evidence_ref}
 
         return self._transaction(
             run_id,
@@ -4518,6 +4670,10 @@ def build_parser() -> argparse.ArgumentParser:
     reconcile.add_argument("--result", choices=["applied", "not-applied"], required=True)
     reconcile.add_argument("--evidence", required=True)
 
+    reconcile_attest = subparsers.add_parser("reconcile-attest")
+    reconcile_attest.add_argument("run_id")
+    reconcile_attest.add_argument("task_id")
+
     policy = subparsers.add_parser("policy-check")
     policy.add_argument("run_id")
     policy.add_argument("--scope", required=True)
@@ -4758,6 +4914,13 @@ def cli(argv: Sequence[str] | None = None) -> int:
                     args.task_id,
                     result=args.result,
                     evidence_ref=args.evidence,
+                )
+            )
+        elif command == "reconcile-attest":
+            output = state_summary(
+                store.attest_side_effect_reconciliation(
+                    args.run_id,
+                    args.task_id,
                 )
             )
         elif command == "policy-check":

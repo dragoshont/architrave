@@ -275,6 +275,66 @@ class FocusControlTests(unittest.TestCase):
             ssh_remote_python=None,
             ssh_remote_adapter=None,
             ssh_remote_adapter_sha256=None,
+            reconcile_run_id=None,
+            reconcile_task_id=None,
+            reconcile_operation=None,
+            reconcile_target=None,
+            reconcile_outcome=None,
+            reconcile_process_id=None,
+        )
+        with mock.patch.object(
+            self.installer,
+            "trusted_user_state_root",
+            return_value=self.home / ".architrave",
+        ):
+            self.assertEqual(0, self.installer.install_exact_target_executor(args, ROOT))
+
+    def install_reconciliation(
+        self,
+        run_id: str,
+        task_id: str,
+        operation: str,
+        target: str,
+        outcome: str,
+        artifact: Path,
+        workspace: Path,
+    ) -> None:
+        intended = {
+            "provider": f"reconciliation:{task_id}",
+            "artifact": artifact.name,
+            "version": outcome,
+            "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
+            "environment": "historical-test",
+            "workspace": str(workspace),
+            "acceptanceTarget": f"{operation} {outcome}",
+        }
+        args = argparse.Namespace(
+            provider=intended["provider"],
+            artifact=intended["artifact"],
+            artifact_path=str(artifact),
+            version=intended["version"],
+            sha256=intended["sha256"],
+            environment=intended["environment"],
+            workspace=intended["workspace"],
+            acceptance_target=intended["acceptanceTarget"],
+            workspace_mode="exact-directory",
+            timeout_seconds=1,
+            ssh_host=None,
+            ssh_host_key_alias=None,
+            ssh_port=22,
+            ssh_user=None,
+            ssh_executable=None,
+            ssh_identity=None,
+            ssh_known_hosts=None,
+            ssh_remote_python=None,
+            ssh_remote_adapter=None,
+            ssh_remote_adapter_sha256=None,
+            reconcile_run_id=run_id,
+            reconcile_task_id=task_id,
+            reconcile_operation=operation,
+            reconcile_target=target,
+            reconcile_outcome=outcome,
+            reconcile_process_id=2147483647,
         )
         with mock.patch.object(
             self.installer,
@@ -789,6 +849,70 @@ class FocusControlTests(unittest.TestCase):
                     "oversize": "EXECUTOR_OUTPUT_OVERSIZE",
                 }[name]
                 self.assertEqual(expected, error["code"])
+
+    def test_public_reconcile_attest_preserves_applied_closed_and_closed_unknown(self) -> None:
+        for suffix, outcome, expected_state in (
+            ("applied", "applied-closed", "CONFIRMED"),
+            ("unknown", "closed-unknown", "NONE"),
+        ):
+            with self.subTest(outcome=outcome):
+                operation = "publish" if outcome == "applied-closed" else "input"
+                run_id = self.create(
+                    f"Reconcile historical side effect {outcome}.",
+                    policy_allow=[{"scope": "historical-resource", "operations": [operation]}],
+                )
+                task_id = f"historical-{suffix}"
+                self.add_task(
+                    run_id,
+                    task_id,
+                    sideEffect={"operation": operation, "target": "historical-resource"},
+                )
+                self.cli("task-start", run_id, task_id, "--worker-id", f"worker-{suffix}")
+                self.cli(
+                    "worker-finish",
+                    run_id,
+                    task_id,
+                    "--worker-id",
+                    f"worker-{suffix}",
+                    "--status",
+                    "FAILED",
+                )
+                artifact = Path(self.temp.name) / f"{suffix}-history.json"
+                artifact.write_text(json.dumps({"historical": outcome}) + "\n", encoding="utf-8")
+                workspace = Path(self.temp.name) / f"{suffix}-workspace"
+                workspace.mkdir()
+                self.install_reconciliation(
+                    run_id,
+                    task_id,
+                    operation,
+                    "historical-resource",
+                    outcome,
+                    artifact,
+                    workspace,
+                )
+                with mock.patch.object(
+                    runtime_module.RunStore,
+                    "_executor_registry_path",
+                    return_value=self.home / ".architrave" / "executors.json",
+                ), mock.patch.object(
+                    runtime_module,
+                    "trusted_user_state_root",
+                    return_value=self.home / ".architrave",
+                ):
+                    state = self.store.attest_side_effect_reconciliation(run_id, task_id)
+                task = next(item for item in state["tasks"] if item["id"] == task_id)
+                self.assertEqual("FAILED", task["status"])
+                self.assertEqual(expected_state, task["sideEffect"]["state"])
+                receipt_ref = task["sideEffect"]["reconciliation"]
+                receipt = next(
+                    item
+                    for item in state["artifacts"]
+                    if f"artifact:{item['id']}" == receipt_ref
+                )
+                self.assertEqual("reconciliation", receipt["producer"])
+                payload = json.loads((self.repo / receipt["path"]).read_text(encoding="utf-8"))
+                self.assertEqual(outcome, payload["outcome"])
+                self.assertEqual("closed", payload["observation"]["processState"])
 
     def test_correction_cancels_active_old_work_and_recomputes_next_test(self) -> None:
         run_id = self.create(

@@ -346,7 +346,27 @@ def install_exact_target_executor(args: argparse.Namespace, kit: Path) -> int:
         "artifactPath": artifact_path_value,
         "workspaceMode": args.workspace_mode,
         "ssh": ssh_settings,
+        "reconciliation": None,
     }
+    reconciliation_values = (
+        getattr(args, "reconcile_run_id", None),
+        getattr(args, "reconcile_task_id", None),
+        getattr(args, "reconcile_operation", None),
+        getattr(args, "reconcile_target", None),
+        getattr(args, "reconcile_outcome", None),
+        getattr(args, "reconcile_process_id", None),
+    )
+    if any(value is not None for value in reconciliation_values):
+        if any(value is None for value in reconciliation_values):
+            raise InstallerError("executor-install: all reconciliation fields are required together", code=2)
+        target["reconciliation"] = {
+            "runId": reconciliation_values[0],
+            "taskId": reconciliation_values[1],
+            "operation": reconciliation_values[2],
+            "target": reconciliation_values[3],
+            "outcome": reconciliation_values[4],
+            "processId": reconciliation_values[5],
+        }
     targets[:] = [
         item
         for item in targets
@@ -381,7 +401,7 @@ def install_exact_target_executor(args: argparse.Namespace, kit: Path) -> int:
         "adapter": str(adapter.resolve()),
         "adapterSha256": source_digest,
         "allowedProviders": providers,
-        "allowedCheckpointTypes": ["SAFE_WRITE_TARGET_REQUIRED"],
+        "allowedCheckpointTypes": ["SAFE_WRITE_TARGET_REQUIRED", "SIDE_EFFECT_RECONCILIATION_REQUIRED"],
         "timeoutSeconds": args.timeout_seconds,
         "targets": targets,
     }
@@ -1238,6 +1258,12 @@ def parser() -> argparse.ArgumentParser:
     executor.add_argument("--ssh-remote-python")
     executor.add_argument("--ssh-remote-adapter")
     executor.add_argument("--ssh-remote-adapter-sha256")
+    executor.add_argument("--reconcile-run-id")
+    executor.add_argument("--reconcile-task-id")
+    executor.add_argument("--reconcile-operation")
+    executor.add_argument("--reconcile-target")
+    executor.add_argument("--reconcile-outcome", choices=("applied-closed", "closed-unknown"))
+    executor.add_argument("--reconcile-process-id", type=int)
     return result
 
 

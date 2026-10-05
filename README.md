@@ -240,6 +240,29 @@ launcher independently hashes the installed observer before loading it and
 performing the filesystem observation. The result returns directly to the
 canonical Run host.
 
+For a failed worker with an `UNCERTAIN` side effect that is already closed,
+enroll the exact historical evidence and original PID with the matching
+`--reconcile-*` options. Use `applied-closed` only when immutable matching
+evidence proves the action occurred; use `closed-unknown` when current resource
+closure is provable but the historical action outcome is not:
+
+```bash
+python tools/install_update.py executor-install \
+  ...exact evidence file/workspace and trusted transport... \
+  --reconcile-run-id <run-id> \
+  --reconcile-task-id <task-id> \
+  --reconcile-operation <operation> \
+  --reconcile-target <target> \
+  --reconcile-outcome applied-closed \
+  --reconcile-process-id <original-pid>
+
+python harness/architrave_runtime.py --repo /path/to/canonical/repo \
+  reconcile-attest <run-id> <task-id>
+```
+
+The command never accepts observed JSON, does not replay the operation, and
+keeps historically unknown outcomes unknown.
+
 ## How It Works
 
 Open your assistant, pick the **Architrave** agent, and describe the change in plain language:

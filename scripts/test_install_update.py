@@ -220,7 +220,10 @@ class InstallUpdateTests(unittest.TestCase):
         exact = registry["exactTarget"]
         self.assertEqual("architrave.executor-registry.v1", registry["schema"])
         self.assertEqual(["provider-a"], exact["allowedProviders"])
-        self.assertEqual(["SAFE_WRITE_TARGET_REQUIRED"], exact["allowedCheckpointTypes"])
+        self.assertEqual(
+            ["SAFE_WRITE_TARGET_REQUIRED", "SIDE_EFFECT_RECONCILIATION_REQUIRED"],
+            exact["allowedCheckpointTypes"],
+        )
         self.assertEqual(1, len(exact["targets"]))
         self.assertEqual(digest(Path(exact["adapter"])), exact["adapterSha256"])
         self.assertEqual(digest(Path(exact["executable"])), exact["executableSha256"])
@@ -349,6 +352,7 @@ class InstallUpdateTests(unittest.TestCase):
                 "artifactPath": "/srv/target.bin",
                 "workspaceMode": "absent-or-exact-directory",
                 "ssh": None,
+                "reconciliation": None,
             },
         }
         remote_result = {
@@ -504,6 +508,7 @@ class InstallUpdateTests(unittest.TestCase):
                 "artifactPath": str(artifact),
                 "workspaceMode": "absent-or-exact-directory",
                 "ssh": None,
+                "reconciliation": None,
             },
         }
         helper = self.observer.REMOTE_HELPER.replace(
@@ -580,6 +585,7 @@ class InstallUpdateTests(unittest.TestCase):
                 "artifactPath": str(artifact),
                 "workspaceMode": "absent-or-exact-directory",
                 "ssh": None,
+                "reconciliation": None,
             },
         }
         with self.assertRaisesRegex(ValueError, "workspace path contains"):

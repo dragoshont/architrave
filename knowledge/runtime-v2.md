@@ -150,6 +150,16 @@ identity, apply/health result, and one reconciliation outcome. They are consumed
 and re-attested exactly once. An applied receipt cannot prove `not-applied`; that
 outcome needs its own observation-backed reconciliation receipt.
 
+Historical side effects that have already closed use `reconcile-attest`. The
+trusted executor enrollment binds the exact Run/task/operation/target, immutable
+historical evidence path and digest, original process id, and one outcome:
+`applied-closed` or `closed-unknown`. The public command accepts no caller
+outcome or observed JSON, verifies the pinned evidence and that the original
+process is absent, then atomically records and consumes the reconciliation
+receipt. `closed-unknown` clears the resource ambiguity without claiming that
+the original action occurred; both outcomes preserve a failed worker task as
+failed and never replay the side effect.
+
 ## Autonomy and policy
 
 - `current-task`: conservative default; pauses before the next accepted unit.
@@ -254,6 +264,7 @@ python3 harness/architrave_runtime.py policy-amend <run-id> <checkpoint-id> \
 python3 harness/architrave_runtime.py target-attest <run-id> \
   --checkpoint-id <checkpoint-id> --challenge <challenge> \
   --actor human:<principal>
+python3 harness/architrave_runtime.py reconcile-attest <run-id> <task-id>
 python3 harness/architrave_runtime.py events <run-id>
 python3 harness/architrave_runtime.py verify <run-id>
 python3 harness/validate_run_v2.py .architrave/runs/<run-id>
