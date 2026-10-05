@@ -8,6 +8,8 @@ criteria, governing repository sources, constraints, evidence, and unresolved
 assumptions.
 
 Require two to four options with benefits, drawbacks, blast radius, durability,
-security/data risk, complexity, and verification burden. Return one recommended
-plan and explicit non-goals. The result is advisory; it does not authorize edits
+security/data risk, complexity, and verification burden. The options always
+include a "do nothing" baseline and a "smallest viable" option alongside the
+others. Return one recommended plan, explicit non-goals, and why the chosen
+option beats doing nothing. The result is advisory; it does not authorize edits
 or runtime mutation.

@@ -11,6 +11,28 @@ Releases at or before **v0.8.12** are on the
 - Add a public Run cancel/supersede transition and make invalid unstarted-task
   intake terminal instead of retry-ready.
 
+## [0.12.3] - 2026-10-05
+
+Deterministic only: no new agents, workflows, or model calls. Feature freeze
+after this release.
+
+### Added
+- Push-back verdicts: `task-add --pushback KEEP|CUT|DEFER:reason` (CUT skips,
+  DEFER defers); status lists tasks without one in `missingPushback`. The CTO
+  skill and conductor run the checklist inline; the tournament always includes
+  "do nothing" and "smallest viable" options.
+- Run budget from real signals: optional `evaluation.budget` limits for turns
+  (Run transitions), commits, dispatches, and minutes; status reports
+  `BUDGET_80`/`BUDGET_100`.
+- `gates/gate_runner.py message-lint` fails owner-facing text dense with
+  hashes, PIDs, IDs, or compressed status.
+
+### Changed
+- The primary criterion must use reality/e2e/external verification and passes
+  only on an observed product outcome; CI/test gates are rejected
+  (`PRIMARY_EVIDENCE_NOT_OBSERVED`).
+- Loop cap: failed attempts on the primary path extend the stall counter.
+
 ## [0.12.2] - 2026-10-05
 
 ### Added

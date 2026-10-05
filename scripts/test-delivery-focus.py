@@ -12,6 +12,8 @@ roadmap = (root / "ROADMAP.md").read_text(encoding="utf-8")
 lead_skill = (root / "skills/architrave/SKILL.md").read_text(encoding="utf-8")
 cto_agent = (root / "agents/cto.agent.md").read_text(encoding="utf-8")
 cto_skill = (root / "skills/architrave-cto/SKILL.md").read_text(encoding="utf-8")
+tournament_skill = (root / "skills/architrave-tournament/SKILL.md").read_text(encoding="utf-8")
+tournament_agent = (root / "agents/tournament-analyst.agent.md").read_text(encoding="utf-8")
 generator = (root / "scripts/generate-codex-agents.py").read_text(encoding="utf-8")
 codex_roles = "\n".join(
     path.read_text(encoding="utf-8") for path in sorted((root / ".codex/agents").glob("*.toml"))
@@ -42,6 +44,11 @@ required = {
     "stanza consults cto": (stanza, "Consult architrave:cto at start and on stall"),
     "cto agent routes": (cto_agent, "never implements"),
     "cto skill outcome": (cto_skill, "Outcome over ceremony"),
+    "cto skill push-back": (cto_skill, "KEEP/CUT/DEFER verdict"),
+    "agent push-back": (agent, "step inline (no extra agent): record KEEP/CUT/DEFER"),
+    "tournament skill baselines": (tournament_skill, 'include a "do nothing" baseline and a "smallest viable" option'),
+    "tournament skill beats nothing": (tournament_skill, "why the chosen\noption beats doing nothing"),
+    "tournament agent baselines": (tournament_agent, 'include a "do nothing" baseline and a "smallest viable" option'),
 }
 
 missing = [name for name, (text, phrase) in required.items() if phrase not in text]

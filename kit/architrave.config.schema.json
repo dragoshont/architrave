@@ -281,6 +281,17 @@
         "defaultRisk": { "type": "string", "enum": ["R0", "R1", "R2", "R3", "R4"] },
         "realityGate": { "type": "boolean" },
         "controlAudit": { "type": "boolean" },
+        "budget": {
+          "type": "object",
+          "description": "Optional Run budget from real signals. Status reports BUDGET_80 at 80% and BUDGET_100 at 100% of any limit. Turns are Run transitions.",
+          "additionalProperties": false,
+          "properties": {
+            "maxTurns": { "type": "integer", "minimum": 1 },
+            "maxCommits": { "type": "integer", "minimum": 1 },
+            "maxDispatches": { "type": "integer", "minimum": 1 },
+            "maxMinutes": { "type": "integer", "minimum": 1 }
+          }
+        },
         "riskPolicy": {
           "type": "object",
           "additionalProperties": false,

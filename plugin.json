@@ -1,7 +1,7 @@
 {
   "name": "architrave",
   "description": "Config-first, delivery-focused agent crew for knowledge repositories, UI, backend, full-stack features, plan-only infrastructure, optional runtime verification, and durable learning. Grounds work in repository sources, uses targeted checks during development, and scales independent review to risk.",
-  "version": "0.12.2",
+  "version": "0.12.3",
   "author": {
     "name": "dragoshont"
   },

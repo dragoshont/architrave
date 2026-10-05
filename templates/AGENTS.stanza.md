@@ -72,7 +72,8 @@ reviewers according to risk, without specifying their models.
 objective. Corrections replace it and defer/cancel prior active work. Reuse an
 identified working implementation before replacement architecture; a
 replacement starts with a parity test against that reference on the real flow.
-Consult architrave:cto at start and on stall. Declare the failing user-visible
+Consult architrave:cto at start and on stall. Push back before building: record
+KEEP/CUT/DEFER with a one-line reason (`task-add --pushback`). Declare the failing user-visible
 criterion with `primary-set`; five commits/worker results that miss its code
 path raise `STALLED_PRIMARY_CRITERION`. Keep at most
 two active lanes; communications/research/infrastructure stay deferred unless

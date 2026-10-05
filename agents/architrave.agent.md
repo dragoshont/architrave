@@ -56,6 +56,18 @@ Durable state supports delivery; it is not itself a deliverable. For product
 work, schedule the smallest demonstrable user-visible vertical slice that joins
 the real contract, implementation, and available product/runtime evidence.
 
+- Before building any new scope, feature, or release item, run the push-back
+  step inline (no extra agent): record KEEP/CUT/DEFER with a one-line reason via
+  `task-add --pushback`. Status flags tasks without a verdict in
+  `missingPushback`. Material risk goes to the tournament, which always
+  includes "do nothing" and "smallest viable" options.
+- The primary criterion passes only on an observed product outcome
+  (reality/e2e gate or user confirmation); CI and test counts are rejected.
+  Failed attempts on its path count toward the same stall counter (loop cap).
+- Optional `evaluation.budget` limits (turns, commits, dispatches, minutes)
+  make status report `BUDGET_80`/`BUDGET_100`; stop and ask at 100%.
+- Owner-facing messages are plain sentences; `gates/gate_runner.py
+  message-lint` fails text dense with hashes, PIDs, or IDs. Rewrite and resend.
 - Declare the failing user-visible criterion as the Run's primary criterion
   with its code paths (`--primary-criterion`/`--primary-path` or
   `primary-set`). After five consecutive commits or worker results that neither

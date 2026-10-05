@@ -137,6 +137,9 @@ PRIMARY_RESULT_EVENTS = {"worker.finished", "task.completed", "task.failed"}
 PRIMARY_BOUND_EVENTS = PRIMARY_RESULT_EVENTS | {
     "gate.passed", "gate.failed", "gate.recorded", "acceptance.updated", "product.progress",
 }
+OBSERVED_OUTCOME_TYPES = {"reality", "e2e", "external"}
+PUSHBACK_VERDICTS = {"KEEP", "CUT", "DEFER"}
+BUDGET_LIMITS = {"turns": "maxTurns", "commits": "maxCommits", "dispatches": "maxDispatches", "minutes": "maxMinutes"}
 TARGET_IDENTITY_FIELDS = {
     "provider",
     "artifact",
@@ -1992,6 +1995,15 @@ class RunStore:
                     deferred_reason = "large change is blocked until the minimal end-to-end path is reproduced"
             if work_kind == "review" and state["focus"]["reviewReopens"] >= 2:
                 deferred_reason = "review findings must be batched before another review"
+            pushback = task.get("pushback")
+            if pushback is not None:
+                verdict, _, reason = str(pushback).partition(":")
+                verdict, reason = verdict.strip().upper(), reason.strip()
+                if verdict not in PUSHBACK_VERDICTS or not reason or "\n" in reason:
+                    raise RuntimeFailure("INVALID_PUSHBACK", "push-back must be KEEP|CUT|DEFER:one-line reason")
+                pushback = {"verdict": verdict, "reason": reason}
+                if verdict != "KEEP":
+                    deferred_reason = f"push-back {verdict}: {reason}"
             operations = list(
                 dict.fromkeys(
                     [
@@ -2049,6 +2061,10 @@ class RunStore:
             }
             if not normalized["objective"]:
                 raise RuntimeFailure("INVALID_TASK", "task objective is required")
+            if pushback is not None:
+                normalized["pushback"] = pushback
+                if pushback["verdict"] == "CUT":
+                    normalized["status"] = "SKIPPED"
             if change_kind != "normal":
                 # Reference parity is the first gate: the replacement is bound to the tested baseline.
                 normalized["reference"] = {
@@ -3372,6 +3388,18 @@ class RunStore:
             if status in {"PASS", "NOT_APPLICABLE"}:
                 self.assert_gate_sources_current(state, evidence_refs)
                 require_evidence_refs(state, evidence_refs, allowed={"gate", "external"})
+                primary = state["focus"].get("primaryCriterion") or {}
+                if status == "PASS" and primary.get("id") == criterion_id and any(
+                    reference.startswith("gate:") and next(
+                        item for item in state["gateResults"] if item["id"] == reference[5:]
+                    )["type"] not in {"reality", "e2e"}
+                    for reference in evidence_refs
+                ):
+                    raise RuntimeFailure(
+                        "PRIMARY_EVIDENCE_NOT_OBSERVED",
+                        "the primary criterion passes only on an observed product outcome "
+                        "(screenshot, log line, or user confirmation); CI/test results are rejected",
+                    )
                 for reference in evidence_refs:
                     kind, identifier = reference.split(":", 1)
                     if kind == "gate":
@@ -5055,6 +5083,13 @@ def normalize_primary_criterion(
 ) -> dict[str, Any]:
     if criterion_id not in state["objective"]["acceptanceCriteria"]:
         raise RuntimeFailure("INVALID_PRIMARY_CRITERION", "primary criterion must be a current objective criterion")
+    criterion = next(item for item in state["acceptanceCriteria"] if item["id"] == criterion_id)
+    if criterion["verificationType"] not in OBSERVED_OUTCOME_TYPES:
+        raise RuntimeFailure(
+            "INVALID_PRIMARY_CRITERION",
+            "primary criterion must be verified by an observed product outcome (reality, e2e, or external "
+            "user confirmation); CI and test counts cannot pass it",
+        )
     normalized_paths = list(dict.fromkeys(safe_relative_path(str(path), "primary path") for path in paths))
     if not normalized_paths:
         raise RuntimeFailure("INVALID_PRIMARY_CRITERION", "primary criterion requires at least one code path")
@@ -5120,7 +5155,12 @@ def primary_criterion_status(
             or (gate is not None and primary["id"] in gate["criteria"])
             or (task is not None and primary["id"] in task["acceptanceCriteria"])
         )
-        if bound:
+        # Loop cap: a failed attempt on the primary path does not change its outcome.
+        looping = event["type"] == "task.failed" or (
+            event["type"] == "worker.finished" and payload.get("candidateStatus") == "FAILED")
+        if bound and looping:
+            timeline.append((parse_iso(event["timestamp"]), 1, f"attempt:{event['sequence']}", False))
+        elif bound:
             timeline.append((parse_iso(event["timestamp"]), 1, f"event:{event['sequence']}", True))
         elif event["type"] in PRIMARY_RESULT_EVENTS:
             timeline.append((parse_iso(event["timestamp"]), 1, f"task:{event.get('taskId')}", False))
@@ -5142,6 +5182,27 @@ def primary_criterion_status(
         "lastTouch": last_touch,
         "stalled": criterion_status not in {"PASS", "NOT_APPLICABLE"} and streak >= primary["threshold"],
     }
+
+
+def budget_signal(state: dict[str, Any], events: Sequence[dict[str, Any]], repository: Path) -> dict[str, Any] | None:
+    """Real-signal counters since Run creation against optional evaluation.budget limits."""
+    limits = (repository_config(str(repository)).get("evaluation") or {}).get("budget") or {}
+    if not limits:
+        return None
+    base = state["baseline"]["commit"]
+    ancestor = subprocess.run(["git", "merge-base", "--is-ancestor", base, "HEAD"], cwd=repository,
+                              capture_output=True, check=False).returncode == 0
+    counters = {
+        "turns": state["eventCursor"]["sequence"],
+        "commits": int(run_command(["git", "rev-list", "--count", f"{base}..HEAD"], repository)) if ancestor else 0,
+        "dispatches": sum(1 for event in events if event["type"] == "task.started"),
+        "minutes": int((dt.datetime.now(dt.timezone.utc) - parse_iso(state["createdAt"])).total_seconds() // 60),
+    }
+    ratios = {name: counters[name] / limits[key] for name, key in BUDGET_LIMITS.items() if limits.get(key)}
+    peak = max(ratios.values(), default=0)
+    signal = "BUDGET_100" if peak >= 1 else "BUDGET_80" if peak >= 0.8 else None
+    return {"counters": counters, "limits": {name: limits[key] for name, key in BUDGET_LIMITS.items() if limits.get(key)},
+            "signal": signal, "over": sorted(name for name, ratio in ratios.items() if ratio >= 0.8)}
 
 
 def stalled_primary_escalation(stall: dict[str, Any]) -> dict[str, Any]:
@@ -5211,9 +5272,17 @@ def state_summary(state: dict[str, Any]) -> dict[str, Any]:
                         if worker["status"] == "RUNNING" and worker["id"] not in active_worker_ids],
         "evidence": evidence,
     }
+    missing_pushback = [task["id"] for task in state["tasks"]
+                        if "pushback" not in task and task.get("objectiveVersion") == state["objective"]["version"]]
+    if missing_pushback:
+        summary["missingPushback"] = missing_pushback
+    store = RunStore(repository)
+    events = store._read_events(store.run_dir(state["runId"]))
+    budget = budget_signal(state, events, repository)
+    if budget:
+        summary["budget"] = budget
     if state["focus"].get("primaryCriterion"):
-        store = RunStore(repository)
-        stall = primary_criterion_status(state, store._read_events(store.run_dir(state["runId"])), repository)
+        stall = primary_criterion_status(state, events, repository)
         summary["primaryCriterion"] = stall
         if stall and stall["stalled"]:
             summary["escalation"] = stalled_primary_escalation(stall)
@@ -5281,6 +5350,7 @@ def build_parser() -> argparse.ArgumentParser:
     task_add.add_argument("--artifact", action="append", default=[])
     task_add.add_argument("--gate")
     task_add.add_argument("--max-attempts", type=int, default=1)
+    task_add.add_argument("--pushback", help="KEEP|CUT|DEFER:one-line reason (push-back verdict for this item)")
     task_add.add_argument("--side-effect", help="OPERATION@TARGET")
     task_add.add_argument("--command", dest="execution_command", nargs=argparse.REMAINDER, help="deterministic shell argv (must be last)")
 
@@ -5557,6 +5627,7 @@ def cli(argv: Sequence[str] | None = None) -> int:
                     "requiredArtifacts": args.artifact,
                     "gate": args.gate,
                     "maxAttempts": args.max_attempts,
+                    "pushback": args.pushback,
                     "sideEffect": side_effect,
                     "workPacket": {
                         "execution": {

@@ -113,6 +113,16 @@ streak; other commits and worker/task results extend it. At the threshold
 (default 5) while the criterion is not PASS, status reports
 `STALLED_PRIMARY_CRITERION` and `task-start` refuses tasks not bound to it.
 `objective-replace` clears the declaration. Runs without it are unchanged.
+The primary criterion must use `reality`, `e2e`, or `external` verification and
+passes only on such observed evidence (`PRIMARY_EVIDENCE_NOT_OBSERVED`
+otherwise). Failed attempts bound to it extend the same streak, which is the
+loop cap.
+
+Status also flags tasks without a push-back verdict (`missingPushback`;
+`task-add --pushback KEEP|CUT|DEFER:reason`; CUT skips, DEFER defers). When
+`evaluation.budget` sets limits, status reports real counters (Run transitions
+as turns, commits since baseline, task starts as dispatches, minutes since
+creation) and `BUDGET_80`/`BUDGET_100`. No credit meter is invented.
 
 Launch/test/install tasks require a verified target identity: provider/store,
 artifact or executable, version/build, SHA-256, environment, workspace/prefix,

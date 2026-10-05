@@ -395,7 +395,7 @@ class FocusControlTests(unittest.TestCase):
     def primary_run(self) -> str:
         return self.cli(
             "run", "--goal", "Login works", "--outcome", "Login works", "--autonomy", "approved-program",
-            "--criterion", "LOGIN-001|Sign-in completes|product|R2|deterministic",
+            "--criterion", "LOGIN-001|Sign-in completes|product|R2|reality|web",
             "--criterion", "PKG-001|Package is pinned|product|R1|deterministic",
             "--primary-criterion", "LOGIN-001", "--primary-path", "auth/",
         )["runId"]
@@ -423,7 +423,7 @@ class FocusControlTests(unittest.TestCase):
     def test_primary_criterion_counts_worker_results_and_resets_on_bound_outcome(self) -> None:
         run_id = self.cli(
             "run", "--goal", "Login works", "--outcome", "Login works", "--autonomy", "approved-program",
-            "--criterion", "LOGIN-001|Sign-in completes|product|R2|deterministic",
+            "--criterion", "LOGIN-001|Sign-in completes|product|R2|reality|web",
             "--criterion", "PKG-001|Package is pinned|product|R1|deterministic",
         )["runId"]
         self.assertNotIn("primaryCriterion", self.cli("status", run_id))
@@ -441,6 +441,61 @@ class FocusControlTests(unittest.TestCase):
         status = self.cli("status", run_id)
         self.assertEqual(0, status["primaryCriterion"]["untouchedStreak"])
         self.assertNotIn("escalation", status)
+
+    def test_primary_criterion_rejects_ci_evidence(self) -> None:
+        run_id = self.primary_run()
+        error = self.cli("primary-set", run_id, "--criterion", "PKG-001", "--path", "pkg", expected=1)
+        self.assertEqual("INVALID_PRIMARY_CRITERION", error["code"])
+        self.store.record_gate(run_id, gate_id="ci-green", task_id=None, gate_type="deterministic", status="PASS",
+                               evidence_refs=[self.evidence(run_id)], criteria=["LOGIN-001"])
+        with self.assertRaises(runtime_module.RuntimeFailure) as raised:
+            self.store.set_criterion(run_id, "LOGIN-001", "PASS", ["gate:ci-green"])
+        self.assertEqual("PRIMARY_EVIDENCE_NOT_OBSERVED", raised.exception.code)
+
+    def test_failed_primary_attempts_hit_the_loop_cap(self) -> None:
+        run_id = self.primary_run()
+        self.cli("primary-set", run_id, "--criterion", "LOGIN-001", "--path", "auth", "--threshold", "3")
+        for index in range(3):
+            self.add_task(run_id, f"login-try-{index}", acceptanceCriteria=["LOGIN-001"])
+            self.store.fail_task(run_id, f"login-try-{index}", "bridge rejected an unknown message")
+        status = self.cli("status", run_id)
+        self.assertEqual(3, status["primaryCriterion"]["untouchedStreak"])
+        self.assertEqual("STALLED_PRIMARY_CRITERION", status["escalation"]["code"])
+
+    def test_budget_reports_80_and_100_from_real_counters(self) -> None:
+        run_id = self.create()
+        self.assertNotIn("budget", self.cli("status", run_id))
+        (self.repo / "architrave.config.json").write_text(
+            json.dumps({"evaluation": {"budget": {"maxCommits": 5}}}), encoding="utf-8")
+        for index in range(4):
+            self.commit(f"work-{index}.txt", "x\n")
+        budget = self.cli("status", run_id)["budget"]
+        self.assertEqual((4, "BUDGET_80", ["commits"]), (budget["counters"]["commits"], budget["signal"], budget["over"]))
+        self.commit("work-4.txt", "x\n")
+        self.assertEqual("BUDGET_100", self.cli("status", run_id)["budget"]["signal"])
+
+    def test_pushback_verdicts_are_recorded_and_missing_ones_flagged(self) -> None:
+        run_id = self.create()
+        self.add_task(run_id, "unreviewed")
+        self.cli("task-add", run_id, "--id", "kept", "--title", "kept", "--objective", "Fix login.",
+                 "--criteria", "ACCEPT-001", "--worker", "shell", "--pushback", "KEEP:fixes the failing path")
+        self.cli("task-add", run_id, "--id", "restart", "--title", "restart", "--objective", "Add host restart.",
+                 "--criteria", "ACCEPT-001", "--worker", "shell", "--pushback", "CUT:reload already covers it")
+        error = self.cli("task-add", run_id, "--id", "bad", "--title", "bad", "--objective", "x",
+                         "--criteria", "ACCEPT-001", "--worker", "shell", "--pushback", "MAYBE:", expected=1)
+        self.assertEqual("INVALID_PUSHBACK", error["code"])
+        self.assertEqual(["unreviewed"], self.cli("status", run_id)["missingPushback"])
+        tasks = {task["id"]: task for task in self.store.load(run_id)["tasks"]}
+        self.assertEqual(("KEEP", "SKIPPED"), (tasks["kept"]["pushback"]["verdict"], tasks["restart"]["status"]))
+
+    def test_owner_message_lint_fails_dense_identifiers(self) -> None:
+        gate = ROOT / "gates" / "gate_runner.py"
+        noisy = "Run rev20/cursor21 pid=4412 receipt 9be3f0a1c2d4e5f6 and 383104e451fd25fbc4e7c4547db5acd03d734410."
+        plain = "Login now works on the Mac build. I pushed the fix as commit ba02609."
+        for text, expected in ((noisy, 1), (plain, 0)):
+            process = subprocess.run([sys.executable, str(gate), "message-lint"], input=text,
+                                     capture_output=True, text=True, check=False)
+            self.assertEqual(expected, process.returncode, process.stdout)
 
     def test_correction_keeps_product_objective_and_defers_bridge_lane(self) -> None:
         run_id = self.create("Run the requested free-engine game acceptance test.")
