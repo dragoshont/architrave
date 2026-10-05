@@ -37,10 +37,10 @@ Reproduction command used for both runs:
 
 ```bash
 git worktree add --detach ../architrave-metrics-baseline 165da5284e0fff5ecfa7b1fff18593c949ad8fd3
-git worktree add --detach ../architrave-metrics-after 03509458bf650b3de8e46d7b3063015edea2096b
+git worktree add --detach ../architrave-metrics-after 1ace742ee05eaeb2b97950722c3c51f99eb55c74
 python scripts/measure-basic-sh-sdd.py --source ../architrave-metrics-baseline --output ../architrave-metrics --label baseline --manifest benchmarks/results/orchestration-baseline.json
 python scripts/measure-basic-sh-sdd.py --source ../architrave-metrics-after --output ../architrave-metrics --label after --manifest benchmarks/results/orchestration-after.json
-python scripts/validate-orchestration-metrics.py --expected-after 03509458bf650b3de8e46d7b3063015edea2096b
+python scripts/validate-orchestration-metrics.py --expected-after 1ace742ee05eaeb2b97950722c3c51f99eb55c74
 git worktree remove --force ../architrave-metrics-baseline
 git worktree remove --force ../architrave-metrics-after
 ```
