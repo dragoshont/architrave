@@ -439,16 +439,20 @@
       "rawToolOutputBytes": null
     },
     "candidateNativeOwnerCountObserved": 2,
-    "installedVersion": "0.12.4",
-    "payloadMatchesCandidate": false
+    "installedVersion": "0.13.0",
+    "payloadMatchesCandidate": true
   },
   "hostMatrix": {
     "windowsCopilotApp": {
-      "installedVersion": "0.12.4",
-      "payloadMatchesCandidate": false,
+      "installedVersion": "0.13.0",
+      "installedCodeCommit": "d029a860fb3ed0edd71917bffa2d74a8b7452fa3",
+      "payloadMatchesCandidate": true,
       "nativeBridgeVersionTested": "0.13.0",
       "baselineOwnerHandlesObservedInBatchReturn": 2,
-      "installation": "PENDING committed-payload reinstall",
+      "installation": "Verified committed archive, enabled persistent user-scope local marketplace",
+      "nativeBridgePinsVerified": true,
+      "joinedNativeRefresh": "OBSERVED: completed B, current gate evidence, no active/stale workers",
+      "newPluginSessions": "Required to replace already-loaded legacy plugin context",
       "A": "PASS",
       "B": "PASS",
       "nativeParallelBVerified": true
@@ -463,8 +467,11 @@
       "reportedWholeSmokeOutputTokensRounded": 3600
     },
     "macCopilotApp": {
-      "installedPayloadVersion": "0.12.4",
-      "installation": "PENDING committed-payload reinstall",
+      "installedPayloadVersion": "0.13.0",
+      "installedCodeCommit": "d029a860fb3ed0edd71917bffa2d74a8b7452fa3",
+      "payloadMatchesCandidate": true,
+      "nativeBridgePinsVerified": true,
+      "installation": "Verified committed archive, enabled persistent user-scope local marketplace",
       "appUIDiscovery": "UNOBSERVED",
       "A": "UNOBSERVED",
       "B": "UNOBSERVED"
@@ -472,6 +479,7 @@
     "macCodex": {
       "bundledCLI": "0.159.0",
       "supportedInstalledPayloadVersion": "0.13.0",
+      "installedCodeCommit": "d029a860fb3ed0edd71917bffa2d74a8b7452fa3",
       "leadSkillPayloadMatchesCandidate": true,
       "desktopUIDiscovery": "UNOBSERVED",
       "desktopA": "UNOBSERVED",
@@ -527,6 +535,20 @@
       "F3 subscribe and buffer turns before owner admission/message delivery",
       "F4 derive report success from measured observations"
     ],
-    "crossFamilyEvidence": "UNOBSERVED; source review does not certify R3/R4 different-family or unobserved hosts"
+    "reviewCrossFamilyConfigured": true,
+    "canonicalRunCriterionRisk": "R2",
+    "reviewerSignals": [
+      {
+        "model": "gpt-6.1-sol",
+        "family": "OpenAI",
+        "verdict": "REVISE then final PASS"
+      },
+      {
+        "model": "claude-sonnet-5",
+        "family": "Anthropic",
+        "verdict": "REVISE before final diagnostic correction"
+      }
+    ],
+    "crossFamilyEvidence": "Two families observed, but two different-family PASS verdicts on the final source were NOT obtained; R3/R4 two-family condition is not fulfilled"
   }
 }

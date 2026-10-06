@@ -100,16 +100,24 @@ run retains ten orchestration artifacts; comparing its bytes with an aborted
 baseline would be misleading.
 
 The install check must hash the **installed payload**, not trust CLI catalog
-version text. Direct local Copilot installs before a commit were observed to
-report v0.13.0 while cloning the committed v0.12.4 payload. Final installs are
-performed from the committed candidate and verified against its source.
+version text. Direct repo-path installs were observed to report v0.13.0 while
+the cached payload still matched v0.12.4, including after a commit. The verified
+installation uses the supported local-marketplace mechanism pointed at a
+persistent user-scope archive of the reviewed commit. Windows Copilot and Mac
+Copilot/Codex payloads match reviewed code commit `d029a86`, v0.13.0; native bridge
+pins are verified on both hosts. A new plugin session is required to replace an
+already-loaded legacy context. Mac app/Codex desktop execution is not inferred.
 
 Independent native review initially required four corrections: substantive
 observations rather than changing receipt provenance, specific failure causes
 and primary diagnostics, observing early turns before admission, and deriving
 report success from measurements. These were fixed in one bounded review cycle;
-the final source verdict is PASS. Different-family R3/R4 review evidence remains
-unobserved, and this verdict does not certify inaccessible desktop execution.
+the final source verdict is PASS. Host events report OpenAI and Anthropic review
+contexts, but the final corrected source has only the OpenAI PASS; the Anthropic
+review preceded the last diagnostic correction and returned REVISE.
+`review.crossFamily` remains enabled. The canonical Run declared R2, and no
+two-different-family R3/R4 PASS condition is claimed. This source verdict does not
+certify inaccessible desktop execution.
 
 ### One owner desktop smoke prompt
 
