@@ -207,7 +207,7 @@ def install_native_host(kit: Path) -> int:
     """Explicit user-scope install; repository adoption never grants host capability."""
     if sys.version_info < (3, 9):
         raise InstallerError("native-host-install requires Python 3.9+", 2)
-    extension = kit / "extensions" / "architrave-native" / "extension.mjs"
+    extension = kit / "extensions" / "architrave-native" / "bridge.mjs"
     require_source_file(extension, "native-host-install")
     for relative in ("harness/native_host.py", "harness/architrave_runtime.py",
                      "harness/worker_adapters.py", "harness/workspaces.py",

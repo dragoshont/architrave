@@ -68,6 +68,7 @@ echo "== JSON well-formed =="
 json_files=(
   plugin.json
   .codex-plugin/plugin.json
+  .agents/plugins/marketplace.json
   .github/plugin/marketplace.json
   .claude-plugin/plugin.json
   .claude-plugin/marketplace.json

@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -12,16 +14,23 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "harness"))
-from architrave_runtime import RunStore, RuntimeFailure
+from architrave_runtime import RunStore, RuntimeFailure, primary_failures
 
 _fixture_add_task = RunStore.add_task
 RunStore.add_task = lambda self, run_id, task, actor="coordinator": _fixture_add_task(
     self, run_id, {"pushback": "KEEP:test fixture", **task}, actor)
 from worker_adapters import command_for, execute_work_packet
 from workspaces import WorkspaceManager
+from native_host import routing_observation
 
 
 class NativeHostTests(unittest.TestCase):
+    def test_model_observation_never_claims_an_unreported_or_ignored_override(self):
+        self.assertIsNone(routing_observation(None, "host-reported-model")["fallback"])
+        self.assertIn("did not report", routing_observation("user-pin", None)["fallback"])
+        self.assertIn("different effective", routing_observation("user-pin", "inherited-model")["fallback"])
+        self.assertIn("no per-turn", routing_observation("user-pin", "user-pin", True)["fallback"])
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="architrave native ")
         self.repo = Path(self.temp.name) / "tiny app"
@@ -172,6 +181,238 @@ class NativeHostTests(unittest.TestCase):
         self.assertEqual("NATIVE_RESULT_STALE", error.exception.code)
         self.store.fail_task(run_id, task_id, "stale candidate")
         self.assertEqual("FAILED", self.store.load(run_id)["workers"][0]["status"])
+
+    def test_sibling_native_lifecycle_commutes_but_human_hold_does_not(self):
+        run_id, task_id = self.task()
+        self.store.add_task(run_id, {"id": "sibling", "objective": "Independent read",
+                                   "workerProfile": "native", "acceptanceCriteria": ["FIX"], "risk": "R0"})
+        first = self.store.begin_native_worker(run_id, task_id, host_owner="fixture-host")
+        self.store.bind_native_owner(first, "host-first")
+        second = self.store.begin_native_worker(run_id, "sibling", host_owner="fixture-host")
+        self.store.bind_native_owner(second, "host-second")
+        self.assertEqual("candidate", self.store.accept_native_candidate(
+            second, host_task_id="host-second", host_status="completed", text="second")["status"])
+        self.assertEqual("candidate", self.store.accept_native_candidate(
+            first, host_task_id="host-first", host_status="completed", text="first")["status"])
+
+    def test_global_hold_invalidates_parallel_ticket(self):
+        run_id, task_id = self.task()
+        self.store.add_task(run_id, {"id": "sibling", "objective": "Independent read",
+                                   "workerProfile": "native", "acceptanceCriteria": ["FIX"], "risk": "R0"})
+        ticket = self.store.begin_native_worker(run_id, task_id, host_owner="fixture-host")
+        self.store.bind_native_owner(ticket, "host-first")
+        self.store.wait_external(run_id, checkpoint_id="human-hold", task_id="sibling",
+                                 checkpoint_type="AUTH_REQUIRED", principal="owner", provider="fixture",
+                                 reason="Human authentication is still required")
+        with self.assertRaises(RuntimeFailure) as error:
+            self.store.accept_native_candidate(ticket, host_task_id="host-first", host_status="completed", text="candidate")
+        self.assertEqual("NATIVE_RESULT_STALE", error.exception.code)
+
+    def test_idle_owner_cannot_be_repurposed_without_same_task_binding(self):
+        run_id, task_id = self.task()
+        before = self.store.load(run_id)
+        with self.assertRaises(RuntimeFailure) as error:
+            self.store.begin_native_worker(run_id, task_id, host_owner="fixture-host", owner_handle="unrelated-idle")
+        self.assertEqual("NATIVE_OWNER_TASK_MISMATCH", error.exception.code)
+        self.assertEqual(before["revision"], self.store.load(run_id)["revision"])
+
+    def test_owned_task_and_source_changes_still_invalidate_candidate(self):
+        run_id, task_id = self.task()
+        ticket = self.store.begin_native_worker(run_id, task_id, host_owner="fixture-host")
+        self.store.bind_native_owner(ticket, "host-first")
+        (self.repo / "README.md").write_text("changed source", encoding="utf-8")
+        result = self.store.accept_native_candidate(ticket, host_task_id="host-first", host_status="completed", text="candidate")
+        self.assertEqual("failed", result["status"])
+        self.assertIn("worker changed the coordinator workspace", result["errors"])
+        with self.assertRaises(RuntimeFailure):
+            self.store.accept_native_candidate(ticket, host_task_id="host-first", host_status="completed", text="replay")
+
+    def test_two_identical_failures_stop_and_recovery_cannot_reset_them(self):
+        run_id, task_id = self.task("shell")
+        self.store.start_task(run_id, task_id, worker_id="first")
+        self.store.fail_task(run_id, task_id, "same missing dependency")
+        self.store.recover_workers(run_id, task_id=task_id)
+        with self.assertRaises(RuntimeFailure) as error:
+            self.store.start_task(run_id, task_id, worker_id="second")
+        self.assertEqual("RETRY_REASON_REQUIRED", error.exception.code)
+        self.store.start_task(run_id, task_id, worker_id="second", retry_hypothesis="Check declared dependency path")
+        state = self.store.fail_task(run_id, task_id, "same missing dependency")
+        self.assertTrue(state["tasks"][0]["loop"]["stopped"])
+        with self.assertRaises(RuntimeFailure) as error:
+            self.store.recover_workers(run_id, task_id=task_id)
+        self.assertEqual("REPEATED_FAILURE", error.exception.code)
+
+    def test_new_relevant_source_evidence_resets_failure_streak(self):
+        run_id, task_id = self.task("shell")
+        # Read-only context is still relevant new evidence, not an unrelated artifact.
+        state = self.store.load(run_id)
+        self.store.add_task(run_id, {"id": "bounded", "objective": "Read README", "workerProfile": "shell",
+                                   "acceptanceCriteria": ["FIX"], "risk": "R0", "maxAttempts": 3,
+                                   "workPacket": {"contextBundle": ["README.md"]}})
+        self.store.start_task(run_id, "bounded", worker_id="first")
+        self.store.fail_task(run_id, "bounded", "same failure")
+        (self.repo / "README.md").write_text("new evidence", encoding="utf-8")
+        self.store.start_task(run_id, "bounded", worker_id="second")
+        state = self.store.fail_task(run_id, "bounded", "same failure")
+        self.assertFalse(state["tasks"][1]["loop"]["stopped"])
+        self.assertEqual(1, state["tasks"][1]["loop"]["count"])
+
+    def test_equivalent_receipt_provenance_cannot_reset_failure_streak(self):
+        run_id, _ = self.task("shell")
+        self.store.add_task(run_id, {"id": "bounded", "objective": "Bounded diagnostic",
+                                   "workerProfile": "shell", "acceptanceCriteria": ["FIX"],
+                                   "risk": "R0", "maxAttempts": 3})
+
+        def observation(number):
+            path = self.store.run_dir(run_id) / f"observation-{number}.json"
+            path.write_text(json.dumps({"status": "pass", "exitCode": 0,
+                                        "command": ["diagnostic"], "stdout": "same missing dependency",
+                                        "observedAt": str(number), "durationMs": number,
+                                        "binding": {"revision": number}}), encoding="utf-8")
+            self.store._record_deterministic_result(
+                run_id, artifact_id=f"observation-{number}", path=path.relative_to(self.store.repository).as_posix(),
+                evidence_refs=["task:bounded"])
+
+        observation(1)
+        self.store.start_task(run_id, "bounded", worker_id="first")
+        self.store.fail_task(run_id, "bounded", "same missing dependency")
+        observation(2)
+        with self.assertRaises(RuntimeFailure) as error:
+            self.store.start_task(run_id, "bounded", worker_id="second")
+        self.assertEqual("RETRY_REASON_REQUIRED", error.exception.code)
+        self.store.start_task(run_id, "bounded", worker_id="second", retry_hypothesis="Check a different dependency location")
+        state = self.store.fail_task(run_id, "bounded", "same missing dependency")
+        self.assertTrue(state["tasks"][1]["loop"]["stopped"])
+
+    def test_distinct_native_failure_causes_do_not_share_a_fingerprint(self):
+        run_id, task_id = self.task()
+        ticket = self.store.begin_native_worker(run_id, task_id, host_owner="fixture-host")
+        self.store.bind_native_owner(ticket, "first")
+        self.store.accept_native_candidate(ticket, host_task_id="first", host_status="cancelled", text="cancelled")
+        original = self.store.load(run_id)["tasks"][0]["loop"]["fingerprint"]
+        self.store.recover_workers(run_id, task_id=task_id)
+        ticket = self.store.begin_native_worker(run_id, task_id, host_owner="fixture-host",
+                                              retry_hypothesis="Investigate workspace scope rather than host cancellation")
+        self.store.bind_native_owner(ticket, "second")
+        (Path(ticket.snapshot["workspace"]) / "outside.txt").write_text("out of scope", encoding="utf-8")
+        self.store.accept_native_candidate(ticket, host_task_id="second", host_status="completed", text="candidate")
+        loop = self.store.load(run_id)["tasks"][0]["loop"]
+        self.assertNotEqual(original, loop["fingerprint"])
+        self.assertFalse(loop["stopped"])
+        failures = primary_failures(self.store.load(run_id), self.store.events(run_id), "FIX")
+        self.assertEqual(2, len(failures))
+        self.assertNotEqual(failures[0]["reason"], failures[1]["reason"])
+        self.assertIn("cancelled", failures[0]["reason"])
+        self.assertIn("outside", failures[1]["reason"])
+
+    def test_default_active_child_cap_is_three(self):
+        run_id, task_id = self.task("shell")
+        for number in range(3):
+            self.store.add_task(run_id, {"id": f"child-{number}", "objective": "Bounded read",
+                                       "workerProfile": "shell", "acceptanceCriteria": ["FIX"], "risk": "R0"})
+        self.store.start_task(run_id, task_id, worker_id="first")
+        for number in range(2):
+            self.store.start_task(run_id, f"child-{number}", worker_id=f"worker-{number}")
+        with self.assertRaises(RuntimeFailure) as error:
+            self.store.start_task(run_id, "child-2", worker_id="fourth")
+        self.assertEqual("PARALLELISM_EXCEEDED", error.exception.code)
+
+    @unittest.skipUnless(shutil.which("node"), "Node required only for the SDK transport contract fixture")
+    def test_sdk_fixture_event_wait_depth_and_concurrent_admission(self):
+        """Mock SDK contract test, deliberately NOT native-host execution evidence."""
+        root = Path(self.temp.name) / "transport"
+        root.mkdir()
+        source = (ROOT / "extensions/architrave-native/bridge.mjs").read_text(encoding="utf-8")
+        source = source.replace('"@github/copilot-sdk/extension"',
+                                '"data:text/javascript,export const joinSession=globalThis.joinSession;"')
+        entry = root / "extension.mjs"
+        entry.write_text(source + "\nexport { observeTask };\n", encoding="utf-8")
+        python = Path(sys.executable).resolve()
+        (root / "installation.json").write_text(json.dumps({
+            "root": str(root), "python": str(python),
+            "pythonSha256": hashlib.sha256(python.read_bytes()).hexdigest(),
+            "extensionSha256": hashlib.sha256(entry.read_bytes()).hexdigest(), "files": {},
+        }), encoding="utf-8")
+        script = r'''
+import assert from "node:assert/strict";
+import {pathToFileURL} from "node:url";
+let options, callback, reads=0, unsubscribed=false;
+let tasks=[{id:"test",type:"agent",status:"running"}];
+const host={sessionId:"root",on(fn){callback=fn;return ()=>{unsubscribed=true;}},
+  rpc:{tasks:{startAgent(){throw Error("fixture must not launch a worker");},
+    list:async()=>{reads++;return {tasks};},cancel:async()=>({cancelled:true})}}};
+globalThis.joinSession=async value=>{options=value;return host;};
+const module=await import(pathToFileURL(process.argv[1]));
+const observer=module.observeTask(12);
+const waiting=observer.wait("test",Date.now()+1000,()=>true);
+await new Promise(resolve=>setImmediate(resolve));
+assert.equal(reads,1);
+tasks=[{id:"test",type:"agent",status:"completed"}];
+callback({type:"session.background_tasks_changed"});
+assert.equal((await waiting).status,"completed");
+assert.equal(reads,2);
+assert.equal(unsubscribed,true);
+for(const owner of ["early-admission","retained-delivery"]) {
+  let cancelled=false;
+  tasks=[{id:owner,type:"agent",status:"running"}];
+  host.rpc.tasks.cancel=async({id})=>{
+    assert.equal(id,owner);cancelled=true;tasks[0].status="cancelled";
+    callback({type:"session.background_tasks_changed"});return {cancelled:true};
+  };
+  const early=module.observeTask(2);
+  // Both events arrive before startAgent/sendMessage returns the owner handle.
+  callback({agentId:owner,type:"assistant.turn_start"});
+  callback({agentId:owner,type:"assistant.turn_start"});
+  const observed=await early.wait(owner,Date.now()+1000,()=>true);
+  assert.equal(cancelled,true);
+  assert.equal(observed.turnsObserved,2);
+  assert.equal(observed.budgetStop,"turns");
+}
+host.rpc.tasks.list=()=>new Promise(()=>{});
+const dispatch=options.tools.find(tool=>tool.name==="architrave_native_dispatch");
+for(let i=0;i<3;i++) void dispatch.handler({repo:"unused",run_id:"r",task_id:String(i)},{sessionId:"root"});
+const denied=await options.hooks.onPreToolUse(
+  {sessionId:"child",toolName:"functions.task"},{sessionId:"root"});
+assert.equal(denied.permissionDecision,"deny");
+assert.match(denied.permissionDecisionReason,/CHILD_DEPTH/);
+assert.equal(await options.hooks.onPreToolUse(
+  {sessionId:"root",toolName:"functions.task"},{sessionId:"root"}),undefined);
+await assert.rejects(dispatch.handler({},{sessionId:"root"}),/CHILD_LIMIT/);
+console.log("SDK event/depth/admission fixture: PASS (not native evidence)");
+'''
+        result = subprocess.run(["node", "--input-type=module", "-e", script, str(entry)],
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
+    def test_benchmark_report_cannot_turn_failed_or_missing_native_execution_into_success(self):
+        output = Path(self.temp.name) / "measurement"
+        for arm in ("baseline", "candidate"):
+            (output / arm).mkdir(parents=True)
+        for acceptance, execution in (("FAIL", "FAILED"), ("UNOBSERVED", "NOT_DISPATCHED"),
+                                      ("PASS", "OBSERVED")):
+            measurement = {
+                "frozenFixtureSha256": "same-fixture", "sourceCommit": "fixture", "exactTelemetry": {},
+                "tasks": {
+                    "A": {"acceptance": "PASS", "childCount": 0},
+                    "B": {"acceptance": acceptance, "execution": execution, "childCount": 0,
+                          "nativeOwnersObserved": 0, "maxConcurrency": 0, "workerStatuses": []},
+                },
+            }
+            for arm in ("baseline", "candidate"):
+                (output / arm / "measurement.json").write_text(json.dumps(measurement), encoding="utf-8")
+            record = output / "record.json"
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "scripts/bench-thin-supervisor.py"), "report",
+                 "--source", str(ROOT), "--baseline-source", str(ROOT), "--output", str(output),
+                 "--arm", "candidate", "--record", str(record)], capture_output=True, text=True, timeout=15)
+            self.assertEqual(0, result.returncode, result.stderr)
+            data = json.loads(record.read_text(encoding="utf-8"))
+            self.assertEqual(0, data["windowsCopilotApp"]["candidateNativeOwnerCountObserved"])
+            self.assertFalse(data["hostMatrix"]["windowsCopilotApp"]["nativeParallelBVerified"])
+            self.assertNotEqual("PASS", data["hostMatrix"]["windowsCopilotApp"]["B"])
+            self.assertEqual("UNVERIFIED", data["acceptance"]["5"])
+            self.assertIsNone(data["windowsCopilotApp"]["installedVersion"])
+            self.assertEqual("UNOBSERVED", data["review"]["status"])
 
     def test_cancelled_candidate_and_recovery_never_execute_commands(self):
         run_id, task_id = self.task()

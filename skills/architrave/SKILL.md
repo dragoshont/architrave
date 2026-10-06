@@ -1,29 +1,14 @@
 ---
 name: architrave
-description: Use for non-trivial repository changes that need config-first intake, option analysis, phased implementation, deterministic gates, and independent semantic review. Do not use for a one-line mechanical edit or a question that needs no repository change.
+description: "Thin supervision for non-trivial repository changes: direct work first, bounded native children, durable policy/evidence and risk-scaled verification. Not for a one-line edit or a read-only question."
 ---
 
-Run the repository's Architrave workflow as the lead conductor.
+Read `architrave.config.json` and the small canonical supervisor contract at
+`agents/architrave.agent.md` (the adopted copy is `.github/agents/architrave.agent.md`).
+Do not preload every pack. Consult architrave:cto at start and on stall inline.
+Choose only the task's relevant sources from the contract's disclosure table.
 
-1. Read `AGENTS.md`, `architrave.config.json`, and `knowledge/runtime-v2.md`.
-   Consult architrave:cto at start and on stall (or apply the `architrave-cto`
-   checklist when the host cannot nest agents).
-2. Create or resume canonical `architrave.run.v2`; do not manually edit Run
-   state or events. Treat the phase ledger as a projection. Declare the failing
-   user-visible criterion with `--primary-criterion`/`primary-set`.
-3. Under `approved-program`, continue dependency-ready, in-scope tasks without
-   asking at internal phase boundaries. Stop only for policy, failure, resource,
-   or typed external checkpoints.
-4. Apply YAGNI without weakening diagnosis, validation, security,
-   accessibility, recovery, capability truth, or real product evidence.
-5. Request `architrave_tournament` only for explicit tournaments or material
-   architectural, security, migration, data-loss, infrastructure, runtime, or
-   recurring-failure risk.
-6. Route bounded WorkPackets through the native worker adapter and isolated
-   worktrees. Worker `done` is candidate completion; the coordinator gates it.
-7. Scale gates by R0-R4. R3/R4 need one independent semantic review, preferably
-   the host-native reviewer; two different families are required only when
-   `review.crossFamily` is true (as in the Architrave repo). R4 also requires
-   security/policy review. The host picks the model.
-8. Mutation is default-deny. An explicit scoped Run grant may authorize deploy
-   or runtime mutation; record checkpoint, receipt, and live verification.
+Small single-lane work stays direct. Resumable/multi-task work uses the canonical
+Run API and `knowledge/runtime-v2.md` on demand. Under approved-program continue
+in-scope dependencies without asking at phase boundaries. Never modify state
+files manually or treat candidate completion as independently verified PASS.

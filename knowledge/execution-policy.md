@@ -1,9 +1,10 @@
 # Execution and verification policy
 
-Architrave does not select, rank, recommend, or persist a model class, tier,
-reasoning level, context tier, provider, or concrete model. Those choices belong
-to the user and the active host harness. Canonical agents, repository config,
-WorkPackets, generated roles, and Run state must omit model-selection guidance.
+Concrete model, provider, reasoning and context mappings belong to the user and
+the active host harness, not repository policy, generated roles or WorkPackets.
+An explicitly configured user pin may be passed to a documented per-child host
+control. Persist reported selection only in compact worker evidence, not product
+truth. An absent/unsupported request inherits the parent and reports that fact.
 
 ## Delegation
 
@@ -57,14 +58,15 @@ verification evidence.
 
 ## Proportional ceremony
 
-WorkPackets and reviews may carry a capability signal, `effort: low|default|high`,
-never a model name. Defaults: R0/R1 and mechanical work `low`, normal work
-`default`, R3/R4 reviews and the failing primary criterion after a stall `high`.
-Map it only to a control the host exposes (Copilot `auto` tier
-efficiency/balance/intelligence, or a supported `reasoning_effort`); otherwise
-it is a no-op and the host default is inherited. Record the requested effort
-and the effective mapping in the result (`task-add --effort`, `gate-record
---effort high:<mapping>`).
+The existing `effort: low|default|high` signal is optional. It is not a model
+selector or a reason to spawn. Map it only through a user/host-supported control;
+otherwise record an inherited no-op. Copilot's joined tasks RPC supports a user
+model pin and reported resolved model, but not a per-task reasoning setting;
+the host's `/subagents` settings own that. Codex's current official custom-agent
+and spawn settings support model/reasoning overrides and inheritance, but this
+kit has no joined Codex execution transport. Use Codex's own subagent tools,
+never an unofficial desktop hook or nested CLI. Installed capability does not
+prove execution; unavailable telemetry stays unavailable.
 
 Ceremony scales with risk, not with anxiety. R0/R1 single-path fixes need no
 per-change pin, receipt, or qualification Run; the focused test plus normal CI
@@ -84,3 +86,35 @@ Persist canonical Run state, authenticated typed events, compact evidence
 receipts, and one rolling recovery snapshot. Render status, phase, handoff, and
 audit views on demand. Do not create per-agent plans, reports, status files, or
 empty placeholders.
+
+## Delivery detail (on demand)
+
+Schedule the smallest demonstrable user-visible vertical slice. Supporting
+harness/framework/evidence work gets at most two consecutive tasks or one
+full-gate cycle unless a blocking criterion names it. A supporting task does not
+independently trigger a full gate. Full checks run at integration/release/Outcome
+boundaries or the configured risk floor, never on unchanged source without a
+new reason. Collapsing distinct causes into one generic failure code is a gate
+finding. For replacement work the first gate is a parity test against that
+reference on the real flow, before any hardening.
+
+Two semantic reopens require one coherent fix batch. A third non-PASS terminates
+that attempt. For a command with no new output for 15 minutes or beyond twice
+its expected duration, inspect its exact owned process/resources before stopping
+it; parent idleness and file mtimes do not establish subagent inactivity.
+
+The Python admission API caps active tasks at three or a lower configured
+limit, keeps exclusive mutable ownership and refuses unexplained retries.
+Two identical failure/source-evidence fingerprints stop a lane; recovery does
+not reset the stop. `task-start --retry-hypothesis` records a new bounded
+hypothesis, or a changed relevant source/registered observation permits retry.
+An old evidence reference alone is not new evidence. Primary-criterion controls,
+global budgets, human holds and uncertain-side-effect reconciliation still apply.
+
+The Copilot bridge consumes native lifecycle invalidations, with one bounded
+deadline (not a polling loop), and checks the real admitted owner. Its child
+pre-tool hook denies descendant session/task launches while a mission dispatch
+is active. Native turn events enforce the packet's turn bound; hosts lacking
+those signals still have the time/output bounds and must not claim turn
+telemetry. Direct host use outside this bridge must honor the same core
+contract and the host's own depth/concurrency settings.

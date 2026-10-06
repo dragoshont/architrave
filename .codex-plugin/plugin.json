@@ -1,6 +1,6 @@
 {
   "name": "architrave",
-  "version": "0.12.4",
+  "version": "0.13.0",
   "description": "Config-first, YAGNI-gated repository workflow with phased delivery, deterministic checks, option analysis, and independent semantic review.",
   "author": {
     "name": "dragoshont"

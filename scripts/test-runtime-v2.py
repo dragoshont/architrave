@@ -2231,9 +2231,9 @@ class RuntimeV2Tests(unittest.TestCase):
         self.assertEqual(1, task["attempts"])
         self.assertIsNotNone(task["retryNotBefore"])
         with self.assertRaisesRegex(RuntimeFailure, "backoff"):
-            self.store.start_task(run_id, "flaky", worker_id="worker-2")
+            self.store.start_task(run_id, "flaky", worker_id="worker-2", retry_hypothesis="Check transient resource recovery")
         time.sleep(4.1)
-        self.store.start_task(run_id, "flaky", worker_id="worker-2")
+        self.store.start_task(run_id, "flaky", worker_id="worker-2", retry_hypothesis="Check transient resource recovery")
         task = next(t for t in self.store.load(run_id)["tasks"] if t["id"] == "flaky")
         self.assertEqual("RUNNING", task["status"])
         self.assertEqual(2, task["attempts"])
@@ -2265,7 +2265,7 @@ class RuntimeV2Tests(unittest.TestCase):
         # filesystem operations, which can legitimately exceed tiny backoffs on loaded CI.
         self.assertGreaterEqual(retry_not_before, before_failure + dt.timedelta(seconds=5.2))
         with self.assertRaisesRegex(RuntimeFailure, "backoff"):
-            self.store.start_task(run_id, "flaky-fast", worker_id="worker-2")
+            self.store.start_task(run_id, "flaky-fast", worker_id="worker-2", retry_hypothesis="Check transient resource recovery")
 
     def test_fail_task_respects_retry_policy_and_terminates_when_exhausted(self) -> None:
         state = self.create()
@@ -2276,7 +2276,7 @@ class RuntimeV2Tests(unittest.TestCase):
         task = next(t for t in self.store.load(run_id)["tasks"] if t["id"] == "solo")
         self.assertEqual("READY", task["status"])
         self.assertEqual(1, task["attempts"])
-        self.store.start_task(run_id, "solo", worker_id="worker-2")
+        self.store.start_task(run_id, "solo", worker_id="worker-2", retry_hypothesis="Inspect the failing infrastructure step")
         self.store.fail_task(run_id, "solo", "flaky infra")
         task = next(t for t in self.store.load(run_id)["tasks"] if t["id"] == "solo")
         self.assertEqual("FAILED", task["status"])

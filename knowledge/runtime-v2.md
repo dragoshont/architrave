@@ -95,7 +95,7 @@ flow, before any hardening. `objective-replace` requires a `HUMAN_JUDGMENT_REQUI
 `target-resolve` requires a `SAFE_WRITE_TARGET_REQUIRED` challenge bound to the
 provider/principal. Neither flow accepts a repository-authored self-attestation.
 
-At most two execution lanes are active by default. The product lane cannot be
+At most two execution lanes are active by default (lanes are not children). The product lane cannot be
 displaced by communications, unrelated research, or infrastructure; those
 become deferred lanes until explicitly promoted.
 

@@ -20,6 +20,7 @@ verifyFile(installed.python, installed.pythonSha256);
 for (const [path, digest] of Object.entries(installed.files)) verifyFile(path, digest);
 const bridgePath = join(installed.root, "harness", "native_host.py");
 const active = new Map();
+let pendingDispatches = 0;
 let session;
 
 function pipe(request) {
@@ -71,9 +72,92 @@ async function hostTasks() {
   return (await session.rpc.tasks.list()).tasks;
 }
 
+function observeTask(maxTurns) {
+  const records = new Map();
+  let id, fresh, resolve, reject, timer;
+    let reading = false;
+    let dirty = false;
+    let done = false;
+    let cancellationRequested = false;
+    const finish = (error, value) => {
+      if (done) return;
+      done = true;
+      unsubscribe();
+      clearTimeout(timer);
+      if (error && reject) reject(error);
+      else if (resolve) resolve(value);
+    };
+    const enforceTurns = () => {
+      if (!id || cancellationRequested || (records.get(id)?.turns || 0) < maxTurns) return;
+      cancellationRequested = true;
+      void session.rpc.tasks.cancel({ id }).then(outcome => {
+        if (!outcome.cancelled) finish(new Error("Host turn-budget cancellation was not confirmed"));
+      }).catch(error => finish(error));
+    };
+    const inspect = async () => {
+      if (done || !id) return;
+      if (reading) { dirty = true; return; }
+      reading = true;
+      try {
+        const task = (await hostTasks()).find(task => task.id === id && task.type === "agent");
+        if (!task) finish(new Error("Joined host lost the admitted task"));
+        else if (["completed", "idle", "failed", "cancelled"].includes(task.status) &&
+                 (fresh(task) || cancellationRequested && task.status === "cancelled")) {
+          const record = records.get(id) || {};
+          finish(null, { ...task, ...record, turnsObserved: record.turns || null,
+            budgetStop: cancellationRequested ? "turns" : null });
+        }
+      } catch (error) { finish(error); }
+      finally {
+        reading = false;
+        if (dirty && !done) { dirty = false; void inspect(); }
+      }
+    };
+    const unsubscribe = session.on(event => {
+      if (done) return;
+      if (event.agentId && (!id || event.agentId === id) && event.type === "assistant.turn_start") {
+        const record = records.get(event.agentId) || { turns: 0 };
+        record.turns = (record.turns || 0) + 1;
+        records.set(event.agentId, record);
+        enforceTurns();
+      }
+      if (event.agentId && (!id || event.agentId === id) && ["subagent.completed", "subagent.failed"].includes(event.type)) {
+        records.set(event.agentId, { ...records.get(event.agentId),
+          usageTotal: event.data.totalTokens ?? null,
+          totalToolCalls: event.data.totalToolCalls ?? null,
+          effectiveModel: event.data.firstDispatchedModel || event.data.model || null });
+      }
+      if (event.type === "session.background_tasks_changed" || event.type.startsWith("subagent.")) {
+        void inspect();
+      }
+    });
+  return {
+    wait(owner, deadline, isFresh) {
+      id = owner;
+      fresh = isFresh;
+      for (const key of records.keys()) if (key !== id) records.delete(key);
+      return new Promise((yes, no) => {
+        resolve = yes;
+        reject = no;
+        timer = setTimeout(() => finish(null, null), Math.max(0, deadline - Date.now()));
+        enforceTurns();
+        void inspect();
+      });
+    },
+    close() { finish(new Error("Native observation closed")); },
+  };
+}
+
 function result(value) {
   return { textResultForLlm: JSON.stringify(value),
     resultType: value.status === "failed" || ["FAIL", "failed"].includes(value.result?.status) ? "failure" : "success" };
+}
+
+async function withAdmission(operation) {
+  if (pendingDispatches >= 3) throw new Error("CHILD_LIMIT: three dispatches already admitted");
+  pendingDispatches += 1;
+  try { return await operation(); }
+  finally { pendingDispatches -= 1; }
 }
 
 const identitySchema = {
@@ -95,24 +179,34 @@ function request(args, action, invocation) {
 const tools = [
   {
     name: "architrave_native_dispatch",
-    description: "Dispatch one canonical WorkPacket through this Copilot host's structured tasks RPC. Produces a bounded candidate only; independent gates remain required. No CLI/provider/model override.",
+    description: "Dispatch one bounded canonical WorkPacket through the joined host. Candidate only; independent gates required. Model pin only when explicitly supplied by the user; otherwise host inheritance.",
     parameters: { type: "object", properties: { ...identitySchema,
-      owner_handle: { type: "string", description: "Optional existing idle agent task ID in this joined session; preserves its context" },
+      owner_handle: { type: "string", description: "Optional retained idle owner already bound to this same canonical task/objective; never repurpose another task's context" },
+      model: { type: "string", description: "Optional explicit USER-requested host model pin; omit to inherit host settings" },
+      retry_hypothesis: { type: "string", description: "New bounded hypothesis required for an intentional retry without new observed evidence" },
     }, required: ["repo", "run_id", "task_id"], additionalProperties: false },
-    handler: async (args, invocation) => {
+    handler: async (args, invocation) => withAdmission(async () => {
       const tasks = await hostTasks();
+      const owned = new Set([...active.values()].map(entry => entry.hostTaskId));
+      const outside = tasks.filter(task => task.type === "agent" && task.status === "running" && !owned.has(task.id)).length;
+      if (outside + pendingDispatches > 3) {
+        throw new Error("CHILD_LIMIT: three active host children already exist, including child-originated work");
+      }
       if (args.owner_handle && !tasks.some(task => task.id === args.owner_handle && task.type === "agent" && task.status === "idle")) {
         throw new Error("Existing owner must be an idle native agent in the current joined host session");
       }
-      const connection = pipe(request(args, "dispatch", invocation));
+      const connection = pipe({ ...request(args, "dispatch", invocation), retryHypothesis: args.retry_hypothesis,
+        ownerHandle: args.owner_handle });
       let hostTaskId;
       let timeout;
       let deadline;
       let entry;
+      let observer;
       const dispatchedAt = Date.now();
       try {
         const prepared = await connection.next();
         if (prepared.status !== "prepared") return result(prepared);
+        observer = observeTask(prepared.maxTurns);
         if (args.owner_handle) {
           hostTaskId = args.owner_handle;
           const sent = await session.rpc.tasks.sendMessage({ id: hostTaskId, message: prepared.prompt });
@@ -121,34 +215,33 @@ const tools = [
           const admitted = await session.rpc.tasks.startAgent({
             agentType: prepared.agentType, prompt: prepared.prompt,
             name: `Architrave ${args.task_id}`, description: "Bounded native WorkPacket candidate",
+            ...(args.model ? { model: args.model } : {}),
           });
           hostTaskId = admitted.agentId;
         }
+        deadline = Date.parse(prepared.expiresAt);
+        const observation = observer.wait(hostTaskId, deadline, task => !args.owner_handle ||
+          task.prompt === prepared.prompt && Date.parse(task.idleSince || task.completedAt || "") >= dispatchedAt);
+        observation.catch(() => {}); // Binding can fail before the observation is awaited.
         connection.send({ status: "admitted", hostTaskId });
         const bound = await connection.next();
         if (bound.status !== "bound") throw new Error(bound.error?.message || "Run rejected host admission");
         const key = `${args.run_id}:${args.task_id}`;
         entry = { key, hostTaskId, connection, cancelled: false, repo: args.repo };
         active.set(key, entry);
-        deadline = Date.parse(prepared.expiresAt);
-        let observed;
-        while (Date.now() < deadline) {
-          observed = (await hostTasks()).find(task => task.id === hostTaskId && task.type === "agent");
-          if (!observed) throw new Error("Joined host lost the admitted task; candidate cannot be reconstructed from repository JSON");
-          const terminal = ["completed", "idle", "failed", "cancelled"].includes(observed.status);
-          const fresh = !args.owner_handle || observed.prompt === prepared.prompt &&
-            Date.parse(observed.idleSince || observed.completedAt || "") >= dispatchedAt;
-          if (terminal && fresh) break;
-          await new Promise(resolve => setTimeout(resolve, 250));
-        }
+        let observed = await observation;
         if (!observed || !["completed", "idle", "failed", "cancelled"].includes(observed.status)) {
           timeout = true;
           const cancelled = await session.rpc.tasks.cancel({ id: hostTaskId });
           if (!cancelled.cancelled) throw new Error("Host timeout cancellation was not confirmed");
-          observed = { id: hostTaskId, status: "cancelled", error: "WorkPacket timeout" };
+          observed = { id: hostTaskId, status: "cancelled", error: "WorkPacket time budget exceeded", budgetStop: "time" };
         }
         const text = String(observed.result || observed.latestResponse || observed.error || "").slice(0, 8192);
-        connection.send({ hostTaskId, hostStatus: observed.status, text });
+        connection.send({ hostTaskId, hostStatus: observed.status, text,
+          reusedOwner: Boolean(args.owner_handle),
+          requestedModel: args.model || null, effectiveModel: observed.effectiveModel || observed.resolvedModel || null,
+          usageTotal: observed.usageTotal ?? null, totalToolCalls: observed.totalToolCalls ?? null,
+          turnsObserved: observed.turnsObserved ?? null, budgetStop: observed.budgetStop ?? null });
         const candidate = await connection.next();
         if (!args.owner_handle) {
           if (observed.status === "idle") await session.rpc.tasks.cancel({ id: hostTaskId });
@@ -163,9 +256,10 @@ const tools = [
           hostTaskId, hostCancellationConfirmed: cancellation?.cancelled ?? false });
       } finally {
         if (entry) active.delete(entry.key);
+        observer?.close();
         await connection.close();
       }
-    },
+    }),
   },
   {
     name: "architrave_native_cancel",
@@ -203,4 +297,26 @@ const tools = [
   })),
 ];
 
-session = await joinSession({ tools });
+tools.push({
+  name: "architrave_native_batch",
+  description: "Invoke two or three pre-decomposed independent canonical WorkPackets concurrently through the same native dispatch. No automatic decomposition or recursive spawning.",
+  parameters: { type: "object", properties: {
+    repo: identitySchema.repo, run_id: identitySchema.run_id,
+    task_ids: { type: "array", items: { type: "string" }, minItems: 2, maxItems: 3, uniqueItems: true },
+  }, required: ["repo", "run_id", "task_ids"], additionalProperties: false },
+  handler: async (args, invocation) => {
+    const results = await Promise.all(args.task_ids.map(task_id =>
+      tools[0].handler({ repo: args.repo, run_id: args.run_id, task_id }, invocation)));
+    return { textResultForLlm: JSON.stringify(results.map(item => JSON.parse(item.textResultForLlm))),
+      resultType: results.some(item => item.resultType === "failure") ? "failure" : "success" };
+  },
+});
+
+session = await joinSession({ tools, hooks: {
+  onPreToolUse: (input, invocation) => {
+    if ((active.size || pendingDispatches) && input.sessionId !== invocation.sessionId &&
+        /(?:^|[./-])(?:task|create_session|open_pr_session|open_issue_session|fork_session|run_workflow|run_dynamic_workflow|architrave_native_dispatch|architrave_native_batch)$/.test(input.toolName)) {
+      return { permissionDecision: "deny", permissionDecisionReason: "CHILD_DEPTH: a bounded Architrave child may not spawn descendants (max depth one)" };
+    }
+  },
+} });

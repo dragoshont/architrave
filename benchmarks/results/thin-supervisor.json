@@ -1,0 +1,532 @@
+{
+  "schema": "architrave.thin-supervisor-experiment.v1",
+  "version": "0.13.0",
+  "baselineCommit": "c7229b1",
+  "candidateCommit": null,
+  "frozenFixtureSha256": "c264abb92a09fe5fe8dab6a806418268176fb89e3359c1c87931969224bcde6f",
+  "startup": {
+    "baseline": {
+      "entry": {
+        "files": [
+          {
+            "path": "templates/AGENTS.stanza.md",
+            "bytes": 7583,
+            "sha256": "a53cb0b8bbfa036557501e566dd941f30a6e3c5d9037d95279dac9ee59a0c4c4"
+          },
+          {
+            "path": "agents/architrave.agent.md",
+            "bytes": 17889,
+            "sha256": "26c7451268bbafc8e220e7e7aa4c9a7ed7a2f67561a0bbc81f3289bbeffbe210"
+          },
+          {
+            "path": "skills/architrave/SKILL.md",
+            "bytes": 1894,
+            "sha256": "f7cfc3ec10ab117b7431b50bdaa266efe197901bba6523a74cb49ebe1de32829"
+          }
+        ],
+        "bytes": 27366,
+        "tokenEstimate": 6841.5,
+        "tokenMethod": "UTF-8 bytes / 4 proxy; not host token telemetry"
+      },
+      "startupIncludingInlineCTO": {
+        "files": [
+          {
+            "path": "templates/AGENTS.stanza.md",
+            "bytes": 7583,
+            "sha256": "a53cb0b8bbfa036557501e566dd941f30a6e3c5d9037d95279dac9ee59a0c4c4"
+          },
+          {
+            "path": "agents/architrave.agent.md",
+            "bytes": 17889,
+            "sha256": "26c7451268bbafc8e220e7e7aa4c9a7ed7a2f67561a0bbc81f3289bbeffbe210"
+          },
+          {
+            "path": "skills/architrave/SKILL.md",
+            "bytes": 1894,
+            "sha256": "f7cfc3ec10ab117b7431b50bdaa266efe197901bba6523a74cb49ebe1de32829"
+          },
+          {
+            "path": "skills/architrave-cto/SKILL.md",
+            "bytes": 3256,
+            "sha256": "5aa56c5609309d8a085ce97740a459322fdf57d5f7de24b98ca06515663b7c54"
+          }
+        ],
+        "bytes": 30622,
+        "tokenEstimate": 7655.5,
+        "tokenMethod": "UTF-8 bytes / 4 proxy; not host token telemetry"
+      },
+      "allEnumeratedSurfaces": {
+        "files": [
+          {
+            "path": "templates/AGENTS.stanza.md",
+            "bytes": 7583,
+            "sha256": "a53cb0b8bbfa036557501e566dd941f30a6e3c5d9037d95279dac9ee59a0c4c4"
+          },
+          {
+            "path": "agents/architrave.agent.md",
+            "bytes": 17889,
+            "sha256": "26c7451268bbafc8e220e7e7aa4c9a7ed7a2f67561a0bbc81f3289bbeffbe210"
+          },
+          {
+            "path": "skills/architrave/SKILL.md",
+            "bytes": 1894,
+            "sha256": "f7cfc3ec10ab117b7431b50bdaa266efe197901bba6523a74cb49ebe1de32829"
+          },
+          {
+            "path": "skills/architrave-cto/SKILL.md",
+            "bytes": 3256,
+            "sha256": "5aa56c5609309d8a085ce97740a459322fdf57d5f7de24b98ca06515663b7c54"
+          },
+          {
+            "path": "knowledge/runtime-v2.md",
+            "bytes": 20743,
+            "sha256": "1fb0ae8d71f3e95c7544f202e4c2f9f1ef49036e6a49513766769e6d0b5af2d9"
+          },
+          {
+            "path": "knowledge/execution-policy.md",
+            "bytes": 4544,
+            "sha256": "ddf5c8010ea587397454a87ce56b3a43d8f78b69828bcd996b30af4b94254083"
+          },
+          {
+            "path": "knowledge/yagni.md",
+            "bytes": 8016,
+            "sha256": "412e8ed398d0f4c8b4fd8d5128990a2deb1978b6e79617377fe4f41090f8e902"
+          },
+          {
+            "path": "knowledge/learning-loop.md",
+            "bytes": 7509,
+            "sha256": "89ba7cf79b3798820a561ab6dda52ef147b7adb3c8d1c0df196d0070825598d4"
+          }
+        ],
+        "bytes": 71434,
+        "tokenEstimate": 17858.5,
+        "tokenMethod": "UTF-8 bytes / 4 proxy; not host token telemetry"
+      },
+      "forcedDurableB": {
+        "files": [
+          {
+            "path": "templates/AGENTS.stanza.md",
+            "bytes": 7583,
+            "sha256": "a53cb0b8bbfa036557501e566dd941f30a6e3c5d9037d95279dac9ee59a0c4c4"
+          },
+          {
+            "path": "agents/architrave.agent.md",
+            "bytes": 17889,
+            "sha256": "26c7451268bbafc8e220e7e7aa4c9a7ed7a2f67561a0bbc81f3289bbeffbe210"
+          },
+          {
+            "path": "skills/architrave/SKILL.md",
+            "bytes": 1894,
+            "sha256": "f7cfc3ec10ab117b7431b50bdaa266efe197901bba6523a74cb49ebe1de32829"
+          },
+          {
+            "path": "skills/architrave-cto/SKILL.md",
+            "bytes": 3256,
+            "sha256": "5aa56c5609309d8a085ce97740a459322fdf57d5f7de24b98ca06515663b7c54"
+          },
+          {
+            "path": "knowledge/runtime-v2.md",
+            "bytes": 20743,
+            "sha256": "1fb0ae8d71f3e95c7544f202e4c2f9f1ef49036e6a49513766769e6d0b5af2d9"
+          },
+          {
+            "path": "knowledge/execution-policy.md",
+            "bytes": 4544,
+            "sha256": "ddf5c8010ea587397454a87ce56b3a43d8f78b69828bcd996b30af4b94254083"
+          },
+          {
+            "path": "knowledge/yagni.md",
+            "bytes": 8016,
+            "sha256": "412e8ed398d0f4c8b4fd8d5128990a2deb1978b6e79617377fe4f41090f8e902"
+          },
+          {
+            "path": "knowledge/learning-loop.md",
+            "bytes": 7509,
+            "sha256": "89ba7cf79b3798820a561ab6dda52ef147b7adb3c8d1c0df196d0070825598d4"
+          }
+        ],
+        "bytes": 71434,
+        "tokenEstimate": 17858.5,
+        "tokenMethod": "UTF-8 bytes / 4 proxy; not host token telemetry"
+      }
+    },
+    "candidate": {
+      "entry": {
+        "files": [
+          {
+            "path": "templates/AGENTS.stanza.md",
+            "bytes": 1297,
+            "sha256": "8e5c839d4583d0c14f0807f65cb7cebd715d03f62198b4de09de4bf92201e088"
+          },
+          {
+            "path": "agents/architrave.agent.md",
+            "bytes": 5722,
+            "sha256": "5207167e2f4807683e89371ae3f73f121d3deb8c7d6d4b7ce2b82e7e98f3371a"
+          },
+          {
+            "path": "skills/architrave/SKILL.md",
+            "bytes": 897,
+            "sha256": "d7d3d757741d01940d7c4aabb80e436f2ad53d3a1b8160a6735e61118e80b625"
+          }
+        ],
+        "bytes": 7916,
+        "tokenEstimate": 1979.0,
+        "tokenMethod": "UTF-8 bytes / 4 proxy; not host token telemetry"
+      },
+      "startupIncludingInlineCTO": {
+        "files": [
+          {
+            "path": "templates/AGENTS.stanza.md",
+            "bytes": 1297,
+            "sha256": "8e5c839d4583d0c14f0807f65cb7cebd715d03f62198b4de09de4bf92201e088"
+          },
+          {
+            "path": "agents/architrave.agent.md",
+            "bytes": 5722,
+            "sha256": "5207167e2f4807683e89371ae3f73f121d3deb8c7d6d4b7ce2b82e7e98f3371a"
+          },
+          {
+            "path": "skills/architrave/SKILL.md",
+            "bytes": 897,
+            "sha256": "d7d3d757741d01940d7c4aabb80e436f2ad53d3a1b8160a6735e61118e80b625"
+          },
+          {
+            "path": "skills/architrave-cto/SKILL.md",
+            "bytes": 1854,
+            "sha256": "6b02abb36f7725dd73444b1e51f82797f3dbdeff9418bbe425b7a5083d59a3a3"
+          }
+        ],
+        "bytes": 9770,
+        "tokenEstimate": 2442.5,
+        "tokenMethod": "UTF-8 bytes / 4 proxy; not host token telemetry"
+      },
+      "allEnumeratedSurfaces": {
+        "files": [
+          {
+            "path": "templates/AGENTS.stanza.md",
+            "bytes": 1297,
+            "sha256": "8e5c839d4583d0c14f0807f65cb7cebd715d03f62198b4de09de4bf92201e088"
+          },
+          {
+            "path": "agents/architrave.agent.md",
+            "bytes": 5722,
+            "sha256": "5207167e2f4807683e89371ae3f73f121d3deb8c7d6d4b7ce2b82e7e98f3371a"
+          },
+          {
+            "path": "skills/architrave/SKILL.md",
+            "bytes": 897,
+            "sha256": "d7d3d757741d01940d7c4aabb80e436f2ad53d3a1b8160a6735e61118e80b625"
+          },
+          {
+            "path": "skills/architrave-cto/SKILL.md",
+            "bytes": 1854,
+            "sha256": "6b02abb36f7725dd73444b1e51f82797f3dbdeff9418bbe425b7a5083d59a3a3"
+          },
+          {
+            "path": "knowledge/runtime-v2.md",
+            "bytes": 20768,
+            "sha256": "7196ebcef03ff05aeb3483574874315ccfd08de958a39691afbd8dcc2370044d"
+          },
+          {
+            "path": "knowledge/execution-policy.md",
+            "bytes": 6753,
+            "sha256": "3d33fbe94fb12a6b71888bc2a05e5c5c20aeb9666833f7cb1e1159ae49ec11c8"
+          },
+          {
+            "path": "knowledge/yagni.md",
+            "bytes": 8016,
+            "sha256": "412e8ed398d0f4c8b4fd8d5128990a2deb1978b6e79617377fe4f41090f8e902"
+          },
+          {
+            "path": "knowledge/learning-loop.md",
+            "bytes": 7509,
+            "sha256": "89ba7cf79b3798820a561ab6dda52ef147b7adb3c8d1c0df196d0070825598d4"
+          }
+        ],
+        "bytes": 52816,
+        "tokenEstimate": 13204.0,
+        "tokenMethod": "UTF-8 bytes / 4 proxy; not host token telemetry"
+      },
+      "forcedDurableB": {
+        "files": [
+          {
+            "path": "templates/AGENTS.stanza.md",
+            "bytes": 1297,
+            "sha256": "8e5c839d4583d0c14f0807f65cb7cebd715d03f62198b4de09de4bf92201e088"
+          },
+          {
+            "path": "agents/architrave.agent.md",
+            "bytes": 5722,
+            "sha256": "5207167e2f4807683e89371ae3f73f121d3deb8c7d6d4b7ce2b82e7e98f3371a"
+          },
+          {
+            "path": "skills/architrave/SKILL.md",
+            "bytes": 897,
+            "sha256": "d7d3d757741d01940d7c4aabb80e436f2ad53d3a1b8160a6735e61118e80b625"
+          },
+          {
+            "path": "skills/architrave-cto/SKILL.md",
+            "bytes": 1854,
+            "sha256": "6b02abb36f7725dd73444b1e51f82797f3dbdeff9418bbe425b7a5083d59a3a3"
+          },
+          {
+            "path": "knowledge/runtime-v2.md",
+            "bytes": 20768,
+            "sha256": "7196ebcef03ff05aeb3483574874315ccfd08de958a39691afbd8dcc2370044d"
+          },
+          {
+            "path": "knowledge/execution-policy.md",
+            "bytes": 6753,
+            "sha256": "3d33fbe94fb12a6b71888bc2a05e5c5c20aeb9666833f7cb1e1159ae49ec11c8"
+          }
+        ],
+        "bytes": 37291,
+        "tokenEstimate": 9322.75,
+        "tokenMethod": "UTF-8 bytes / 4 proxy; not host token telemetry"
+      }
+    }
+  },
+  "byteReductionPercent": {
+    "entry": 71.07,
+    "startupIncludingInlineCTO": 68.09,
+    "allEnumeratedSurfaces": 26.06,
+    "forcedDurableB": 47.8
+  },
+  "method": "One controlled comparison plus bounded final-source revalidation after transport changes, same frozen tasks and Windows app host, fresh git fixtures. Baseline has only an invocation-only batch helper; Python/ticket logic is untouched. Earlier serial diagnostics are excluded.",
+  "limitations": [
+    "Source byte/4 estimates are not tokenizer or complete host-injected context measurements.",
+    "Parent context start/peak/end/growth and cost are unavailable for the Windows comparison.",
+    "A is actual direct builder work, not a scripted native-worker fixture. A wall time is unavailable.",
+    "B wall time is authenticated task-start to last native finish/failure, excluding later integration.",
+    "Successful B has more evidence artifacts than failed baseline B; this is not an artifact-regression comparison.",
+    "SDK contract tests are deterministic fixtures, not host-native execution evidence."
+  ],
+  "windowsCopilotApp": {
+    "baseline": {
+      "A": {
+        "acceptance": "PASS",
+        "testExit": 0,
+        "stdout": "a acceptance PASS",
+        "childCount": 0,
+        "maxDepth": 0,
+        "retries": 0,
+        "generatedFiles": 0,
+        "generatedBytes": 0,
+        "reviewReopens": 0,
+        "conflictingWrites": 0,
+        "modelRequested": null,
+        "effectiveModel": null,
+        "routing": "host inheritance; effective model not reported by task transport",
+        "testExecutions": null,
+        "testExecutionLimit": "Preparation and final acceptance observed; child test calls available only when reported",
+        "wallSeconds": null,
+        "maxConcurrency": 0
+      },
+      "B": {
+        "acceptance": "FAIL",
+        "testExit": 1,
+        "stdout": "",
+        "childCount": 2,
+        "maxDepth": 1,
+        "retries": 0,
+        "generatedFiles": 4,
+        "generatedBytes": 19345,
+        "reviewReopens": 0,
+        "conflictingWrites": 0,
+        "modelRequested": null,
+        "effectiveModel": null,
+        "routing": "host inheritance; effective model not reported by task transport",
+        "testExecutions": null,
+        "testExecutionLimit": "Preparation and final acceptance observed; child test calls available only when reported",
+        "wallSeconds": 8.0,
+        "execution": "FAILED",
+        "maxConcurrency": 2,
+        "nativeOwnersObserved": 0,
+        "compactResultBytes": 0,
+        "workerStatuses": [
+          "FAILED",
+          "FAILED"
+        ],
+        "failureReasons": [
+          "native bridge failed: native objective/revision/lease binding is stale or replayed",
+          "native bridge failed: native objective/revision/lease binding is stale or replayed"
+        ],
+        "wallMethod": "Run task-start through last native worker finish/failure; second-resolution authenticated events",
+        "hostObservations": [],
+        "hostReportedCombinedUsage": null,
+        "maxDepthMethod": "one-level canonical dispatch; descendant telemetry not separately captured; depth denial covered by SDK contract fixture"
+      }
+    },
+    "candidate": {
+      "A": {
+        "acceptance": "PASS",
+        "testExit": 0,
+        "stdout": "a acceptance PASS",
+        "childCount": 0,
+        "maxDepth": 0,
+        "retries": 0,
+        "generatedFiles": 0,
+        "generatedBytes": 0,
+        "reviewReopens": 0,
+        "conflictingWrites": 0,
+        "modelRequested": null,
+        "effectiveModel": null,
+        "routing": "host inheritance; effective model not reported by task transport",
+        "testExecutions": null,
+        "testExecutionLimit": "Preparation and final acceptance observed; child test calls available only when reported",
+        "wallSeconds": null,
+        "maxConcurrency": 0
+      },
+      "B": {
+        "acceptance": "PASS",
+        "testExit": 0,
+        "stdout": "b acceptance PASS",
+        "childCount": 2,
+        "maxDepth": 1,
+        "retries": 0,
+        "generatedFiles": 10,
+        "generatedBytes": 51792,
+        "reviewReopens": 0,
+        "conflictingWrites": 0,
+        "modelRequested": null,
+        "effectiveModel": [
+          "gpt-6.1-sol"
+        ],
+        "routing": "host inheritance; effective selection reported",
+        "testExecutions": null,
+        "testExecutionLimit": "Preparation and final acceptance observed; child test calls available only when reported",
+        "wallSeconds": 57.0,
+        "execution": "OBSERVED",
+        "maxConcurrency": 2,
+        "nativeOwnersObserved": 2,
+        "compactResultBytes": 2253,
+        "workerStatuses": [
+          "FINISHED",
+          "FINISHED"
+        ],
+        "failureReasons": [],
+        "wallMethod": "Run task-start through last native worker finish/failure; second-resolution authenticated events",
+        "hostObservations": [
+          {
+            "requestedModel": null,
+            "effectiveModel": "gpt-6.1-sol",
+            "usageTotal": 129764,
+            "totalToolCalls": 4,
+            "turnsObserved": 4
+          },
+          {
+            "requestedModel": null,
+            "effectiveModel": "gpt-6.1-sol",
+            "usageTotal": 129814,
+            "totalToolCalls": 4,
+            "turnsObserved": 4
+          }
+        ],
+        "hostReportedCombinedUsage": 259578,
+        "maxDepthMethod": "one-level canonical dispatch; descendant telemetry not separately captured; depth denial covered by SDK contract fixture"
+      }
+    },
+    "unavailableExactTelemetry": {
+      "inputTokens": null,
+      "outputTokens": null,
+      "cost": null,
+      "parentContextStart": null,
+      "parentContextPeak": null,
+      "parentContextEnd": null,
+      "childContext": null,
+      "parentTurns": null,
+      "repeatedReads": null,
+      "rawToolOutputBytes": null
+    },
+    "candidateNativeOwnerCountObserved": 2,
+    "installedVersion": "0.12.4",
+    "payloadMatchesCandidate": false
+  },
+  "hostMatrix": {
+    "windowsCopilotApp": {
+      "installedVersion": "0.12.4",
+      "payloadMatchesCandidate": false,
+      "nativeBridgeVersionTested": "0.13.0",
+      "baselineOwnerHandlesObservedInBatchReturn": 2,
+      "installation": "PENDING committed-payload reinstall",
+      "A": "PASS",
+      "B": "PASS",
+      "nativeParallelBVerified": true
+    },
+    "macOfficialCopilotCLI": {
+      "version": "1.0.91",
+      "A": "PASS on pre-commit hybrid install; final candidate plugin execution not inferred",
+      "B": "NOT_DISPATCHED / UNOBSERVED",
+      "reason": "Native-extension tools absent in the actual foreground owner",
+      "reportedWholeSmokeCredits": 16.63,
+      "reportedWholeSmokeInputTokensRounded": 259000,
+      "reportedWholeSmokeOutputTokensRounded": 3600
+    },
+    "macCopilotApp": {
+      "installedPayloadVersion": "0.12.4",
+      "installation": "PENDING committed-payload reinstall",
+      "appUIDiscovery": "UNOBSERVED",
+      "A": "UNOBSERVED",
+      "B": "UNOBSERVED"
+    },
+    "macCodex": {
+      "bundledCLI": "0.159.0",
+      "supportedInstalledPayloadVersion": "0.13.0",
+      "leadSkillPayloadMatchesCandidate": true,
+      "desktopUIDiscovery": "UNOBSERVED",
+      "desktopA": "UNOBSERVED",
+      "desktopB": "UNOBSERVED"
+    }
+  },
+  "suppliedVerificationObservations": {
+    "fullSuiteExitCode": 0,
+    "fullSuiteHost": "Mac, Python 3.12.14, post-review F1-F4 fix batch",
+    "nativeTestsExitCode": 0,
+    "nativeTestsCount": 28,
+    "nativeTestsSkipped": 1,
+    "windowsFocusTests": 19,
+    "windowsFocusExitCode": 0,
+    "scriptedFootprint": {
+      "kind": "deterministic artifact measurement, not native execution",
+      "files": 10,
+      "bytes": 34320,
+      "v011BaselineBytes": 227187
+    }
+  },
+  "acceptance": {
+    "1": "Documented source audit; host observations supplied separately",
+    "2": "Source implementation; no claim of unobserved execution",
+    "3": "Windows native B verified; other transports unobserved",
+    "4": "PASS: direct A, zero children",
+    "5": "Windows bounded parallel B verified; Mac app B unobserved",
+    "6": "SDK/runtime guards require supplied test observations; descendant telemetry not separately captured",
+    "7": "PASS: supplied native/loop regressions",
+    "8": "PASS for measured startup bytes; actual context unavailable",
+    "9": "Measured compact candidate returns",
+    "10": "Reported inheritance in host observations; concrete pin execution not observed",
+    "11": "Source design only; local-model execution unobserved",
+    "12": "Source implementation; Python plus required SDK glue",
+    "13": "See supplied per-host install and execution observations; unobserved is not PASS",
+    "14": "See supplied Codex install/discovery observations; desktop execution not inferred",
+    "15": "PASS supplied full suite",
+    "16": "Measured artifacts; aborted baseline is not a regression comparator",
+    "17": "Candidate manifest version recorded; publication not inferred",
+    "18": "Source documentation; final host limits recorded separately",
+    "19": "Paired fixture digest checked; one reproducible measurement record",
+    "20": "PASS_SOURCE_IMPLEMENTATION"
+  },
+  "review": {
+    "status": "PASS_SOURCE_IMPLEMENTATION",
+    "kind": "host-native",
+    "initialVerdict": "REVISE",
+    "finalVerdict": "PASS",
+    "finalScope": "Consolidated F1-F4 corrections and bounded primary-failure diagnostic closure",
+    "findings": [
+      "F1 receipt provenance must not reset failure streak",
+      "F2 fingerprint structured failure causes, not generic category",
+      "F3 subscribe and buffer turns before owner admission/message delivery",
+      "F4 derive report success from measured observations"
+    ],
+    "crossFamilyEvidence": "UNOBSERVED; source review does not certify R3/R4 different-family or unobserved hosts"
+  }
+}

@@ -2405,6 +2405,8 @@ class RunStore:
         lease_seconds: int = 3600,
         confirmed: bool = False,
         actor: str = "coordinator",
+        retry_hypothesis: str | None = None,
+        retry_evidence: Sequence[str] = (),
     ) -> dict[str, Any]:
         require_id(worker_id, "worker id")
         preflight_revision: int | None = None
@@ -2492,6 +2494,32 @@ class RunStore:
                     "cannot start a task while the Run is paused; call resume() explicitly first",
                 )
             task = find_task(state, task_id)
+            loop = task.get("loop")
+            if loop and loop.get("stopped"):
+                raise RuntimeFailure("REPEATED_FAILURE", "same failure twice without new evidence; this lane is stopped")
+            if task["attempts"]:
+                if retry_evidence:
+                    require_evidence_refs(state, retry_evidence, allowed={"artifact", "gate"})
+                evidence_changed = loop and loop["evidence"] != retry_evidence_digest(state, task, self.repository)
+                if loop is None:
+                    history = self._read_events(self.run_dir(run_id))
+                    last_start = max((event["sequence"] for event in history
+                                      if event["type"] == "task.started" and event.get("taskId") == task_id), default=0)
+                    evidence_changed = any(
+                        event["sequence"] > last_start and (
+                            event["type"] == "external.wait_resolved"
+                            and event["payload"].get("resumeTask") == task_id
+                            or event["type"] == "mutation.reconciled"
+                            and event.get("taskId") == task_id
+                            and event["payload"].get("result") == "not-applied"
+                        )
+                        for event in history
+                    )
+                hypothesis_changed = bool(retry_hypothesis and retry_hypothesis.strip()
+                                          and retry_hypothesis.strip() != (loop or {}).get("hypothesis"))
+                if not evidence_changed and not hypothesis_changed:
+                    raise RuntimeFailure("RETRY_REASON_REQUIRED", "a retry needs a new hypothesis or registered evidence")
+                task["retryHypothesis"] = retry_hypothesis.strip() if retry_hypothesis else None
             if task.get("objectiveVersion", state["objective"]["version"]) != state["objective"]["version"]:
                 raise RuntimeFailure("OBJECTIVE_SUPERSEDED", "task belongs to a superseded objective")
             if task.get("lane", "product") not in {item["id"] for item in state["lanes"]["active"]}:
@@ -2541,7 +2569,7 @@ class RunStore:
                     f"task {task_id} is within its declared retry backoff window",
                     details={"retryNotBefore": task["retryNotBefore"]},
                 )
-            max_parallel = (repository_config(str(self.repository)).get("workers") or {}).get("maxParallel")
+            max_parallel = min(3, int((repository_config(str(self.repository)).get("workers") or {}).get("maxParallel", 3)))
             if max_parallel is not None:
                 running = sum(1 for other in state["tasks"] if other["id"] != task_id and other["status"] == "RUNNING")
                 if running >= int(max_parallel):
@@ -2651,7 +2679,8 @@ class RunStore:
                     conflicts.append(f"{run_dir.name}:{task['id']}")
         return conflicts
 
-    def _apply_task_retry_or_terminate(self, state: dict[str, Any], task: dict[str, Any], reason: str) -> None:
+    def _apply_task_retry_or_terminate(self, state: dict[str, Any], task: dict[str, Any], reason: str,
+                                     *, failure_cause: Any = None) -> None:
         """Honor a task's declared retryPolicy on failure instead of always terminating it.
 
         A failure is retried (task returns to READY/NOT_READY, subject to backoffSeconds) only
@@ -2660,6 +2689,20 @@ class RunStore:
         Otherwise the task becomes terminally FAILED, exactly as before this fix.
         """
         policy = task["retryPolicy"]
+        fingerprint = sha256_value(redact(failure_cause if failure_cause is not None else reason))
+        evidence = retry_evidence_digest(state, task, self.repository)
+        previous = task.get("loop") or {}
+        repeated = previous.get("fingerprint") == fingerprint and previous.get("evidence") == evidence
+        task["loop"] = {
+            "fingerprint": fingerprint, "evidence": evidence,
+            "count": previous.get("count", 0) + 1 if repeated else 1,
+            "hypothesis": task.pop("retryHypothesis", None),
+            "stopped": repeated and previous.get("count", 0) >= 1,
+        }
+        if task["loop"]["stopped"]:
+            task["status"] = "FAILED"
+            task["retryNotBefore"] = None
+            return
         retryable = not policy["retryable"] or reason in policy["retryable"]
         if retryable and task["attempts"] < policy["maxAttempts"]:
             task["status"] = ("WAITING_EXTERNAL" if task_has_pending_checkpoint(state, task["id"])
@@ -2690,6 +2733,7 @@ class RunStore:
         status: str,
         artifact_refs: Sequence[str] = (),
         native_ticket: NativeWorkerTicket | None = None,
+        failure_cause: Any = None,
     ) -> dict[str, Any]:
         if status not in {"FINISHED", "FAILED"}:
             raise RuntimeFailure("INVALID_WORKER_RESULT", "worker status must be FINISHED or FAILED")
@@ -2718,7 +2762,7 @@ class RunStore:
                     task["status"] = "WAITING_RESOURCE"
                     append_checkpoint(state, task_id, "SIDE_EFFECT_AMBIGUITY")
                 else:
-                    self._apply_task_retry_or_terminate(state, task, "WORKER_FAILURE")
+                    self._apply_task_retry_or_terminate(state, task, "WORKER_FAILURE", failure_cause=failure_cause)
             else:
                 task["status"] = "WAITING_RESOURCE"
                 append_checkpoint(state, task_id, "WORKER_COMPLETION")
@@ -2728,6 +2772,8 @@ class RunStore:
                 "workerId": worker_id,
                 "candidateStatus": status,
                 "taskStatus": task["status"],
+                "reason": (canonical_json(redact(failure_cause))[:2000] if failure_cause is not None
+                           else "worker reported failure; executor cause unavailable") if status == "FAILED" else "candidate only",
             }
 
         return self._transaction(
@@ -2846,10 +2892,29 @@ class RunStore:
             raise RuntimeFailure("NATIVE_RESULT_UNTRUSTED", "native results require a live host-owned bridge invocation")
         binding = ticket.binding
         lease = task.get("lease")
+        revision_safe = state["revision"] == binding["revision"]
+        if not revision_safe:
+            # Only authenticated, task-scoped sibling lifecycle changes commute.
+            # Policy/checkpoints/source and the owned task still bind the ticket.
+            changes = [event for event in self._read_events(self.run_dir(state["runId"]))
+                       if event["sequence"] > binding["revision"] + 1]
+            revision_safe = bool(changes) and all(
+                event.get("taskId") not in {None, task["id"]}
+                and event["type"] in {
+                    "workspace.created", "workspace.assigned", "task.started",
+                    "worker.admitted", "worker.finished", "artifact.recorded",
+                    "workspace.collected", "task.completed",
+                }
+                for event in changes
+            )
         if (
             state["runId"] != binding["runId"]
             or state["objective"]["version"] != binding["objectiveVersion"]
-            or state["revision"] != binding["revision"]
+            or not revision_safe
+            or sha256_value({"policy": state["policy"], "autonomy": state["autonomy"],
+                             "objective": state["objective"], "task": task,
+                             "pending": [item for item in state["externalCheckpoints"] if item["status"] == "PENDING"]})
+            != ticket.snapshot["authority"]
             or task["id"] != binding["taskId"]
             or task["workPacket"]["workPacketId"] != binding["workPacketId"]
             or task["status"] != "RUNNING"
@@ -2860,13 +2925,17 @@ class RunStore:
         ):
             raise RuntimeFailure("NATIVE_RESULT_STALE", "native objective/revision/lease binding is stale or replayed")
 
-    def begin_native_worker(self, run_id: str, task_id: str, *, host_owner: str) -> NativeWorkerTicket:
+    def begin_native_worker(self, run_id: str, task_id: str, *, host_owner: str,
+                            retry_hypothesis: str | None = None,
+                            owner_handle: str | None = None) -> NativeWorkerTicket:
         """Admit one bounded task before the bridge invokes the current host."""
         from worker_adapters import git_status, ignored_fingerprint, workspace_fingerprint
         from workspaces import WorkspaceManager
 
         state = self.load(run_id)
         task = find_task(state, task_id)
+        if task.get("loop", {}).get("stopped"):
+            raise RuntimeFailure("REPEATED_FAILURE", "native admission cannot bypass a repeated-failure stop")
         if task["workerProfile"] not in {"native", "copilot", "claude", "codex"}:
             raise RuntimeFailure("NATIVE_PROFILE_REQUIRED", "task is not a native agent WorkPacket")
         if task["sideEffect"] is not None:
@@ -2880,10 +2949,22 @@ class RunStore:
             or packet["risk"] != task["risk"]
             or not 1 <= packet["budget"]["timeoutSeconds"] <= 3600
             or not 1 <= packet["budget"]["maxOutputBytes"] <= 1024 * 1024
+            or not 1 <= packet["budget"].get("maxTurns", 12) <= 100
         ):
             raise RuntimeFailure("NATIVE_PACKET_INVALID", "native WorkPacket scope/criteria/risk/budget must match its canonical task")
         if not host_owner or len(host_owner) > 256:
             raise RuntimeFailure("NATIVE_OWNER_REQUIRED", "a live host owner handle is required")
+        if owner_handle and not any(
+            worker.get("nativeBinding", {}).get("hostTaskId") == owner_handle
+            and worker["taskId"] == task_id
+            and worker["nativeBinding"]["owner"] == host_owner
+            and worker["nativeBinding"]["objectiveVersion"] == state["objective"]["version"]
+            for worker in state["workers"]
+        ):
+            raise RuntimeFailure("NATIVE_OWNER_TASK_MISMATCH", "retained owner must already belong to this task and objective")
+        packet_budget = budget_signal(state, self.events(run_id), self.repository)
+        if packet_budget and packet_budget["signal"] == "BUDGET_100":
+            raise RuntimeFailure("BUDGET_100", "budget exhausted; no new native workspace or child")
         if not task.get("workspace"):
             WorkspaceManager(self.repository).create(run_id, task_id)
             task = find_task(self.load(run_id), task_id)
@@ -2899,9 +2980,15 @@ class RunStore:
         state = self.start_task(
             run_id, task_id, worker_id=worker_id,
             lease_seconds=task["workPacket"]["budget"]["timeoutSeconds"], actor="native-host",
+            retry_hypothesis=retry_hypothesis,
         )
         snapshot["source"] = workspace_fingerprint(self.repository)
         task = find_task(state, task_id)
+        snapshot["authority"] = sha256_value({
+            "policy": state["policy"], "autonomy": state["autonomy"],
+            "objective": state["objective"], "task": task,
+            "pending": [item for item in state["externalCheckpoints"] if item["status"] == "PENDING"],
+        })
         binding = {
             "runId": run_id, "taskId": task_id, "workerId": worker_id,
             "workPacketId": task["workPacket"]["workPacketId"],
@@ -2930,7 +3017,8 @@ class RunStore:
         return state
 
     def accept_native_candidate(
-        self, ticket: NativeWorkerTicket, *, host_task_id: str, host_status: str, text: str
+        self, ticket: NativeWorkerTicket, *, host_task_id: str, host_status: str, text: str,
+        host_observation: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Accept only a result independently observed on the joined host RPC connection."""
         from worker_adapters import git_status, ignored_fingerprint, path_allowed, workspace_fingerprint
@@ -2964,6 +3052,7 @@ class RunStore:
             "status": "failed" if errors else "candidate", "observedHostStatus": host_status,
             "summary": redact(bounded), "truncated": len(text.encode("utf-8")) > limit,
             "changedPaths": changed, "errors": errors, "observedAt": utc_now(),
+            "hostObservation": redact(host_observation or {}),
         }
         self._atomic_write(path, result)
         def mutate(current: dict[str, Any]) -> dict[str, Any]:
@@ -2975,7 +3064,11 @@ class RunStore:
             worker["reason"] = "; ".join(errors) or "candidate only"
             current_task["lease"] = None
             if errors:
-                self._apply_task_retry_or_terminate(current, current_task, "WORKER_FAILURE")
+                self._apply_task_retry_or_terminate(
+                    current, current_task, "WORKER_FAILURE",
+                    failure_cause={"hostStatus": host_status, "errors": errors,
+                                   "budgetStop": (host_observation or {}).get("budgetStop")},
+                )
             else:
                 current_task["status"] = "WAITING_RESOURCE"
                 append_checkpoint(current, task["id"], "WORKER_COMPLETION")
@@ -2988,7 +3081,13 @@ class RunStore:
             artifact["attestation"] = self._artifact_attestation(artifact)
             current["artifacts"].append(artifact)
             current["status"] = derive_run_status(current)
-            return {"workerId": worker["id"], "hostTaskId": host_task_id, "candidateStatus": result["status"]}
+            return {
+                "workerId": worker["id"], "hostTaskId": host_task_id, "candidateStatus": result["status"],
+                "reason": canonical_json(redact({
+                    "hostStatus": host_status, "errors": errors,
+                    "budgetStop": (host_observation or {}).get("budgetStop"),
+                }))[:2000] if errors else "candidate only",
+            }
         try:
             self._transaction(
                 state["runId"], mutate, event_type="worker.finished", actor="native-host",
@@ -3029,6 +3128,8 @@ class RunStore:
                 if state["status"] in {"COMPLETED", "CANCELLED"}:
                     raise RuntimeFailure("RECOVERY_UNSAFE", "cannot revive a terminal Run")
                 task = find_task(state, task_id)
+                if task.get("loop", {}).get("stopped"):
+                    raise RuntimeFailure("REPEATED_FAILURE", "recovery cannot bypass a repeated-failure stop")
                 if task["status"] != "FAILED" or task.get("sideEffect") is not None:
                     raise RuntimeFailure("RECOVERY_UNSAFE", "explicit recovery requires a failed task with no side effect")
                 if task["objectiveVersion"] != state["objective"]["version"]:
@@ -4657,11 +4758,50 @@ def normalize_work_packet(
         "risk": str(value.get("risk") or normalized_defaults["risk"]),
         "expectedArtifacts": list(value.get("expectedArtifacts") or normalized_defaults["expectedArtifacts"]),
         "budget": {
-            "timeoutSeconds": int((value.get("budget") or {}).get("timeoutSeconds", 3600)),
-            "maxOutputBytes": int((value.get("budget") or {}).get("maxOutputBytes", 1024 * 1024)),
+            "timeoutSeconds": int((value.get("budget") or {}).get("timeoutSeconds", 600)),
+            "maxOutputBytes": int((value.get("budget") or {}).get("maxOutputBytes", 4096)),
+            "maxTurns": int((value.get("budget") or {}).get("maxTurns", 12)),
         },
         "execution": normalize_execution(value.get("execution")),
     }
+
+
+def retry_evidence_digest(state: dict[str, Any], task: dict[str, Any], repository: Path) -> str:
+    paths = set(task["mutablePaths"] + task["workPacket"]["contextBundle"])
+    files = {path: sha256_path(repository / path) for path in paths
+             if not any(char in path for char in "*?[") and (repository / path).exists()}
+    patterns = [path for path in paths if any(char in path for char in "*?[")]
+    if patterns:
+        tracked = run_command(["git", "ls-files", "--cached", "--others", "--exclude-standard"], repository).splitlines()
+        files.update({path: sha256_path(repository / path) for path in tracked
+                      if any(fnmatch.fnmatchcase(path, pattern) for pattern in patterns)
+                      and (repository / path).exists()})
+    provenance = {"binding", "observedAt", "createdAt", "updatedAt", "timestamp",
+                  "revision", "durationMs", "stateHash", "attestation", "runId",
+                  "taskId", "workerId", "artifactRef", "evidenceRefs", "receiptId"}
+
+    def substantive(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {key: substantive(item) for key, item in value.items() if key not in provenance}
+        if isinstance(value, list):
+            return [substantive(item) for item in value]
+        return value
+
+    observed = set()
+    for artifact in state["artifacts"]:
+        if (artifact["producer"] not in {"deterministic", "legibility", "external-proof", "reconciliation"}
+                or f"task:{task['id']}" not in artifact["evidenceRefs"]):
+            continue
+        path = repository / artifact["path"]
+        if path.suffix == ".json":
+            try:
+                receipt = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                raise RuntimeFailure("RETRY_EVIDENCE_INVALID", "cannot read task observation for retry fingerprint") from exc
+            observed.add(sha256_value(substantive(receipt)))
+        else:
+            observed.add(artifact["sha256"])
+    return sha256_value({"paths": files, "observed": sorted(observed)})
 
 
 def normalize_execution(value: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -4768,6 +4908,9 @@ def validate_run(state: dict[str, Any]) -> None:
             safe_relative_path(path, "mutable path")
         for path in task["workPacket"]["contextBundle"]:
             safe_relative_path(path, "context path")
+        turns = task["workPacket"]["budget"].get("maxTurns", 12)
+        if not isinstance(turns, int) or isinstance(turns, bool) or not 1 <= turns <= 100:
+            raise RuntimeFailure("RUN_INVALID", "WorkPacket turn budget must be an integer between 1 and 100")
         if task.get("workKind", "product") not in WORK_KINDS:
             raise RuntimeFailure("RUN_INVALID", f"task {task['id']} work kind is invalid")
         if int(task.get("objectiveVersion", objective["version"])) < 1:
@@ -5321,7 +5464,7 @@ def primary_failures(state: dict[str, Any], events: Sequence[dict[str, Any]], cr
                 event["type"] == "product.progress" and payload.get("criterionId") == criterion_id):
             attempts = []
         elif event["type"] in {"task.failed", "worker.finished"} and task and criterion_id in task["acceptanceCriteria"] \
-                and (event["type"] == "task.failed" or payload.get("candidateStatus") == "FAILED"):
+                and (event["type"] == "task.failed" or str(payload.get("candidateStatus", "")).upper() == "FAILED"):
             attempts.append({"taskId": task["id"], "reason": str(payload.get("reason") or "worker failed")[:200]})
         elif event["type"] == "gate.failed" and criterion_id in (gates.get(str(payload.get("gateId"))) or {}).get("criteria", []):
             attempts.append({"gateId": payload.get("gateId"), "reason": "gate failed"})
@@ -5550,6 +5693,8 @@ def build_parser() -> argparse.ArgumentParser:
     task_start.add_argument("task_id")
     task_start.add_argument("--worker-id", required=True)
     task_start.add_argument("--lease-seconds", type=int, default=3600)
+    task_start.add_argument("--retry-hypothesis", help="new bounded failure hypothesis for a retry")
+    task_start.add_argument("--retry-evidence", action="append", default=[])
     task_start.add_argument("--confirmed", action="store_true")
 
     worker_finish = subparsers.add_parser("worker-finish")
@@ -5807,6 +5952,8 @@ def cli(argv: Sequence[str] | None = None) -> int:
                     worker_id=args.worker_id,
                     lease_seconds=args.lease_seconds,
                     confirmed=args.confirmed,
+                    retry_hypothesis=args.retry_hypothesis,
+                    retry_evidence=args.retry_evidence,
                 )
             )
         elif command == "worker-finish":

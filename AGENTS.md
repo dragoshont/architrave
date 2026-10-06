@@ -10,7 +10,7 @@ grounds in architecture docs + contracts; IaC is proposal/plan-only. Mutation
 defaults to deny; explicit Run policy may authorize a bounded target and operation.
 
 ## What's here
-- `agents/` — the thirteen agents: **Architrave**, **Product Research**, **Operations UX**, **UX Architect**, **UI Visual**, **Platform Design**, **Service Architect**, **Backend Planner**, **Backend Implementer**, **Infra Engineer**, **Runtime Observer**, **Tournament Analyst**, and **Adversarial Judge**. Shared `.agent.md` format across VS Code / Copilot CLI / the Copilot app / Claude Code.
+- `agents/` — fourteen optional roles: **Architrave**, **CTO**, **Product Research**, **Operations UX**, **UX Architect**, **UI Visual**, **Platform Design**, **Service Architect**, **Backend Planner**, **Backend Implementer**, **Infra Engineer**, **Runtime Observer**, **Tournament Analyst**, and **Adversarial Judge**. Shared `.agent.md` format across VS Code / Copilot CLI / the Copilot app / Claude Code; role availability is not a reason to spawn.
 - `gates/` — deterministic gates as **`.sh` + `.ps1` pairs** (`checks`, `reconcile`, `quality-gate`, `backend-checks`) + `rubric.md` (the judge's rubric) + `hooks/` (PostToolUse guards).
 - `harness/` — durable run-artifact helpers (`init-run`, `validate-run`, `semantic-review`, semantic learning review/recovery) as `.sh` + `.ps1` pairs plus schemas, and the Python Run v2 state machine, worker/workspace adapters, invariants, product legibility, and v1/v2 validation.
 - `knowledge/` — platform packs (`apple.md`, `microsoft.md`, `web.md`) + `backend.md` + `operations-ux.md` + `design-tokens.md` + `execution-policy.md` + `learning-loop.md` + `yagni.md` + `runtime-v2.md` for durable control-plane semantics.
@@ -26,11 +26,12 @@ defaults to deny; explicit Run policy may authorize a bounded target and operati
   PASS=0 / FAIL=1 / BLOCK=2 / DRIFT=1 where applicable.
 - **Keep install/update logic canonical in `tools/install_update.py`** — the four public `.sh` / `.ps1` entrypoints are Python-discovery/exec shims only; managed-path safety and adversarial fixtures live in Python.
 - **Agents and gates are config-driven** — resolve everything through `architrave.config.json`; never hard-code a stack or a path.
-- **Model selection is host-owned** — canonical agents, repository config,
-  WorkPackets, and Run state do not specify model class, tier, provider,
-  reasoning, context, or concrete model. Use structured subagent invocation only
-  for bounded isolation, parallelism, permissions, expertise, or review, and
-  never shell out to another harness.
+- **Thin supervision** — direct work first; the host owns sessions, context,
+  routing and lifecycle. At most three active children, depth one, exclusive
+  mutable ownership, compact returns, and deterministic repeated-failure stops.
+- **Model selection is host-owned** — user pins/mappings live in host settings,
+  not repository config, WorkPackets or Run state. Record only reported effective
+  selection in worker evidence. Never shell out to another harness as a worker.
 - **Run state is API-owned** — never manually edit `run.json`, `events.jsonl`,
 	policy, checkpoints, or task statuses. The Phase Ledger is a projection.
 - **Default deny** — unconfigured infrastructure/runtime is plan/read-only.

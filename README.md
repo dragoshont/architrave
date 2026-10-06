@@ -1,6 +1,6 @@
 # Architrave
 
-**An AI agent that runs a full-stack specialist crew inside GitHub Copilot, Claude Code, Codex, or ChatGPT.**
+**A thin mission supervisor for GitHub Copilot and Codex, with optional full-stack specialists.**
 
 Architrave helps you build a full-stack application, or any slice of one, without turning your codebase into an agent experiment. You ask for the feature; Architrave reads the repo, grounds in its Storybook/design map and backend architecture docs, runs the right specialist agents, and ships only the smallest proven change.
 
@@ -12,21 +12,18 @@ prove the requested product outcome actually occurred.
 
 ![Architrave — ground in the repo, route to specialists, gate with a judge plus real checks, then ship](assets/overview.png)
 
-## Latest news: v0.11.3
+## Latest news: v0.13.0
 
-Released **October 5, 2026**. This update adds a supported host-trusted path for
-resolving exact target preflight checkpoints without repository self-attestation.
+The next architectural generation reduces the startup contract, loads lane and
+recovery detail on demand, and defaults to direct work. Native children are
+bounded at three active / depth one, with exclusive mutable ownership and a
+two-identical-failure stop. The Copilot bridge uses host lifecycle events instead
+of polling; independent sibling results no longer invalidate each other's
+tickets. Policy, human holds, source identity, evidence and recovery stay bound.
 
-- **Pinned exact-target executor:** the public `target-attest` command invokes
-  one absolute, SHA-256-pinned observer from a user-level trust registry.
-- **No repository self-attestation:** the adapter, registry, and observed target
-  mapping live outside the target repository; caller-supplied observations are
-  never accepted.
-- **Atomic resolution:** Run, objective, revision, task, checkpoint, provider,
-  principal, challenge, and intended identity are rechecked before one
-  transaction registers and consumes the proof.
-
-Read the [full changelog](CHANGELOG.md#0113---2026-10-05).
+The controlled native A/B and host limitations are recorded in
+[`docs/orchestration-audit.md`](docs/orchestration-audit.md).
+Read the [full changelog](CHANGELOG.md#0130---2026-10-06).
 After updating the plugin, refresh each adopted repository's copied kit assets
 using the [update instructions](#install).
 
@@ -57,7 +54,7 @@ using the [update instructions](#install).
 | Agent | Invoke | What it owns |
 |---|---|---|
 | **Architrave** | directly | Leads the durable Run: Outcome, Acceptance Matrix, TaskGraph, policy, bounded workers, resume, gates, and final status. |
-| **CTO** | at Run start and on stall | Keeps the Run outcome-driven and lean; returns one correction (objective, last evidence, blocker, next cheapest action) and routes to specialists. Never implements. |
+| **CTO** | inline checklist at start/stall | One correction: objective, last evidence, blocker, next cheapest action. A separate agent is optional, not startup ceremony. |
 | **Product Research** | under the hood | Finds shipped product/workflow patterns, competitor references, and domain-specific traps before planning. |
 | **Operations UX** | under the hood | Turns admin/operations research into setup, offboarding, inventory, catalog/upload, RBAC, health, diagnostics, queue/job, and audit patterns with contract requirements. |
 | **UX Architect** | directly | Information architecture, navigation, flows, interaction model, keyboard/input behavior, and empty/loading/error states. |
@@ -89,15 +86,22 @@ claude plugin marketplace add dragoshont/architrave
 claude plugin install architrave@architrave
 ```
 
-Or with **Codex CLI / ChatGPT Codex mode**:
+Or with **Codex CLI / Codex in the ChatGPT desktop app**:
 
 ```bash
 codex plugin marketplace add /path/to/architrave
 codex plugin add architrave@architrave
 ```
 
-The Codex plugin owns three skills: `architrave` (implicit lead workflow), plus
-explicit-only `architrave-tournament` and `architrave-review`. Do not copy those
+The package includes the official local marketplace at
+`.agents/plugins/marketplace.json`. CLI registration does not prove desktop
+execution: start a new desktop thread and verify plugin discovery there.
+No private app files or provider credentials are edited. The audit contains one
+owner smoke prompt for desktop execution unavailable to the builder.
+
+The Codex plugin owns four skills: `architrave` (implicit lead workflow), plus
+explicit-only `architrave-tournament`, `architrave-review`, and the inline CTO
+checklist `architrave-cto`. Do not copy those
 same names into `.agents/skills`; Codex does not merge duplicate skill names.
 
 Then **adopt/ground each repository** so local agents, cloud agents, and
@@ -135,7 +139,7 @@ python /path/to/architrave/tools/install_update.py install --profile knowledge .
 
 The generated config is the canonical [`kit/examples/knowledge.architrave.json`](kit/examples/knowledge.architrave.json). It requires real build/test commands while deliberately omitting platform, Storybook, tokens, backend, IaC, and runtime fields. The default installer profile remains the existing application scaffold.
 
-The knowledge profile installs only `architrave`, `adversarial-judge`,
+The knowledge profile installs only `architrave`, `cto`, `adversarial-judge`,
 `tournament-analyst`, `product-research`, and `runtime-observer`; it omits the
 UI/backend crew and native-app constitutions. All profiles ignore
 `.architrave/runs/`, `.architrave/worktrees/`, and `.architrave/runtime.key`
@@ -155,7 +159,7 @@ After updating the plugin, users **must also refresh each adopted repo's copied 
 python /path/to/architrave/tools/install_update.py update .
 ```
 
-When the Architrave crew itself changes and you want to refresh the copied repo agents too, opt in explicitly. Application repos receive the full packaged crew. Knowledge repos converge to the five-agent crew above: only non-crew basenames packaged by Architrave are removed, so target-only custom agents remain untouched.
+When the Architrave crew itself changes and you want to refresh the copied repo agents too, opt in explicitly. Application repos receive the full packaged crew. Knowledge repos converge to the six-role crew above: only non-crew basenames packaged by Architrave are removed, so target-only custom agents remain untouched.
 
 ```bash
 python /path/to/architrave/tools/install_update.py update --agents .
@@ -346,11 +350,15 @@ optional `--codex` role adoption still requires Python 3.11+.
 
 **Knowledge repositories are first-class.** Set `kind: "knowledge"` through the installer profile and Architrave grounds in repository docs, scripts, skills, schemas, tests, and learning artifacts. It does not invent a UI lane or demand Storybook sign-off.
 
-**Execution stays host-owned.** Architrave does not select, rank, recommend, or
-persist a model class, tier, reasoning level, context tier, provider, or concrete
-model. The user and active host harness own those choices. Architrave contributes
-bounded task scope, permissions, evidence requirements, output limits, and
-risk-based verification only.
+**Execution stays host-owned.** Concrete model/reasoning/context mappings live
+in user/host settings, not repository policy or canonical Run/WorkPacket state.
+Copilot's joined tasks transport accepts an explicit user model pin; otherwise
+it inherits. Effective selection is recorded only when the host reports it.
+The transport lacks per-task reasoning controls, so requested effort is an
+honest no-op there. Codex's official native subagents support configured
+overrides/inheritance; Architrave does not fabricate a joined Codex bridge or
+shell out to another agent CLI. It owns bounded scope, permissions, budgets,
+evidence and risk-based verification only.
 
 Low-risk mechanical work can close on deterministic evidence when every
 criterion is machine-checked. Semantic, UI, contract, architecture, migration,

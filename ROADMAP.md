@@ -113,3 +113,19 @@
 - [ ] Add a public trusted external-attestation registration path so factual
   cross-session resource-release receipts can resolve checkpoints without
   private executor hooks.
+
+## Milestone 9 - Thin mission supervisor (v0.13.0)
+
+- [x] Small canonical startup contract and on-demand lane/recovery/review packs;
+  existing CTO checklist applies inline.
+- [x] Direct-work default; bounded native parallel children, exclusive mutable
+  ownership, compact returns and no recursive spawning.
+- [x] Event-driven Copilot transport; task-scoped sibling lifecycle commutation
+  without weakening policy, human holds, source or ownership checks.
+- [x] Three-active limit, finite native turn/time/output bounds, new-evidence/
+  hypothesis retries and deterministic two-identical-failure stop.
+- [x] Frozen one-run direct A / two-child B baseline and candidate evaluation,
+  with unavailable context/cost telemetry separated from byte proxies.
+- [x] Current official Copilot/Codex capability investigation and supported
+  Codex local marketplace packaging. Desktop execution is not inferred from CLI
+  discovery; the audit records the observed boundary and one owner smoke prompt.

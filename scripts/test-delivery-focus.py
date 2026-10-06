@@ -10,6 +10,7 @@ stanza = (root / "templates/AGENTS.stanza.md").read_text(encoding="utf-8")
 readme = (root / "README.md").read_text(encoding="utf-8")
 roadmap = (root / "ROADMAP.md").read_text(encoding="utf-8")
 lead_skill = (root / "skills/architrave/SKILL.md").read_text(encoding="utf-8")
+runtime_pack = (root / "knowledge/runtime-v2.md").read_text(encoding="utf-8")
 cto_agent = (root / "agents/cto.agent.md").read_text(encoding="utf-8")
 cto_skill = (root / "skills/architrave-cto/SKILL.md").read_text(encoding="utf-8")
 tournament_skill = (root / "skills/architrave-tournament/SKILL.md").read_text(encoding="utf-8")
@@ -21,21 +22,21 @@ codex_roles = "\n".join(
 )
 
 required = {
-    "agent vertical slice": (agent, "smallest demonstrable user-visible vertical slice"),
-    "agent support budget": (agent, "at most\n  two consecutive tasks or one full-gate cycle"),
-    "agent task gate": (agent, "A supporting task does not independently trigger a full gate"),
-    "agent stall": (agent, "no new output for 15 minutes"),
-    "host-owned execution": (execution, "user and the active host harness"),
+    "on-demand vertical slice": (execution, "smallest demonstrable user-visible vertical slice"),
+    "on-demand support budget": (execution, "at most two consecutive tasks or one\nfull-gate cycle"),
+    "on-demand task gate": (execution, "A supporting task does not\nindependently trigger a full gate"),
+    "on-demand stall": (execution, "no new output for 15 minutes"),
+    "host-owned execution": (execution, "user and\nthe active host harness"),
     "compact records": (execution, "one rolling recovery snapshot"),
     "rubric delivery": (rubric, "Delivery focus and verification cadence"),
     "artifact accounting": (learning, "Artifacts are audit support, not delivery currency"),
-    "installed stanza": (stanza, "smallest demonstrable"),
+    "installed stanza": (stanza, "smallest\ndemonstrable"),
     "README bounded tournament": (readme, "A full\n**Tournament of Options** is reserved"),
     "README host-owned execution": (readme, "Execution stays host-owned"),
     "roadmap bounded tournament": (roadmap, "a Tournament of Options only for materially ambiguous or high-risk choices"),
-    "agent reference parity": (agent, "parity test against that reference on the real\n   flow, before any hardening"),
-    "agent primary stall": (agent, "`STALLED_PRIMARY_CRITERION`"),
-    "agent diagnostic specificity": (agent, "Collapsing distinct\n  causes into one generic failure code is a gate finding"),
+    "on-demand reference parity": (execution, "parity test against that\nreference on the real flow, before any hardening"),
+    "on-demand primary stall": (runtime_pack, "`STALLED_PRIMARY_CRITERION`"),
+    "on-demand diagnostic specificity": (execution, "Collapsing distinct causes into one generic failure code is a gate"),
     "execution lenient parsing": (execution, "Default-deny is not a parsing policy"),
     "execution proportional ceremony": (execution, "R0/R1 single-path fixes need no\nper-change pin, receipt, or qualification Run"),
     "execution approved quit": (execution, "escalate a graceful quit to SIGTERM after a timeout without a new hold"),
@@ -46,13 +47,17 @@ required = {
     "cto agent routes": (cto_agent, "never implements"),
     "cto skill outcome": (cto_skill, "Outcome over ceremony"),
     "cto skill push-back": (cto_skill, "KEEP/CUT/DEFER verdict"),
-    "agent push-back": (agent, "step inline (no extra agent): record KEEP/CUT/DEFER"),
+    "agent push-back": (agent, "Push back KEEP/CUT/DEFER with one reason"),
     "tournament skill baselines": (tournament_skill, 'include a "do nothing" baseline and a "smallest viable" option'),
     "tournament skill beats nothing": (tournament_skill, "why the chosen\noption beats doing nothing"),
     "tournament typed result": (tournament_skill, "typed as `DO_NOTHING` and `SMALLEST_VIABLE`"),
     "review prefers host-native": (review_skill, "Prefer the host-native reviewer"),
     "review records reviewer": (review_skill, "--reviewer\nhost-native|architrave-judge --family"),
-    "agent host-native review": (agent, "never both; record `--reviewer` and"),
+    "agent host-native review": (agent, "`architrave-review`; `gates/rubric.md`"),
+    "direct-work default": (agent, "Work directly by default"),
+    "default child bounds": (agent, "three (lower host limits win); depth: one"),
+    "repeat-failure stop": (agent, "twice without new evidence stops the lane"),
+    "progressive disclosure": (lead_skill, "Do not preload every pack"),
     "tournament agent baselines": (tournament_agent, 'include a "do nothing" baseline and a "smallest viable" option'),
 }
 

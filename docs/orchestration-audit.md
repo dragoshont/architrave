@@ -1,5 +1,158 @@
 # Orchestration audit
 
+## v0.13.0 thin-supervisor decision (2026-10-06)
+
+Baseline is actual `origin/main` v0.12.4, `c7229b1`; the worktree was clean.
+**KEEP:** Python Run state, authenticated events/evidence, recovery, criteria,
+scoped default-deny mutation, target identity, primary-stall controls and gates.
+**CUT:** duplicated lead/stanza prose, mandatory CTO spawning and native task
+polling. **DEFER:** provider SDKs, daemons, generic schedulers, transcript/context
+managers and forced cross-host symmetry. **REPLACE:** unconditional pack loading
+with one small supervisor contract, and global-revision native tickets with
+authenticated sibling-lifecycle commutation plus unchanged task/policy/hold/source
+checks. The packaged bridge is explicitly installed at user scope; it is not
+auto-discovered as an unconfigured second plugin extension.
+
+Doing nothing retains measured startup duplication and a reproduced native
+parallel-admission failure. The smallest viable option above reuses the existing
+Python runtime and host SDK. A new orchestrator/runtime would cost more, duplicate
+host capabilities and provide no additional verified product outcome.
+
+### Current official host contracts
+
+Inspected official documentation and installed SDK/CLI contracts, not search
+summaries or old cross-host assumptions:
+
+- [Copilot app](https://docs.github.com/en/copilot/concepts/copilot-surfaces/github-copilot-app):
+  isolated worktree sessions, local/cloud sandboxes, per-session model/reasoning,
+  BYOK and host-owned lifecycle. [Slash commands](https://docs.github.com/en/copilot/reference/github-copilot-app-reference/slash-commands)
+  expose Fleet, context, compact/clear and orchestration. The installed SDK's
+  `tasks.startAgent` accepts a user model pin, not per-task reasoning/cwd/tool
+  permissions. `TaskAgentInfo.resolvedModel` and native lifecycle events can
+  report effective selection, turns and usage; absence is unavailable, not zero.
+  SDK pre-tool hooks identify child session origins. The bridge consumes those
+  signals, forbids child-originated session/task spawning, counts active host
+  children (including outside the current dispatch), and keeps finite bounds.
+  Worktrees are isolation, not an invented security sandbox.
+- [Codex subagents](https://developers.openai.com/codex/multi-agent/):
+  current app/CLI clients expose native child threads, activity, steering/close
+  and inherited permission/model/reasoning settings; user custom-agent/spawn
+  settings may override them. These capabilities do not imply a joined
+  Architrave transport equivalent to Copilot's.
+- [Official plugin packaging/install](https://developers.openai.com/plugins/build/plugins):
+  the compatibility `.codex-plugin/plugin.json` remains supported, with local
+  `.agents/plugins/marketplace.json` catalogs and native CLI registration/install.
+  Desktop execution/discovery must be observed separately. No private app files,
+  credential edits, SDK workers or nested agent CLI adapters are used.
+
+No local model was downloaded or provider credentials changed. Optional effort
+requests inherit when the transport lacks a corresponding control. Concrete
+model names belong only to user/host configuration and observed worker evidence.
+
+### Controlled experiment and context accounting
+
+`scripts/bench-thin-supervisor.py` freezes dependency-free Task A (whitespace
+slug normalization) and Task B (independent validation and summary modules).
+Prepare each arm in a fresh git fixture; implement A directly; invoke B through
+the actual joined host's `architrave_native_batch`; then finish/integrate and
+independently run the configured tests. The Python helper **never launches an
+agent**. Baseline uses untouched v0.12.4 Python/dispatch behavior, with only a
+bounded `Promise.all` invocation helper to invoke its existing handlers together.
+An initial serial diagnostic was not the controlled comparison or a statistical
+repeat. Two real baseline host tasks were admitted and then cancelled after the
+global revision binding failed; candidate siblings returned bounded candidates.
+
+The exact same startup/disclosure paths are enumerated for both arms:
+managed stanza, lead agent, lead skill, CTO checklist, runtime, execution policy,
+YAGNI and learning packs. Count both the selected lead and explicit lead skill
+conservatively for this cross-host workflow. Baseline entry surfaces total
+27,366 UTF-8 bytes; forced non-trivial documents total 71,434 bytes. New forced
+CTO/runtime/execution loads are included for durable Task B, not hidden by moving
+prose. Source-byte accounting is not a claim about the host's complete injected
+system prompt or tokenizer.
+
+The compact result is `benchmarks/results/thin-supervisor.json`. It separates
+actual native owners/concurrency/turns and deterministic acceptance from static
+byte proxies, failed baseline artifact counts, and unavailable token/cost/context
+telemetry. Both arms use the same foreground builder with fresh fixtures;
+parent-context start/peak/end and growth are **unavailable**, so no parent-token
+or cost saving is claimed. B elapsed time uses authenticated native start/finish
+events, not the builder's unrelated implementation/tooling interval. A wall
+time is unavailable. This is one controlled comparison, not a leaderboard.
+
+Final-source Windows revalidation has A PASS with zero children; B PASS with
+two concurrent joined children, zero retries, 57 seconds of native execution,
+and 2,253 bytes of compact worker records. Baseline B admitted two host owners
+but failed the revision binding in 8 seconds. Failure time is not a speed win.
+The host reported 259,578 combined child usage tokens for the candidate; split
+input/output, parent context and baseline usage remain unavailable.
+
+| Enumerated source text | v0.12.4 bytes | v0.13.0 bytes | Reduction |
+|---|---:|---:|---:|
+| Entry surfaces | 27,366 | 7,916 | 71.07% |
+| Startup including inline CTO | 30,622 | 9,770 | 68.09% |
+| Forced durable B loads | 71,434 | 37,291 | 47.80% |
+| All enumerated disclosure surfaces | 71,434 | 52,816 | 26.06% |
+
+This meets the startup target/stretches without pretending all optional prose
+was deleted. Durable B clears 35% but not the 50% stretch. The successful native
+run retains ten orchestration artifacts; comparing its bytes with an aborted
+baseline would be misleading.
+
+The install check must hash the **installed payload**, not trust CLI catalog
+version text. Direct local Copilot installs before a commit were observed to
+report v0.13.0 while cloning the committed v0.12.4 payload. Final installs are
+performed from the committed candidate and verified against its source.
+
+Independent native review initially required four corrections: substantive
+observations rather than changing receipt provenance, specific failure causes
+and primary diagnostics, observing early turns before admission, and deriving
+report success from measurements. These were fixed in one bounded review cycle;
+the final source verdict is PASS. Different-family R3/R4 review evidence remains
+unobserved, and this verdict does not certify inaccessible desktop execution.
+
+### One owner desktop smoke prompt
+
+If Codex desktop execution is unavailable to the builder, open the isolated
+benchmark repository in a **new Codex desktop thread**, select the installed
+Architrave plugin, and paste this one prompt:
+
+```text
+Use Architrave in this isolated benchmark repository. Confirm the installed
+plugin version and skill discovery first; do not change credentials/providers.
+Task A: in slug.py normalize runs of whitespace to one hyphen, trim leading/
+trailing whitespace, lowercase, and preserve empty input. Work directly; run
+python -B verify.py a. Task B: read verify.py and delegate validate.py and
+summary.py to exactly two native children in parallel, with non-overlapping
+mutable ownership, depth one, 240 seconds / 12 turns / 2000 output bytes each.
+Children may not spawn children. Return compact envelopes, not transcripts.
+Integrate and run python -B verify.py b. Use host model defaults unless my host
+configuration explicitly overrides them. Report actual child activity, model
+selection only if reported, acceptance, blockers and unavailable telemetry.
+Stop on two identical failures without new evidence. Never claim CLI discovery
+or fixture tests prove desktop execution.
+```
+
+For **Mac Copilot app**, the official foreground CLI smoke does not prove the
+app's joined transport: A ran directly; B was not dispatched because native
+extension tools were absent. No task/product failure is inferred from that.
+Open the fresh isolated `owner-smoke/candidate/b` fixture in the Mac app and
+paste this bounded prompt:
+
+```text
+Use the installed Architrave v0.13.0 in this isolated benchmark workspace.
+Reload supported extensions and confirm architrave_native_batch is actually
+available; if absent, stop and report NOT DISPATCHED, never fake a transport.
+Run Task A directly in sibling ../a: slug must lowercase and join whitespace-
+split words with one hyphen; run python -B verify.py a. For Task B, invoke the
+joined native batch for run frozen-b, tasks validate and summary, exactly two
+children, depth one, 240 seconds / 12 turns / 2000 output bytes each. No extra
+agents or CLI workers. Wait for compact candidates, integrate non-overlapping
+paths and independently run python -B verify.py b. Report actual host owner,
+concurrency, acceptance, effective model only if reported, and unavailable
+telemetry. Do not touch primary repos, credentials or providers; stop here.
+```
+
 Audit date: 2026-10-04; source-derived footprint refreshed for the native-host
 repair on 2026-10-05. The comparison pins
 [Pi `2003871`](https://github.com/earendil-works/pi/tree/200387122ca450d6387f033949423114a270b96c)

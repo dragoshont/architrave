@@ -37,6 +37,17 @@ def emit(value):
     print(json.dumps(redact(value), separators=(",", ":")), flush=True)
 
 
+def routing_observation(requested, effective, reused_owner=False):
+    fallback = None
+    if not effective:
+        fallback = "host did not report effective selection"
+    elif requested and requested != effective:
+        fallback = "host reported a different effective model"
+    if requested and reused_owner:
+        fallback = "reused owner inherits its configuration; no per-turn model override"
+    return {"requestedModel": requested, "effectiveModel": effective, "fallback": fallback}
+
+
 def main():
     if sys.argv[1:] == ["--help"]:
         print("Architrave native host bridge: owned by the installed Copilot extension's joined tasks RPC.")
@@ -64,7 +75,9 @@ def main():
         if action != "dispatch":
             raise RuntimeFailure("NATIVE_TRANSPORT_INVALID", "unknown native host action")
         task_id = request["taskId"]
-        ticket = store.begin_native_worker(run_id, task_id, host_owner=request["owner"])
+        ticket = store.begin_native_worker(run_id, task_id, host_owner=request["owner"],
+                                          retry_hypothesis=request.get("retryHypothesis"),
+                                          owner_handle=request.get("ownerHandle"))
         state = store.load(run_id)
         task = find_task(state, task_id)
         packet = task["workPacket"]
@@ -79,6 +92,7 @@ def main():
             + "Do not call Architrave control-plane extension tools. Return a candidate, never claim gate PASS.",
             "agentType": "general-purpose" if task["mutablePaths"] else "explore",
             "timeoutSeconds": packet["budget"]["timeoutSeconds"],
+            "maxTurns": packet["budget"].get("maxTurns", 12),
             "expiresAt": task["lease"]["expiresAt"],
             "effort": effort,
         })
@@ -91,7 +105,11 @@ def main():
         result = store.accept_native_candidate(
             ticket, host_task_id=observed["hostTaskId"],
             host_status=observed["hostStatus"], text=observed.get("text", ""),
+            host_observation={key: observed.get(key) for key in (
+                "requestedModel", "effectiveModel", "usageTotal", "totalToolCalls", "turnsObserved", "budgetStop")},
         )
+        result["routing"] = routing_observation(observed.get("requestedModel"), observed.get("effectiveModel"),
+                                                observed.get("reusedOwner", False))
         emit({"status": "failed" if result["status"] == "failed" else "ok", "result": result})
         return 0 if result["status"] == "candidate" else 1
     except (RuntimeFailure, OSError, ValueError, KeyError) as exc:

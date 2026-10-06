@@ -11,6 +11,31 @@ Releases at or before **v0.8.12** are on the
 - Add a public Run cancel/supersede transition and make invalid unstarted-task
   intake terminal instead of retry-ready.
 
+## [0.13.0] - 2026-10-06
+
+### Changed
+- Thin supervisor core and managed adoption stanza; lane, review, tournament,
+  learning and deep recovery instructions load only when needed. CTO is an
+  inline checklist by default, not a mandatory extra worker.
+- Copilot native transport waits on supported lifecycle events, not polling.
+  Authenticated unrelated sibling lifecycle transitions commute; task ownership,
+  objective/policy, human holds, source checks and evidence binding still fail
+  closed.
+- Default active task cap is three (or a lower configured cap); native child
+  spawning is denied by the supported pre-tool hook, with finite time/turn/output
+  budgets and compact candidate returns.
+- Retries need a new hypothesis or relevant observed evidence. Two identical
+  failure/evidence fingerprints stop the lane; explicit recovery cannot reset it.
+- Optional user model pins pass through the host; reported effective selection
+  stays in worker evidence. Unsupported effort/model telemetry is not invented.
+
+### Added
+- Frozen direct/parallel benchmark tasks and a Python measurement helper that
+  never launches an agent; one compact result record separates native execution
+  from deterministic fixtures and unavailable telemetry.
+- Supported Codex local marketplace catalog and host-specific install/discovery
+  guidance, without private desktop hooks or forced host symmetry.
+
 ## Highlights since 0.11.0 (0.12.x)
 - Slim footprint: generated orchestration is about 82% fewer files and 85% fewer
   bytes than v0.11.0, pinned and re-measured from source on every release.
