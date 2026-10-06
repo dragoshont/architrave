@@ -2,7 +2,21 @@
   "schema": "architrave.thin-supervisor-experiment.v1",
   "version": "0.13.0",
   "baselineCommit": "c7229b1",
-  "candidateCommit": null,
+  "candidateCommit": "d029a860fb3ed0edd71917bffa2d74a8b7452fa3",
+  "releaseQualification": {
+    "status": "ACCEPTED_DOCUMENTED_DESKTOP_FALLBACK",
+    "risk": "R3",
+    "reviewCrossFamily": true,
+    "sourceReview": "Final-source OpenAI and Anthropic PASS",
+    "windowsNativeAB": "PASS on final reviewed runtime",
+    "desktopExecution": "UNOBSERVED, not PASS",
+    "publicationAuthority": "Owner authorized normal publication under authoritative mandate section 11 fallback",
+    "canonicalPolicyCheckpoint": "owner-authorized-v013-publication",
+    "externalFollowup": [
+      "mac-copilot-app-owner-smoke",
+      "codex-desktop-owner-smoke"
+    ]
+  },
   "frozenFixtureSha256": "c264abb92a09fe5fe8dab6a806418268176fb89e3359c1c87931969224bcde6f",
   "startup": {
     "baseline": {

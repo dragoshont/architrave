@@ -122,7 +122,7 @@ remains enabled; the two-family source-review condition is fulfilled. Desktop
 qualification is R3 rather than a risk downgrade, and still requires actual
 host execution. Source review does not certify inaccessible desktop execution.
 
-### Publication checkpoint
+### Publication and accepted desktop fallback
 
 The existing Run records `mac-copilot-app-owner-smoke` and
 `codex-desktop-owner-smoke` as genuine external owner checkpoints. Both supported
@@ -137,10 +137,17 @@ Use the exact prompts below and return observed
 native child activity and final acceptance evidence. Do not treat supported CLI
 discovery as desktop execution or bypass a missing transport.
 
-Publication is held until those required desktop observations are resolved.
+The authoritative mandate's section 11 permits supported installation/config/
+discovery, one exact owner prompt and an UNOBSERVED desktop-execution label when
+the builder cannot drive the desktop. The owner accepted that fallback for
+publication; it is not a desktop PASS. The existing Run records the exact
+publication grant through the public challenge-bound policy APIs and retains
+both desktop checkpoints as pending external follow-up.
+
 Remote main was still `c7229b1` and no `v0.13.0` tag existed at qualification.
-After the checkpoints pass, publish without rewriting refs, wait for actual CI,
-then install the published GitHub-source/package and verify payloads again.
+Publish without rewriting refs, wait for actual CI, then install the published
+GitHub-source/package and verify payloads again. Do not infer desktop execution
+from publication, installation, login or source-review PASS.
 
 ### One owner desktop smoke prompt
 
