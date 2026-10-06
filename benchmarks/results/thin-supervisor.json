@@ -385,7 +385,7 @@
         "maxDepth": 1,
         "retries": 0,
         "generatedFiles": 10,
-        "generatedBytes": 51792,
+        "generatedBytes": 52026,
         "reviewReopens": 0,
         "conflictingWrites": 0,
         "modelRequested": null,
@@ -395,11 +395,11 @@
         "routing": "host inheritance; effective selection reported",
         "testExecutions": null,
         "testExecutionLimit": "Preparation and final acceptance observed; child test calls available only when reported",
-        "wallSeconds": 57.0,
+        "wallSeconds": 78.0,
         "execution": "OBSERVED",
         "maxConcurrency": 2,
         "nativeOwnersObserved": 2,
-        "compactResultBytes": 2253,
+        "compactResultBytes": 2204,
         "workerStatuses": [
           "FINISHED",
           "FINISHED"
@@ -410,19 +410,21 @@
           {
             "requestedModel": null,
             "effectiveModel": "gpt-6.1-sol",
-            "usageTotal": 129764,
+            "usageTotal": 131174,
             "totalToolCalls": 4,
-            "turnsObserved": 4
+            "turnsObserved": 4,
+            "budgetStop": null
           },
           {
             "requestedModel": null,
             "effectiveModel": "gpt-6.1-sol",
-            "usageTotal": 129814,
-            "totalToolCalls": 4,
-            "turnsObserved": 4
+            "usageTotal": 164687,
+            "totalToolCalls": 5,
+            "turnsObserved": 5,
+            "budgetStop": null
           }
         ],
-        "hostReportedCombinedUsage": 259578,
+        "hostReportedCombinedUsage": 295861,
         "maxDepthMethod": "one-level canonical dispatch; descendant telemetry not separately captured; depth denial covered by SDK contract fixture"
       }
     },
@@ -451,7 +453,7 @@
       "baselineOwnerHandlesObservedInBatchReturn": 2,
       "installation": "Verified committed archive, enabled persistent user-scope local marketplace",
       "nativeBridgePinsVerified": true,
-      "joinedNativeRefresh": "OBSERVED: completed B, current gate evidence, no active/stale workers",
+      "joinedNativeRefresh": "OBSERVED: installed final-source frozen B requalification; two concurrent owners, independently gated PASS",
       "newPluginSessions": "Required to replace already-loaded legacy plugin context",
       "A": "PASS",
       "B": "PASS",
@@ -521,14 +523,14 @@
     "17": "Candidate manifest version recorded; publication not inferred",
     "18": "Source documentation; final host limits recorded separately",
     "19": "Paired fixture digest checked; one reproducible measurement record",
-    "20": "PASS_SOURCE_IMPLEMENTATION"
+    "20": "PASS_SOURCE_CROSS_FAMILY"
   },
   "review": {
-    "status": "PASS_SOURCE_IMPLEMENTATION",
+    "status": "PASS_SOURCE_CROSS_FAMILY",
     "kind": "host-native",
     "initialVerdict": "REVISE",
     "finalVerdict": "PASS",
-    "finalScope": "Consolidated F1-F4 corrections and bounded primary-failure diagnostic closure",
+    "finalScope": "Final-source d029a86: OpenAI diagnostic closure PASS and independent Anthropic final-source invariant review PASS",
     "findings": [
       "F1 receipt provenance must not reset failure streak",
       "F2 fingerprint structured failure causes, not generic category",
@@ -546,9 +548,11 @@
       {
         "model": "claude-sonnet-5",
         "family": "Anthropic",
-        "verdict": "REVISE before final diagnostic correction"
+        "verdict": "PASS on FINAL source",
+        "hostEventId": "5f8bc6f7-0577-4ca1-867c-9ee3100e7ec0",
+        "observedAt": "2026-10-06T19:39:29.965Z"
       }
     ],
-    "crossFamilyEvidence": "Two families observed, but two different-family PASS verdicts on the final source were NOT obtained; R3/R4 two-family condition is not fulfilled"
+    "crossFamilyEvidence": "Final-source OpenAI and Anthropic PASS now observed; cross-family source review fulfilled, not desktop execution or overall release readiness"
   }
 }

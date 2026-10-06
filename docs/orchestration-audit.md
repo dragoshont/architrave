@@ -80,11 +80,14 @@ or cost saving is claimed. B elapsed time uses authenticated native start/finish
 events, not the builder's unrelated implementation/tooling interval. A wall
 time is unavailable. This is one controlled comparison, not a leaderboard.
 
-Final-source Windows revalidation has A PASS with zero children; B PASS with
-two concurrent joined children, zero retries, 57 seconds of native execution,
-and 2,253 bytes of compact worker records. Baseline B admitted two host owners
+Final-source Windows qualification after the review corrections has A PASS with
+zero children; B PASS with two concurrent joined children, zero retries,
+78 seconds of native execution, and 2,204 bytes of compact worker records.
+It retains ten artifacts / 52,026 bytes. The earlier 57-second candidate run
+preceded the last review corrections and is not the final qualification.
+Baseline B admitted two host owners
 but failed the revision binding in 8 seconds. Failure time is not a speed win.
-The host reported 259,578 combined child usage tokens for the candidate; split
+The host reported 295,861 combined child usage tokens for final qualification; split
 input/output, parent context and baseline usage remain unavailable.
 
 | Enumerated source text | v0.12.4 bytes | v0.13.0 bytes | Reduction |
@@ -112,12 +115,32 @@ Independent native review initially required four corrections: substantive
 observations rather than changing receipt provenance, specific failure causes
 and primary diagnostics, observing early turns before admission, and deriving
 report success from measurements. These were fixed in one bounded review cycle;
-the final source verdict is PASS. Host events report OpenAI and Anthropic review
-contexts, but the final corrected source has only the OpenAI PASS; the Anthropic
-review preceded the last diagnostic correction and returned REVISE.
-`review.crossFamily` remains enabled. The canonical Run declared R2, and no
-two-different-family R3/R4 PASS condition is claimed. This source verdict does not
-certify inaccessible desktop execution.
+the final source verdict is PASS. A fresh independent final-source review now
+also passes in an Anthropic context (`claude-sonnet-5`, reported by the actual
+host event), alongside the OpenAI final-source PASS. `review.crossFamily`
+remains enabled; the two-family source-review condition is fulfilled. Desktop
+qualification is R3 rather than a risk downgrade, and still requires actual
+host execution. Source review does not certify inaccessible desktop execution.
+
+### Publication checkpoint
+
+The existing Run records `mac-copilot-app-owner-smoke` and
+`codex-desktop-owner-smoke` as genuine external owner checkpoints. Both supported
+user-scope plugins are installed/enabled at v0.13.0 and their runtime assets
+match reviewed source; desktop UI/native execution remains unobserved.
+Open a new Copilot app thread at
+`/Users/dragoshont/.architrave/vnext-113c6e36/owner-smoke/candidate/b`
+and a new Codex desktop thread at
+`/Users/dragoshont/.architrave/vnext-113c6e36/owner-smoke-codex/candidate/b`.
+These are independent frozen fixtures; Task A is in each sibling `../a`.
+Use the exact prompts below and return observed
+native child activity and final acceptance evidence. Do not treat supported CLI
+discovery as desktop execution or bypass a missing transport.
+
+Publication is held until those required desktop observations are resolved.
+Remote main was still `c7229b1` and no `v0.13.0` tag existed at qualification.
+After the checkpoints pass, publish without rewriting refs, wait for actual CI,
+then install the published GitHub-source/package and verify payloads again.
 
 ### One owner desktop smoke prompt
 
@@ -128,9 +151,9 @@ Architrave plugin, and paste this one prompt:
 ```text
 Use Architrave in this isolated benchmark repository. Confirm the installed
 plugin version and skill discovery first; do not change credentials/providers.
-Task A: in slug.py normalize runs of whitespace to one hyphen, trim leading/
+Task A: in sibling ../a/slug.py normalize runs of whitespace to one hyphen, trim leading/
 trailing whitespace, lowercase, and preserve empty input. Work directly; run
-python -B verify.py a. Task B: read verify.py and delegate validate.py and
+python -B verify.py a from ../a. Task B: in this b workspace read verify.py and delegate validate.py and
 summary.py to exactly two native children in parallel, with non-overlapping
 mutable ownership, depth one, 240 seconds / 12 turns / 2000 output bytes each.
 Children may not spawn children. Return compact envelopes, not transcripts.
