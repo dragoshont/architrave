@@ -420,6 +420,16 @@
         }
       }
     },
+    "feasibilityWindow": {
+      "type": "object",
+      "required": ["timeoutSeconds", "maxTurns", "maxOutputBytes"],
+      "additionalProperties": false,
+      "properties": {
+        "timeoutSeconds": { "type": "integer", "minimum": 0 },
+        "maxTurns": { "type": "integer", "minimum": 0 },
+        "maxOutputBytes": { "type": "integer", "minimum": 1 }
+      }
+    },
     "task": {
       "type": "object",
       "required": [
@@ -501,6 +511,32 @@
         "gate": { "type": ["string", "null"] },
         "retryPolicy": { "$ref": "#/definitions/retryPolicy" },
         "retryHypothesis": { "type": ["string", "null"] },
+        "feasibility": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["trigger", "decision", "partial", "startedAt", "expiresAt", "startSequence",
+                       "recordedSequence", "window", "ceiling", "evidenceDigest", "snapshot",
+                       "rationale", "nextStep", "revisit", "uncertainty", "reportedProductDelta", "blocker"],
+          "properties": {
+            "trigger": { "enum": ["user", "stall", "repeated-failure", "budget"] },
+            "decision": { "enum": ["CONTINUE", "BOUNDED_GO", "PIVOT", "PARK"] },
+            "partial": { "type": "boolean" },
+            "startedAt": { "$ref": "#/definitions/timestamp" },
+            "expiresAt": { "$ref": "#/definitions/timestamp" },
+            "startSequence": { "type": "integer", "minimum": 1 },
+            "recordedSequence": { "type": "integer", "minimum": 1 },
+            "window": { "$ref": "#/definitions/feasibilityWindow" },
+            "ceiling": { "$ref": "#/definitions/workPacket/properties/budget" },
+            "evidenceDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "snapshot": { "type": "object" },
+            "rationale": { "type": "string", "minLength": 1, "maxLength": 1000 },
+            "nextStep": { "type": "string", "minLength": 1, "maxLength": 1000 },
+            "revisit": { "type": "string", "minLength": 1, "maxLength": 1000 },
+            "uncertainty": { "type": "string", "minLength": 1, "maxLength": 1000 },
+            "blocker": { "type": "string", "minLength": 1, "maxLength": 1000 },
+            "reportedProductDelta": { "type": "string", "minLength": 1, "maxLength": 1000 }
+          }
+        },
         "loop": {
           "type": "object",
           "required": ["fingerprint", "evidence", "count", "hypothesis", "stopped"],
@@ -710,6 +746,7 @@
         "taskId": { "$ref": "#/definitions/id" },
         "finishedAt": { "type": "string" },
         "reason": { "type": "string" },
+        "admittedBudget": { "$ref": "#/definitions/workPacket/properties/budget" },
         "nativeBinding": {
           "type": "object",
           "required": ["runId", "taskId", "workerId", "workPacketId", "objectiveVersion", "revision", "acquiredAt", "owner", "hostTaskId"],

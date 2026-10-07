@@ -80,7 +80,7 @@ def main():
                                           owner_handle=request.get("ownerHandle"))
         state = store.load(run_id)
         task = find_task(state, task_id)
-        packet = task["workPacket"]
+        packet = {**task["workPacket"], "budget": ticket.snapshot["budget"]}
         stall = primary_criterion_status(state, store.events(run_id), store.repository)
         effort = map_effort(requested_effort(state, task, bool(stall and stall["stalled"])),
                             request.get("hostEffort") or {})

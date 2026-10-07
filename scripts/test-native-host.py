@@ -5,16 +5,18 @@ from __future__ import annotations
 
 import json
 import hashlib
+import datetime as dt
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "harness"))
-from architrave_runtime import RunStore, RuntimeFailure, primary_failures
+from architrave_runtime import RunStore, RuntimeFailure, effective_work_budget, feasibility_status, primary_failures, state_summary
 
 _fixture_add_task = RunStore.add_task
 RunStore.add_task = lambda self, run_id, task, actor="coordinator": _fixture_add_task(
@@ -25,6 +27,337 @@ from native_host import routing_observation
 
 
 class NativeHostTests(unittest.TestCase):
+    def feasibility(self, run_id, task_id, **overrides):
+        values = {
+            "trigger": "user", "decision": "BOUNDED_GO",
+            "window": {"timeoutSeconds": 120, "maxTurns": 8, "maxOutputBytes": 2000},
+            "rationale": "A cheap discriminating check can resolve the remaining uncertainty.",
+            "next_step": "Run the exact existing acceptance test.",
+            "revisit": "Revisit only after new discriminating evidence.",
+            "uncertainty": "Runtime hypothesis is unproven.",
+            "product_delta": "No product outcome has yet been observed.",
+            "blocker": "The failing mechanism is not yet discriminated.",
+        }
+        return self.store.record_feasibility(run_id, task_id, **{**values, **overrides})
+
+    def test_feasibility_small_complex_and_explicit_owner_windows(self):
+        run_id, task_id = self.task("shell")
+        state = self.feasibility(run_id, task_id)
+        small = state["tasks"][0]["feasibility"]["window"]
+        self.assertLessEqual(small["timeoutSeconds"], 120)
+        self.store.add_task(run_id, {"id": "complex", "objective": "Trace a deeper independent dependency",
+                                   "workerProfile": "shell", "acceptanceCriteria": ["FIX"], "risk": "R2",
+                                   "lane": "second", "workPacket": {"budget": {
+                                       "timeoutSeconds": 1800, "maxTurns": 30, "maxOutputBytes": 8000}}})
+        state = self.feasibility(run_id, "complex",
+                                 window={"timeoutSeconds": 900, "maxTurns": 20, "maxOutputBytes": 6000},
+                                 rationale="Uncertain dependency chain needs one bounded longer discriminating test.")
+        complex_window = state["tasks"][1]["feasibility"]["window"]
+        self.assertGreater(complex_window["timeoutSeconds"], small["timeoutSeconds"])
+        self.store.add_task(run_id, {"id": "owner-capped", "objective": "Evaluate explicit owner ceiling",
+                                   "workerProfile": "shell", "acceptanceCriteria": ["FIX"], "risk": "R1"})
+        (self.repo / "README.md").write_text("new scoped evidence", encoding="utf-8")
+        self.store.add_task(run_id, {"id": "capped-independent", "objective": "Owner ceiling",
+                                   "workerProfile": "shell", "acceptanceCriteria": ["FIX"], "risk": "R1",
+                                   "workPacket": {"contextBundle": ["README.md"]}})
+        state = self.feasibility(run_id, "capped-independent",
+                                 owner_ceiling={"timeoutSeconds": 45, "maxTurns": 3, "maxOutputBytes": 1000})
+        capped = state["tasks"][-1]["feasibility"]["window"]
+        self.assertLessEqual(capped["timeoutSeconds"], 45)
+        self.assertEqual(3, capped["maxTurns"])
+        self.assertEqual(1000, capped["maxOutputBytes"])
+
+    def test_feasibility_global_owner_deadline_and_task_budget_precedence(self):
+        run_id, task_id = self.task("shell")
+        (self.repo / "architrave.config.json").write_text(json.dumps({
+            "evaluation": {"budget": {"maxMinutes": 1, "maxTurns": 8}},
+        }), encoding="utf-8")
+        deadline = (dt.datetime.now(dt.timezone.utc) + dt.timedelta(seconds=20)).isoformat()
+        state = self.feasibility(run_id, task_id,
+                                 owner_ceiling={"timeoutSeconds": 50, "maxTurns": 20},
+                                 owner_deadline=deadline,
+                                 window={"timeoutSeconds": 10000, "maxTurns": 200, "maxOutputBytes": 100000})
+        chosen = state["tasks"][0]["feasibility"]["window"]
+        self.assertLessEqual(chosen["timeoutSeconds"], 20)
+        self.assertLessEqual(chosen["maxTurns"], 6)
+        self.assertLessEqual(chosen["maxOutputBytes"], 4096)
+        task_budget = effective_work_budget(state, state["tasks"][0])
+        self.assertLessEqual(task_budget["timeoutSeconds"], chosen["timeoutSeconds"])
+
+    def test_feasibility_no_fixed_duration_cli_and_unknown_signals(self):
+        run_id, task_id = self.task("shell")
+        result = subprocess.run([
+            sys.executable, str(ROOT / "harness/architrave_runtime.py"), "--repo", str(self.repo),
+            "feasibility-record", run_id, task_id, "--trigger", "user", "--decision", "CONTINUE",
+            "--seconds", "25", "--turns", "4", "--output-bytes", "800",
+            "--rationale", "A small known-path test needs only this finite window.",
+            "--next-step", "Run focused acceptance.", "--revisit", "New observed mechanism.",
+            "--uncertainty", "Runtime behavior remains unproven.", "--product-delta", "Not yet observed.",
+            "--blocker", "Mechanism not established.",
+        ], capture_output=True, text=True, timeout=30)
+        self.assertEqual(0, result.returncode, result.stderr)
+        state = self.store.load(run_id)
+        reset = state["tasks"][0]["feasibility"]
+        self.assertLessEqual(reset["window"]["timeoutSeconds"], 25)
+        self.assertIsNone(reset["snapshot"]["availableBudget"]["hostCredits"])
+        self.assertIsNone(reset["snapshot"]["availableBudget"]["taskTurnsObserved"])
+        self.assertIsNone(reset["snapshot"]["availableBudget"]["globalSeconds"])
+        self.assertEqual([], state["workers"])
+        schema = json.loads((ROOT / "harness/schemas/run-v2.schema.json").read_text())
+        properties = schema["definitions"]["task"]["properties"]["feasibility"]
+        self.assertFalse(set(reset) - set(properties["properties"]))
+        self.assertFalse(set(properties["required"]) - set(reset))
+        cto = (ROOT / "skills/architrave-cto/SKILL.md").read_text()
+        self.assertNotIn("5400", cto)
+        self.assertIn("Neither is mandatory", cto)
+        self.assertIn("Quiet parent activity", cto)
+
+    def test_feasibility_counts_spent_clock_and_budget_exhaustion(self):
+        run_id, task_id = self.task("shell")
+        self.store.start_task(run_id, task_id, worker_id="initial")
+        self.store.finish_worker(run_id, task_id, worker_id="initial", status="FINISHED")
+        future = dt.datetime.now(dt.timezone.utc) + dt.timedelta(seconds=700)
+
+        class Clock(dt.datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return future if tz else future.replace(tzinfo=None)
+
+        with mock.patch("architrave_runtime.dt.datetime", Clock):
+            state = self.feasibility(run_id, task_id)
+        reset = state["tasks"][0]["feasibility"]
+        self.assertEqual("PARK", reset["decision"])
+        self.assertTrue(reset["partial"])
+        self.assertEqual(0, reset["window"]["timeoutSeconds"])
+
+    def test_feasibility_global_dispatch_budget_blocks_new_work(self):
+        run_id, task_id = self.task("shell")
+        (self.repo / "architrave.config.json").write_text(
+            json.dumps({"evaluation": {"budget": {"maxDispatches": 1}}}), encoding="utf-8")
+        self.store.start_task(run_id, task_id, worker_id="first")
+        self.store.finish_worker(run_id, task_id, worker_id="first", status="FINISHED")
+        state = self.feasibility(run_id, task_id, trigger="budget")
+        self.assertEqual("PARK", state["tasks"][0]["feasibility"]["decision"])
+        self.assertTrue(feasibility_status(state, state["tasks"][0])["partial"])
+
+    def test_feasibility_park_pauses_only_implicated_lane_and_preserves_uncertain_effect(self):
+        state = self.store.create(
+            run_id="uncertain", goal="Preserve scoped recovery", outcome="No side-effect replay",
+            autonomy_scope="approved-program", policy_allow=[{"scope": "sandbox", "operations": ["write"]}],
+            criteria=[{"id": "FIX", "description": "Recovery remains safe", "scope": "fixture",
+                       "risk": "R1", "verificationType": "deterministic", "blocking": True}],
+        )
+        for name, extra in (("effect", {"sideEffect": {"operation": "write", "target": "sandbox"}}),
+                            ("independent", {"lane": "second"})):
+            self.store.add_task("uncertain", {"id": name, "objective": name, "workerProfile": "shell",
+                                             "risk": "R1", "acceptanceCriteria": ["FIX"], **extra})
+        self.store.start_task("uncertain", "effect", worker_id="effect-owner")
+        self.store.fail_task("uncertain", "effect", "external result unknown")
+        before = self.store.load("uncertain")
+        after = self.feasibility("uncertain", "effect", decision="PARK")
+        self.assertEqual(before["tasks"][0]["sideEffect"], after["tasks"][0]["sideEffect"])
+        self.assertEqual("UNCERTAIN", after["tasks"][0]["sideEffect"]["state"])
+        self.assertEqual(["independent"], [task["id"] for task in self.store.ready_tasks("uncertain")])
+        self.store.start_task("uncertain", "independent", worker_id="unrelated")
+        with self.assertRaises(RuntimeFailure):
+            self.store.start_task("uncertain", "effect", worker_id="must-not-replay")
+
+    def test_feasibility_unchanged_evidence_no_clock_reset_and_expiry_is_partial(self):
+        run_id, task_id = self.task("shell")
+        self.store.add_task(run_id, {"id": "scoped", "objective": "Read scoped evidence",
+                                   "workerProfile": "shell", "acceptanceCriteria": ["FIX"], "risk": "R1",
+                                   "workPacket": {"contextBundle": ["README.md"]}})
+        first = self.feasibility(run_id, "scoped")["tasks"][1]["feasibility"]
+        with self.assertRaises(RuntimeFailure) as error:
+            self.feasibility(run_id, "scoped", rationale="Longer window would be convenient.")
+        self.assertEqual("FEASIBILITY_UNCHANGED", error.exception.code)
+        (self.repo / "README.md").write_text("new real mechanism evidence", encoding="utf-8")
+        second = self.feasibility(run_id, "scoped",
+                                  window={"timeoutSeconds": 1000, "maxTurns": 20, "maxOutputBytes": 99999})["tasks"][1]["feasibility"]
+        self.assertEqual(first["startedAt"], second["startedAt"])
+        self.assertEqual(first["startSequence"], second["startSequence"])
+        self.assertLessEqual(second["expiresAt"], first["expiresAt"])
+        future = dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=10)
+
+        class Clock(dt.datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return future if tz else future.replace(tzinfo=None)
+
+        with mock.patch("architrave_runtime.dt.datetime", Clock):
+            state = self.store.load(run_id)
+            status = feasibility_status(state, state["tasks"][1])
+            self.assertTrue(status["partial"])
+            self.assertEqual("PARK", status["decision"])
+            self.assertEqual("Revisit only after new discriminating evidence.", status["revisit"])
+            with self.assertRaises(RuntimeFailure):
+                self.store.start_task(run_id, "scoped", worker_id="expired")
+            with self.assertRaises(RuntimeFailure) as error:
+                self.feasibility(run_id, "scoped")
+            self.assertEqual("FEASIBILITY_EXPIRED", error.exception.code)
+
+    def test_feasibility_requires_actual_pause_and_preserves_holds_and_candidates(self):
+        run_id, task_id = self.task()
+        ticket = self.store.begin_native_worker(run_id, task_id, host_owner="host")
+        self.store.bind_native_owner(ticket, "real-owner")
+        with self.assertRaises(RuntimeFailure) as error:
+            self.feasibility(run_id, task_id)
+        self.assertEqual("HOST_PAUSE_REQUIRED", error.exception.code)
+        self.store.accept_native_candidate(ticket, host_task_id="real-owner", host_status="completed", text="retained candidate")
+        self.store.wait_external(run_id, checkpoint_id="auth", task_id=task_id,
+                                 checkpoint_type="AUTH_REQUIRED", principal="owner", provider="product",
+                                 reason="Human sign-in is still required")
+        before = self.store.load(run_id)
+        after = self.feasibility(run_id, task_id, decision="PARK")
+        for key in ("artifacts", "workers", "policy", "externalCheckpoints"):
+            self.assertEqual(before[key], after[key])
+        self.assertEqual(before["tasks"][0]["workspace"], after["tasks"][0]["workspace"])
+        self.assertEqual(before["tasks"][0]["sideEffect"], after["tasks"][0]["sideEffect"])
+        self.assertEqual(1, after["tasks"][0]["attempts"])
+        self.assertEqual(0, len(list(self.store.run_dir(run_id).glob("*.md"))))
+
+    def test_feasibility_does_not_force_reviewer_poc_or_bypass_loop_stop(self):
+        run_id, task_id = self.task("native")
+        with self.assertRaises(RuntimeFailure) as error:
+            self.feasibility(run_id, task_id, trigger="stall")
+        self.assertEqual("FEASIBILITY_TRIGGER_UNPROVEN", error.exception.code)
+        first = self.feasibility(run_id, task_id)
+        self.assertEqual(1, len(first["tasks"]))
+        self.assertEqual([], first["workers"])
+        self.assertEqual([], first["artifacts"])
+        ticket = self.store.begin_native_worker(run_id, task_id, host_owner="host")
+        self.store.bind_native_owner(ticket, "first")
+        self.store.accept_native_candidate(ticket, host_task_id="first", host_status="cancelled", text="same failure",
+                                          host_observation={"turnsObserved": 1})
+        self.store.recover_workers(run_id, task_id=task_id)
+        ticket = self.store.begin_native_worker(run_id, task_id, host_owner="host",
+                                              retry_hypothesis="Try exact new discriminating check")
+        self.store.bind_native_owner(ticket, "second")
+        self.store.accept_native_candidate(ticket, host_task_id="second", host_status="cancelled", text="same failure",
+                                          host_observation={"turnsObserved": 1})
+        self.feasibility(run_id, task_id, trigger="repeated-failure", decision="PARK")
+        with self.assertRaises(RuntimeFailure):
+            self.store.recover_workers(run_id, task_id=task_id)
+
+    def test_feasibility_cumulative_host_turns_and_output_honor_owner_ceiling(self):
+        run_id, task_id = self.task(budget={"timeoutSeconds": 600, "maxTurns": 30, "maxOutputBytes": 4096})
+        self.store.add_task(run_id, {"id": "second", "objective": "Sequential discriminating test",
+                                   "workerProfile": "native", "risk": "R0", "acceptanceCriteria": ["FIX"],
+                                   "workPacket": {"budget": {"timeoutSeconds": 600, "maxTurns": 30, "maxOutputBytes": 4096}}})
+        self.feasibility(run_id, task_id, window={"timeoutSeconds": 120, "maxTurns": 20, "maxOutputBytes": 800},
+                         owner_ceiling={"maxTurns": 20, "maxOutputBytes": 800})
+        ticket = self.store.begin_native_worker(run_id, task_id, host_owner="host")
+        self.store.bind_native_owner(ticket, "first")
+        with self.assertRaises(RuntimeFailure) as error:
+            self.store.begin_native_worker(run_id, "second", host_owner="host")
+        self.assertEqual("FEASIBILITY_LANE_BUSY", error.exception.code)
+        candidate = self.store.accept_native_candidate(ticket, host_task_id="first", host_status="completed",
+                                                       text="x" * 100, host_observation={"turnsObserved": 17})
+        state = self.store.load(run_id)
+        budget = effective_work_budget(state, state["tasks"][1])
+        self.assertEqual(3, budget["maxTurns"])
+        self.assertEqual(700, budget["maxOutputBytes"])
+        ticket = self.store.begin_native_worker(run_id, "second", host_owner="host")
+        self.store.bind_native_owner(ticket, "second")
+        candidate = self.store.accept_native_candidate(ticket, host_task_id="second", host_status="completed",
+                                                       text="\u2603" * 2000, host_observation={"turnsObserved": 3})
+        self.assertLessEqual(len(candidate["summary"].encode()), 700)
+        self.assertTrue(candidate["truncated"])
+        state = self.store.load(run_id)
+        self.assertTrue(feasibility_status(state, state["tasks"][1])["partial"])
+        with self.assertRaises(RuntimeFailure):
+            effective_work_budget(state, state["tasks"][1])
+
+    def test_feasibility_one_host_turn_is_not_spent_by_metadata(self):
+        run_id, task_id = self.task()
+        self.feasibility(run_id, task_id, window={"timeoutSeconds": 120, "maxTurns": 1, "maxOutputBytes": 800})
+        ticket = self.store.begin_native_worker(run_id, task_id, host_owner="host")
+        self.store.bind_native_owner(ticket, "first")
+        state = self.store.load(run_id)
+        self.assertFalse(feasibility_status(state, state["tasks"][0])["expired"])
+        self.assertEqual(1, ticket.snapshot["budget"]["maxTurns"])
+        self.store.accept_native_candidate(ticket, host_task_id="first", host_status="completed", text="candidate",
+                                          host_observation={"turnsObserved": 1})
+        state = self.store.load(run_id)
+        self.assertTrue(feasibility_status(state, state["tasks"][0])["expired"])
+
+    def test_feasibility_native_ticket_uses_atomic_admission_budget_after_interleaving(self):
+        run_id, first_id = self.task(budget={"timeoutSeconds": 600, "maxTurns": 30, "maxOutputBytes": 4096})
+        self.store.add_task(run_id, {"id": "second", "objective": "Next discriminating test",
+                                   "workerProfile": "native", "risk": "R0", "acceptanceCriteria": ["FIX"],
+                                   "workPacket": {"budget": {"timeoutSeconds": 600, "maxTurns": 30, "maxOutputBytes": 4096}}})
+        self.feasibility(run_id, first_id, window={"timeoutSeconds": 120, "maxTurns": 20, "maxOutputBytes": 800},
+                         owner_ceiling={"maxTurns": 20, "maxOutputBytes": 800})
+        start = self.store.start_task
+        interleaved = False
+
+        def before_admission(run, task_id, **kwargs):
+            nonlocal interleaved
+            if task_id == "second" and not interleaved:
+                interleaved = True
+                first = self.store.begin_native_worker(run, first_id, host_owner="host")
+                self.store.bind_native_owner(first, "first")
+                self.store.accept_native_candidate(first, host_task_id="first", host_status="completed",
+                                                  text="x" * 100, host_observation={"turnsObserved": 17})
+            return start(run, task_id, **kwargs)
+
+        with mock.patch.object(self.store, "start_task", side_effect=before_admission):
+            ticket = self.store.begin_native_worker(run_id, "second", host_owner="host")
+        self.assertEqual(3, ticket.snapshot["budget"]["maxTurns"])
+        self.assertEqual(700, ticket.snapshot["budget"]["maxOutputBytes"])
+        state = self.store.load(run_id)
+        worker = next(item for item in state["workers"] if item["id"] == ticket.binding["workerId"])
+        self.assertEqual(ticket.snapshot["budget"], worker["admittedBudget"])
+        self.store.bind_native_owner(ticket, "second")
+        candidate = self.store.accept_native_candidate(ticket, host_task_id="second", host_status="completed",
+                                                       text="y" * 2000, host_observation={"turnsObserved": 3})
+        self.assertEqual(700, len(candidate["summary"].encode()))
+        self.assertTrue(candidate["truncated"])
+
+    def test_feasibility_unreported_finished_turns_are_unknown_not_zero(self):
+        run_id, task_id = self.task()
+        self.feasibility(run_id, task_id)
+        ticket = self.store.begin_native_worker(run_id, task_id, host_owner="host")
+        self.store.bind_native_owner(ticket, "first")
+        self.store.accept_native_candidate(ticket, host_task_id="first", host_status="completed", text="candidate")
+        state = self.store.load(run_id)
+        status = feasibility_status(state, state["tasks"][0])
+        self.assertIsNone(status["remainingHostTurns"])
+        self.assertTrue(status["hostTurnsUnknown"])
+        with self.assertRaises(RuntimeFailure) as error:
+            effective_work_budget(state, state["tasks"][0])
+        self.assertEqual("FEASIBILITY_BUDGET_UNKNOWN", error.exception.code)
+
+    def test_feasibility_historical_objective_does_not_break_status(self):
+        run_id, task_id = self.task("shell")
+        self.feasibility(run_id, task_id, decision="PARK")
+        _, challenge = self.store.wait_external(
+            run_id, checkpoint_id="owner-correction", task_id=task_id,
+            checkpoint_type="HUMAN_JUDGMENT_REQUIRED", principal="owner", provider="owner",
+            reason="Owner explicitly changed the objective")
+        state = self.store.replace_objective(
+            run_id, outcome="A different authorized objective", criteria=[{
+                "id": "NEW", "description": "New acceptance", "scope": "fixture",
+                "risk": "R1", "verificationType": "deterministic", "blocking": True}],
+            correction="Owner strategy changed.", next_cheapest_test="Prove the newly scoped slice.",
+            checkpoint_id="owner-correction", challenge=challenge, actor="human:owner")
+        self.assertIn("feasibility", state["tasks"][0])
+        self.assertNotIn("feasibility", state_summary(state))
+        self.assertEqual([], self.store.ready_tasks(run_id))
+
+    def test_feasibility_shell_output_is_one_combined_ceiling(self):
+        run_id, task_id = self.task("shell", {
+            "command": [sys.executable, "-c", "import sys; sys.stdout.write('o'*1000); sys.stderr.write('e'*1000)"],
+            "cwd": None, "environment": [],
+        })
+        self.feasibility(run_id, task_id, window={"timeoutSeconds": 120, "maxTurns": 8, "maxOutputBytes": 800})
+        WorkspaceManager(self.repo).create(run_id, task_id)
+        self.store.start_task(run_id, task_id, worker_id="bounded-shell")
+        result = execute_work_packet(self.store, run_id, task_id, "bounded-shell")
+        self.assertEqual("candidate", result["status"])
+        self.assertLessEqual(len(result["stdout"].encode()) + len(result["stderr"].encode()), 800)
+        self.assertTrue(result["outputTruncated"])
+
     def test_model_observation_never_claims_an_unreported_or_ignored_override(self):
         self.assertIsNone(routing_observation(None, "host-reported-model")["fallback"])
         self.assertIn("did not report", routing_observation("user-pin", None)["fallback"])
@@ -52,7 +385,7 @@ class NativeHostTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def task(self, adapter="native", execution=None):
+    def task(self, adapter="native", execution=None, budget=None):
         state = self.store.create(
             run_id="fixture", goal="Bounded native worker", outcome="Verified fixture",
             autonomy_scope="approved-program",
@@ -63,7 +396,7 @@ class NativeHostTests(unittest.TestCase):
         self.store.add_task(state["runId"], {
             "id": "adoption-check", "objective": "Read the fixture README; return a candidate.",
             "workerProfile": adapter, "acceptanceCriteria": ["FIX"], "risk": "R0",
-            "workPacket": {"execution": execution},
+            "workPacket": {"execution": execution, **({"budget": budget} if budget else {})},
         })
         return state["runId"], "adoption-check"
 

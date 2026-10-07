@@ -1866,6 +1866,113 @@ class RunStore:
             evidence_refs=product_evidence_refs,
         )
 
+    def record_feasibility(
+        self, run_id: str, task_id: str, *, trigger: str, decision: str,
+        window: dict[str, int], rationale: str, next_step: str, revisit: str,
+        uncertainty: str, product_delta: str, blocker: str, failed_hypotheses: Sequence[str] = (),
+        owner_ceiling: dict[str, int] | None = None, owner_deadline: str | None = None,
+        actor: str = "coordinator",
+    ) -> dict[str, Any]:
+        """One on-demand decision in the existing task; never a worker or scheduler."""
+        decisions = {"CONTINUE", "BOUNDED_GO", "PIVOT", "PARK"}
+        if trigger not in {"user", "stall", "repeated-failure", "budget"} or decision not in decisions:
+            raise RuntimeFailure("FEASIBILITY_INVALID", "reset needs an explicit supported trigger and decision")
+        text = {"rationale": rationale, "nextStep": next_step, "revisit": revisit,
+                "uncertainty": uncertainty, "reportedProductDelta": product_delta, "blocker": blocker}
+        if any(not value.strip() or len(value) > 1000 for value in text.values()) or "\n" in rationale:
+            raise RuntimeFailure("FEASIBILITY_INVALID", "compact decision fields and one-line rationale are required")
+        if len(failed_hypotheses) > 8 or any(not item.strip() or len(item) > 500 for item in failed_hypotheses):
+            raise RuntimeFailure("FEASIBILITY_INVALID", "at most eight compact failed hypotheses")
+        keys = {"timeoutSeconds", "maxTurns", "maxOutputBytes"}
+        for value in (window, owner_ceiling or {}):
+            if (not isinstance(value, dict) or set(value) - keys
+                    or any(type(item) is not int or item < 1 for item in value.values())):
+                raise RuntimeFailure("FEASIBILITY_INVALID", "window/owner ceiling must contain positive integer WorkPacket bounds")
+        if set(window) != keys:
+            raise RuntimeFailure("FEASIBILITY_INVALID", "choose finite time, turn and output ceilings")
+        try:
+            deadline = parse_iso(owner_deadline) if owner_deadline else None
+            if deadline and deadline.tzinfo is None:
+                raise ValueError("timezone missing")
+        except (ValueError, TypeError) as exc:
+            raise RuntimeFailure("FEASIBILITY_INVALID", "owner deadline requires an absolute timezone-qualified timestamp") from exc
+
+        def mutate(state: dict[str, Any]) -> dict[str, Any]:
+            task = find_task(state, task_id)
+            if task["objectiveVersion"] != state["objective"]["version"]:
+                raise RuntimeFailure("OBJECTIVE_SUPERSEDED", "feasibility reset must belong to the current objective")
+            if state["status"] in {"COMPLETED", "CANCELLED"} or task["status"] in {"COMPLETED", "CANCELLED", "SKIPPED", "DEFERRED"}:
+                raise RuntimeFailure("FEASIBILITY_TERMINAL", "do not reopen completed or superseded work")
+            lane = task["lane"]
+            if any(other["lane"] == lane and (other["status"] == "RUNNING" or other.get("lease"))
+                   for other in state["tasks"]):
+                raise RuntimeFailure("HOST_PAUSE_REQUIRED", "settle the actual host owner before recording this lane reset")
+            events = self._read_events(self.run_dir(run_id))
+            global_budget = budget_signal(state, events, self.repository)
+            primary = primary_criterion_status(state, events, self.repository) if state["focus"].get("primaryCriterion") else None
+            if trigger != "user" and not (
+                trigger == "stall" and primary and primary["stalled"]
+                or trigger == "repeated-failure" and task.get("loop", {}).get("stopped")
+                or trigger == "budget" and global_budget and global_budget["signal"] in {"BUDGET_80", "BUDGET_100"}
+            ):
+                raise RuntimeFailure("FEASIBILITY_TRIGGER_UNPROVEN", "quiet/time alone is not an established reset signal")
+            prior = lane_feasibility(state, task)
+            evidence = feasibility_evidence(state, task, self.repository)
+            now = dt.datetime.now(dt.timezone.utc)
+            if prior:
+                if feasibility_status(state, task)["expired"]:
+                    raise RuntimeFailure("FEASIBILITY_EXPIRED", "window expired; preserve the partial decision, do not reset its clock")
+                if prior["evidenceDigest"] == evidence:
+                    raise RuntimeFailure("FEASIBILITY_UNCHANGED", "unchanged evidence cannot renew or reopen a decision")
+            ceiling = dict(prior["ceiling"] if prior else task["workPacket"]["budget"])
+            ceiling.setdefault("maxTurns", 12)
+            for key, value in (owner_ceiling or {}).items():
+                ceiling[key] = min(ceiling[key], value)
+            remaining = feasibility_remaining(state, task, self.repository, events)
+            chosen = {key: min(window[key], ceiling[key]) for key in keys}
+            for key in ("timeoutSeconds", "maxTurns"):
+                if remaining[key] is not None:
+                    chosen[key] = min(chosen[key], remaining[key])
+            end = now + dt.timedelta(seconds=chosen["timeoutSeconds"])
+            if deadline:
+                end = min(end, deadline)
+            if prior:
+                end = min(end, parse_iso(prior["expiresAt"]))
+            chosen["timeoutSeconds"] = max(0, int((end - now).total_seconds()))
+            if (chosen["timeoutSeconds"] < 1 or chosen["maxTurns"] < 1
+                    or global_budget and global_budget["signal"] == "BUDGET_100"):
+                decision_value, partial = "PARK", True
+            else:
+                decision_value, partial = decision, False
+            dependencies = [find_task(state, item) for item in task["dependencies"]]
+            task["feasibility"] = {
+                **{key: redact(value.strip()) for key, value in text.items()},
+                "trigger": trigger, "decision": decision_value, "partial": partial,
+                "startedAt": prior["startedAt"] if prior else utc_now(),
+                "expiresAt": end.isoformat(timespec="seconds").replace("+00:00", "Z"),
+                "startSequence": prior["startSequence"] if prior else state["eventCursor"]["sequence"] + 1,
+                "recordedSequence": state["eventCursor"]["sequence"] + 1,
+                "window": chosen, "ceiling": ceiling, "evidenceDigest": evidence,
+                "snapshot": {
+                    "objective": state["objective"]["description"][:1000],
+                    "risk": task["risk"],
+                    "failedHypotheses": [redact(item) for item in failed_hypotheses],
+                    "failures": primary_failures(state, events, task["acceptanceCriteria"][0])[-3:],
+                    "dependencies": [{"id": item["id"], "status": item["status"]} for item in dependencies[:8]],
+                    "pendingHumanHolds": [item["id"] for item in state["externalCheckpoints"] if item["status"] == "PENDING"][:8],
+                    "sideEffect": copy.deepcopy(task["sideEffect"]),
+                    "observedProductEvidence": [ref for criterion in state["acceptanceCriteria"]
+                                               if criterion["id"] in task["acceptanceCriteria"]
+                                               and criterion["status"] == "PASS" and criterion["verificationType"] in OBSERVED_OUTCOME_TYPES
+                                               for ref in criterion["evidenceRefs"]][-3:],
+                    "availableBudget": remaining,
+                },
+            }
+            return {"taskId": task_id, "lane": lane, "decision": decision_value,
+                    "partial": partial, "window": chosen, "rationale": text["rationale"]}
+
+        return self._transaction(run_id, mutate, event_type="feasibility.recorded", actor=actor, task_id=task_id)
+
     def human_checkpoint(self, run_id: str | None = None) -> dict[str, Any]:
         state = self.load(run_id)
         current_ids = set(state["objective"]["acceptanceCriteria"])
@@ -2102,7 +2209,14 @@ class RunStore:
 
     def ready_tasks(self, run_id: str | None = None) -> list[dict[str, Any]]:
         state = self.load(run_id)
-        return [copy.deepcopy(task) for task in state["tasks"] if task["status"] == "READY"]
+        ready = []
+        for task in state["tasks"]:
+            if task["status"] != "READY":
+                continue
+            reset = feasibility_status(state, task)
+            if not reset or not reset["expired"] and not reset["hostTurnsUnknown"] and reset["decision"] in {"CONTINUE", "BOUNDED_GO"}:
+                ready.append(copy.deepcopy(task))
+        return ready
 
     def assign_workspace(
         self,
@@ -2419,6 +2533,9 @@ class RunStore:
         if pushback is not None and pushback["verdict"] != "KEEP":
             raise RuntimeFailure("PUSHBACK_NOT_KEPT", f"push-back verdict {pushback['verdict']} never dispatches")
         events = self.events(run_id)
+        reset = feasibility_status(snapshot, snapshot_task)
+        if reset and (reset["expired"] or reset["decision"] not in {"CONTINUE", "BOUNDED_GO"}):
+            raise RuntimeFailure("FEASIBILITY_STOP", "lane is paused/expired; synthesize the retained partial decision", details=reset)
         budget = budget_signal(snapshot, events, self.repository)
         if budget and budget["signal"] == "BUDGET_100":
             raise RuntimeFailure("BUDGET_100", "Run budget is exhausted; no new worker dispatches", details=budget)
@@ -2494,6 +2611,9 @@ class RunStore:
                     "cannot start a task while the Run is paused; call resume() explicitly first",
                 )
             task = find_task(state, task_id)
+            reset = feasibility_status(state, task)
+            if reset and (reset["expired"] or reset["decision"] not in {"CONTINUE", "BOUNDED_GO"}):
+                raise RuntimeFailure("FEASIBILITY_STOP", "lane reset prevents dispatch", details=reset)
             loop = task.get("loop")
             if loop and loop.get("stopped"):
                 raise RuntimeFailure("REPEATED_FAILURE", "same failure twice without new evidence; this lane is stopped")
@@ -2625,7 +2745,12 @@ class RunStore:
             if task["checkpointPolicy"]["beforeSideEffect"]:
                 append_checkpoint(state, task_id, "TASK_START")
             acquired = dt.datetime.now(dt.timezone.utc)
-            expires = acquired + dt.timedelta(seconds=max(1, lease_seconds))
+            admitted_budget = effective_work_budget(state, task) if reset else None
+            if reset:
+                lease_seconds_bound = min(lease_seconds, admitted_budget["timeoutSeconds"])
+            else:
+                lease_seconds_bound = lease_seconds
+            expires = acquired + dt.timedelta(seconds=max(1, lease_seconds_bound))
             task["lease"] = {
                 "owner": worker_id,
                 "acquiredAt": acquired.isoformat(timespec="seconds").replace("+00:00", "Z"),
@@ -2653,6 +2778,11 @@ class RunStore:
                 worker["workspace"] = task["workspace"]
                 worker["mutablePaths"] = task["mutablePaths"]
                 worker["taskId"] = task_id
+            worker = next(item for item in state["workers"] if item["id"] == worker_id)
+            if admitted_budget is not None:
+                worker["admittedBudget"] = admitted_budget
+            else:
+                worker.pop("admittedBudget", None)
             state["status"] = "RUNNING"
             return {"taskId": task_id, "workerId": worker_id, "attempt": task["attempts"]}
 
@@ -2943,6 +3073,7 @@ class RunStore:
         if task["workPacket"].get("execution"):
             raise RuntimeFailure("NATIVE_EXECUTION_DENIED", "agent WorkPackets cannot carry shell execution recipes")
         packet = task["workPacket"]
+        effective_work_budget(state, task)
         if (
             packet["mutablePaths"] != task["mutablePaths"]
             or packet["acceptanceCriteria"] != task["acceptanceCriteria"]
@@ -2984,6 +3115,8 @@ class RunStore:
         )
         snapshot["source"] = workspace_fingerprint(self.repository)
         task = find_task(state, task_id)
+        worker = next(item for item in state["workers"] if item["id"] == worker_id)
+        snapshot["budget"] = copy.deepcopy(worker.get("admittedBudget", task["workPacket"]["budget"]))
         snapshot["authority"] = sha256_value({
             "policy": state["policy"], "autonomy": state["autonomy"],
             "objective": state["objective"], "task": task,
@@ -3043,8 +3176,8 @@ class RunStore:
             errors.append("worker changed ignored files")
         if workspace_fingerprint(self.repository) != ticket.snapshot["source"]:
             errors.append("worker changed the coordinator workspace")
-        limit = min(task["workPacket"]["budget"]["maxOutputBytes"], 8192)
-        bounded = text.encode("utf-8")[:limit].decode("utf-8", "replace")
+        limit = min(ticket.snapshot["budget"]["maxOutputBytes"], 8192)
+        bounded = text.encode("utf-8")[:limit].decode("utf-8", "ignore")
         artifact_id = f"native-result-{uuid.uuid4().hex}"
         path = self.run_dir(state["runId"]) / "workers" / f"{artifact_id}.json"
         result = {
@@ -4902,6 +5035,15 @@ def validate_run(state: dict[str, Any]) -> None:
     for task in state["tasks"]:
         if task["risk"] not in RISK_CLASSES or task["status"] not in TASK_STATUSES:
             raise RuntimeFailure("RUN_INVALID", f"task {task['id']} risk or status is invalid")
+        reset = task.get("feasibility")
+        if reset:
+            if reset.get("decision") not in {"CONTINUE", "BOUNDED_GO", "PIVOT", "PARK"}:
+                raise RuntimeFailure("RUN_INVALID", "feasibility decision is invalid")
+            for key in ("timeoutSeconds", "maxTurns", "maxOutputBytes"):
+                chosen = reset.get("window", {}).get(key)
+                cap = reset.get("ceiling", {}).get(key)
+                if type(chosen) is not int or type(cap) is not int or cap < 1 or not 0 <= chosen <= cap:
+                    raise RuntimeFailure("RUN_INVALID", "feasibility window must stay inside its finite original ceiling")
         if not set(task["acceptanceCriteria"]).issubset(criteria_ids):
             raise RuntimeFailure("RUN_INVALID", f"task {task['id']} references unknown criteria")
         for path in task["mutablePaths"]:
@@ -5428,6 +5570,143 @@ def primary_criterion_status(
     }
 
 
+def lane_feasibility(state: dict[str, Any], task: dict[str, Any]) -> dict[str, Any] | None:
+    decisions = [item["feasibility"] for item in state["tasks"] if item.get("feasibility")
+                 and item["lane"] == task["lane"] and item["objectiveVersion"] == state["objective"]["version"]]
+    return max(decisions, key=lambda item: item["recordedSequence"]) if decisions else None
+
+
+def feasibility_status(state: dict[str, Any], task: dict[str, Any]) -> dict[str, Any] | None:
+    reset = lane_feasibility(state, task)
+    if not reset:
+        return None
+    seconds = max(0, int((parse_iso(reset["expiresAt"]) - dt.datetime.now(dt.timezone.utc)).total_seconds()))
+    turns_used, output_used = feasibility_usage(state, task, reset)
+    turns = max(0, reset["window"]["maxTurns"] - turns_used) if turns_used is not None else None
+    output = max(0, reset["window"]["maxOutputBytes"] - output_used)
+    limits = (repository_config(state["baseline"]["repository"]).get("evaluation") or {}).get("budget") or {}
+    if limits.get("maxMinutes"):
+        seconds = min(seconds, max(0, int(limits["maxMinutes"] * 60 -
+                      (dt.datetime.now(dt.timezone.utc) - parse_iso(state["createdAt"])).total_seconds())))
+    exhausted = False
+    if limits:
+        repository = Path(state["baseline"]["repository"])
+        store = RunStore(repository)
+        signal = budget_signal(state, store._read_events(store.run_dir(state["runId"])), repository)
+        exhausted = bool(signal and signal["signal"] == "BUDGET_100")
+    expired = reset["partial"] or seconds == 0 or turns == 0 or output == 0 or exhausted
+    unknown = turns is None
+    return {**reset, "decision": "PARK" if expired else reset["decision"],
+            "partial": expired, "expired": expired, "remainingSeconds": seconds,
+            "remainingHostTurns": turns, "remainingOutputBytes": output,
+            "hostTurnsUnknown": unknown, "turnMethod": "reported host turns since reset; global transition proxy remains separate"}
+
+
+def feasibility_usage(state: dict[str, Any], task: dict[str, Any], reset: dict[str, Any]) -> tuple[int | None, int]:
+    repository = Path(state["baseline"]["repository"])
+    store = RunStore(repository)
+    events = store._read_events(store.run_dir(state["runId"]))
+    lane_tasks = {item["id"] for item in state["tasks"] if item["lane"] == task["lane"]
+                  and item["objectiveVersion"] == state["objective"]["version"]}
+    owners = {event["payload"]["workerId"] for event in events
+              if event["sequence"] > reset["startSequence"] and event["type"] == "task.started"
+              and event.get("taskId") in lane_tasks}
+    turns, output, reported = 0, 0, set()
+    unknown = False
+    for artifact in state["artifacts"]:
+        if artifact["producer"] != "worker":
+            continue
+        receipt = json.loads((repository / artifact["path"]).read_text(encoding="utf-8"))
+        owner = receipt.get("workerId") or (receipt.get("binding") or {}).get("workerId")
+        if owner not in owners:
+            continue
+        reported.add(owner)
+        value = (receipt.get("hostObservation") or {}).get("turnsObserved")
+        if type(value) is int:
+            turns += value
+        else:
+            unknown = True
+        # WorkPacket output means retained candidate/diagnostic bytes, not model tokens.
+        if receipt.get("schema") == "architrave.native-candidate.v1":
+            output += len(receipt["summary"].encode("utf-8"))
+        else:
+            output += sum(len(str(receipt.get(key, "")).encode("utf-8")) for key in ("stdout", "stderr"))
+    # In-flight owners are bounded by their admission budget; missing *finished*
+    # owner telemetry cannot silently become a fresh zero-spend allowance.
+    finished = {item["id"] for item in state["workers"] if item["id"] in owners and item["status"] != "RUNNING"}
+    unknown = unknown or bool(finished - reported)
+    return (None if unknown else turns), output
+
+
+def feasibility_evidence(state: dict[str, Any], task: dict[str, Any], repository: Path) -> str:
+    return sha256_value({
+        "taskEvidence": retry_evidence_digest(state, task, repository),
+        "criteria": [(item["id"], item["status"]) for item in state["acceptanceCriteria"] if item["id"] in task["acceptanceCriteria"]],
+        "dependencies": [(item, find_task(state, item)["status"]) for item in task["dependencies"]],
+        "holds": [(item["id"], item["status"]) for item in state["externalCheckpoints"]],
+        "sideEffect": task["sideEffect"], "objective": state["objective"],
+        "failure": task.get("loop"),
+    })
+
+
+def feasibility_remaining(
+    state: dict[str, Any], task: dict[str, Any], repository: Path, events: Sequence[dict[str, Any]],
+) -> dict[str, Any]:
+    """Actual clocks/observed child turns; absent host counters are unknown."""
+    now = dt.datetime.now(dt.timezone.utc)
+    starts = [parse_iso(event["timestamp"]) for event in events
+              if event.get("taskId") == task["id"] and event["type"] == "task.started"]
+    task_seconds = task["workPacket"]["budget"]["timeoutSeconds"]
+    if starts:
+        task_seconds = max(0, int(task_seconds - (now - min(starts)).total_seconds()))
+    task_turns = None
+    observed = []
+    for artifact in state["artifacts"]:
+        if artifact["producer"] == "worker" and f"task:{task['id']}" in artifact["evidenceRefs"]:
+            receipt = json.loads((repository / artifact["path"]).read_text(encoding="utf-8"))
+            observed.append((receipt.get("hostObservation") or {}).get("turnsObserved"))
+    if observed and all(type(item) is int for item in observed):
+        task_turns = max(0, task["workPacket"]["budget"].get("maxTurns", 12) - sum(observed))
+    global_config = (repository_config(str(repository)).get("evaluation") or {}).get("budget") or {}
+    global_seconds = None
+    if global_config.get("maxMinutes"):
+        global_seconds = max(0, int(global_config["maxMinutes"] * 60 - (now - parse_iso(state["createdAt"])).total_seconds()))
+    global_turns = None
+    if global_config.get("maxTurns"):
+        global_turns = max(0, global_config["maxTurns"] - state["eventCursor"]["sequence"] - 1)
+    seconds = min([task_seconds] + ([global_seconds] if global_seconds is not None else []))
+    turns = min([item for item in (task_turns, global_turns) if item is not None], default=None)
+    return {"timeoutSeconds": seconds, "maxTurns": turns,
+            "taskTurnsObserved": task_turns, "globalSeconds": global_seconds,
+            "globalTurnProxy": global_turns, "hostCredits": None, "hostOutputRemaining": None,
+            "unknown": ["hostCredits", "hostOutputRemaining"] + ([] if task_turns is not None else ["taskTurnsObserved"])}
+
+
+def effective_work_budget(state: dict[str, Any], task: dict[str, Any]) -> dict[str, int]:
+    budget = dict(task["workPacket"]["budget"])
+    reset = feasibility_status(state, task)
+    if reset:
+        if any(other["id"] != task["id"] and other["lane"] == task["lane"] and other["status"] == "RUNNING"
+               for other in state["tasks"]):
+            raise RuntimeFailure("FEASIBILITY_LANE_BUSY", "one discriminating owner at a time in the reset lane; retain other lanes' independent work")
+        repository = Path(state["baseline"]["repository"])
+        store = RunStore(repository)
+        remaining = feasibility_remaining(state, task, repository, store._read_events(store.run_dir(state["runId"])))
+        budget["timeoutSeconds"] = min(budget["timeoutSeconds"], reset["remainingSeconds"])
+        if reset["hostTurnsUnknown"]:
+            raise RuntimeFailure("FEASIBILITY_BUDGET_UNKNOWN", "finished owner did not report turns; do not assume zero spend for another dispatch")
+        budget["maxTurns"] = min(budget.get("maxTurns", 12), reset["remainingHostTurns"])
+        budget["maxOutputBytes"] = min(budget["maxOutputBytes"], reset["remainingOutputBytes"])
+        budget["timeoutSeconds"] = min(budget["timeoutSeconds"], remaining["timeoutSeconds"])
+        if remaining["maxTurns"] is not None:
+            budget["maxTurns"] = min(budget["maxTurns"], remaining["maxTurns"])
+        if reset["expired"] or reset["decision"] not in {"CONTINUE", "BOUNDED_GO"}:
+            raise RuntimeFailure("FEASIBILITY_STOP", "lane is paused/expired; no new action", details=reset)
+        if budget["timeoutSeconds"] < 1 or budget["maxTurns"] < 1:
+            raise RuntimeFailure("FEASIBILITY_STOP", "remaining parent/task/global budget exhausted; synthesize partial result")
+    return budget
+
+
 def budget_signal(state: dict[str, Any], events: Sequence[dict[str, Any]], repository: Path) -> dict[str, Any] | None:
     """Real-signal counters since Run creation against optional evaluation.budget limits."""
     limits = (repository_config(str(repository)).get("evaluation") or {}).get("budget") or {}
@@ -5562,6 +5841,14 @@ def state_summary(state: dict[str, Any]) -> dict[str, Any]:
     budget = budget_signal(state, events, repository)
     if budget:
         summary["budget"] = budget
+    resets = {task["lane"]: reset for task in state["tasks"]
+              if task.get("feasibility") and (reset := feasibility_status(state, task)) is not None}
+    if resets:
+        summary["feasibility"] = resets
+        paused = {lane for lane, reset in resets.items()
+                  if reset["expired"] or reset["hostTurnsUnknown"] or reset["decision"] not in {"CONTINUE", "BOUNDED_GO"}}
+        summary["readyTasks"] = [task["id"] for task in state["tasks"]
+                                 if task["status"] == "READY" and task["lane"] not in paused]
     if state["focus"].get("primaryCriterion"):
         stall = primary_criterion_status(state, events, repository)
         summary["primaryCriterion"] = stall
@@ -5618,6 +5905,22 @@ def build_parser() -> argparse.ArgumentParser:
     recover = subparsers.add_parser("worker-recover", help="close expired/orphan workers without replaying side effects")
     recover.add_argument("run_id")
     recover.add_argument("--task-id", help="explicitly release one failed, side-effect-free task for a new candidate")
+
+    feasibility = subparsers.add_parser("feasibility-record", help="record an on-demand, finite evidence-driven lane decision")
+    feasibility.add_argument("run_id")
+    feasibility.add_argument("task_id")
+    feasibility.add_argument("--trigger", choices=["user", "stall", "repeated-failure", "budget"], required=True)
+    feasibility.add_argument("--decision", choices=["CONTINUE", "BOUNDED_GO", "PIVOT", "PARK"], required=True)
+    for option in ("rationale", "next-step", "revisit", "uncertainty", "product-delta", "blocker"):
+        feasibility.add_argument("--" + option, required=True)
+    feasibility.add_argument("--hypothesis", action="append", default=[])
+    feasibility.add_argument("--seconds", type=int, required=True)
+    feasibility.add_argument("--turns", type=int, required=True)
+    feasibility.add_argument("--output-bytes", type=int, required=True)
+    feasibility.add_argument("--owner-seconds", type=int)
+    feasibility.add_argument("--owner-turns", type=int)
+    feasibility.add_argument("--owner-output-bytes", type=int)
+    feasibility.add_argument("--owner-deadline")
 
     execute = subparsers.add_parser("gate-execute", help="observe a real configured command, never import a claimed PASS")
     execute.add_argument("run_id")
@@ -5893,6 +6196,18 @@ def cli(argv: Sequence[str] | None = None) -> int:
                     actor=args.actor,
                 )
             )
+        elif command == "feasibility-record":
+            output = state_summary(store.record_feasibility(
+                args.run_id, args.task_id, trigger=args.trigger, decision=args.decision,
+                window={"timeoutSeconds": args.seconds, "maxTurns": args.turns, "maxOutputBytes": args.output_bytes},
+                owner_ceiling={key: value for key, value in (
+                    ("timeoutSeconds", args.owner_seconds), ("maxTurns", args.owner_turns),
+                    ("maxOutputBytes", args.owner_output_bytes)) if value is not None},
+                owner_deadline=args.owner_deadline, rationale=args.rationale, next_step=args.next_step,
+                revisit=args.revisit, uncertainty=args.uncertainty, product_delta=args.product_delta,
+                blocker=args.blocker,
+                failed_hypotheses=args.hypothesis,
+            ))
         elif command == "review-record":
             output = state_summary(
                 store.record_review_result(

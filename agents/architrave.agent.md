@@ -50,6 +50,9 @@ Use its supported primitives; never launch an agent CLI or provider SDK worker.
 - Consult architrave:cto at start and on stall **inline** through its checklist,
   not an extra agent by default. Push back KEEP/CUT/DEFER with one reason before
   new scope. Do not let supporting harness work displace the product.
+  For an owner-requested feasibility reset or established stall/budget signal,
+  load its on-demand reset; estimate a finite evidence-driven window, never a
+  universal duration.
 - Model/capability requests are optional user/host settings, never canonical
   product truth. Inherit defaults unless explicitly configured. Record effective
   selection only when reported; otherwise say unavailable/fallback.

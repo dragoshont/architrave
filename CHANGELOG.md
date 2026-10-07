@@ -7,6 +7,16 @@ Releases at or before **v0.8.12** are on the
 
 ## Unreleased
 
+### Added
+- On-demand CTO feasibility reset for owner requests or established stall,
+  repeated-failure and budget signals. The agent chooses finite evidence-driven
+  time/turn/output bounds with one rationale; no universal review duration,
+  mandatory reviewer or POC.
+- `feasibility-record` stores one compact decision/snapshot in the existing Run
+  task, clamps to task/owner/global limits, rejects unchanged-evidence renewals
+  and clock resets, and renders expired decisions as partial/PARK. Human holds,
+  candidates, recovery and mutation policy remain unchanged.
+
 ### Planned
 - Add a public Run cancel/supersede transition and make invalid unstarted-task
   intake terminal instead of retry-ready.

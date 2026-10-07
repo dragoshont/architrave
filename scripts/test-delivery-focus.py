@@ -58,6 +58,10 @@ required = {
     "default child bounds": (agent, "three (lower host limits win); depth: one"),
     "repeat-failure stop": (agent, "twice without new evidence stops the lane"),
     "progressive disclosure": (lead_skill, "Do not preload every pack"),
+    "on-demand feasibility": (cto_skill, "On-demand feasibility reset"),
+    "adaptive window": (cto_skill, "Estimate a finite time/turn/output window"),
+    "explicit owner ceiling": (cto_skill, "deadlines/ceilings win"),
+    "no clock reset": (cto_skill, "Unchanged evidence cannot renew the window"),
     "tournament agent baselines": (tournament_agent, 'include a "do nothing" baseline and a "smallest viable" option'),
 }
 

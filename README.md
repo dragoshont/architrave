@@ -304,6 +304,14 @@ Run state under `.architrave/runs/` so interruption resumes from state, not chat
 
 ## Durable Run v2
 
+The on-demand CTO checklist can reset feasibility when the owner asks or actual
+stall/failure/budget evidence warrants it. It estimates a task-specific finite
+window rather than assigning every review the same duration. A compact existing
+Run decision records the bounds/rationale and continue/smallest-viable/pivot/park
+choice; no periodic reviewer, new service or report pile. See the
+[`feasibility-record` contract](knowledge/runtime-v2.md#on-demand-feasibility-reset).
+This follow-up is unreleased until deliberately versioned/published.
+
 The next-generation harness is a dependency-free Python control plane:
 
 ```text

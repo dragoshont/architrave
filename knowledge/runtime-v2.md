@@ -139,6 +139,56 @@ and acceptance target. Any mismatch pauses the Run and blocks task start.
 
 ## TaskGraph and WorkPackets
 
+### On-demand feasibility reset
+
+The CTO skill is the canonical reasoning procedure; the conductor only links
+to it. Use `feasibility-record` after settling the actual host owner of the
+implicated lane. It never cancels a host, starts a worker, closes human holds,
+resets attempts or grants policy. Active lane leases require supported host
+pause/cancellation and truthful candidate/recovery handling first.
+
+The agent, not a hard-coded estimator, selects a finite window from uncertainty,
+risk, dependency depth, known evidence, the next discriminating test's cost and
+remaining task/parent/global budgets. Explicit owner ceiling/deadline wins.
+Record CONTINUE/BOUNDED_GO/PIVOT/PARK, reported delta, failed hypotheses, blocker,
+next step, uncertainty and revisit condition in the existing task. Native/shell
+dispatch consumes the selected WorkPacket bounds; no extra report files.
+
+```bash
+python harness/architrave_runtime.py feasibility-record <run> <task> \
+  --trigger user --decision BOUNDED_GO --seconds 120 --turns 8 --output-bytes 2000 \
+  --rationale "One cheap test can distinguish the current mechanism." \
+  --product-delta "Outcome not yet observed." --blocker "Cause remains unproven." \
+  --next-step "Run the focused real-flow test." --revisit "New discriminating evidence." \
+  --uncertainty "External dependency may still block." --owner-seconds 60
+```
+
+Time spent since initial task start is deducted. Actual reported child turns
+and retained result/diagnostic bytes are deducted cumulatively across the reset
+lane; admission binds the reduced output limit, including late cancelled results.
+The reset lane admits one discriminating owner at a time, so parallel owners
+cannot each spend the entire shared ceiling. Other lanes remain independent.
+If a finished owner does not report turns, another dispatch is blocked with
+unknown-budget diagnostics rather than assuming zero spend. The global turn
+limit remains a separate Run-transition proxy, not model turns. Unsupported
+host credit/generated-output/turn telemetry stays unknown. Explicit parent constraints
+should be passed through the same owner-ceiling flags. The original deadline,
+clock and authorized ceiling cannot be extended by a repeat decision. Only
+substantive source/acceptance/dependency/hold/failure evidence permits re-estimation
+inside that original window. Expiry projects a partial/PARK result with retained
+evidence and blocks further dispatch; no daemon or automatic paid reviewer runs.
+PIVOT/PARK pause the lane. New tasks/objective corrections still require their
+usual authorization, policy, loop and evidence checks. Direct host work follows
+the skill's identical finite-window contract without inventing a durable Run.
+
+Tested agent-chosen examples (not automatic duration presets): a small known-path
+check at 120 seconds / 8 turns / 2,000 retained bytes; an uncertain independent
+dependency at 900 seconds / 20 turns / 6,000 bytes inside a larger task grant;
+and a request narrowed by its owner to 45 seconds / 3 turns / 1,000 bytes.
+An absolute owner deadline or smaller global remainder further narrows any
+example. Atomic admission captures the effective grant before dispatch, so an
+intervening completed owner cannot leave a ticket with stale larger headroom.
+
 Tasks have explicit dependencies, mutable paths, worker profile, workspace,
 risk, criterion references, artifacts, gate, retry/checkpoint policy, attempts,
 lease, bounded WorkPacket, and optional side-effect reconciliation state.
