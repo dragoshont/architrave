@@ -173,7 +173,9 @@ function request(args, action, invocation) {
   if (!trustRelation.startsWith("..") && !isAbsolute(trustRelation)) {
     throw new Error("Trusted native installation cannot be inside the target repository");
   }
-  return { repo, action, runId: args.run_id, taskId: args.task_id, owner: session.sessionId };
+  return { repo, action, runId: args.run_id, taskId: args.task_id, owner: session.sessionId,
+    nativeInstallation: { version: installed.version, extensionSha256: installed.extensionSha256,
+      provenance: "executing user-installed extension manifest; pinned files rechecked" } };
 }
 
 const tools = [
@@ -287,9 +289,15 @@ const tools = [
       ...(action === "recover" ? { checkpoint_id: { type: "string", enum: ["native-adapter-required"] } } : {}),
     }, required: action === "gate" ? ["repo", "run_id", "task_id"] : ["repo", "run_id"], additionalProperties: false },
     handler: async (args, invocation) => {
-      await hostTasks();
+      const observedTasks = await hostTasks();
       const input = { ...request(args, action, invocation), recipe: args.recipe, ciRunId: args.ci_run_id,
-        checkpointId: args.checkpoint_id };
+        checkpointId: args.checkpoint_id,
+        hostWorkers: {
+          visibility: "OBSERVED", source: "joined supported tasks RPC, this session only",
+          observedAt: new Date().toISOString(),
+          activeCount: observedTasks.filter(task => task.type === "agent" && task.status === "running").length,
+          idleProven: false, allSessionsObserved: false,
+        } };
       const connection = pipe(input);
       try { return result(await connection.next()); }
       finally { await connection.close(); }

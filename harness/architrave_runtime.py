@@ -136,7 +136,7 @@ TARGET_OPERATIONS = {"launch", "test", "install"}
 PRIMARY_STALL_THRESHOLD = 3
 PRIMARY_RESULT_EVENTS = {"worker.finished", "task.completed", "task.failed"}
 PRIMARY_BOUND_EVENTS = PRIMARY_RESULT_EVENTS | {
-    "gate.passed", "gate.failed", "gate.recorded", "acceptance.updated", "product.progress",
+    "gate.passed", "gate.failed", "gate.recorded", "acceptance.updated", "product.progress", "product.milestone",
 }
 OBSERVED_OUTCOME_TYPES = {"reality", "e2e", "external"}
 PUSHBACK_VERDICTS = {"KEEP", "CUT", "DEFER"}
@@ -1392,6 +1392,7 @@ class RunStore:
                 or checkpoint["status"] != "PENDING"
                 or checkpoint["type"] != "HUMAN_JUDGMENT_REQUIRED"
                 or checkpoint.get("policyAmendment") is not None
+                or checkpoint.get("focusCorrection") is not None
                 or checkpoint["objectiveVersion"] != state["objective"]["version"]
                 or hashlib.sha256(str(challenge).encode("utf-8")).hexdigest() != checkpoint["challengeHash"]
                 or actor != f"human:{checkpoint['principal']}"
@@ -1865,6 +1866,129 @@ class RunStore:
             actor=actor,
             evidence_refs=product_evidence_refs,
         )
+
+    def advance_milestone(self, run_id: str, task_id: str, *, criterion_id: str,
+                          milestone: str, gate_ref: str) -> dict[str, Any]:
+        """Record verified intermediate progress, never criterion completion."""
+        from worker_adapters import workspace_fingerprint
+        if not milestone.strip() or len(milestone) > 160:
+            raise RuntimeFailure("MILESTONE_INVALID", "one compact milestone label is required")
+
+        def mutate(state):
+            self._assert_repository_baseline(state)
+            task = find_task(state, task_id)
+            if task["objectiveVersion"] != state["objective"]["version"] or criterion_id not in task["acceptanceCriteria"]:
+                raise RuntimeFailure("MILESTONE_BINDING", "milestone must belong to the current task/criterion")
+            require_evidence_refs(state, [gate_ref], allowed={"gate"})
+            gate = next(item for item in state["gateResults"] if f"gate:{item['id']}" == gate_ref)
+            if (gate["taskId"] != task_id or criterion_id not in gate["criteria"]
+                    or gate["objectiveVersion"] != state["objective"]["version"]
+                    or gate["type"] not in {"reality", "e2e"}):
+                raise RuntimeFailure("MILESTONE_BINDING", "a matching current task product gate is required")
+            refs = set(gate["evidenceRefs"])
+            artifacts = [item for item in state["artifacts"] if f"artifact:{item['id']}" in refs]
+            if not artifacts or any(item["producer"] != "legibility" for item in artifacts):
+                raise RuntimeFailure("MILESTONE_PRODUCER", "only executor-produced product legibility observations advance milestones")
+            current = workspace_fingerprint(self.repository, include_ignored=False)
+            substantive = []
+            for artifact in artifacts:
+                receipt = self._read_json_receipt(artifact["path"], "milestone")
+                binding = receipt.get("binding", {})
+                source = receipt.get("source", {})
+                if (binding.get("runId") != run_id or binding.get("taskId") != task_id
+                        or binding.get("objectiveVersion") != state["objective"]["version"]
+                        or criterion_id not in binding.get("criteria", [])
+                        or source.get("commit") != state["baseline"]["commit"] or source.get("sha256") != current):
+                    raise RuntimeFailure("MILESTONE_SOURCE_STALE", "product observation lacks exact current source/task/criterion binding")
+                results = [{key: value for key, value in result.items() if key != "artifacts"}
+                           | {"artifactDigests": sorted(item["sha256"] for item in result.get("artifacts", []))}
+                           for result in receipt["results"]]
+                substantive.append({"surface": receipt["surface"], "results": results})
+            digest = sha256_value(substantive)
+            events = self._read_events(self.run_dir(run_id))
+            if any(event["type"] == "product.milestone" and event["payload"].get("criterionId") == criterion_id
+                   and event["payload"].get("observationDigest") == digest for event in events):
+                raise RuntimeFailure("MILESTONE_REPLAY", "identical product observation cannot count twice")
+            return {"taskId": task_id, "criterionId": criterion_id, "milestone": milestone.strip(),
+                    "observationDigest": digest, "source": {"commit": state["baseline"]["commit"], "sha256": current},
+                    "criterionCompleted": False}
+
+        return self._transaction(run_id, mutate, event_type="product.milestone",
+                                 task_id=task_id, evidence_refs=[gate_ref])
+
+    def request_focus_correction(self, run_id: str, task_id: str, *, paths: Sequence[str],
+                                 principal: str, actor: str, checkpoint_id: str) -> tuple[dict[str, Any], str]:
+        """Owner challenge for primary path facts only, not a generic repair grant."""
+        from worker_adapters import workspace_fingerprint
+        corrected = [safe_relative_path(path, "primary path") for path in paths]
+        if not corrected or actor != f"human:{principal}":
+            raise RuntimeFailure("FOCUS_CORRECTION_AUTHORITY", "owner principal and nonempty repository paths required")
+        state = self.load(run_id)
+        task = find_task(state, task_id)
+        primary = state["focus"].get("primaryCriterion")
+        if not primary or primary["id"] not in task["acceptanceCriteria"] or task["lease"] or task["status"] == "RUNNING":
+            raise RuntimeFailure("FOCUS_CORRECTION_UNSAFE", "settled current primary-bound task required")
+        for path in corrected:
+            self._assert_focus_path(path)
+        revision = state["revision"]
+        source = workspace_fingerprint(self.repository, include_ignored=False)
+        challenge = "arc_" + secrets.token_urlsafe(32)
+        def mutate(current):
+            if current["revision"] != revision or find_task(current, task_id)["objectiveVersion"] != current["objective"]["version"]:
+                raise RuntimeFailure("FOCUS_CORRECTION_STALE", "task/objective changed before owner challenge")
+            for path in corrected:
+                self._assert_focus_path(path)
+            if any(item["id"] == checkpoint_id for item in current["externalCheckpoints"]):
+                raise RuntimeFailure("EXTERNAL_CHECKPOINT_EXISTS", "correction checkpoint already exists")
+            current["externalCheckpoints"].append({
+                "id": require_id(checkpoint_id, "checkpoint"), "taskId": task_id,
+                "type": "HUMAN_JUDGMENT_REQUIRED", "principal": principal, "provider": "focus-correction",
+                "reason": "Owner-bound factual primary-path correction only; no PASS, baseline, hold or budget repair.",
+                "createdAt": utc_now(), "status": "PENDING", "resumeTask": task_id,
+                "objectiveVersion": current["objective"]["version"], "targetBindingHash": None,
+                "policyAmendment": None, "challengeHash": hashlib.sha256(challenge.encode()).hexdigest(),
+                "resolutionRef": None, "focusCorrection": {"paths": corrected, "revision": revision + 1, "source": source},
+            })
+            return {"checkpointId": checkpoint_id, "paths": corrected, "taskId": task_id}
+        return self._transaction(run_id, mutate, event_type="focus.correction_requested", actor=actor, task_id=task_id), challenge
+
+    def _assert_focus_path(self, path: str) -> None:
+        candidate = self.repository
+        for component in Path(safe_relative_path(path, "primary path")).parts:
+            candidate = candidate / component
+            try:
+                info = candidate.lstat()
+            except OSError as exc:
+                raise RuntimeFailure("FOCUS_CORRECTION_PATH", "corrected path must exist in this repository") from exc
+            if stat.S_ISLNK(info.st_mode) or _is_reparse_point(info):
+                raise RuntimeFailure("FOCUS_CORRECTION_PATH", "symlink/junction/reparse correction paths are not accepted")
+        try:
+            candidate.resolve().relative_to(self.repository)
+        except ValueError as exc:
+            raise RuntimeFailure("FOCUS_CORRECTION_PATH", "corrected path resolves outside this repository") from exc
+
+    def apply_focus_correction(self, run_id: str, checkpoint_id: str, *, challenge: str, actor: str) -> dict[str, Any]:
+        from worker_adapters import workspace_fingerprint
+        def mutate(state):
+            checkpoint = next((item for item in state["externalCheckpoints"] if item["id"] == checkpoint_id), None)
+            correction = checkpoint.get("focusCorrection") if checkpoint else None
+            if (not correction or checkpoint["status"] != "PENDING"
+                    or actor != f"human:{checkpoint['principal']}"
+                    or hashlib.sha256(challenge.encode()).hexdigest() != checkpoint["challengeHash"]
+                    or state["revision"] != correction["revision"]
+                    or checkpoint["objectiveVersion"] != state["objective"]["version"]
+                    or workspace_fingerprint(self.repository, include_ignored=False) != correction["source"]):
+                raise RuntimeFailure("FOCUS_CORRECTION_STALE", "owner challenge/source/revision/objective mismatch")
+            task = find_task(state, checkpoint["taskId"])
+            for path in correction["paths"]:
+                self._assert_focus_path(path)
+            if task.get("lease") or task["status"] == "RUNNING":
+                raise RuntimeFailure("HOST_PAUSE_REQUIRED", "settle the actual owner before correction")
+            state["focus"]["primaryCriterion"]["paths"] = correction["paths"]
+            checkpoint.update(status="RESOLVED", resolvedAt=utc_now(), resolvedBy=actor,
+                              resolutionRef=f"focus:{state['revision'] + 1}")
+            return {"checkpointId": checkpoint_id, "correctedPaths": correction["paths"], "factsOnly": True}
+        return self._transaction(run_id, mutate, event_type="focus.corrected", actor=actor)
 
     def record_feasibility(
         self, run_id: str, task_id: str, *, trigger: str, decision: str,
@@ -3424,6 +3548,8 @@ class RunStore:
         refs = {ref for gate in state["gateResults"] if gate["id"] in gate_ids for ref in gate["evidenceRefs"]}
         observed_source = None
         for artifact in state["artifacts"]:
+            if f"artifact:{artifact['id']}" in refs and artifact["producer"] == "legibility":
+                self._assert_product_binding(state, artifact, task_id=None, criteria=None)
             if f"artifact:{artifact['id']}" not in refs or artifact["producer"] != "deterministic":
                 continue
             receipt = self._read_json_receipt(artifact["path"], "deterministic")
@@ -3442,6 +3568,24 @@ class RunStore:
                 or receipt["source"]["sha256"] != observed_source
             ):
                 raise RuntimeFailure("EVIDENCE_SOURCE_STALE", "deterministic evidence no longer matches current source/objective/task/risk")
+
+    def _assert_product_binding(self, state: dict[str, Any], artifact: dict[str, Any],
+                                *, task_id: str | None, criteria: Sequence[str] | None) -> None:
+        from worker_adapters import workspace_fingerprint
+        receipt = self._read_json_receipt(artifact["path"], "product")
+        binding = receipt.get("binding")
+        if binding is None:
+            return  # Historical receipts remain readable; milestone advancement rejects them.
+        source = receipt.get("source", {})
+        bound_task = find_task(state, binding["taskId"]) if binding.get("taskId") else None
+        if (binding.get("runId") != state["runId"]
+                or binding.get("objectiveVersion") != state["objective"]["version"]
+                or bound_task and bound_task["objectiveVersion"] != state["objective"]["version"]
+                or task_id is not None and binding.get("taskId") != task_id
+                or criteria is not None and not set(criteria).issubset(binding.get("criteria", []))
+                or source.get("commit") != run_command(["git", "rev-parse", "HEAD"], self.repository)
+                or source.get("sha256") != workspace_fingerprint(self.repository, include_ignored=False)):
+            raise RuntimeFailure("EVIDENCE_SOURCE_STALE", "frozen product receipt no longer binds current task/objective/source")
 
     def record_gate(
         self,
@@ -3521,6 +3665,9 @@ class RunStore:
             if status == "PASS":
                 require_evidence_refs(state, evidence_refs, allowed={"artifact", "external"})
                 artifact_ids = [reference.split(":", 1)[1] for reference in evidence_refs if reference.startswith("artifact:")]
+                for artifact in state["artifacts"]:
+                    if artifact["id"] in artifact_ids and artifact["producer"] == "legibility":
+                        self._assert_product_binding(state, artifact, task_id=task_id, criteria=bound_criteria)
                 if task_id is not None and any(
                     f"task:{task_id}" not in artifact["evidenceRefs"]
                     for artifact in state["artifacts"]
@@ -3926,6 +4073,8 @@ class RunStore:
                 raise RuntimeFailure("EXTERNAL_CHECKPOINT_NOT_FOUND", f"checkpoint not found: {checkpoint_id}")
             if checkpoint["status"] != "PENDING":
                 raise RuntimeFailure("EXTERNAL_CHECKPOINT_TERMINAL", "checkpoint is not pending")
+            if checkpoint.get("focusCorrection") is not None:
+                raise RuntimeFailure("FOCUS_CORRECTION_AUTHORITY", "use the exact factual correction API, not generic hold resolution")
             if checkpoint.get("policyAmendment") is not None:
                 raise RuntimeFailure(
                     "POLICY_AMENDMENT_REQUIRED",
@@ -5557,6 +5706,16 @@ def primary_criterion_status(
             streak += 1
     failed_attempts = primary_failures(state, events, primary["id"])
     open_criterion = criterion_status not in {"PASS", "NOT_APPLICABLE"}
+    milestones = [event for event in events if event["sequence"] > primary["eventSequence"]
+                  and event["type"] == "product.milestone" and event["payload"].get("criterionId") == primary["id"]]
+    milestone_at = parse_iso(milestones[-1]["timestamp"]) if milestones else parse_iso(primary["declaredAt"])
+    milestone_sequence = milestones[-1]["sequence"] if milestones else primary["eventSequence"]
+    work_since = [label for timestamp, _, label, _ in timeline
+                  if (label.startswith("event:") and int(label.split(":")[1]) > milestone_sequence)
+                  or not label.startswith("event:") and (timestamp > milestone_at if milestones else timestamp >= milestone_at)]
+    leased = [task["id"] for task in state["tasks"] if primary["id"] in task["acceptanceCriteria"]
+              and task["objectiveVersion"] == state["objective"]["version"] and task["status"] == "RUNNING"
+              and task.get("lease") and parse_iso(task["lease"]["expiresAt"]) > dt.datetime.now(dt.timezone.utc)]
     return {
         "id": primary["id"],
         "criterionStatus": criterion_status,
@@ -5567,6 +5726,10 @@ def primary_criterion_status(
         "stalled": open_criterion and streak >= primary["threshold"],
         "failedAttempts": failed_attempts,
         "loopCapped": open_criterion and len(failed_attempts) >= primary["threshold"],
+        "verifiedMilestones": len(milestones), "lastVerifiedMilestone": milestones[-1]["payload"]["milestone"] if milestones else None,
+        "workSinceMilestone": len(work_since), "pathTouchIsProductEvidence": False,
+        "milestoneReviewNeeded": open_criterion and len(work_since) >= primary["threshold"] and not leased,
+        "liveBoundTasks": leased,
     }
 
 
@@ -5777,6 +5940,23 @@ def stalled_primary_escalation(stall: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def runtime_identity() -> dict[str, Any]:
+    """Loaded module bytes, not a claim about host prompts or plugin registry."""
+    root = Path(__file__).resolve().parents[1]
+    manifest = root / "plugin.json"
+    stamp = root / "gates" / ".kit-version"
+    version = None
+    if manifest.is_file():
+        version = json.loads(manifest.read_text(encoding="utf-8")).get("version")
+    elif stamp.is_file():
+        version = stamp.read_text(encoding="utf-8").strip()
+    files = [Path(__file__).resolve(), root / "agents" / "architrave.agent.md", root / "skills" / "architrave-cto" / "SKILL.md"]
+    digests = {path.relative_to(root).as_posix(): sha256_file(path) for path in files if path.is_file()}
+    return {"version": version, "fingerprint": sha256_value(digests), "source": "executing module filesystem",
+            "installedPlugin": "UNKNOWN (query supported host registry)", "sessionLoadedInstructions": "UNKNOWN",
+            "adoptedKitVersion": stamp.read_text(encoding="utf-8").strip() if stamp.is_file() else None}
+
+
 def state_summary(state: dict[str, Any]) -> dict[str, Any]:
     from worker_adapters import workspace_fingerprint
 
@@ -5831,6 +6011,12 @@ def state_summary(state: dict[str, Any]) -> dict[str, Any]:
         "staleWorkers": [worker["id"] for worker in state["workers"]
                         if worker["status"] == "RUNNING" and worker["id"] not in active_worker_ids],
         "evidence": evidence,
+        "runtime": runtime_identity(),
+        "hostWorkers": {"visibility": "UNKNOWN", "source": "canonical Run cannot observe direct host sessions",
+                        "idleProven": False},
+        "reconciliation": {"required": state["baseline"]["commit"] != current_commit,
+                           "automaticRepair": False, "humanHoldsPreserved": True,
+                           "action": "owner-bound objective/path correction and explicit resume/reconciliation; never substitute chat PASS"},
     }
     missing_pushback = [task["id"] for task in state["tasks"]
                         if "pushback" not in task and task.get("objectiveVersion") == state["objective"]["version"]]
@@ -5852,10 +6038,17 @@ def state_summary(state: dict[str, Any]) -> dict[str, Any]:
     if state["focus"].get("primaryCriterion"):
         stall = primary_criterion_status(state, events, repository)
         summary["primaryCriterion"] = stall
-        if stall and stall["loopCapped"]:
+        if state["baseline"]["commit"] != current_commit:
+            summary["primaryCriterion"]["freshness"] = "STALE_SOURCE"
+            summary["feasibilityAdvice"] = {"reason": "Run/source mismatch; stale stall projection is not product failure",
+                                          "action": "owning coordinator reconciles current objective/path/source at a safe boundary"}
+        elif stall and stall["loopCapped"]:
             summary["escalation"] = primary_stalled_escalation(stall)
-        elif stall and stall["stalled"]:
+        elif stall and stall["stalled"] and not stall["liveBoundTasks"]:
             summary["escalation"] = stalled_primary_escalation(stall)
+        elif stall and stall["milestoneReviewNeeded"]:
+            summary["feasibilityAdvice"] = {"reason": "Activity without a verified product milestone",
+                                          "action": "on-demand CTO bounded discriminating check; not a product FAIL or a time-based halt"}
     lint = owner_message_lint(" ".join(
         str(text) for text in (summary["objective"], summary["nextCheapestTest"],
                                (summary.get("escalation") or {}).get("message")) if text))
@@ -5867,6 +6060,9 @@ def state_summary(state: dict[str, Any]) -> dict[str, Any]:
 def owner_message_lint(text: str) -> dict[str, Any] | None:
     """Owner summaries fail when dense with full SHAs, PIDs, run-* IDs, or UUIDs (evidence payloads are exempt)."""
     findings = [match.group(0) for pattern in OWNER_MESSAGE_NOISE for match in pattern.finditer(text)]
+    if len(text) > 2400:
+        return {"code": "OWNER_MESSAGE_LINT_FAIL", "findings": ["owner summary exceeds 2400 characters"],
+                "message": "send only the actionable correction; keep machine evidence by reference"}
     if len(findings) < 3:
         return None
     return {"code": "OWNER_MESSAGE_LINT_FAIL", "findings": findings,
@@ -5905,6 +6101,24 @@ def build_parser() -> argparse.ArgumentParser:
     recover = subparsers.add_parser("worker-recover", help="close expired/orphan workers without replaying side effects")
     recover.add_argument("run_id")
     recover.add_argument("--task-id", help="explicitly release one failed, side-effect-free task for a new candidate")
+    milestone = subparsers.add_parser("milestone-advance", help="source-bound verified intermediate progress, never criterion PASS")
+    milestone.add_argument("run_id")
+    milestone.add_argument("task_id")
+    milestone.add_argument("--criterion", required=True)
+    milestone.add_argument("--milestone", required=True)
+    milestone.add_argument("--gate", required=True)
+    correction = subparsers.add_parser("focus-correction-request", help="owner-bound correction of primary repository paths only")
+    correction.add_argument("run_id")
+    correction.add_argument("task_id")
+    correction.add_argument("--path", action="append", required=True)
+    correction.add_argument("--principal", required=True)
+    correction.add_argument("--actor", required=True)
+    correction.add_argument("--id", required=True)
+    apply_focus = subparsers.add_parser("focus-correction-apply")
+    apply_focus.add_argument("run_id")
+    apply_focus.add_argument("checkpoint_id")
+    apply_focus.add_argument("--challenge", required=True)
+    apply_focus.add_argument("--actor", required=True)
 
     feasibility = subparsers.add_parser("feasibility-record", help="record an on-demand, finite evidence-driven lane decision")
     feasibility.add_argument("run_id")
@@ -6196,6 +6410,16 @@ def cli(argv: Sequence[str] | None = None) -> int:
                     actor=args.actor,
                 )
             )
+        elif command == "milestone-advance":
+            output = state_summary(store.advance_milestone(args.run_id, args.task_id, criterion_id=args.criterion,
+                                                          milestone=args.milestone, gate_ref=args.gate))
+        elif command == "focus-correction-request":
+            state, challenge = store.request_focus_correction(args.run_id, args.task_id, paths=args.path,
+                principal=args.principal, actor=args.actor, checkpoint_id=args.id)
+            output = {**state_summary(state), "resolutionChallenge": challenge}
+        elif command == "focus-correction-apply":
+            output = state_summary(store.apply_focus_correction(args.run_id, args.checkpoint_id,
+                challenge=args.challenge, actor=args.actor))
         elif command == "feasibility-record":
             output = state_summary(store.record_feasibility(
                 args.run_id, args.task_id, trigger=args.trigger, decision=args.decision,

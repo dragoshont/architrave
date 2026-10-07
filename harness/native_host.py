@@ -61,7 +61,11 @@ def main():
         action = request["action"]
         run_id = request["runId"]
         if action == "status":
-            emit({"status": "ok", "result": state_summary(store.load(run_id))})
+            summary = state_summary(store.load(run_id))
+            summary["hostWorkers"] = request.get("hostWorkers") or summary["hostWorkers"]
+            summary["runtime"]["joinedHostOwner"] = request.get("owner")
+            summary["runtime"]["nativeInstallation"] = request.get("nativeInstallation")
+            emit({"status": "ok", "result": summary})
             return 0
         if action == "recover":
             if request.get("checkpointId"):

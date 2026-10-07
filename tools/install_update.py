@@ -1318,7 +1318,39 @@ def parser() -> argparse.ArgumentParser:
     executor.add_argument("--reconcile-outcome", choices=("applied-closed", "closed-unknown"))
     executor.add_argument("--reconcile-process-id", type=int)
     subcommands.add_parser("native-host-install", help="install the minimal joined Copilot host extension and pinned Python bridge")
+    adoption = subcommands.add_parser("adoption-status", help="read-only version/hash provenance, never session-loaded proof")
+    adoption.add_argument("target", nargs="?", default=".")
     return result
+
+
+def adoption_status(kit: Path, target: Path) -> int:
+    """Read-only bytes/provenance; never claims a host loaded these instructions."""
+    target = target.resolve()
+    paths = {
+        "harness/architrave_runtime.py": "harness/architrave_runtime.py",
+        "gates/gate_runner.py": "gates/gate_runner.py",
+        "agents/architrave.agent.md": ".github/agents/architrave.agent.md",
+        "skills/architrave-cto/SKILL.md": None,
+    }
+    identities = {}
+    for source, destination in paths.items():
+        source_file = kit / source
+        installed_file = target / destination if destination else None
+        identities[source] = {
+            "sourceSha256": sha256_file(source_file),
+            "adoptedSha256": sha256_file(installed_file) if installed_file and installed_file.is_file() else None,
+            "match": source_file.read_bytes() == installed_file.read_bytes() if installed_file and installed_file.is_file() else None,
+        }
+    stamp = target / "gates/.kit-version"
+    print(json.dumps({
+        "sourceVersion": plugin_version(kit, "adoption-status"), "sourcePath": str(kit.resolve()),
+        "adoptedKitVersion": stamp.read_text(encoding="utf-8").strip() if stamp.is_file() else None,
+        "target": str(target), "identities": identities, "provenance": "read-only exact filesystem bytes",
+        "sessionLoadedInstructions": "UNKNOWN; require host-loaded skill event/new-session observation",
+        "hostWorkers": "UNKNOWN; query supported owner surface, not canonical activeWorkers",
+        "consumerRunRepair": "not performed; owner-bound public APIs only", "mutationPerformed": False,
+    }, indent=2))
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1331,6 +1363,8 @@ def main(argv: list[str] | None = None) -> int:
             return update(args, kit)
         if args.command == "native-host-install":
             return install_native_host(kit)
+        if args.command == "adoption-status":
+            return adoption_status(kit, Path(args.target))
         return install_exact_target_executor(args, kit)
     except InstallerError as exc:
         if str(exc):

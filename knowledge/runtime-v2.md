@@ -74,6 +74,45 @@ manufacture PASS.
 
 ## Focus and correction controls
 
+### 0.14 factual visibility and owner correction
+
+`status` distinguishes executing module fingerprint, copied kit stamp and
+session-loaded instructions (UNKNOWN without supported host provenance).
+`activeWorkers` is canonical-only. The joined extension observes this session's
+tasks; it does not certify every app/chat idle. Unknown visibility does not block
+cheap direct work or imply zero budget. Source drift labels the stall projection
+stale rather than declaring a current product failure.
+
+`milestone-advance RUN TASK --criterion ID --milestone "observed slice"
+--gate gate:ID` consumes an existing product legibility observation bound to the
+exact current task/criterion/objective/source. Control tests, coordinator files,
+chat claims, wrong producer, stale source and duplicate substantive observations
+cannot advance it. It does not set criterion PASS. Path/commit activity stays a
+separate proxy; milestone-free churn requests bounded feasibility review, not an
+automatic time-based halt. An unexpired bound lease suppresses idle/stall advice
+while real scoped work is in flight. Intermediate exploratory milestones must
+describe verified observable behavior, not each compatibility patch.
+
+For outdated primary paths, the owning coordinator uses
+`focus-correction-request RUN TASK --path PATH --principal OWNER --actor
+human:OWNER --id CHECKPOINT`, then `focus-correction-apply RUN CHECKPOINT
+--challenge VALUE --actor human:OWNER`. The one-use owner challenge binds
+revision/task/objective/source and existing repository paths. Only primary paths
+change. Budgets, attempts, side effects, baseline, candidates, acceptance and
+auth/consent/product holds are preserved. Source/revision drift rejects it.
+Objective strategy changes still use `objective-replace`; explicit accepted
+baseline reconciliation uses `resume --accept-commit`, never a silent status fix.
+Closed-resource observation uses trusted `reconcile-attest`. No cross-repository
+path correction certifies another application's outcome.
+
+At a safe boundary run the published installer `adoption-status TARGET`, then
+`update --agents TARGET` only for authorized consumers. It preserves product
+code/config/custom agents and ignored Run state; verify matching hashes and load
+the updated skill in a new supported turn/session. A file update alone is not a
+loaded-context receipt. Do not interrupt gameplay, authentication prompts or
+user-paused work for harness adoption; report inactive/deferred/UNCONFIRMED
+honestly and give a concrete safe handoff.
+
 The current objective is versioned and singular. An explicit correction or
 priority change replaces it, emits `objective.replaced`, marks prior nonterminal
 tasks `DEFERRED`, releases their leases, fails their active workers, resets

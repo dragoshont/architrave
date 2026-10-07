@@ -7,6 +7,12 @@ Releases at or before **v0.8.12** are on the
 
 ## Unreleased
 
+### Planned
+- Add a public Run cancel/supersede transition and make invalid unstarted-task
+  intake terminal instead of retry-ready.
+
+## [0.14.0] - 2026-10-07
+
 ### Added
 - On-demand CTO feasibility reset for owner requests or established stall,
   repeated-failure and budget signals. The agent chooses finite evidence-driven
@@ -16,10 +22,21 @@ Releases at or before **v0.8.12** are on the
   task, clamps to task/owner/global limits, rejects unchanged-evidence renewals
   and clock resets, and renders expired decisions as partial/PARK. Human holds,
   candidates, recovery and mutation policy remain unchanged.
+- Provenance-separated runtime/adoption status; canonical worker lists never
+  prove all host sessions idle. Supported joined-task visibility is explicitly
+  session-scoped; missing loaded-context evidence remains UNKNOWN.
+- Source/task/criterion-bound intermediate product milestone advancement and
+  one-use owner primary-path correction, with unchanged acceptance/baselines,
+  human holds, side effects and adaptive budgets.
 
-### Planned
-- Add a public Run cancel/supersede transition and make invalid unstarted-task
-  intake terminal instead of retry-ready.
+### Changed
+- Path touches remain activity proxies, not product milestones. Source drift
+  labels stale stall projections; live bound leases suppress idle/stall advice.
+- CTO corrections distinguish hypotheses, reproduction and verified evidence,
+  with cheapest parity probes before risky advice and actionable bounded
+  owner handoffs.
+- Generic process-growth management is deferred; risky experimental commands
+  need supported exact-owned-tree controls, never broad name-based cleanup.
 
 ## [0.13.0] - 2026-10-06
 

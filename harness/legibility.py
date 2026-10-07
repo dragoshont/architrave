@@ -15,9 +15,9 @@ import zlib
 from typing import Any, Callable, Sequence
 from urllib.parse import urlsplit
 
-from architrave_runtime import RunStore, RuntimeFailure, redact, utc_now
+from architrave_runtime import RunStore, RuntimeFailure, find_task, redact, run_command, utc_now
 from platform_launch import LaunchError, configured_shell_command
-from worker_adapters import bounded_environment, run_bounded
+from worker_adapters import bounded_environment, run_bounded, workspace_fingerprint
 
 
 def load_config(repository: Path) -> dict[str, Any]:
@@ -128,6 +128,9 @@ class LegibilityRunner:
         self.repository = Path(repository).resolve()
         self.store = RunStore(self.repository)
         self.run_id = run_id
+        self.observed_objective = self.store.load(run_id)["objective"]["version"]
+        self.observed_source = {"commit": run_command(["git", "rev-parse", "HEAD"], self.repository),
+                                "sha256": workspace_fingerprint(self.repository, include_ignored=False)}
         self.config = load_config(self.repository)
         self.runtime = self.config.get("runtime") or {}
         self.evidence_dir = self.store.run_dir(run_id) / "legibility"
@@ -293,8 +296,25 @@ class LegibilityRunner:
         task_id: str | None,
     ) -> dict[str, Any]:
         failed = [result["name"] for result in results if result["status"] in {"fail", "missing"}]
+        state = self.store.load(self.run_id)
+        if (state["objective"]["version"] != self.observed_objective
+                or workspace_fingerprint(self.repository, include_ignored=False) != self.observed_source["sha256"]):
+            raise RuntimeFailure("LEGIBILITY_SOURCE_DRIFT", "source/objective changed during product observation")
+        bound_criteria = (find_task(state, task_id)["acceptanceCriteria"] if task_id else [
+            item["id"] for item in state["acceptanceCriteria"] if item["blocking"]
+            and item.get("surface") == surface])
+        if not task_id and not bound_criteria and not failed:
+            raise RuntimeFailure("GATE_BINDING_REQUIRED", "taskless observation needs explicit criterion surface ownership")
+        if not bound_criteria and failed:
+            bound_criteria = [item["id"] for item in state["acceptanceCriteria"] if item["blocking"]]
         receipt_path = self.evidence_dir / f"{surface}-{uuid.uuid4().hex}.receipt.json"
         receipt = {
+            "binding": {
+                "runId": self.run_id, "taskId": task_id,
+                "objectiveVersion": self.observed_objective,
+                "criteria": bound_criteria,
+            },
+            "source": self.observed_source,
             "surface": surface,
             "status": "pass" if not failed else "fail",
             "failed": failed,
@@ -337,6 +357,7 @@ class LegibilityRunner:
                 task_id=task_id,
                 gate_type="reality",
                 status=status,
+                criteria=bound_criteria,
                 evidence_refs=evidence_refs,
                 surface=surface,
             )

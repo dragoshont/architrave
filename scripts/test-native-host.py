@@ -16,7 +16,8 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "harness"))
-from architrave_runtime import RunStore, RuntimeFailure, effective_work_budget, feasibility_status, primary_failures, state_summary
+from architrave_runtime import RunStore, RuntimeFailure, effective_work_budget, feasibility_status, primary_failures, primary_criterion_status, state_summary
+from worker_adapters import workspace_fingerprint
 
 _fixture_add_task = RunStore.add_task
 RunStore.add_task = lambda self, run_id, task, actor="coordinator": _fixture_add_task(
@@ -27,6 +28,185 @@ from native_host import routing_observation
 
 
 class NativeHostTests(unittest.TestCase):
+    def test_host_visibility_is_unknown_not_idle_and_stale_source_is_not_current_stall(self):
+        run_id, task_id = self.task("shell")
+        summary = state_summary(self.store.load(run_id))
+        self.assertEqual([], summary["activeWorkers"])
+        self.assertEqual("UNKNOWN", summary["hostWorkers"]["visibility"])
+        self.assertFalse(summary["hostWorkers"]["idleProven"])
+        self.assertEqual("UNKNOWN", summary["runtime"]["sessionLoadedInstructions"])
+        self.assertIn("fingerprint", summary["runtime"])
+        (self.repo / "new.txt").write_text("new source", encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=self.repo, check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-qm", "source changed"], cwd=self.repo, check=True, capture_output=True)
+        summary = state_summary(self.store.load(run_id))
+        self.assertTrue(summary["reconciliation"]["required"])
+        self.assertFalse(summary["reconciliation"]["automaticRepair"])
+        self.assertEqual("UNTESTED", summary["acceptance"]["FIX"])
+
+    def test_adoption_status_is_read_only_and_installed_is_not_loaded(self):
+        run, task = self.task("shell")
+        before = (self.store.run_dir(run) / "run.json").read_bytes()
+        result = subprocess.run([sys.executable, str(ROOT / "tools/install_update.py"), "adoption-status", str(self.repo)],
+                                 capture_output=True, text=True, timeout=30)
+        self.assertEqual(0, result.returncode, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertFalse(report["mutationPerformed"])
+        self.assertIn("UNKNOWN", report["sessionLoadedInstructions"])
+        self.assertIsNone(report["adoptedKitVersion"])
+        self.assertEqual(before, (self.store.run_dir(run) / "run.json").read_bytes())
+
+    def test_owner_message_bound_keeps_machine_evidence_out_of_owner_wall(self):
+        from architrave_runtime import owner_message_lint
+        self.assertIsNotNone(owner_message_lint("evidence " * 400))
+        self.assertIsNone(owner_message_lint("Objective: actual product flow. Blocker: unknown mechanism. Next: one parity probe."))
+
+    def product_task(self):
+        run = self.store.create(
+            run_id="milestone", goal="Actual product progress", outcome="Product flow works",
+            autonomy_scope="approved-program", primary_criterion="FLOW", primary_paths=["README.md"],
+            criteria=[{"id": "FLOW", "description": "Observed product flow", "scope": "product",
+                       "risk": "R1", "verificationType": "reality", "surface": "web", "blocking": True}])
+        self.store.add_task("milestone", {"id": "flow", "objective": "Verify actual product",
+                                        "acceptanceCriteria": ["FLOW"], "risk": "R1", "workerProfile": "shell"})
+        return "milestone", "flow"
+
+    def product_gate(self, run, task, suffix):
+        state = self.store.load(run)
+        path = self.store.run_dir(run) / f"web-{suffix}.json"
+        receipt = {
+            "surface": "web", "status": "pass", "failed": [],
+            "binding": {"runId": run, "taskId": task, "objectiveVersion": state["objective"]["version"],
+                        "criteria": ["FLOW"]},
+            "source": {"commit": state["baseline"]["commit"], "sha256": workspace_fingerprint(self.repo, include_ignored=False)},
+            "results": [{"name": "runtime.health", "status": "pass"}, {"name": "web.e2e", "status": "pass"}],
+        }
+        path.write_text(json.dumps(receipt), encoding="utf-8")
+        self.store._record_legibility_result(run, artifact_id=f"product-{suffix}", kind="web-legibility",
+            path=path.relative_to(self.store.repository).as_posix(), evidence_refs=[f"task:{task}"])
+        self.store.record_gate(run, gate_id=f"gate-{suffix}", task_id=task, gate_type="reality", status="PASS",
+                               evidence_refs=[f"artifact:product-{suffix}"], criteria=["FLOW"])
+        return f"gate:gate-{suffix}"
+
+    def test_exact_milestone_does_not_complete_criterion_or_recount_identical_observation(self):
+        run, task = self.product_task()
+        gate = self.product_gate(run, task, "first")
+        state = self.store.advance_milestone(run, task, criterion_id="FLOW", milestone="Observed intermediate flow", gate_ref=gate)
+        self.assertEqual("UNTESTED", state["acceptanceCriteria"][0]["status"])
+        self.assertEqual(1, primary_criterion_status(state, self.store.events(run), self.repo)["verifiedMilestones"])
+        duplicate = self.product_gate(run, task, "second")
+        with self.assertRaises(RuntimeFailure) as error:
+            self.store.advance_milestone(run, task, criterion_id="FLOW", milestone="New label same evidence", gate_ref=duplicate)
+        self.assertEqual("MILESTONE_REPLAY", error.exception.code)
+        (self.repo / "README.md").write_text("stale product source", encoding="utf-8")
+        with self.assertRaises(RuntimeFailure) as error:
+            self.store.advance_milestone(run, task, criterion_id="FLOW", milestone="Stale flow", gate_ref=gate)
+        self.assertEqual("MILESTONE_SOURCE_STALE", error.exception.code)
+        fresh_same_result = self.product_gate(run, task, "source-churn")
+        with self.assertRaises(RuntimeFailure) as error:
+            self.store.advance_milestone(run, task, criterion_id="FLOW", milestone="Same observed flow after patch", gate_ref=fresh_same_result)
+        self.assertEqual("MILESTONE_REPLAY", error.exception.code)
+
+    def test_control_gate_cannot_become_product_milestone(self):
+        run, task = self.product_task()
+        (self.repo / "architrave.config.json").write_text(json.dumps({"kind": "knowledge","test":"echo control","build":"echo control"}))
+        self.store.start_task(run, task, worker_id="direct")
+        self.store.finish_worker(run, task, worker_id="direct", status="FINISHED")
+        gate = self.store.execute_gate(run, task)
+        with self.assertRaises(RuntimeFailure) as error:
+            self.store.advance_milestone(run, task, criterion_id="FLOW", milestone="control tests", gate_ref=gate["gateRef"])
+        self.assertEqual("MILESTONE_BINDING", error.exception.code)
+
+    def test_path_touch_activity_cannot_reset_product_milestone_and_live_bound_work_is_not_stalled(self):
+        run, task = self.product_task()
+        for number in range(3):
+            (self.repo / "README.md").write_text(f"compatibility patch {number}", encoding="utf-8")
+            subprocess.run(["git", "add", "README.md"], cwd=self.repo, check=True, capture_output=True)
+            subprocess.run(["git", "commit", "-qm", f"patch {number}"], cwd=self.repo, check=True, capture_output=True)
+        state = self.store.load(run)
+        summary = state_summary(state)
+        self.assertEqual("STALE_SOURCE", summary["primaryCriterion"]["freshness"])
+        self.assertNotIn("escalation", summary)
+        self.store.resume(run, accept_commit=True)
+        state = self.store.load(run)
+        primary = primary_criterion_status(state, self.store.events(run), self.repo)
+        self.assertEqual(0, primary["verifiedMilestones"])
+        self.assertTrue(primary["milestoneReviewNeeded"])
+        self.assertFalse(primary["pathTouchIsProductEvidence"])
+        self.store.start_task(run, task, worker_id="exploring-bounded")
+        state = self.store.load(run)
+        self.assertFalse(primary_criterion_status(state, self.store.events(run), self.repo)["milestoneReviewNeeded"])
+
+    def test_owner_path_correction_is_exact_and_preserves_auth_holds_budget_and_source_history(self):
+        run, task = self.product_task()
+        (self.repo / "Swift").mkdir()
+        (self.repo / "Swift" / "flow.swift").write_text("source", encoding="utf-8")
+        self.store.wait_external(run, checkpoint_id="auth", task_id=task, checkpoint_type="AUTH_REQUIRED",
+                                  principal="owner", provider="product", reason="Human sign in still needed")
+        before = self.store.load(run)
+        _, challenge = self.store.request_focus_correction(run, task, paths=["Swift"], principal="owner",
+                                                        actor="human:owner", checkpoint_id="correct-path")
+        after = self.store.apply_focus_correction(run, "correct-path", challenge=challenge, actor="human:owner")
+        self.assertEqual(["Swift"], after["focus"]["primaryCriterion"]["paths"])
+        for key in ("baseline", "acceptanceCriteria", "policy", "workers"):
+            self.assertEqual(before[key], after[key])
+        self.assertEqual("PENDING", after["externalCheckpoints"][0]["status"])
+        self.assertEqual(before["tasks"], after["tasks"])
+        with self.assertRaises(RuntimeFailure):
+            self.store.apply_focus_correction(run, "correct-path", challenge=challenge, actor="human:owner")
+
+    def test_owner_path_correction_cannot_cross_revision_source_or_principal(self):
+        run, task = self.product_task()
+        _, challenge = self.store.request_focus_correction(run, task, paths=["README.md"], principal="owner",
+                                                        actor="human:owner", checkpoint_id="correct-path")
+        with self.assertRaises(RuntimeFailure):
+            self.store.apply_focus_correction(run, "correct-path", challenge=challenge, actor="human:other")
+        self.store.policy_check(run, "repository", "edit")
+        with self.assertRaises(RuntimeFailure):
+            self.store.apply_focus_correction(run, "correct-path", challenge=challenge, actor="human:owner")
+        self.assertEqual(["README.md"], self.store.load(run)["focus"]["primaryCriterion"]["paths"])
+
+    def test_focus_correction_rejects_external_link_or_reparse_ancestor(self):
+        run, task = self.product_task()
+        outside = Path(self.temp.name) / "outside-repo"
+        outside.mkdir()
+        link = self.repo / "linked"
+        if sys.platform == "win32":
+            created = subprocess.run(["cmd.exe", "/c", "mklink", "/J", str(link), str(outside)], capture_output=True)
+            if created.returncode:
+                self.skipTest("Windows junction creation unavailable")
+        else:
+            link.symlink_to(outside, target_is_directory=True)
+        try:
+            with self.assertRaises(RuntimeFailure) as error:
+                self.store.request_focus_correction(run, task, paths=["linked"], principal="owner",
+                                                    actor="human:owner", checkpoint_id="invalid-link")
+            self.assertEqual("FOCUS_CORRECTION_PATH", error.exception.code)
+        finally:
+            if sys.platform == "win32":
+                link.rmdir()
+            else:
+                link.unlink()
+
+    def test_frozen_product_gate_rejects_objective_change_between_observation_and_registration(self):
+        run, task = self.product_task()
+        gate = self.product_gate(run, task, "before-correction")
+        _, challenge = self.store.wait_external(run, checkpoint_id="change", task_id=task,
+            checkpoint_type="HUMAN_JUDGMENT_REQUIRED", principal="owner", provider="owner",
+            reason="Explicit owner objective change")
+        self.store.replace_objective(run, outcome="A new objective using the same surface", criteria=[{
+            "id": "FLOW", "description": "Different actual outcome", "scope": "product",
+            "risk": "R1", "verificationType": "reality", "surface": "web", "blocking": True}],
+            correction="New authorized strategy.", next_cheapest_test="Observe new behavior.",
+            checkpoint_id="change", challenge=challenge, actor="human:owner")
+        with self.assertRaises(RuntimeFailure) as error:
+            self.store.record_gate(run, gate_id="new-objective-gate", task_id=task, gate_type="reality",
+                status="PASS", evidence_refs=["artifact:product-before-correction"], criteria=["FLOW"])
+        self.assertEqual("EVIDENCE_SOURCE_STALE", error.exception.code)
+        with self.assertRaises(RuntimeFailure):
+            self.store.set_criterion(run, "FLOW", "PASS", [gate])
+        self.assertEqual("UNTESTED", self.store.load(run)["acceptanceCriteria"][0]["status"])
+
     def feasibility(self, run_id, task_id, **overrides):
         values = {
             "trigger": "user", "decision": "BOUNDED_GO",

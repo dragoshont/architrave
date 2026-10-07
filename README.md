@@ -12,9 +12,16 @@ prove the requested product outcome actually occurred.
 
 ![Architrave — ground in the repo, route to specialists, gate with a judge plus real checks, then ship](assets/overview.png)
 
-## Latest news: v0.13.0
+## Latest news: v0.14.0
 
-The next architectural generation reduces the startup contract, loads lane and
+This release adds adaptive on-demand feasibility windows, truthful runtime/
+adoption provenance, verified intermediate milestones and guarded owner path
+correction. Empty canonical workers or a quiet parent never prove host idleness;
+path touches never prove product progress. Exact product/source evidence and
+human holds remain required. Current chats require explicit supported adoption
+receipts, not a blanket promise that plugin installation replaced their context.
+
+The previous architectural generation reduces the startup contract, loads lane and
 recovery detail on demand, and defaults to direct work. Native children are
 bounded at three active / depth one, with exclusive mutable ownership and a
 two-identical-failure stop. The Copilot bridge uses host lifecycle events instead
@@ -23,7 +30,7 @@ tickets. Policy, human holds, source identity, evidence and recovery stay bound.
 
 The controlled native A/B and host limitations are recorded in
 [`docs/orchestration-audit.md`](docs/orchestration-audit.md).
-Read the [full changelog](CHANGELOG.md#0130---2026-10-06).
+Read the [full changelog](CHANGELOG.md#0140---2026-10-07).
 After updating the plugin, refresh each adopted repository's copied kit assets
 using the [update instructions](#install).
 
@@ -69,6 +76,14 @@ using the [update instructions](#install).
 | **Adversarial Judge** | under the hood | Grades proposals and implementations against the rubric: PASS / REVISE / FAIL. Cross-family review is reserved for its configured risk floor. |
 
 ## Install
+
+After installation, verify copied-kit identities separately from the active
+chat: `python /path/to/architrave/tools/install_update.py adoption-status <repo>`.
+The result is filesystem provenance, **not** proof that an existing session
+loaded the new instructions. Update adopted kit assets at a safe owner boundary,
+then read/load the current skill in a supported new turn/session. Direct host
+workers outside the canonical Run are not counted by `activeWorkers`; absence
+there never proves idle. Inactive or user-paused sessions need no forced restart.
 
 Install the plugin once in your agent client:
 
@@ -310,7 +325,7 @@ window rather than assigning every review the same duration. A compact existing
 Run decision records the bounds/rationale and continue/smallest-viable/pivot/park
 choice; no periodic reviewer, new service or report pile. See the
 [`feasibility-record` contract](knowledge/runtime-v2.md#on-demand-feasibility-reset).
-This follow-up is unreleased until deliberately versioned/published.
+Its host-enforcement and unknown-telemetry limitations stay explicit.
 
 The next-generation harness is a dependency-free Python control plane:
 

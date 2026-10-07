@@ -289,6 +289,8 @@ class LegibilityTests(unittest.TestCase):
 
     def test_ios_lifecycle_runs_in_build_to_blank_screen_order(self) -> None:
         lifecycle = self.repo / "ios-lifecycle"
+        with (self.repo / ".gitignore").open("a", encoding="utf-8") as handle:
+            handle.write("\nios-lifecycle\n")
         screenshot = self.repo / "ios-lifecycle.png"
         self.write_png(screenshot, [(0, 0, 0), (255, 255, 255)])
         payload = {

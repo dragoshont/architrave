@@ -1,5 +1,21 @@
 # Roadmap
 
+## Milestone 10 - Truthful adaptive supervision (v0.14.0)
+
+- [x] Agent-estimated finite on-demand feasibility reset, cumulative observed
+  budgets, atomic admission and expiry/unknown-signal regressions.
+- [x] Provenance-separated executing/adopted/installed/loaded identities and
+  session-scoped native worker visibility; missing observations stay UNKNOWN.
+- [x] Exact source/task/criterion product milestones distinct from path-touch
+  activity, and one-use owner primary-path correction preserving human holds,
+  acceptance, policy, side effects, baseline and budget clocks.
+- [x] Product gate registration/completion reject frozen evidence from a
+  superseded objective or changed source; path correction rejects junctions.
+- [x] Hypothesis/reproduction/verified advice contract and bounded actionable
+  handoffs. No generic process manager, daemon or new dependency.
+- [ ] Final published-source installation and per-owner active adoption receipts
+  (inactive/deferred and unavailable loaded-context proof must remain explicit).
+
 ## Milestone 1 — Foundation (this commit)
 - [x] Architecture + adoption model (`README.md`)
 - [x] Per‑repo config schema (`kit/architrave.config.schema.json`) + example configs for PhonoDeck / Sideport / Tessera

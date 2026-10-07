@@ -15,6 +15,9 @@ verified evidence, blocker, next cheapest useful action.
 - **Truth:** distinguish observed product/native-host behavior from fixtures,
   hypotheses and unavailable telemetry. Ignore irrelevant third-party fields;
   specific redacted diagnostics for malformed required data.
+  Label advice HYPOTHESIS / REPRODUCED / VERIFIED with its source and cheapest
+  parity probe. No guessed credential, signing or provider root cause becomes
+  a repair instruction without reproduction. Runtime evidence outranks advice.
 - **Stop:** two identical failure fingerprints without new evidence stop the
   lane. No unchanged full-gate reruns or review swarms; batch findings. Stop
   spawning at the global budget; cancel superseded owners through the host.
@@ -69,3 +72,15 @@ and retained output bytes accumulate. Missing finished-owner turns block another
 dispatch, never imply zero spend. Global Run `turns` are a separate transition
 proxy, not model turns. Host cancellation/generation limits remain host-owned;
 missing controls are an explicit limitation. Never add a scheduler to compensate.
+
+Installed plugin, executing/adopted runtime and session-loaded instructions are
+different identities. Query `adoption-status` and supported owner/skill events;
+missing loaded-context proof is UNCONFIRMED. Empty canonical `activeWorkers`
+does not prove idle: direct host sessions may be outside the Run. Use supported
+owner signals, never parent silence. Product milestones need exact current
+criterion/source/producer observations; path touches are activity only. Safe
+commands keep their normal focused checks. Risky crash-prone experiments need
+the host's exact owned-tree timeout/cleanup capability; if unavailable, stop that
+slice with the ownership/control limitation, not a broad process-name kill.
+Handoffs are actionable only: objective, verified delta, blocker, next probe and
+decision. Keep long machine evidence by reference, never private UI/secret text.
