@@ -73,3 +73,10 @@ surface. Cleanup failure is never reinterpreted as a missing source verdict.
 Tracked-source inventory uses count-bound, byte-bounded transport frames rather
 than embedding all paths in the prepared response. Required but uninspected
 implementation is a REVISE coverage gap, not a full-source PASS.
+The trusted producer declares **full implementation-source** coverage before
+advertising paths. Root `.architrave` canonical state/history and `.git` trust
+metadata are excluded explicitly, with their category and exact tracked-entry
+count. The declared inventory count/hash and exclusion scope bind the live
+ticket and retained receipt. This is not tracked-repository, history, Run or
+product acceptance; supervisor ledger audit stays separate. Any unsupported
+public advertised entry, alias, symlink or non-regular file still fails before AI.

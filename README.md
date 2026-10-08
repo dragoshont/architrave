@@ -31,8 +31,8 @@ No tools, prompt injections, workers or recurring model calls are added.
 Owned SDK subagents show names, roles, lifecycle and assigned slices with
 model details on demand; app-native child-session visibility remains explicitly
 unavailable through the current extension API.
-See [companion adoption and supported boundaries](docs/route-ribbon.md#session-companion-unreleased-follow-up).
-Prepared for the next publication under the release owner's integration;
+See [companion adoption and supported boundaries](docs/route-ribbon.md#session-companion-included-in-v0141).
+Included in the user-approved v0.14.1 publication scope;
 no candidate global adoption or default-on host acceptance is implied.
 
 ## Latest news: v0.14.1 candidate

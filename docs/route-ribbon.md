@@ -6,7 +6,7 @@ second control plane. The renderer is **one portable file**:
 only the host-provided `@github/copilot-sdk` plus Node built-ins.
 Python remains the canonical implementation of Run semantics.
 
-## Session companion (unreleased follow-up)
+## Session companion (included in v0.14.1)
 
 The same file declares two surfaces. **`architrave-session`** is the default,
 passive session companion: empty input (`{}`), no actions, no Run schema.
@@ -16,7 +16,7 @@ the large Run snapshot schema to the model. No additional agent, skill, tool,
 hook, `additionalContext`, `session.send`, permission handler or scheduler is
 registered. Canvas declarations still contribute their short discovery entries.
 
-The approved **Session instrument** is prepared for the next publication through
+The user-approved, default-on **Session instrument** is included in v0.14.1 through
 the release owner's integration. Source preparation does not publish a version
 or install anything into a running user's environment. To adopt published,
 reviewed source across ordinary

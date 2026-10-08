@@ -101,7 +101,7 @@ def main():
             )
             emit({"status": "prepared", "prompt": prompt, "agentType": request["reviewer"],
                   "maxTurns": review.budget.get("maxTurns", 12), "expiresAt": review.binding["expiresAt"],
-                  "sourceFileCount": len(review.source_files)})
+                  "sourceFileCount": len(review.source_files), "reviewScope": review.binding["reviewScope"]})
             emit_source_inventory(review.source_files)
             admitted = receive()
             if set(admitted) != {"status", "hostTaskId"} or admitted["status"] != "admitted":

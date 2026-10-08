@@ -203,7 +203,8 @@ export function observeSession(event) {
         break;
     case "session.model_deselected":
         selectionRevision++;
-        companion.selectedModel = companion.observedModel = companion.observedEffort = companion.observedAt = companion.usage = null;
+        companion.selectedModel = companion.selectedEffort = companion.contextTier =
+            companion.observedModel = companion.observedEffort = companion.observedAt = companion.usage = null;
         break;
     case "assistant.usage":
         if (data.initiator || data.interactionType && data.interactionType !== "conversation-agent") return;

@@ -241,6 +241,26 @@ class NativeReviewTests(unittest.TestCase):
         self.assertEqual([], state["gateResults"])
         self.assertEqual("PENDING", state["externalCheckpoints"][0]["status"])
 
+    def test_declared_private_scope_is_bound_to_ticket_prompt_and_receipt(self):
+        path = self.repo / ".architrave" / "archived-history.md"
+        path.write_text("Synthetic historical record, not implementation")
+        self.git("add", "-f", ".architrave/archived-history.md")
+        self.git("commit", "-qm", "explicit private history fixture")
+        self.store.resume("review", accept_commit=True)
+        ticket, prompt = self.store.prepare_native_semantic_review("review", "source",
+            host_owner="owner", invocation_id="scope-proof", reviewer="rubber-duck")
+        scope = ticket.binding["reviewScope"]
+        self.assertEqual(1, scope["excludedPrivateStateCount"])
+        self.assertEqual("implementation-source", scope["kind"])
+        self.assertNotIn(".architrave/archived-history.md", ticket.source_files)
+        self.assertEqual(len(ticket.source_files), scope["inventoryCount"])
+        self.assertIn('"excludedPrivateStateCount":1', prompt)
+        self.store.bind_native_semantic_owner(ticket, "scope-reviewer")
+        self.accept(ticket)
+        artifact = self.store.load("review")["artifacts"][0]
+        receipt = json.loads((self.repo / artifact["path"]).read_text())
+        self.assertEqual(scope, receipt["binding"]["reviewScope"])
+
     def test_caller_labelled_file_is_not_semantic_producer(self):
         path = self.store.run_dir("review") / "claimed.json"
         path.write_text(json.dumps({"verdict": "PASS", "family": "openai", "criteria": ["QUAL"]}))

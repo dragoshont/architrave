@@ -417,6 +417,20 @@ def native_review_family(model: str) -> str:
         return "anthropic"
     raise RuntimeFailure("SEMANTIC_FAMILY_UNCONFIRMED", "host first-dispatched model has no supported family mapping")
 
+def native_source_inventory(repository: Path) -> tuple[list[str], dict[str, Any]]:
+    tracked = [path for path in run_command(["git", "ls-files", "-z"], repository).split("\0") if path]
+    private = [path for path in tracked if path.split("/", 1)[0].casefold() in {".git", ".architrave"}]
+    private_paths = set(private)
+    implementation = [path for path in tracked if path not in private_paths]
+    if len(implementation) > 4096:
+        raise RuntimeFailure("SEMANTIC_SOURCE_TOO_LARGE", "bounded native implementation inventory exceeded")
+    scope = {"kind": "implementation-source", "inventoryCount": len(implementation),
+             "inventorySha256": sha256_value(implementation),
+             "excludedCategory": "canonical-control-plane/history-and-private-trust-metadata",
+             "excludedPrivateStateCount": len(private),
+             "privateHistoryAcceptance": "not reviewed; supervisor audit remains separate"}
+    return implementation, scope
+
 
 class RunStore:
     def __init__(self, repository: Path | str):
@@ -3427,6 +3441,7 @@ class RunStore:
             raise RuntimeFailure("BUDGET_100", "budget exhausted; no native semantic model invocation")
         source = {"commit": state["baseline"]["commit"],
                   "sha256": workspace_fingerprint(self.repository, include_ignored=False)}
+        source_files, review_scope = native_source_inventory(self.repository)
         for artifact in state["artifacts"]:
             if artifact["producer"] != "semantic-judge":
                 continue
@@ -3447,14 +3462,19 @@ class RunStore:
             "owner": host_owner, "invocationId": invocation_id, "role": reviewer,
             "hostTaskId": None, "challengeHash": sha256_value(challenge),
             "preparedAt": now.isoformat(), "expiresAt": (now + dt.timedelta(seconds=budget["timeoutSeconds"])).isoformat(),
+            "reviewScope": review_scope,
         }
         instructions = {
             "scope": str(self.repository), "source": source, "criteria": binding["criteria"],
             "objective": state["objective"]["description"], "task": task["objective"],
             "challenge": challenge,
+            "reviewScope": review_scope,
         }
         prompt = (
-            "Independently review the FULL frozen source, not a previous report. Read repository instructions, "
+            "Independently review the FULL frozen IMPLEMENTATION SOURCE, not a previous report. "
+            "The declared reviewScope explicitly excludes canonical/private control-plane history and trust metadata; "
+            "do not claim tracked-repository/history/Run acceptance. Retain that uncovered category in your summary. "
+            "Read repository instructions, "
             "Cover every implementation area named in the task. Use bounded view_range sections for large files; "
             "a truncated first view is not full inspection. Uninspected required source must yield REVISE, not PASS. "
             "architrave.config.json, governing sources and gates/rubric.md. Grade source and observed deterministic "
@@ -3475,10 +3495,7 @@ class RunStore:
             "defaults; no per-task reasoning override is available. Bound subject:\n" + canonical_json(redact(instructions))
         )
         ticket = NativeSemanticTicket(self.__semantic_issuer, binding, challenge, budget)
-        ticket.source_files = run_command(["git", "ls-files", "-z"], self.repository).split("\0")
-        ticket.source_files = [path for path in ticket.source_files if path]
-        if len(ticket.source_files) > 4096:
-            raise RuntimeFailure("SEMANTIC_SOURCE_TOO_LARGE", "bounded native source inventory exceeded; use a supported smaller scope")
+        ticket.source_files = source_files
         return ticket, prompt
 
     def bind_native_semantic_owner(self, ticket: NativeSemanticTicket, host_task_id: str) -> None:
@@ -3504,6 +3521,7 @@ class RunStore:
                 or task["objectiveVersion"] != state["objective"]["version"]
                 or set(criteria) != set(binding.get("criteria") or [])
                 or binding.get("source") != source or git_status(self.repository)
+                or binding.get("reviewScope") != native_source_inventory(self.repository)[1]
                 or binding.get("authority") != self._semantic_authority(state, task)):
             raise RuntimeFailure("SEMANTIC_SOURCE_STALE", "native semantic receipt no longer binds current scope/source/policy/holds")
         if (observed.get("agentId") != binding.get("hostTaskId")

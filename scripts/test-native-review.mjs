@@ -153,13 +153,14 @@ s.add_task('review',{'id':'source','objective':'Review source','acceptanceCriter
     ok(state.artifacts.every(artifact => artifact.producer === "semantic-judge" && artifact.consumedByTask === "source"));
     ok(state.gateResults.filter(gate => gate.status === "PASS").length === 2);
     ok(state.acceptanceCriteria[0].status === "UNTESTED");
-    await writeFile(join(repo, ".architrave", "advertised-source.md"), "Synthetic private source fixture");
+    await mkdir(join(repo, "public", ".architrave"));
+    await writeFile(join(repo, "public", ".architrave", "advertised-source.md"), "Synthetic unsupported public source fixture");
     const advertise = spawnSync(python, ["-c", `
 import sys,subprocess
 sys.path.insert(0,sys.argv[1]+'/harness')
 from architrave_runtime import RunStore
 r=sys.argv[2]
-for args in [('add','-f','.architrave/advertised-source.md'),('commit','-qm','unsupported tracked fixture')]:
+for args in [('add','-f','public/.architrave/advertised-source.md'),('commit','-qm','unsupported tracked fixture')]:
  subprocess.run(['git',*args],cwd=r,check=True,capture_output=True)
 RunStore(r).resume('review',accept_commit=True)
 `, ROOT, repo], { encoding: "utf8" });

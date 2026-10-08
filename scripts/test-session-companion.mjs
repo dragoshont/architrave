@@ -137,9 +137,14 @@ try {
     one.emit("assistant.usage", { model: "compaction-model", initiator: "compaction" });
     equal((await state(url)).observedModel, "model-observed");
     equal((await state(url)).usage.currentTokens, 1234);
-    one.emit("session.model_change", { newModel: "new-selection", reasoningEffort: null });
+    one.emit("session.model_change", { newModel: "new-selection", reasoningEffort: "high", contextTier: "long_context" });
     view = await state(url);
     equal(view.selectedModel, "new-selection");
+    one.emit("session.model_deselected");
+    view = await state(url);
+    equal(view.selectedModel, null);
+    equal(view.selectedEffort, null);
+    equal(view.contextTier, null);
     equal(view.selectedEffort, null);
     equal(view.observedModel, null);
     equal(view.usage, null);

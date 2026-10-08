@@ -1,6 +1,6 @@
 # Roadmap
 
-## Next publication candidate - Session instrument
+## v0.14.1 publication scope - Session instrument
 
 - [x] Ordinary-session display in the same portable renderer, without a Run,
   repository or named agent; lightweight discovery does not disclose Run schemas.
@@ -16,6 +16,9 @@
   unknown usage and close/opt-out interactions; synthetic data, not host proof.
 - [x] One-shot opening, session dismissal, durable user preference and explicit
   standalone one-file adoption, with no permissions or orchestration changes.
+- [x] User-directed default-on Copilot legacy plugin contribution, explicit
+  host-reported provider identity and confirmed-open persistence; opt-out and
+  existing user/project providers remain intact.
 - [x] Live desktop/narrow rendering and exact-source close-this-session followed
   by supported reload/no-reopen; global checkbox was not exercised.
 - [ ] Fresh-session lifecycle and same-host context-delta qualification;
