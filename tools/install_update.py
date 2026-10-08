@@ -754,9 +754,16 @@ class ManagedTransaction:
         if not manifest_path.is_file():
             raise InstallerError(f"{self.managed.label}: stale transaction has no recovery manifest")
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        for item in reversed(manifest.get("operations", [])):
+        operations = manifest.get("operations", [])
+        applied = int(manifest.get("applied", 0))
+        in_flight = manifest.get("inFlight")
+        recoverable = [(index, item) for index, item in enumerate(operations)
+                       if index < applied or index == in_flight]
+        for _index, item in reversed(recoverable):
             destination = self.managed.path(str(item["relative"]))
             backup = self.directory / str(item["backup"]) if item.get("backup") else None
+            if item["kind"] == "remove" and _lstat(destination) is not None:
+                continue
             if backup and backup.is_file():
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 os.replace(backup, destination)
@@ -841,6 +848,7 @@ class ManagedTransaction:
         manifest = {
             "status": "prepared",
             "applied": 0,
+            "inFlight": None,
             "operations": manifest_operations,
             "createdDirectories": [
                 path.relative_to(self.root).as_posix()
@@ -856,16 +864,20 @@ class ManagedTransaction:
                 relative = str(operation["relative"])
                 destination = self.managed.path(relative)
                 destination.parent.mkdir(parents=True, exist_ok=True)
+                expected = operation.get("expectedSha256")
+                if operation["kind"] == "remove" and expected and (
+                        not destination.is_file() or sha256_file(self.managed.require_file(relative)) != expected):
+                    raise InstallerError("retire-hooks: definition changed after inspection; preserved by transaction rollback")
+                manifest["inFlight"] = index
+                self._write_manifest(manifest)
                 if operation["kind"] == "write":
                     stage = self.directory / str(operation["stage"])
                     os.replace(stage, destination)
                     os.chmod(destination, stat.S_IMODE(int(operation["mode"])))
                 else:
-                    expected = operation.get("expectedSha256")
-                    if expected and (not destination.is_file() or sha256_file(self.managed.require_file(relative)) != expected):
-                        raise InstallerError("retire-hooks: definition changed after inspection; preserved by transaction rollback")
                     destination.unlink(missing_ok=True)
                 manifest["applied"] = index + 1
+                manifest["inFlight"] = None
                 self._write_manifest(manifest)
         except Exception:
             self._recover()
@@ -1424,8 +1436,14 @@ def retire_quality_hooks(kit: Path, target: Path, *, dry_run: bool = False) -> i
     print(json.dumps({"target": str(managed.root), "dryRun": dry_run, "qualityHooks": plan,
                       "nativePermissionGuards": "unchanged", "otherHooks": "untouched"}, indent=2))
     if dry_run:
+        for relative, item in plan.items():
+            if item["action"] == "preserve-manual-action":
+                print(f"MANUAL_ACTION_REQUIRED: preserved custom/unknown hook definition: {relative}", file=sys.stderr)
         return 2 if any(item["action"] == "preserve-manual-action" for item in plan.values()) else 0
     if not any(item["action"] == "remove-recognized" for item in plan.values()):
+        for relative, item in plan.items():
+            if item["action"] == "preserve-manual-action":
+                print(f"MANUAL_ACTION_REQUIRED: preserved custom/unknown hook definition: {relative}", file=sys.stderr)
         return 2 if any(item["action"] == "preserve-manual-action" for item in plan.values()) else 0
     transaction = ManagedTransaction(managed)
     transaction.__enter__()

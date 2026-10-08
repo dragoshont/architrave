@@ -83,6 +83,8 @@ try {
     const falseBlock = structuredClone(parallel);
     falseBlock.relations[0].type = "blocks"; falseBlock.relations[0].provenance = "canonical dependency";
     assert.throws(() => first.validate(falseBlock), error => error.code === "ribbon_input_invalid"); assertions++;
+    falseBlock.relations[0].provenance = "display-only annotation";
+    assert.throws(() => first.validate(falseBlock), error => error.code === "ribbon_input_invalid"); assertions++;
     const mutate = action => { const value = structuredClone(fixture); action(value); return value; };
     for (const action of [
         value => value.extra = "arbitrary",
@@ -177,9 +179,20 @@ try {
     await writeFile(domainFile, '{"malformed":true}');
     await rejects(() => action(second.canvas, "get_snapshot", "fresh-panel"), "ribbon_input_invalid");
     await second.canvas.onClose({ instanceId: "fresh-panel" });
+    const maxPanel = await second.canvas.open({ instanceId: "maximum", input: { domainKey: maximum.domainKey, snapshot: maximum } });
+    const maxSaved = await action(second.canvas, "get_snapshot", "maximum");
+    ok(maxSaved.snapshot.domainKey.length === 153 && (await fetch(new URL("snapshot", maxPanel.url))).status === 200);
+    const maxUpdate = structuredClone(maximum); maxUpdate.revision = 2;
+    await action(second.canvas, "update_snapshot", "maximum", { snapshot: maxUpdate, expectedDigest: maxSaved.digest });
+    ok((await action(second.canvas, "get_snapshot", "maximum")).snapshot.revision === 2);
+    await second.canvas.onClose({ instanceId: "maximum" });
+    const third = await load(); providers.push(third.canvas);
+    await third.canvas.open({ instanceId: "maximum-reloaded", input: { domainKey: maximum.domainKey } });
+    ok((await action(third.canvas, "get_snapshot", "maximum-reloaded")).snapshot.revision === 2);
+    await third.canvas.onClose({ instanceId: "maximum-reloaded" });
     console.log(`PASS Route Ribbon: ${assertions} assertions (SDK fixture, not native host proof)`);
 } finally {
-    for (const provider of providers) for (const instanceId of ["one", "two", "fresh-panel"])
+    for (const provider of providers) for (const instanceId of ["one", "two", "fresh-panel", "maximum", "maximum-reloaded"])
         await provider.onClose({ instanceId });
     await rm(root, { recursive: true });
 }

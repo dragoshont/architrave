@@ -14,7 +14,9 @@
   by supported reload/no-reopen; global checkbox was not exercised.
 - [ ] Fresh-session lifecycle and same-host context-delta qualification;
   fixture success alone does not close native-host or footprint claims.
-- [x] Preserve committed v0.14.1 corrections through `6b15d16`; later release
+- [ ] Resolve the observed pristine-project extension-discovery/loading
+  boundary; two contexts lacked both companion and native-extension tools.
+- [x] Preserve committed v0.14.1 corrections through `f8dcf02`; later release
   fixes must still be preserved before eventual landing.
 - [ ] Reviewed published-source adoption only, not candidate global installation.
 

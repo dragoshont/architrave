@@ -31,10 +31,12 @@ stale or differently correlated metadata fails closed. No configured-model or
 caller-labelled-family fallback.
 
 Execution runs alone in its joined foreground session at a clean committed
-boundary. The pre-tool guard permits only scoped standard view/rg/glob,
+boundary. The pre-tool guard permits only scoped standard view and source-inventory-bounded rg,
 tool discovery and read-only review-skill loading. Shell/execution, mutation,
 private `.git`/`.architrave` reads, control-plane and descendants are denied.
-Paths are normalized inside the target. This does not replace host permissions
+Recursive glob/directory views and hidden/ignore/follow overrides are denied.
+Search roots are expanded to validated tracked regular files, never delegated
+as unconstrained recursive roots. Paths are normalized inside the target. This does not replace host permissions
 or claim an OS sandbox. Source, policy, holds and objective are rechecked.
 
 ## Receipts and gates
@@ -60,3 +62,9 @@ Focused fixtures: `python scripts/test-native-review.py` and
 fixtures are not live evidence. Qualification separately records real joined
 admission, exact source/agent/tool/completion identities, actual family and
 gate/artifact references, plus normal CI.
+
+Receipt and gate admission share one validated Run transaction. Rejected gate
+registration leaves no committed producer artifact or role-retry blocker.
+Cleanup warnings are reported separately from a durably admitted result;
+unclosed owned jobs retain a recovery handle for the existing native cancel
+surface. Cleanup failure is never reinterpreted as a missing source verdict.

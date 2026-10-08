@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "harness"))
@@ -212,6 +213,21 @@ class NativeReviewTests(unittest.TestCase):
             ticket = self.prepared()
             text = prefix + json.dumps(self.report(ticket)) + suffix
             self.assert_code("SEMANTIC_RESULT_INVALID", lambda: self.accept(ticket, text=text))
+
+    def test_negative_result_scope_change_between_precheck_and_gate_is_rejected(self):
+        ticket = self.prepared()
+        original = self.store.record_gate
+        def interleave(*args, **kwargs):
+            self.store.wait_external("review", checkpoint_id="late-hold", task_id="source",
+                                     checkpoint_type="HUMAN_JUDGMENT_REQUIRED", principal="human",
+                                     provider="manual", reason="Changed before atomic admission")
+            return original(*args, **kwargs)
+        with mock.patch.object(self.store, "record_gate", side_effect=interleave):
+            self.assert_code("SEMANTIC_RESULT_STALE", lambda: self.accept(ticket, self.report(ticket, "REVISE")))
+        state = self.store.load("review")
+        self.assertEqual([], state["artifacts"])
+        self.assertEqual([], state["gateResults"])
+        self.assertEqual("PENDING", state["externalCheckpoints"][0]["status"])
 
     def test_caller_labelled_file_is_not_semantic_producer(self):
         path = self.store.run_dir("review") / "claimed.json"

@@ -158,7 +158,7 @@ and reduced-motion behavior were observed. Usage was 302206/922000, selected
 model `gpt-6.1-sol`, effort `high`; effective identity remained **Not observed**.
 This proves the no-agent/empty-child surface, not populated native children.
 
-The final renderer (`1362f855b39cf5e03a7123a91f91065792590189e9583b501451ca162a25d8f9`)
+The qualified session renderer (`1362f855b39cf5e03a7123a91f91065792590189e9583b501451ca162a25d8f9`)
 was separately staged session-only and reloaded through the supported host
 tools. A live `architrave-session` panel displayed model/effort/context, and its
 visible **Close this session** button was clicked. After another supported
@@ -172,10 +172,27 @@ A fresh proof chat was created idle and the session-scoped file staged before
 its first **model turn**, but after the CLI's `session.start`. Initial discovery
 therefore did not include it. One supported reload loaded it and reached its
 one-shot open path. This is **post-reload**, not pristine new-session discovery.
-Proving the default with the file present before CLI creation requires a
-supported precreation extension seed or explicitly authorized published-source
-user adoption. Neither private session transport nor candidate global install
-is a valid substitute.
+
+A subsequent isolated **project** proof used checkout `4dd45e1` with that exact
+renderer present before CLI creation. Both the first prompt and a settled second
+context exposed only browser/editor/terminal canvases: `architrave-session` and
+the separately installed native-extension tools were absent. No manual open or
+reload was used. These two observations establish a project-session
+extension-discovery/loading boundary on the observed host, not a renderer
+failure or proof that user-scope discovery is incompatible. No further fresh
+session retries or private host/CLI toggles are warranted by unchanged evidence.
+The requested default-on ordinary-session feature is **not accepted** from
+source and fixtures alone. User-scope activation and a controlled small-context
+comparison still need supported-host, authorized published-source qualification;
+candidate global installation is not a substitute.
+
+The follow-up also preserves the committed release safety batch `f8dcf02`.
+It tightens canonical BLOCKS validation and extends maximum-domain persistence
+regressions, without changing the passive session path. The integrated renderer
+digest is `d522d55572059a413765e86239a3f389e969891b68e50360f3953d5cb16ebdf2`.
+Earlier live receipts remain bound to their recorded renderer hashes, not
+automatically reissued as exact-source proof for this integration. The release
+owner's requested reviews and CI remain separate; this merge is not publication.
 
 Source review found startup-dismissal and asynchronous child-discovery races;
 targeted regressions now cover late panel activity, pending ownership reads,
@@ -202,8 +219,9 @@ extension file; existing managed-path/junction/symlink checks and atomic
 transactions apply. It does not install/update the user's plugin, change
 configuration, or touch product code, Run state or host settings.
 Normal `install` / `update` do **not** opt consumers into a canvas. Refresh it
-explicitly after kit updates. The kit repository itself discovers the committed
-project extension directly, so it does not need `canvas-install`.
+explicitly after kit updates. The kit repository already contains the project
+extension, so it does not need `canvas-install`; file presence alone does not
+prove host discovery, as the pristine-project qualification above demonstrates.
 In this unreleased follow-up the installed renderer also attempts the passive
 session companion by default; `canvas-install` still has repository-only reach.
 

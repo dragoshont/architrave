@@ -489,8 +489,9 @@ export function validateSnapshot(value) {
         const key = relation.fromStep + ":" + relation.toStep + ":" + relation.type;
         if (relationships.has(key)) fail("relations: duplicate relationship");
         relationships.add(key);
-        if (relation.provenance === "canonical dependency" &&
-            (relation.type !== "blocks" || !byId.get(relation.toStep).dependencies.includes(relation.fromStep)))
+        if (relation.type === "blocks" &&
+            (relation.provenance !== "canonical dependency" ||
+             !byId.get(relation.toStep).dependencies.includes(relation.fromStep)))
             fail("relations: canonical BLOCKS must match a real prerequisite");
         if (relation.type === "informs" && relation.provenance !== "display-only annotation")
             fail("relations: INFORMS is display-only, not scheduling authority");
