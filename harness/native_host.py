@@ -36,6 +36,22 @@ def receive():
 def emit(value):
     print(json.dumps(redact(value), separators=(",", ":")), flush=True)
 
+def emit_source_inventory(paths):
+    chunk = []
+    for path in paths:
+        candidate = {"status": "source-inventory", "files": [*chunk, path]}
+        if len(json.dumps(candidate).encode("utf-8")) > 48000:
+            if not chunk:
+                raise RuntimeFailure("SEMANTIC_SOURCE_TOO_LARGE", "one tracked path exceeds its transport bound")
+            emit({"status": "source-inventory", "files": chunk})
+            chunk = [path]
+            if len(json.dumps({"status": "source-inventory", "files": chunk}).encode("utf-8")) > 48000:
+                raise RuntimeFailure("SEMANTIC_SOURCE_TOO_LARGE", "one tracked path exceeds its transport bound")
+        else:
+            chunk.append(path)
+    if chunk:
+        emit({"status": "source-inventory", "files": chunk})
+
 
 def routing_observation(requested, effective, reused_owner=False):
     fallback = None
@@ -85,7 +101,8 @@ def main():
             )
             emit({"status": "prepared", "prompt": prompt, "agentType": request["reviewer"],
                   "maxTurns": review.budget.get("maxTurns", 12), "expiresAt": review.binding["expiresAt"],
-                  "sourceFiles": review.source_files})
+                  "sourceFileCount": len(review.source_files)})
+            emit_source_inventory(review.source_files)
             admitted = receive()
             if set(admitted) != {"status", "hostTaskId"} or admitted["status"] != "admitted":
                 raise RuntimeFailure("NATIVE_ADMISSION_FAILED", "fresh independent reviewer was not admitted")

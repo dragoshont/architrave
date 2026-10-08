@@ -33,6 +33,9 @@ def ribbon_snapshot(store: RunStore, run_id: str | None = None) -> dict[str, Any
     reasons = {event["taskId"]: event["payload"]["reason"] for event in events
                if event.get("taskId") and event["payload"].get("reason")
                and event["type"] in {"task.failed", "task.skipped", "task.deferred"}}
+    completions = {event["taskId"]: event["evidenceRefs"] for event in events
+                   if event.get("taskId") and event["type"] == "task.completed"}
+    failed_tasks = set()
     for task in tasks.values():
         work_kind = task.get("workKind") or "unassigned"
         category = ("delivery" if work_kind == "product" else
@@ -68,7 +71,20 @@ def ribbon_snapshot(store: RunStore, run_id: str | None = None) -> dict[str, Any
             display = display if display in {"done", "bypassed", "stopped"} else "deferred"
             blocker = None
             reason = f"Historical objective {task['objectiveVersion']}; not a current blocker. {reason}"
-        evidence = list(task.get("evidenceRefs") or [])
+        evidence = list(dict.fromkeys([*(task.get("evidenceRefs") or []),
+                                      *completions.get(task["id"], [])]))
+        failures = [gate for gate in state["gateResults"] if current
+                    and gate["objectiveVersion"] == state["objective"]["version"]
+                    and gate["status"] == "FAIL"
+                    and gate["type"] in {"deterministic", "reality", "e2e", "policy", "security"}
+                    and (gate["taskId"] == task["id"]
+                         or set(gate["criteria"]).intersection(task["acceptanceCriteria"]))]
+        if failures:
+            failed_tasks.add(task["id"])
+            display = "stopped"
+            reason = "Governing verification failed: " + ", ".join(gate["id"] for gate in failures) + (
+                ". Earlier scoped completion/observations are history, not current product verification.")
+            evidence.extend(f"gate:{gate['id']}" for gate in failures)
         if display == "done" and not evidence:
             evidence = [f"task:{task['id']} (canonical scoped completion; not product verification)"]
         if current and display == "done" and source["baselineFresh"] and category == "delivery":
@@ -144,6 +160,7 @@ def ribbon_snapshot(store: RunStore, run_id: str | None = None) -> dict[str, Any
         if (event["type"] == "product.milestone" and payload.get("taskId") in tasks
                 and tasks[payload["taskId"]]["objectiveVersion"] == state["objective"]["version"]
                 and tasks[payload["taskId"]].get("workKind") == "product"
+                and payload["taskId"] not in failed_tasks
                 and payload.get("source") == {"commit": source["observedCommit"], "sha256": source["sha256"]}):
             milestone = compact(f"{payload['milestone']} / criterion:{payload['criterionId']} / "
                                 f"task:{payload['taskId']} / event:{event['sequence']} / "

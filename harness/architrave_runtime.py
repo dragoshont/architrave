@@ -2535,12 +2535,17 @@ class RunStore:
         }.get(surface)
         results = receipt.get("results") or []
         result_names = {item.get("name") for item in results if isinstance(item, dict) and item.get("status") == "pass"}
+        failed_names = [item.get("name") for item in results
+                        if isinstance(item, dict) and item.get("status") in {"fail", "missing"}]
+        passing = receipt.get("status") == "pass" and receipt.get("failed") == [] and not failed_names
+        failing = (receipt.get("status") == "fail" and bool(failed_names)
+                   and receipt.get("failed") == failed_names)
+        observed_names = {item.get("name") for item in results if isinstance(item, dict)}
         if (
             required_names is None
             or receipt.get("surface") != surface
-            or receipt.get("status") != "pass"
-            or receipt.get("failed") != []
-            or not required_names.issubset(result_names)
+            or not (passing or failing)
+            or not required_names.issubset(result_names if passing else observed_names)
         ):
             raise RuntimeFailure("LEGIBILITY_RECEIPT", "legibility receipt does not prove the required surface checks")
         return self._record_artifact(run_id, kind=kind, actor="legibility-runner", producer="legibility", **kwargs)
@@ -3450,6 +3455,8 @@ class RunStore:
         }
         prompt = (
             "Independently review the FULL frozen source, not a previous report. Read repository instructions, "
+            "Cover every implementation area named in the task. Use bounded view_range sections for large files; "
+            "a truncated first view is not full inspection. Uninspected required source must yield REVISE, not PASS. "
             "architrave.config.json, governing sources and gates/rubric.md. Grade source and observed deterministic "
             "evidence; publication/family receipt admission is the host qualifier's responsibility, not a circular "
             "condition for your source verdict. Use the configured profile; do not invent product acceptance. "
@@ -3843,6 +3850,8 @@ class RunStore:
                                 *, task_id: str | None, criteria: Sequence[str] | None) -> None:
         from worker_adapters import workspace_fingerprint
         receipt = self._read_json_receipt(artifact["path"], "product")
+        if receipt.get("status") != "pass" or receipt.get("failed") != []:
+            raise RuntimeFailure("LEGIBILITY_RECEIPT", "PASS requires a passing observed product receipt")
         binding = receipt.get("binding")
         if binding is None:
             return  # Historical receipts remain readable; milestone advancement rejects them.

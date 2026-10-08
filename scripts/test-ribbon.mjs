@@ -6,10 +6,12 @@ import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { get } from "node:http";
-import { spawnSync } from "node:child_process";
+import { spawnSync, fork } from "node:child_process";
 
 const source = await readFile(new URL("../.github/extensions/architrave-ribbon/extension.mjs", import.meta.url), "utf8");
-const root = await mkdtemp(join(tmpdir(), "architrave-ribbon-"));
+const writer = process.argv[2] === "--writer";
+const root = writer ? process.argv[3] : await mkdtemp(join(tmpdir(), "architrave-ribbon-"));
+let writing = false, held = false;
 const filename = fileURLToPath(new URL("../.github/extensions/architrave-ribbon/extension.mjs", import.meta.url));
 async function load() {
     let canvas;
@@ -23,7 +25,20 @@ async function load() {
                 createCanvas: value => value,
                 joinSession: async config => { canvas = config.canvases[0]; return { workspacePath: root, log: async () => {} }; },
             };
-        } else exports = await import(specifier);
+        } else {
+            exports = await import(specifier);
+            if (writer && specifier === "node:fs/promises") {
+                const original = exports.readFile;
+                exports = { ...exports, readFile: async (...args) => {
+                    const value = await original(...args);
+                    if (writing && !held && String(args[0]).endsWith(".json")) {
+                        held = true; process.send({ kind: "read" });
+                        await new Promise(resolve => process.once("message", resolve));
+                    }
+                    return value;
+                } };
+            }
+        }
         return new vm.SyntheticModule(Object.keys(exports), function () {
             for (const [key, value] of Object.entries(exports)) this.setExport(key, value);
         }, { context });
@@ -47,6 +62,47 @@ let assertions = 0;
 function ok(value) { assert.ok(value); assertions++; }
 async function rejects(action, code) { await assert.rejects(action, error => error.code === code); assertions++; }
 const providers = [];
+const writers = [];
+if (writer) {
+    const provider = await load();
+    const update = JSON.parse(process.argv[4]);
+    await provider.canvas.open({ instanceId: "writer", input: { domainKey: update.domainKey } });
+    process.send({ kind: "ready" });
+    await new Promise(resolve => process.once("message", resolve));
+    writing = true;
+    try {
+        const value = await provider.canvas.actions.find(entry => entry.name === "update_snapshot").handler({
+            instanceId: "writer", input: { snapshot: update, expectedDigest: process.argv[5] } });
+        process.send({ kind: "result", status: "saved", value });
+    } catch (error) { process.send({ kind: "result", status: "rejected", code: error.code }); }
+    await provider.canvas.onClose({ instanceId: "writer" });
+    process.disconnect();
+    process.exit(0);
+}
+function startWriter(update, digest) {
+    const child = fork(fileURLToPath(import.meta.url), ["--writer", root, JSON.stringify(update), digest],
+        { execArgv: ["--experimental-vm-modules"], stdio: ["ignore", "ignore", "pipe", "ipc"] });
+    let ready, read, result, exited;
+    const entry = { child, ready: new Promise(resolve => ready = resolve),
+        read: new Promise(resolve => read = resolve), result: new Promise(resolve => result = resolve),
+        exited: new Promise(resolve => exited = resolve) };
+    child.on("message", value => {
+        if (value.kind === "ready") ready(entry);
+        if (value.kind === "read") read(entry);
+        if (value.kind === "result") result(value);
+    });
+    child.on("exit", code => exited(code));
+    writers.push(entry);
+    return entry;
+}
+async function bounded(value) {
+    let timer;
+    try {
+        return await Promise.race([value, new Promise((_, reject) => {
+            timer = setTimeout(() => reject(new Error("Cross-process fixture exceeded its bound")), 15000);
+        })]);
+    } finally { clearTimeout(timer); }
+}
 try {
     const first = await load(); providers.push(first.canvas);
     first.validate(fixture);
@@ -190,9 +246,36 @@ try {
     await third.canvas.open({ instanceId: "maximum-reloaded", input: { domainKey: maximum.domainKey } });
     ok((await action(third.canvas, "get_snapshot", "maximum-reloaded")).snapshot.revision === 2);
     await third.canvas.onClose({ instanceId: "maximum-reloaded" });
+    const shared = structuredClone(fixture); shared.domainKey = "cross-process";
+    await third.canvas.open({ instanceId: "shared", input: { domainKey: shared.domainKey, snapshot: shared } });
+    const sharedSaved = await action(third.canvas, "get_snapshot", "shared");
+    const writerA = structuredClone(shared); writerA.revision = 2; writerA.title = "Writer A";
+    const writerB = structuredClone(writerA); writerB.title = "Writer B";
+    const a = startWriter(writerA, sharedSaved.digest), b = startWriter(writerB, sharedSaved.digest);
+    await bounded(Promise.all([a.ready, b.ready]));
+    a.child.send("start"); b.child.send("start");
+    const firstRead = await bounded(Promise.race([a.read, b.read]));
+    const lockPath = join(root, "artifacts", "architrave-ribbon", createHash("sha256").update(shared.domainKey).digest("hex") + ".json.lock");
+    const owner = JSON.parse(await readFile(lockPath, "utf8"));
+    ok([a.child.pid, b.child.pid].includes(owner.pid));
+    firstRead.child.send("continue");
+    const secondRead = await bounded(firstRead === a ? b.read : a.read);
+    secondRead.child.send("continue");
+    const results = await bounded(Promise.all([a.result, b.result]));
+    ok(results.filter(value => value.status === "saved").length === 1);
+    ok(results.filter(value => value.code === "ribbon_snapshot_conflict").length === 1);
+    ok((await action(third.canvas, "get_snapshot", "shared")).snapshot.revision === 2);
+    await bounded(Promise.all([a.exited, b.exited]));
+    await writeFile(lockPath, JSON.stringify({ pid: a.child.pid, nonce: "a".repeat(32) }));
+    const currentShared = await action(third.canvas, "get_snapshot", "shared");
+    const afterCrash = structuredClone(currentShared.snapshot); afterCrash.revision = 3;
+    await action(third.canvas, "update_snapshot", "shared", { snapshot: afterCrash, expectedDigest: currentShared.digest });
+    ok((await action(third.canvas, "get_snapshot", "shared")).snapshot.revision === 3);
+    await third.canvas.onClose({ instanceId: "shared" });
     console.log(`PASS Route Ribbon: ${assertions} assertions (SDK fixture, not native host proof)`);
 } finally {
-    for (const provider of providers) for (const instanceId of ["one", "two", "fresh-panel", "maximum", "maximum-reloaded"])
+    for (const provider of providers) for (const instanceId of ["one", "two", "fresh-panel", "maximum", "maximum-reloaded", "shared"])
         await provider.onClose({ instanceId });
+    for (const entry of writers) if (entry.child.exitCode === null) entry.child.kill();
     await rm(root, { recursive: true });
 }

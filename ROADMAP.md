@@ -23,7 +23,7 @@
 - [ ] Resolve the observed pristine-project extension-discovery/loading
   boundary; initial, settled and foreground contexts lacked both companion and
   native-extension tools. No further unchanged-evidence retries.
-- [x] Preserve committed v0.14.1 corrections through `f8dcf02`; later release
+- [x] Preserve committed v0.14.1 corrections through `7e2142f`; later release
   fixes must still be preserved before eventual landing.
 - [ ] Reviewed published-source adoption only, not candidate global installation.
 

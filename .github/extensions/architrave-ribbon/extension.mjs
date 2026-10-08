@@ -1,7 +1,9 @@
 // Optional read-only projection. Python Run APIs remain the only authority.
 import { createServer } from "node:http";
 import { randomBytes, createHash } from "node:crypto";
-import { mkdir, lstat, readFile, writeFile, rename, unlink, realpath } from "node:fs/promises";
+import { mkdir, lstat, readFile, writeFile, rename, unlink, realpath, open } from "node:fs/promises";
+import { pid, kill } from "node:process";
+import { setTimeout as delay } from "node:timers/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { joinSession, createCanvas, CanvasError } from "@github/copilot-sdk/extension";
@@ -564,9 +566,68 @@ async function serial(domainKey, action) {
 function snapshotDigest(value) {
     return value === null ? null : createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
+async function lockOwner(path) {
+    const info = await lstat(path);
+    if (!info.isFile() || info.isSymbolicLink() || info.size > 1024)
+        throw new CanvasError("ribbon_storage_unsafe", "Display lock is not a bounded regular file");
+    let owner;
+    try { owner = JSON.parse(await readFile(path, "utf8")); }
+    catch (error) {
+        if (error instanceof SyntaxError) return null;
+        throw error;
+    }
+    if (!owner || typeof owner !== "object" || !Number.isInteger(owner.pid) || owner.pid < 1 ||
+        owner.pid > 2147483647 || !/^[a-f0-9]{32}$/.test(owner.nonce))
+        throw new CanvasError("ribbon_storage_unsafe", "Display lock ownership is invalid");
+    return owner;
+}
+function ownerAlive(owner) {
+    try { kill(owner.pid, 0); return true; }
+    catch (error) { if (error.code === "ESRCH") return false; if (error.code === "EPERM") return true; throw error; }
+}
+async function displayLock(path, action) {
+    const lock = path + ".lock";
+    const recovery = path + ".recovery";
+    const owner = { pid, nonce: randomBytes(16).toString("hex") };
+    let acquired = false;
+    for (let attempt = 0; attempt < 40 && !acquired; attempt++) {
+        try {
+            const file = await open(lock, "wx", 0o600);
+            try { await file.writeFile(JSON.stringify(owner)); acquired = true; }
+            catch (error) { await unlink(lock); throw error; }
+            finally { await file.close(); }
+        } catch (error) {
+            if (error.code !== "EEXIST") throw error;
+            try {
+                const prior = await lockOwner(lock);
+                if (prior && !ownerAlive(prior)) {
+                    let guard;
+                    try { guard = await open(recovery, "wx", 0o600); }
+                    catch (error) {
+                        if (error.code !== "EEXIST") throw error;
+                        throw new CanvasError("ribbon_lock_recovery_required", "Display lock recovery is already owned; inspect an orphan recovery guard before removing it");
+                    }
+                    try {
+                        await guard.writeFile(JSON.stringify(owner));
+                        const current = await lockOwner(lock);
+                        if (current && !ownerAlive(current)) await unlink(lock);
+                    } finally { await guard.close(); await unlink(recovery); }
+                }
+            } catch (error) { if (error.code !== "ENOENT") throw error; }
+            if (!acquired) await delay(25);
+        }
+    }
+    if (!acquired) throw new CanvasError("ribbon_snapshot_busy", "Another provider owns this domain; retry after its snapshot write finishes");
+    try { return await action(); }
+    finally {
+        const current = await lockOwner(lock);
+        if (current?.nonce !== owner.nonce) throw new CanvasError("ribbon_storage_unsafe", "Display lock ownership changed");
+        await unlink(lock);
+    }
+}
 async function saveSnapshot(value, expectedDigest) {
     validateSnapshot(value);
-    return serial(value.domainKey, async () => {
+    return serial(value.domainKey, async () => displayLock(await statePath(value.domainKey), async () => {
         const prior = await readSnapshot(value.domainKey);
         if (snapshotDigest(prior) !== expectedDigest)
             throw new CanvasError("ribbon_snapshot_conflict", "Saved display snapshot changed; read it again before replacing it");
@@ -593,7 +654,7 @@ async function saveSnapshot(value, expectedDigest) {
             for (const response of entry.clients) response.write("data: changed\n\n");
         return { domainKey: value.domainKey, revision: value.revision, digest: snapshotDigest(value),
             mode: "agent-fed snapshot; not live" };
-    });
+    }));
 }
 
 export function renderHtml(nonce) {

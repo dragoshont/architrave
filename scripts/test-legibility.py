@@ -158,10 +158,46 @@ class LegibilityTests(unittest.TestCase):
         return LegibilityRunner(self.repo, state["runId"]), state["runId"]
 
     def test_web_requires_health_and_product_evidence(self) -> None:
-        runner, _ = self.create_runner({"health": self.pass_command(), "web": {"url": "http://fixture.invalid"}})
+        runner, run_id = self.create_runner({"health": self.pass_command(), "web": {"url": "http://fixture.invalid"}})
         result = runner.verify_surface("web")
         self.assertEqual("fail", result["status"])
         self.assertIn("web.e2e", result["failed"])
+        state = self.store.load(run_id)
+        gate = next(item for item in state["gateResults"] if item["id"] == result["gateId"])
+        self.assertEqual("FAIL", gate["status"])
+        self.assertTrue(gate["evidenceRefs"])
+        self.assertEqual("gate.failed", self.store.events(run_id)[-1]["type"])
+        self.assertFalse(self.store.verify(run_id)[1])
+        with self.assertRaisesRegex(RuntimeFailure, "passing observed product"):
+            self.store.record_gate(run_id, gate_id="cannot-relabel", task_id=None, gate_type="reality",
+                                  status="PASS", criteria=["REALITY-001"], surface="web",
+                                  evidence_refs=gate["evidenceRefs"])
+
+    def test_repeated_and_independent_observations_keep_prior_authenticated_bytes(self) -> None:
+        runner, run_id = self.create_runner({"health": self.pass_command(), "web": {"url": "http://fixture.invalid"}})
+        first = runner._finalize_gate("web", [
+            runner.recipe("runtime.health", self.pass_command("first")),
+            runner.recipe("web.e2e", self.pass_command("workflow-one")),
+        ], task_id=None)
+        retained = {path: (self.repo / path).read_bytes()
+                    for result in first["results"] for path in result["artifacts"]}
+        independent = LegibilityRunner(self.repo, run_id)
+        second = independent._finalize_gate("web", [
+            independent.recipe("runtime.health", self.pass_command("second")),
+            independent.recipe("web.e2e", self.pass_command("workflow-two")),
+        ], task_id=None)
+        third = runner._finalize_gate("web", [
+            runner.recipe("runtime.health", self.fail_command()),
+            runner.recipe("web.e2e", self.pass_command("workflow-three")),
+        ], task_id=None)
+        self.assertEqual(retained, {path: (self.repo / path).read_bytes() for path in retained})
+        state = self.store.load(run_id)
+        self.assertEqual(["PASS", "PASS", "FAIL"], [gate["status"] for gate in state["gateResults"]])
+        self.assertEqual({first["gateId"], second["gateId"], third["gateId"]},
+                         {gate["id"] for gate in state["gateResults"]})
+        paths = [path for result in [*first["results"], *second["results"], *third["results"]]
+                 for path in result["artifacts"]]
+        self.assertEqual(len(paths), len(set(paths)))
 
     def test_web_e2e_is_recorded_as_reality_gate(self) -> None:
         (self.repo / "dom.json").write_text("{}\n", encoding="utf-8")
@@ -187,6 +223,33 @@ class LegibilityTests(unittest.TestCase):
         gate = self.store.load(run_id)["gateResults"][-1]
         self.assertEqual("reality", gate["type"])
         self.assertEqual("PASS", gate["status"])
+
+    def test_refreshed_visual_artifacts_do_not_overwrite_prior_receipt_evidence(self) -> None:
+        runner, run_id = self.create_runner({"health": self.pass_command(), "web": {"url": "http://fixture.invalid"}})
+        input_dir = self.store.run_dir(run_id) / "observed-inputs"
+        input_dir.mkdir()
+        dom, a11y, image = input_dir / "dom.json", input_dir / "a11y.json", input_dir / "screen.png"
+        dom.write_text('{"observed":"first"}')
+        a11y.write_text("{}")
+        self.write_png(image, [(0, 0, 0), (255, 255, 255)])
+        paths = [path.relative_to(runner.repository).as_posix() for path in (dom, a11y, image)]
+        payload = {"url": "http://fixture.invalid", "domSnapshot": paths[0],
+                   "accessibilityTree": paths[1], "screenshot": paths[2],
+                   "workflowPassed": True, "consoleErrors": [], "networkFailures": []}
+        def observe():
+            structured = runner.structured_recipe("web.e2e", self.json_command(payload, paths),
+                lambda value: runner.validate_web_evidence(value, "http://fixture.invalid"))
+            return runner._finalize_gate("web", [
+                runner.recipe("runtime.health", self.pass_command()), structured], task_id=None)
+        first = observe()
+        prior = {path: (runner.repository / path).read_bytes()
+                 for result in first["results"] for path in result["artifacts"]}
+        dom.write_text('{"observed":"second"}')
+        self.write_png(image, [(255, 255, 255), (0, 0, 0)])
+        second = observe()
+        self.assertEqual("pass", second["status"])
+        self.assertEqual(prior, {path: (runner.repository / path).read_bytes() for path in prior})
+        self.assertEqual(2, len(self.store.load(run_id)["gateResults"]))
 
     def test_web_e2e_url_must_match_configured_origin_and_route(self) -> None:
         for url in ("http://other.invalid/release", "http://fixture.invalid/other"):

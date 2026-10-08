@@ -758,7 +758,7 @@ class ManagedTransaction:
         applied = int(manifest.get("applied", 0))
         in_flight = manifest.get("inFlight")
         recoverable = [(index, item) for index, item in enumerate(operations)
-                       if index < applied or index == in_flight]
+                       if "inFlight" not in manifest or index < applied or index == in_flight]
         for _index, item in reversed(recoverable):
             destination = self.managed.path(str(item["relative"]))
             backup = self.directory / str(item["backup"]) if item.get("backup") else None

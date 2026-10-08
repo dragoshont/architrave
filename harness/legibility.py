@@ -145,8 +145,9 @@ class LegibilityRunner:
         timeout_seconds: int = 300,
     ) -> dict[str, Any]:
         safe_name = name.replace("/", "-").replace(".", "-")
-        stdout_path = self.evidence_dir / f"{safe_name}.stdout.log"
-        stderr_path = self.evidence_dir / f"{safe_name}.stderr.log"
+        observation = uuid.uuid4().hex
+        stdout_path = self.evidence_dir / f"{safe_name}-{observation}.stdout.log"
+        stderr_path = self.evidence_dir / f"{safe_name}-{observation}.stderr.log"
         if not command:
             return {
                 "name": name,
@@ -223,7 +224,7 @@ class LegibilityRunner:
                     else:
                         if visible_pixels == 0 or maximum - minimum < 8:
                             errors.append("screenshot is blank or visually flat")
-                result["artifacts"].append(path.as_posix())
+                result["artifacts"].append(self.retain_artifact(absolute))
         if errors:
             result["status"] = "fail"
             result["exitCode"] = 1
@@ -231,6 +232,17 @@ class LegibilityRunner:
         else:
             result["stdout"] = json.dumps(payload, sort_keys=True)
         return result
+
+    def retain_artifact(self, path: Path) -> str:
+        path = path.resolve()
+        try:
+            path.relative_to(self.repository)
+        except ValueError as exc:
+            raise RuntimeFailure("PATH_ESCAPE", "observed artifact must remain inside the repository") from exc
+        retained = self.evidence_dir / f"{uuid.uuid4().hex}-{path.name}"
+        with retained.open("xb") as handle:
+            handle.write(path.read_bytes())
+        return retained.relative_to(self.repository).as_posix()
 
     @staticmethod
     def validate_web_evidence(payload: dict[str, Any], configured_url: str | None = None) -> list[str]:
@@ -323,6 +335,8 @@ class LegibilityRunner:
                     "name": result["name"],
                     "status": result["status"],
                     "exitCode": result.get("exitCode"),
+                    "reason": str(redact(result.get("stdout", "")))[:2000]
+                              if result["status"] in {"fail", "missing"} else None,
                     "stdoutSha256": result.get("stdoutSha256"),
                     "artifacts": [
                         {
@@ -337,30 +351,27 @@ class LegibilityRunner:
             ],
         }
         receipt_path.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
-        evidence_refs: list[str] = []
-        if not failed:
-            artifact_id = f"{surface}-legibility-{uuid.uuid4().hex}"
-            self.store._record_legibility_result(
-                self.run_id,
-                artifact_id=artifact_id,
-                kind=f"{surface}-legibility",
-                path=receipt_path.relative_to(self.repository).as_posix(),
-                evidence_refs=[f"task:{task_id}"] if task_id else [],
-            )
-            evidence_refs = [f"artifact:{artifact_id}"]
+        artifact_id = f"{surface}-legibility-{uuid.uuid4().hex}"
+        self.store._record_legibility_result(
+            self.run_id,
+            artifact_id=artifact_id,
+            kind=f"{surface}-legibility",
+            path=receipt_path.relative_to(self.repository).as_posix(),
+            evidence_refs=[f"task:{task_id}"] if task_id else [],
+        )
+        evidence_refs = [f"artifact:{artifact_id}"]
         gate_id = f"reality-{surface}-{uuid.uuid4().hex[:10]}"
         status = "PASS" if not failed else "FAIL"
-        if status == "PASS":
-            self.store.record_gate(
-                self.run_id,
-                gate_id=gate_id,
-                task_id=task_id,
-                gate_type="reality",
-                status=status,
-                criteria=bound_criteria,
-                evidence_refs=evidence_refs,
-                surface=surface,
-            )
+        self.store.record_gate(
+            self.run_id,
+            gate_id=gate_id,
+            task_id=task_id,
+            gate_type="reality",
+            status=status,
+            criteria=bound_criteria,
+            evidence_refs=evidence_refs,
+            surface=surface,
+        )
         return {
             "surface": surface,
             "status": "pass" if not failed else "fail",
@@ -401,7 +412,7 @@ class LegibilityRunner:
                 },
                 sort_keys=True,
             ),
-            "artifacts": [relative.as_posix()],
+            "artifacts": [self.retain_artifact(path)],
         }
 
     def verify_surface(self, surface: str, *, task_id: str | None = None) -> dict[str, Any]:

@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "harness"))
 from architrave_runtime import RunStore, RuntimeFailure
 from ribbon import ribbon_snapshot
+from worker_adapters import workspace_fingerprint
 
 spec = importlib.util.spec_from_file_location("ribbon_installer", ROOT / "tools" / "install_update.py")
 installer = importlib.util.module_from_spec(spec)
@@ -29,6 +30,7 @@ class RibbonTests(unittest.TestCase):
                      ("config", "user.name", "Fixture")]:
             self.git(*args)
         (self.repo / "fixture.txt").write_text("generic fixture\n", encoding="utf-8")
+        (self.repo / ".gitignore").write_text(".architrave/\n", encoding="utf-8")
         self.git("add", ".")
         self.git("commit", "-qm", "fixture")
         self.store = RunStore(self.repo)
@@ -76,6 +78,45 @@ class RibbonTests(unittest.TestCase):
         self.assertEqual("stopped", second["state"])
         self.assertTrue(second["retry"]["stopped"])
         self.assertEqual(first["retry"]["fingerprint"], second["retry"]["fingerprint"])
+
+    def test_governing_failure_revokes_verified_display_and_milestone_not_completion_history(self):
+        for owner in ("delivery", None):
+            with self.subTest(failure_task=owner):
+                run_id = "negative-" + ("task" if owner else "criterion")
+                self.store.create(run_id=run_id, goal="Public verification fixture", outcome="Observed surface",
+                    criteria=[{"id": "PRODUCT", "description": "Observed fixture", "scope": "fixture",
+                               "risk": "R1", "verificationType": "reality", "surface": "web", "blocking": True}])
+                self.store.add_task(run_id, {"id": "delivery", "objective": "Public fixture",
+                    "acceptanceCriteria": ["PRODUCT"], "workerProfile": "shell", "risk": "R1",
+                    "pushback": "KEEP:fixture"})
+                self.store.start_task(run_id, "delivery", worker_id="fixture-worker")
+                self.store.finish_worker(run_id, "delivery", worker_id="fixture-worker", status="FINISHED")
+                path = self.store.run_dir(run_id) / "fixture-receipt.json"
+                path.write_text(json.dumps({"surface": "web", "status": "pass", "failed": [],
+                    "binding": {"runId": run_id, "taskId": "delivery", "objectiveVersion": 1, "criteria": ["PRODUCT"]},
+                    "source": {"commit": self.git("rev-parse", "HEAD"),
+                               "sha256": workspace_fingerprint(self.repo, include_ignored=False)},
+                    "results": [{"name": name, "status": "pass"} for name in ("runtime.health", "web.e2e")]}))
+                self.store._record_legibility_result(run_id, kind="web-legibility", artifact_id="observed",
+                    path=path.relative_to(self.store.repository).as_posix(), evidence_refs=["task:delivery"])
+                self.store.record_gate(run_id, gate_id="positive", task_id="delivery", gate_type="reality",
+                    status="PASS", evidence_refs=["artifact:observed"], criteria=["PRODUCT"], surface="web")
+                self.store.set_criterion(run_id, "PRODUCT", "PASS", ["gate:positive"])
+                self.store.complete_task(run_id, "delivery", evidence_refs=["gate:positive"])
+                self.store.advance_milestone(run_id, "delivery", criterion_id="PRODUCT",
+                    milestone="Fixture observation", gate_ref="gate:positive")
+                positive = ribbon_snapshot(self.store, run_id)
+                self.assertEqual("verified", positive["steps"][0]["state"])
+                self.assertIsNotNone(positive["milestone"])
+                self.store.record_gate(run_id, gate_id="negative", task_id=owner, gate_type="reality",
+                    status="FAIL", evidence_refs=[], criteria=["PRODUCT"], surface="web")
+                negative = ribbon_snapshot(self.store, run_id)
+                self.assertEqual("stopped", negative["steps"][0]["state"])
+                self.assertIn("negative", negative["steps"][0]["reason"])
+                self.assertIn("gate:positive", negative["steps"][0]["evidence"])
+                self.assertIn("gate:negative", negative["steps"][0]["evidence"])
+                self.assertIsNone(negative["milestone"])
+                self.assertEqual("COMPLETED", self.store.load(run_id)["tasks"][0]["status"])
 
     def test_source_drift_and_no_synthetic_product_pass(self):
         self.task("scoped")
