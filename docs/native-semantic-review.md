@@ -32,6 +32,8 @@ caller-labelled-family fallback.
 
 Execution runs alone in its joined foreground session at a clean committed
 boundary. The pre-tool guard permits only scoped standard view and source-inventory-bounded rg,
+including the observed joined-host `grep` tool name with the same argument
+allowlist and tracked-regular-file rewrite,
 tool discovery and read-only review-skill loading. Shell/execution, mutation,
 private `.git`/`.architrave` reads, control-plane and descendants are denied.
 Recursive glob/directory views and hidden/ignore/follow overrides are denied.

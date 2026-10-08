@@ -87,6 +87,14 @@ s.add_task('review',{'id':'source','objective':'Review source','acceptanceCriter
                         const search = hooks.onPreToolUse({ toolName: "functions.rg", toolArgs: { pattern: "fixture", paths: [repo] }, sessionId: "child" }, { sessionId: "owner-one" });
                         ok(search.modifiedArgs.paths.every(path => !path.includes(".architrave") && (!path.includes(".git") || path.endsWith(".gitignore"))));
                         ok(search.modifiedArgs.paths.every(path => path !== repo));
+                        const hostSearch = hooks.onPreToolUse({ toolName: "grep",
+                            toolArgs: { pattern: "fixture", paths: [repo], output_mode: "content", head_limit: 10 },
+                            sessionId: "child" }, { sessionId: "owner-one" });
+                        ok(JSON.stringify(hostSearch.modifiedArgs.paths) === JSON.stringify(search.modifiedArgs.paths));
+                        ok(hooks.onPreToolUse({ toolName: "evil.grep", toolArgs: { pattern: "x", paths: [repo] },
+                            sessionId: "child" }, { sessionId: "owner-one" }).permissionDecision === "deny");
+                        ok(hooks.onPreToolUse({ toolName: "grep", toolArgs: { pattern: "x", paths: [repo], hidden: true },
+                            sessionId: "child" }, { sessionId: "owner-one" }).permissionDecision === "deny");
                         ok(hooks.onPreToolUse({ toolName: "functions.rg", toolArgs: { pattern: "x", paths: [repo], hidden: true, follow: true }, sessionId: "child" }, { sessionId: "owner-one" }).permissionDecision === "deny");
                         ok(hooks.onPreToolUse({ toolName: "functions.glob", toolArgs: { pattern: "**/*", paths: [repo] }, sessionId: "child" }, { sessionId: "owner-one" }).permissionDecision === "deny");
                         await symlink(join(repo, ".architrave"), join(repo, "private-alias"), process.platform === "win32" ? "junction" : "dir");

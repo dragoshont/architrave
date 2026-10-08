@@ -467,10 +467,10 @@ session = await joinSession({ tools, hooks: {
     if (semanticScope) {
       if (["tool_search_tool", "functions.tool_search_tool"].includes(input.toolName)) return;
       if (["skill", "functions.skill"].includes(input.toolName) && input.toolArgs?.skill === "architrave-review") return;
-      if (!["view", "rg", "functions.view", "functions.rg"].includes(input.toolName)) {
+      if (!["view", "rg", "grep", "functions.view", "functions.rg"].includes(input.toolName)) {
         return { permissionDecision: "deny", permissionDecisionReason: "SEMANTIC_READ_ONLY: only tracked file view/bounded rg; no execute, mutation, control-plane or child tools" };
       }
-      const name = input.toolName.replace(/^functions\./, "");
+      const name = input.toolName === "grep" ? "rg" : input.toolName.replace(/^functions\./, "");
       const args = input.toolArgs;
       if (!args || typeof args !== "object" || Array.isArray(args)) {
         return { permissionDecision: "deny", permissionDecisionReason: "SEMANTIC_READ_ONLY: malformed read arguments" };
