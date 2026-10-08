@@ -13,7 +13,7 @@ const trust = join(root, "trust");
 const repo = join(root, "repo");
 const sha = value => createHash("sha256").update(value).digest("hex");
 const command = process.env.PYTHON || (process.platform === "win32" ? "python" : "python3");
-const executable = spawnSync(command, ["-c", "import sys;print(sys.executable)"], { encoding: "utf8" });
+const executable = spawnSync(command, ["-c", "import sys;from pathlib import Path;print(Path(sys.executable).resolve())"], { encoding: "utf8" });
 assert.equal(executable.status, 0, executable.stderr);
 const python = executable.stdout.trim();
 let definition, hooks, current, count = 0;
