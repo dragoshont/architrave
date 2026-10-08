@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
+import { spawn } from "node:child_process";
 
 const filename = fileURLToPath(new URL("../.github/extensions/architrave-ribbon/extension.mjs", import.meta.url));
 const source = await readFile(filename, "utf8");
@@ -289,14 +290,25 @@ try {
     await writeFile(prefs, " ".repeat(1025));
     equal((await load("oversized-prefs")).opens.length, 0);
     // Optional scoped renderer proof: synthetic host events, never represented as native telemetry.
-    if (process.env.COMPANION_PREVIEW === "1") {
+    if (process.env.COMPANION_PREVIEW === "1" || process.env.COMPANION_VISUAL_OUTPUT) {
         await writeFile(prefs, '{"enabled":true}');
         const preview = await load("preview");
         preview.emit("assistant.turn_start");
         preview.emit("assistant.usage", { model: "Fixture model", reasoningEffort: "high" });
         preview.emit("session.usage_info", { currentTokens: 4200, tokenLimit: 32768, messagesLength: 4 });
-        console.log("FIXTURE_PREVIEW=" + preview.panels.get("architrave-session-companion").url);
-        await new Promise(resolve => setTimeout(resolve, 180000));
+        const previewUrl = preview.panels.get("architrave-session-companion").url;
+        console.log("FIXTURE_PREVIEW=" + previewUrl);
+        if (process.env.COMPANION_VISUAL_OUTPUT) {
+            const args = [fileURLToPath(new URL("test-session-instrument.py", import.meta.url)),
+                previewUrl, process.env.COMPANION_VISUAL_OUTPUT];
+            if (process.env.COMPANION_BROWSER) args.push("--browser", process.env.COMPANION_BROWSER);
+            const result = await new Promise((resolve, reject) => {
+                const child = spawn(process.env.PYTHON || (process.platform === "win32" ? "python" : "python3"),
+                    args, { stdio: "inherit" });
+                child.once("error", reject); child.once("exit", resolve);
+            });
+            equal(result, 0);
+        } else await new Promise(resolve => setTimeout(resolve, 180000));
     }
     console.log(`PASS session companion: ${checks} assertions (SDK fixture, not native-host proof)`);
 } finally {

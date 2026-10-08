@@ -16,8 +16,10 @@ the large Run snapshot schema to the model. No additional agent, skill, tool,
 hook, `additionalContext`, `session.send`, permission handler or scheduler is
 registered. Canvas declarations still contribute their short discovery entries.
 
-This follow-up is **not part of v0.14.1**. It does not install itself into a
-running user's environment. To adopt published, reviewed source across ordinary
+The approved **Session instrument** is prepared for the next publication through
+the release owner's integration. Source preparation does not publish a version
+or install anything into a running user's environment. To adopt published,
+reviewed source across ordinary
 sessions, explicitly run:
 
 ```text
@@ -39,6 +41,36 @@ guide does not establish a plugin manifest field for this renderer. No guessed
 manifest field or promise that installing the entire Architrave plugin enables
 this companion is added. Hosts without extension discovery or a canvas renderer
 do not acquire these capabilities from installation.
+
+### Session instrument design
+
+The production `architrave-session` surface implements the approved Apple-like
+direction rather than shipping the illustrative preview. A compact telemetry
+rail exposes the selected model, effort setting and exact host-reported context
+occupancy. One quiet indeterminate ribbon represents session activity; it has
+no phase labels, completion denominator or percentage. Unknown counts hide the
+meter instead of rendering zero. The separate canonical Run ribbon continues
+to use explicit validated projections, never the preview's five-stage route.
+
+Expandable subagent lanes show descriptive name, role, **Assigned** slice,
+host lifecycle and explicitly labelled requested/resolved/observed model.
+Detailed identity and effort stay in the disclosure. Keyed DOM rows retain
+their open state and keyboard focus across telemetry updates. Empty and
+unavailable child states differ; app-native child visibility remains explicitly
+separate. No illustrative children or made-up verified totals are shipped.
+
+Typography, fine dividers and restrained surfaces follow documented host theme
+tokens. The OS light/dark preference is only a fallback; host theme attributes
+take precedence. Reduced motion replaces the animated activity ribbon with
+static hatching. Color accompanies text rather than being the only state cue.
+The 44px close control is named **Close this session** for assistive technology.
+Disconnection stops activity motion and labels retained readings last-observed;
+successful close prevents subsequent client refreshes from reviving activity.
+Preferences and detailed observation timestamps remain under one disclosure.
+
+The visual update changes no canvas declarations, server routes, event
+subscriptions, permission handling or startup behavior. It adds no model-facing
+instructions, tool calls, runtime dependencies or context payloads.
 
 ### Startup and lifecycle
 
@@ -174,10 +206,10 @@ therefore did not include it. One supported reload loaded it and reached its
 one-shot open path. This is **post-reload**, not pristine new-session discovery.
 
 A subsequent isolated **project** proof used checkout `4dd45e1` with that exact
-renderer present before CLI creation. Both the first prompt and a settled second
-context exposed only browser/editor/terminal canvases: `architrave-session` and
+renderer present before CLI creation. The first prompt, settled second context
+and supported foreground navigation exposed only browser/editor/terminal canvases: `architrave-session` and
 the separately installed native-extension tools were absent. No manual open or
-reload was used. These two observations establish a project-session
+reload was used. These three bounded observations establish a project-session
 extension-discovery/loading boundary on the observed host, not a renderer
 failure or proof that user-scope discovery is incompatible. No further fresh
 session retries or private host/CLI toggles are warranted by unchanged evidence.
@@ -206,6 +238,20 @@ Focused follow-up command:
 `node --experimental-vm-modules scripts/test-session-companion.mjs`.
 `python scripts/test-ribbon.py` includes standalone adoption/opt-out-preservation
 checks. Fixture/mock success is not native-host evidence.
+
+For the optional real-browser contract, make Python Playwright and an existing
+Chromium/Edge executable available to the test process, then set
+`COMPANION_VISUAL_OUTPUT` to an artifact directory and optionally
+`COMPANION_BROWSER` to that executable before running the same Node test.
+It invokes `scripts/test-session-instrument.py` against a temporary fixture
+server and cleans the server up afterward. Its synthetic HTTP state never
+becomes native-host telemetry. The batched 1280px-light/360px-dark check covers
+eight activity states, unavailable telemetry, long names and counts, theme
+overrides, motion, keyboard focus across updates and display controls. The
+approved design received one coherent surface/copy correction and a final
+confirmation; measured muted-text contrast was at least 5.17:1 light and
+7.38:1 dark. This does not qualify pristine startup, host-global adoption or a
+48k context footprint.
 
 ## Install or refresh (explicit opt-in)
 

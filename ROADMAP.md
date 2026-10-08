@@ -1,6 +1,6 @@
 # Roadmap
 
-## Unreleased follow-up - Passive session companion
+## Next publication candidate - Session instrument
 
 - [x] Ordinary-session display in the same portable renderer, without a Run,
   repository or named agent; lightweight discovery does not disclose Run schemas.
@@ -8,6 +8,12 @@
   model/effort, truthful unknowns, no routine transcript/model traffic.
 - [x] Owned SDK-subagent names, roles, lifecycle, explicit assigned slice and
   model details; app-native child-session visibility explicitly unavailable.
+- [x] Implement the approved Apple-like Session instrument in the same renderer:
+  telemetry rail, context occupancy gauge, quiet indeterminate activity and
+  expandable role/slice/model/status lanes; no illustrative stages or counts.
+- [x] Batched 1280px light / 360px dark browser contract, host-theme overrides,
+  reduced motion, keyboard focus across updates, eight states, long content,
+  unknown usage and close/opt-out interactions; synthetic data, not host proof.
 - [x] One-shot opening, session dismissal, durable user preference and explicit
   standalone one-file adoption, with no permissions or orchestration changes.
 - [x] Live desktop/narrow rendering and exact-source close-this-session followed
@@ -15,7 +21,8 @@
 - [ ] Fresh-session lifecycle and same-host context-delta qualification;
   fixture success alone does not close native-host or footprint claims.
 - [ ] Resolve the observed pristine-project extension-discovery/loading
-  boundary; two contexts lacked both companion and native-extension tools.
+  boundary; initial, settled and foreground contexts lacked both companion and
+  native-extension tools. No further unchanged-evidence retries.
 - [x] Preserve committed v0.14.1 corrections through `f8dcf02`; later release
   fixes must still be preserved before eventual landing.
 - [ ] Reviewed published-source adoption only, not candidate global installation.
