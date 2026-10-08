@@ -23,7 +23,7 @@ synthetic phases or example children are included in the production renderer.
 The Copilot legacy plugin manifest contributes its dedicated extension root;
 standalone user-extension adoption remains an alternative. It attempts one
 provider-qualified automatic open in new supported sessions, preserving opt-out,
-dismissal and existing panels. Host-reported model, reasoning-effort setting and context
+dismissal and existing panels. Host-reported model, effort setting and context
 usage stay distinct from observed model-call identity; missing telemetry stays
 unavailable. Activity is indeterminate, never invented completion.
 Close-this-session and durable user opt-out do not change work or permissions.
