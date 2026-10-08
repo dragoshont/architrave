@@ -24,6 +24,9 @@ Releases at or before **v0.8.12** are on the
   rehydration, bounded input/request guards, loopback-only serving and cleanup.
 - Explicit `canvas-install TARGET` to install or refresh the portable renderer
   through existing managed-path safety. Normal adoption remains unchanged.
+- Display-digest compare-and-swap updates allow equal-Run-revision refreshes
+  while rejecting competing/stale display writes, with ordering and reload
+  regressions. Empty event history fails with an explicit projection error.
 
 ### Limitations
 - Copilot canvas capability required; no Codex/Claude canvas claim. Agent-fed

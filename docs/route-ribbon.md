@@ -42,12 +42,27 @@ retry the read, never repair Run files manually.
 
 Open with `{ "domainKey": snapshot.domainKey, "snapshot": snapshot }`. An initial
 snapshot is optional: opening by domain alone shows persisted data or an honest
-empty state. To update an open panel, call `get_snapshot` with `{}`, then
-`update_snapshot` with `{ "snapshot": freshProjection, "expectedRevision":
-savedRevision }` (null when no snapshot exists). Domain mismatch, invalid graph,
+empty state. To update an open panel, call `get_snapshot` with `{}`; it returns
+`{ "snapshot": savedProjection, "digest": savedDisplayDigest }`. Then call
+`update_snapshot` with `{ "snapshot": freshProjection, "expectedDigest":
+savedDisplayDigest }` (null when no snapshot exists). The digest is a display
+compare-and-swap identity, not a Run revision or acceptance receipt.
+Domain mismatch, invalid graph,
 unknown fields, stale revision/objective/time and oversized data fail explicitly.
 Re-opening is focus, not an update. Supply a fresh projection through the action
 after a meaningful transition; do not generate HTML each turn.
+
+Equal canonical Run revisions intentionally allow fresh capture/source/freshness
+observations without mutating the Run. Updates are serialized per domain and
+must match the entire saved display snapshot's digest. A competing or stale
+reader receives `ribbon_snapshot_conflict`, even if both updates have the same
+Run revision; reread the saved document and obtain a fresh canonical projection
+before retrying. Never simply resubmit stale evidence with a newer digest.
+Lower revision, objective version or capture time remains
+`ribbon_stale_snapshot` even with a current digest. The digest survives provider
+reload because it is derived from the persisted display document. Identical
+content is an idempotent update, not new evidence or progress. No new scheduler,
+canonical counter, telemetry service or Run authority is introduced.
 
 The schema is discoverable through `list_canvas_capabilities`. It bounds a
 snapshot to 64 KiB, 80 steps and 12 evidence references per step. Text is redacted
@@ -136,7 +151,10 @@ required independent family provenance. Preparation alone does not authorize
 tagging, publication, consumer adoption or release acceptance.
 
 Candidate qualification found and batch-fixed Unicode length parity and an
-omitted source hash. Independent reviewers could not obtain authoritative
-effective-model/family metadata; the configured cross-family acceptance gate
-therefore remains **pending**, not a fabricated PASS. This release candidate
-must not be merged/tagged/published as accepted until that gate is satisfied.
+omitted source hash. Retained review also led to display-digest conflict
+protection and an explicit `RIBBON_HISTORY_EMPTY` projection error with focused
+regressions. Host completion events subsequently confirmed OpenAI and Anthropic
+reviewer identities; that identity evidence alone is not a source PASS.
+Final full-source verdicts and required CI are separate qualification evidence.
+Candidate preparation must not be treated as permission to merge, tag, publish
+or adopt into consumer sessions.

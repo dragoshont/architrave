@@ -78,8 +78,9 @@ try {
     }
     const open = await first.canvas.open({ instanceId: "one", input: { domainKey: fixture.domainKey, snapshot: fixture } });
     const action = (provider, name, instanceId, input = {}) => provider.actions.find(entry => entry.name === name).handler({ instanceId, input });
-    const snapshot = await action(first.canvas, "get_snapshot", "one");
-    ok(JSON.stringify(snapshot) === JSON.stringify(fixture));
+    const saved = await action(first.canvas, "get_snapshot", "one");
+    ok(JSON.stringify(saved.snapshot) === JSON.stringify(fixture));
+    ok(saved.digest === createHash("sha256").update(JSON.stringify(fixture)).digest("hex"));
     const page = await fetch(open.url);
     ok(page.status === 200 && page.headers.get("content-security-policy").includes("default-src 'none'"));
     const html = await page.text();
@@ -99,11 +100,41 @@ try {
     ok((await fetch(new URL("/", open.url))).status === 403);
     ok((await fetch(new URL("unknown", open.url))).status === 404);
     await rejects(() => first.canvas.open({ instanceId: "one", input: { domainKey: "another" } }), "ribbon_input_invalid");
-    const update = structuredClone(fixture); update.revision = 2;
-    await rejects(() => action(first.canvas, "update_snapshot", "one", { snapshot: update, expectedRevision: null }), "ribbon_revision_conflict");
-    const result = await action(first.canvas, "update_snapshot", "one", { snapshot: update, expectedRevision: 1 });
+    const refresh = structuredClone(fixture);
+    refresh.capturedAt = "2026-10-08T05:01:00Z";
+    refresh.source.sha256 = "refreshed-public-source";
+    refresh.source.freshness = "stale";
+    const refreshed = await action(first.canvas, "update_snapshot", "one", { snapshot: refresh, expectedDigest: saved.digest });
+    ok(refreshed.revision === fixture.revision && refreshed.digest !== saved.digest);
+    const competitor = structuredClone(refresh);
+    competitor.capturedAt = "2026-10-08T05:02:00Z";
+    competitor.steps[0].evidence = ["fixture:competing-observation"];
+    await rejects(() => action(first.canvas, "update_snapshot", "one", { snapshot: competitor, expectedDigest: saved.digest }), "ribbon_snapshot_conflict");
+    ok((await action(first.canvas, "get_snapshot", "one")).digest === refreshed.digest);
+    const left = structuredClone(competitor);
+    left.steps[0].evidence = ["fixture:new-left-observation"];
+    const right = structuredClone(competitor);
+    right.steps[0].evidence = ["fixture:new-right-observation"];
+    const competing = await Promise.allSettled([
+        action(first.canvas, "update_snapshot", "one", { snapshot: left, expectedDigest: refreshed.digest }),
+        action(first.canvas, "update_snapshot", "one", { snapshot: right, expectedDigest: refreshed.digest }),
+    ]);
+    ok(competing.filter(entry => entry.status === "fulfilled").length === 1);
+    ok(competing.filter(entry => entry.status === "rejected" && entry.reason.code === "ribbon_snapshot_conflict").length === 1);
+    const winner = await action(first.canvas, "get_snapshot", "one");
+    ok(winner.snapshot.steps[0].evidence[0] === "fixture:new-left-observation");
+    const olderCapture = structuredClone(winner.snapshot);
+    olderCapture.capturedAt = fixture.capturedAt;
+    await rejects(() => action(first.canvas, "update_snapshot", "one", { snapshot: olderCapture, expectedDigest: winner.digest }), "ribbon_stale_snapshot");
+    const olderObjective = structuredClone(winner.snapshot);
+    olderObjective.objectiveVersion = 0;
+    await rejects(() => action(first.canvas, "update_snapshot", "one", { snapshot: olderObjective, expectedDigest: winner.digest }), "ribbon_stale_snapshot");
+    const update = structuredClone(winner.snapshot); update.revision = 2;
+    update.capturedAt = "2026-10-08T05:03:00Z";
+    await rejects(() => action(first.canvas, "update_snapshot", "one", { snapshot: update, expectedDigest: null }), "ribbon_snapshot_conflict");
+    const result = await action(first.canvas, "update_snapshot", "one", { snapshot: update, expectedDigest: winner.digest });
     ok(result.revision === 2);
-    await rejects(() => action(first.canvas, "update_snapshot", "one", { snapshot: fixture, expectedRevision: 2 }), "ribbon_stale_snapshot");
+    await rejects(() => action(first.canvas, "update_snapshot", "one", { snapshot: fixture, expectedDigest: result.digest }), "ribbon_stale_snapshot");
     const peer = await first.canvas.open({ instanceId: "two", input: { domainKey: fixture.domainKey } });
     ok((await fetch(new URL("snapshot", peer.url)).then(response => response.json())).revision === 2);
     await first.canvas.onClose({ instanceId: "one" }); await first.canvas.onClose({ instanceId: "two" });
@@ -111,7 +142,9 @@ try {
     const second = await load(); providers.push(second.canvas);
     // Runtime rehydrate retains the original open input, not the last action payload.
     await second.canvas.open({ instanceId: "fresh-panel", input: { domainKey: fixture.domainKey, snapshot: fixture } });
-    ok((await action(second.canvas, "get_snapshot", "fresh-panel")).revision === 2);
+    const restored = await action(second.canvas, "get_snapshot", "fresh-panel");
+    ok(restored.snapshot.revision === 2 && restored.digest === result.digest);
+    await rejects(() => action(second.canvas, "update_snapshot", "fresh-panel", { snapshot: competitor, expectedDigest: saved.digest }), "ribbon_snapshot_conflict");
     const artifacts = await readdir(join(root, "artifacts", "architrave-ribbon"));
     ok(artifacts.length === 1 && /^[a-f0-9]{64}\.json$/.test(artifacts[0]));
     const domainFile = join(root, "artifacts", "architrave-ribbon", createHash("sha256").update(fixture.domainKey).digest("hex") + ".json");

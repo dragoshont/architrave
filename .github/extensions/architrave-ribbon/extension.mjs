@@ -36,7 +36,9 @@ export const snapshotSchema = object({
     }) },
 });
 const openSchema = object({ domainKey: id, snapshot: snapshotSchema }, ["domainKey"]);
-const updateSchema = object({ snapshot: snapshotSchema, expectedRevision: { anyOf: [count, { type: "null" }] } });
+const updateSchema = object({ snapshot: snapshotSchema, expectedDigest: { anyOf: [
+    { type: "string", minLength: 64, maxLength: 64, pattern: "^[a-f0-9]{64}$" }, { type: "null" },
+] } });
 const servers = new Map();
 const queues = new Map();
 let storageRoot;
@@ -137,12 +139,15 @@ async function serial(domainKey, action) {
     queues.set(domainKey, work);
     try { return await work; } finally { if (queues.get(domainKey) === work) queues.delete(domainKey); }
 }
-async function saveSnapshot(value, expectedRevision) {
+function snapshotDigest(value) {
+    return value === null ? null : createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+async function saveSnapshot(value, expectedDigest) {
     validateSnapshot(value);
     return serial(value.domainKey, async () => {
         const prior = await readSnapshot(value.domainKey);
-        if ((prior?.revision ?? null) !== expectedRevision)
-            throw new CanvasError("ribbon_revision_conflict", "Read the current snapshot before replacing it");
+        if (snapshotDigest(prior) !== expectedDigest)
+            throw new CanvasError("ribbon_snapshot_conflict", "Saved display snapshot changed; read it again before replacing it");
         if (prior && (value.runId !== prior.runId || value.revision < prior.revision ||
             value.objectiveVersion < prior.objectiveVersion || Date.parse(value.capturedAt) < Date.parse(prior.capturedAt)))
             throw new CanvasError("ribbon_stale_snapshot", "Snapshot cannot rewind domain history");
@@ -156,7 +161,8 @@ async function saveSnapshot(value, expectedRevision) {
         }
         for (const entry of servers.values()) if (entry.domainKey === value.domainKey)
             for (const response of entry.clients) response.write("data: changed\n\n");
-        return { domainKey: value.domainKey, revision: value.revision, mode: "agent-fed snapshot; not live" };
+        return { domainKey: value.domainKey, revision: value.revision, digest: snapshotDigest(value),
+            mode: "agent-fed snapshot; not live" };
     });
 }
 
@@ -280,19 +286,20 @@ const session = await joinSession({ canvases: [createCanvas({
         return { url: servers.get(ctx.instanceId).url, title: "Architrave / Route Ribbon", status: "Read-only snapshot" };
     },
     actions: [
-        { name: "get_snapshot", description: "Read saved snapshot and revision; no canonical mutations.",
+        { name: "get_snapshot", description: "Read saved snapshot and its display digest; no canonical mutations.",
             inputSchema: object({}), handler: async ctx => {
                 const entry = servers.get(ctx.instanceId);
                 if (!entry) throw new CanvasError("ribbon_not_open", "Reopen this ribbon after provider reload");
-                return readSnapshot(entry.domainKey);
+                const snapshot = await readSnapshot(entry.domainKey);
+                return { snapshot, digest: snapshotDigest(snapshot) };
             } },
-        { name: "update_snapshot", description: "Persist validated display projection only; use current revision from get_snapshot.",
+        { name: "update_snapshot", description: "Compare-and-swap the display projection using the digest from get_snapshot.",
             inputSchema: updateSchema, handler: async ctx => {
                 check(ctx.input, updateSchema, "input");
                 const entry = servers.get(ctx.instanceId);
                 if (!entry) throw new CanvasError("ribbon_not_open", "Reopen this ribbon after provider reload");
                 if (entry.domainKey !== ctx.input.snapshot.domainKey) fail("Snapshot must match the open domain");
-                return saveSnapshot(ctx.input.snapshot, ctx.input.expectedRevision);
+                return saveSnapshot(ctx.input.snapshot, ctx.input.expectedDigest);
             } },
     ],
     onClose: ctx => close(ctx.instanceId),

@@ -94,6 +94,12 @@ class RibbonTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual("architrave.ribbon.v1", json.loads(result.stdout)["result"]["schema"])
 
+    def test_empty_event_history_has_explicit_projection_error(self):
+        with patch.object(self.store, "events", return_value=[]):
+            with self.assertRaises(RuntimeFailure) as failure:
+                ribbon_snapshot(self.store, "run")
+        self.assertEqual("RIBBON_HISTORY_EMPTY", failure.exception.code)
+
     def test_superseded_blocker_is_history_not_current(self):
         self.task("prerequisite")
         self.task("old-blocker", ["prerequisite"])

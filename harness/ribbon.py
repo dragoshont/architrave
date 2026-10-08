@@ -15,6 +15,8 @@ def compact(value: Any) -> str:
 def ribbon_snapshot(store: RunStore, run_id: str | None = None) -> dict[str, Any]:
     state = store.load(run_id)
     events = store.events(state["runId"])
+    if not events:
+        raise RuntimeFailure("RIBBON_HISTORY_EMPTY", "Run projection requires authenticated event history")
     if events[-1]["sequence"] != state["eventCursor"]["sequence"]:
         raise RuntimeFailure("RIBBON_SNAPSHOT_RACE", "Run changed during projection; request a fresh snapshot")
     summary = state_summary(state)
