@@ -385,7 +385,7 @@ from the installed kit once, then use the supported extensions reload. Invoke
 `architrave_native_dispatch` with the absolute adopted repo, Run and task IDs;
 `architrave_native_gate` independently observes the configured test/build or
 installed quick gate. `status` is a fresh projection; worker done is never PASS.
-`architrave_native_review` executes/admit a fresh independent source review
+`architrave_native_review` executes and admits a fresh independent source review
 through the same trusted joined producer; see
 [native semantic execution](docs/native-semantic-review.md).
 For quality-hook cadence and exact hooks-only post-release retirement, see

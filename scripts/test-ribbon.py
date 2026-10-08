@@ -95,6 +95,13 @@ class RibbonTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual("architrave.ribbon.v1", json.loads(result.stdout)["result"]["schema"])
 
+    def test_maximum_run_id_projects_complete_safe_domain_identity(self):
+        run_id = "r" * 128
+        self.store.create(run_id=run_id, goal="Maximum public fixture ID", outcome="Source", criteria=[])
+        result = ribbon_snapshot(self.store, run_id)
+        self.assertEqual(153, len(result["domainKey"]))
+        self.assertEqual(run_id, result["runId"])
+
     def test_empty_event_history_has_explicit_projection_error(self):
         with patch.object(self.store, "events", return_value=[]):
             with self.assertRaises(RuntimeFailure) as failure:

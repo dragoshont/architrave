@@ -50,6 +50,10 @@ const providers = [];
 try {
     const first = await load(); providers.push(first.canvas);
     first.validate(fixture);
+    const maximum = structuredClone(fixture);
+    maximum.runId = "r".repeat(128);
+    maximum.domainKey = "a".repeat(24) + ":" + maximum.runId;
+    first.validate(maximum); assertions++;
     const python = spawnSync(process.env.PYTHON || (process.platform === "win32" ? "python" : "python3"),
         ["-c", "import sys,json;sys.path.insert(0,'harness');from ribbon import compact;print(json.dumps(compact('\\U0001f680'*1201)))"],
         { cwd: fileURLToPath(new URL("../", import.meta.url)), encoding: "utf8" });

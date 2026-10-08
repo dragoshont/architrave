@@ -111,6 +111,19 @@ class NativeReviewTests(unittest.TestCase):
         self.assertNotIn("QUAL:semantic-independent-2", missing_gate_requirements(state, state["acceptanceCriteria"]))
         self.assertIn("QUAL:e2e-or-reality", missing_gate_requirements(state, state["acceptanceCriteria"]))
 
+    def test_rejected_same_family_admission_is_atomic_and_role_can_retry(self):
+        self.accept(self.prepared())
+        before = self.store.load("review")
+        ticket = self.prepared("rubber-duck", "agent-two")
+        self.assert_code("DUPLICATE_REVIEW_FAMILY", lambda: self.accept(ticket, event=self.completion(ticket, "gpt-fixture")))
+        rejected = self.store.load("review")
+        self.assertEqual(before["artifacts"], rejected["artifacts"])
+        self.assertEqual(before["gateResults"], rejected["gateResults"])
+        self.assertEqual(before["revision"], rejected["revision"])
+        retried = self.prepared("rubber-duck", "agent-three")
+        result = self.accept(retried, event=self.completion(retried, "claude-fixture"))
+        self.assertEqual("anthropic", result["family"])
+
     def test_serialized_and_foreign_ticket_cannot_import_verdict(self):
         ticket = self.prepared()
         self.assert_code("SEMANTIC_RESULT_UNTRUSTED", lambda: self.store.accept_native_semantic_review(

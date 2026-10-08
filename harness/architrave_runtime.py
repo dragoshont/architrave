@@ -407,6 +407,7 @@ class NativeSemanticTicket:
         self.challenge = challenge
         self.budget = budget
         self.consumed = False
+        self.receipt_sha256 = None
 
 
 def native_review_family(model: str) -> str:
@@ -3586,18 +3587,26 @@ class RunStore:
         artifact_id = f"native-semantic-{uuid.uuid4().hex}"
         path = self._native_review_storage(state["runId"]) / f"{artifact_id}.json"
         self._atomic_write(path, receipt)
-        self._record_artifact(
-            state["runId"], artifact_id=artifact_id, kind="semantic-verdict",
-            path=path.relative_to(self.repository).as_posix(), evidence_refs=[f"task:{task['id']}"],
-            actor="native-semantic-review", producer="semantic-judge",
-        )
+        ticket.receipt_sha256 = sha256_file(path)
+        artifact = {
+            "id": artifact_id, "kind": "semantic-verdict", "producer": "semantic-judge",
+            "path": path.relative_to(self.repository).as_posix(), "createdAt": utc_now(),
+            "sha256": ticket.receipt_sha256, "evidenceRefs": [f"task:{task['id']}"], "consumedByTask": None,
+        }
         status = {"PASS": "PASS", "REVISE": "BLOCKED", "FAIL": "FAIL"}[report["verdict"]]
         gate_id = f"semantic-{uuid.uuid4().hex}"
-        self.record_gate(
-            state["runId"], gate_id=gate_id, task_id=task["id"], gate_type="semantic", status=status,
-            evidence_refs=[f"artifact:{artifact_id}"], family=family, criteria=binding["criteria"],
-            reviewer="host-native", effort="high", actor="native-semantic-review",
-        )
+        try:
+            self.record_gate(
+                state["runId"], gate_id=gate_id, task_id=task["id"], gate_type="semantic", status=status,
+                evidence_refs=[f"artifact:{artifact_id}"], family=family, criteria=binding["criteria"],
+                reviewer="host-native", effort="high", actor="native-semantic-review",
+                _native_receipt=(ticket, artifact),
+            )
+        except RuntimeFailure:
+            path.unlink(missing_ok=True)
+            raise
+        finally:
+            ticket.receipt_sha256 = None
         return {"status": status, "verdict": report["verdict"], "family": family,
                 "artifactRef": f"artifact:{artifact_id}", "gateRef": f"gate:{gate_id}",
                 "source": binding["source"], "hostTaskId": host_task_id,
@@ -3857,6 +3866,7 @@ class RunStore:
         reviewer: str | None = None,
         effort: str | None = None,
         actor: str = "coordinator",
+        _native_receipt: tuple[NativeSemanticTicket, dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         require_id(gate_id, "gate id")
         requested_level, _, effective_level = (effort or "").partition(":")
@@ -3880,6 +3890,18 @@ class RunStore:
             raise RuntimeFailure("INVALID_GATE", f"invalid gate status: {status}")
 
         def mutate(state: dict[str, Any]) -> dict[str, Any]:
+            if _native_receipt is not None:
+                ticket, artifact = _native_receipt
+                if (not isinstance(ticket, NativeSemanticTicket) or ticket.issuer is not self.__semantic_issuer
+                        or not ticket.consumed or not ticket.receipt_sha256
+                        or gate_type != "semantic" or task_id != ticket.binding["taskId"]
+                        or run_id != ticket.binding["runId"] or artifact["sha256"] != ticket.receipt_sha256
+                        or sha256_file(self.repository / artifact["path"]) != ticket.receipt_sha256):
+                    raise RuntimeFailure("SEMANTIC_RESULT_UNTRUSTED", "atomic producer admission requires its verified live capability")
+                if any(item["id"] == artifact["id"] for item in state["artifacts"]):
+                    raise RuntimeFailure("EVIDENCE_REPLAY", "native semantic artifact already exists")
+                artifact["attestation"] = self._artifact_attestation(artifact)
+                state["artifacts"].append(artifact)
             if any(result["id"] == gate_id for result in state["gateResults"]):
                 raise RuntimeFailure("GATE_EXISTS", f"gate result already exists: {gate_id}")
             if task_id is not None:

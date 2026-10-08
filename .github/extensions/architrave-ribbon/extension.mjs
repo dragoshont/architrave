@@ -13,12 +13,13 @@ const states = {
 };
 const text = { type: "string", minLength: 1, maxLength: 1200 };
 const id = { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" };
+const domain = { type: "string", minLength: 1, maxLength: 256, pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$" };
 const nullableText = { anyOf: [text, { type: "null" }] };
 const count = { type: "integer", minimum: 0, maximum: 1000000000 };
 const object = (properties, required = Object.keys(properties)) =>
     ({ type: "object", additionalProperties: false, properties, required });
 export const snapshotSchema = object({
-    schema: { const: "architrave.ribbon.v1" }, domainKey: id, runId: id,
+    schema: { const: "architrave.ribbon.v1" }, domainKey: domain, runId: id,
     revision: count, objectiveVersion: count, title: text, objective: text,
     capturedAt: text, startedAt: text, deadline: nullableText,
     source: object({ commit: text, sha256: text, freshness: { enum: ["current", "stale", "unknown"] }, provenance: text }),
@@ -39,7 +40,7 @@ export const snapshotSchema = object({
     streams: { type: "array", maxItems: 80, items: object({
         id, label: text, kind: { enum: ["delivery", "exploratory", "reference", "review", "operations", "unassigned"] },
         outcome: text, sourceRef: object({
-            domainKey: id, runId: id, revision: count, objectiveVersion: count, capturedAt: text, commit: text, sha256: text,
+            domainKey: domain, runId: id, revision: count, objectiveVersion: count, capturedAt: text, commit: text, sha256: text,
             freshness: { enum: ["current", "stale", "unknown"] },
         }),
     }) },
@@ -49,7 +50,7 @@ export const snapshotSchema = object({
     }) },
 }, ["schema", "domainKey", "runId", "revision", "objectiveVersion", "title", "objective",
     "capturedAt", "startedAt", "deadline", "source", "next", "milestone", "steps"]);
-const openSchema = object({ domainKey: id, snapshot: snapshotSchema }, ["domainKey"]);
+const openSchema = object({ domainKey: domain, snapshot: snapshotSchema }, ["domainKey"]);
 const updateSchema = object({ snapshot: snapshotSchema, expectedDigest: { anyOf: [
     { type: "string", minLength: 64, maxLength: 64, pattern: "^[a-f0-9]{64}$" }, { type: "null" },
 ] } });
@@ -152,7 +153,7 @@ async function directory(path) {
 }
 async function statePath(domainKey) {
     if (!storageRoot) throw new CanvasError("ribbon_storage_unavailable", "Host workspace artifact storage is unavailable");
-    check(domainKey, id, "domainKey");
+    check(domainKey, domain, "domainKey");
     await directory(join(storageRoot, "artifacts"));
     await directory(join(storageRoot, "artifacts", "architrave-ribbon"));
     return join(storageRoot, "artifacts", "architrave-ribbon", createHash("sha256").update(domainKey).digest("hex") + ".json");
