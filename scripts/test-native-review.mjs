@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, writeFile, copyFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, copyFile, rm, rename, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,7 +16,7 @@ const command = process.env.PYTHON || (process.platform === "win32" ? "python" :
 const executable = spawnSync(command, ["-c", "import sys;from pathlib import Path;print(Path(sys.executable).resolve())"], { encoding: "utf8" });
 assert.equal(executable.status, 0, executable.stderr);
 const python = executable.stdout.trim();
-let definition, hooks, current, count = 0;
+let definition, cancelDefinition, hooks, current, count = 0, failCleanup = true;
 const listeners = new Set();
 const tasks = new Map();
 let assertions = 0;
@@ -33,6 +33,7 @@ def git(*args):subprocess.run(['git',*args],cwd=r,check=True,capture_output=True
 git('init','-q');git('config','user.name','Fixture');git('config','user.email','fixture@example.invalid')
 (r/'.gitignore').write_text('.architrave/\\n')
 (r/'README.md').write_text('Public synthetic source\\n')
+(r/'public').mkdir();(r/'public'/'example.md').write_text('Public tracked nested source\\n')
 (r/'architrave.config.json').write_text(json.dumps({'kind':'knowledge','build':'git diff --check','test':'git diff --check','review':{'crossFamily':True}}))
 git('add','.');git('commit','-qm','fixture')
 s=RunStore(r)
@@ -64,6 +65,7 @@ s.add_task('review',{'id':'source','objective':'Review source','acceptanceCriter
         joinSession: async config => {
             hooks = config.hooks;
             definition = config.tools.find(tool => tool.name === "architrave_native_review");
+            cancelDefinition = config.tools.find(tool => tool.name === "architrave_native_cancel");
             return {
                 sessionId: "owner-one", on: callback => { listeners.add(callback); return () => listeners.delete(callback); },
                 rpc: { tasks: {
@@ -72,7 +74,7 @@ s.add_task('review',{'id':'source','objective':'Review source','acceptanceCriter
                         ok(!Object.hasOwn(args, "model"));
                         count++;
                         const id = `agent-${count}`;
-                        const subject = JSON.parse(args.prompt.split("Bound subject:\n")[1]);
+                        const subject = JSON.parse(args.prompt.split("Bound subject:\n")[1].split("\nTracked regular source inventory")[0]);
                         const report = { verdict: "PASS", criteria: subject.criteria,
                             sourceCommit: subject.source.commit, sourceSha256: subject.source.sha256,
                             challenge: subject.challenge, summary: "SDK fixture, not live evidence.", findings: [] };
@@ -82,6 +84,19 @@ s.add_task('review',{'id':'source','objective':'Review source','acceptanceCriter
                         ok(hooks.onPreToolUse({ toolName: "evil.view", toolArgs: { path: join(repo, "README.md") }, sessionId: "child" }, { sessionId: "owner-one" }).permissionDecision === "deny");
                         ok(hooks.onPreToolUse({ toolName: "functions.view", toolArgs: { path: join(repo, ".architrave", "runtime.key") }, sessionId: "child" }, { sessionId: "owner-one" }).permissionDecision === "deny");
                         ok(hooks.onPreToolUse({ toolName: "functions.view", toolArgs: { path: join(repo, "README.md") }, sessionId: "child" }, { sessionId: "owner-one" }).modifiedArgs.path.endsWith("README.md"));
+                        const search = hooks.onPreToolUse({ toolName: "functions.rg", toolArgs: { pattern: "fixture", paths: [repo] }, sessionId: "child" }, { sessionId: "owner-one" });
+                        ok(search.modifiedArgs.paths.every(path => !path.includes(".architrave") && (!path.includes(".git") || path.endsWith(".gitignore"))));
+                        ok(search.modifiedArgs.paths.every(path => path !== repo));
+                        ok(hooks.onPreToolUse({ toolName: "functions.rg", toolArgs: { pattern: "x", paths: [repo], hidden: true, follow: true }, sessionId: "child" }, { sessionId: "owner-one" }).permissionDecision === "deny");
+                        ok(hooks.onPreToolUse({ toolName: "functions.glob", toolArgs: { pattern: "**/*", paths: [repo] }, sessionId: "child" }, { sessionId: "owner-one" }).permissionDecision === "deny");
+                        await symlink(join(repo, ".architrave"), join(repo, "private-alias"), process.platform === "win32" ? "junction" : "dir");
+                        ok(hooks.onPreToolUse({ toolName: "functions.view", toolArgs: { path: join(repo, "private-alias", "runtime.key") }, sessionId: "child" }, { sessionId: "owner-one" }).permissionDecision === "deny");
+                        await rm(join(repo, "private-alias"));
+                        await rename(join(repo, "public"), join(repo, "public-saved"));
+                        await symlink(join(repo, ".architrave"), join(repo, "public"), process.platform === "win32" ? "junction" : "dir");
+                        ok(hooks.onPreToolUse({ toolName: "functions.rg", toolArgs: { pattern: "x", paths: [repo] }, sessionId: "child" }, { sessionId: "owner-one" }).permissionDecision === "deny");
+                        await rm(join(repo, "public"));
+                        await rename(join(repo, "public-saved"), join(repo, "public"));
                         setTimeout(() => {
                             current.status = "idle"; current.latestResponse = JSON.stringify(report);
                             emit({ type: "subagent.completed", id: `completion-${count}`, agentId: id,
@@ -92,7 +107,10 @@ s.add_task('review',{'id':'source','objective':'Review source','acceptanceCriter
                         }, 30);
                         return { agentId: id };
                     },
-                    cancel: async ({ id }) => { if (tasks.has(id)) tasks.get(id).status = "cancelled"; return { cancelled: true }; },
+                    cancel: async ({ id }) => {
+                        if (failCleanup) { failCleanup = false; throw new Error("fixture cleanup transport failure"); }
+                        if (tasks.has(id)) tasks.get(id).status = "cancelled"; return { cancelled: true };
+                    },
                     remove: async ({ id }) => { tasks.delete(id); return { removed: true }; },
                 } },
             };
@@ -115,6 +133,9 @@ s.add_task('review',{'id':'source','objective':'Review source','acceptanceCriter
     ok(count === 0);
     const first = JSON.parse((await definition.handler(args, invocation)).textResultForLlm);
     ok(first.status === "ok" && first.result.verdict === "PASS" && first.result.family === "anthropic");
+    ok(first.cleanup.confirmed === false && first.recoveryOwner === "agent-1");
+    const recovered = JSON.parse((await cancelDefinition.handler(args, invocation)).textResultForLlm);
+    ok(recovered.cancelled === true);
     ok(tasks.size === 0 && listeners.size === 0);
     const second = JSON.parse((await definition.handler({ ...args, reviewer: "code-review" }, { ...invocation, toolCallId: "call-two" })).textResultForLlm);
     ok(second.status === "ok" && second.result.family === "openai");

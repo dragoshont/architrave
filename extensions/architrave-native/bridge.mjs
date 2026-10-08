@@ -22,6 +22,7 @@ const bridgePath = join(installed.root, "harness", "native_host.py");
 const active = new Map();
 let pendingDispatches = 0;
 let semanticScope;
+let semanticFiles;
 let session;
 
 function pipe(request) {
@@ -286,8 +287,17 @@ const tools = [
       required: ["repo", "run_id", "task_id"], additionalProperties: false },
     handler: async (args, invocation) => {
       request(args, "status", invocation);
-      const entry = active.get(`${args.run_id}:${args.task_id}`);
+      const recoveries = [...active.values()].filter(value => value.recoveryPending &&
+        value.key.startsWith(`review:${args.run_id}:${args.task_id}:`));
+      const entry = active.get(`${args.run_id}:${args.task_id}`) || (recoveries.length === 1 ? recoveries[0] : null);
       if (!entry || resolve(entry.repo) !== resolve(args.repo)) throw new Error("No live native bridge owns this WorkPacket");
+      if (entry.recoveryPending) {
+        const errors = await cleanupSemanticOwner(entry.hostTaskId, entry.connection, entry);
+        if (errors.length) return result({ status: "failed", cancelled: false,
+          recoveryOwner: entry.hostTaskId, cleanup: { confirmed: false, errors } });
+        active.delete(entry.key);
+        return result({ status: "ok", cancelled: true, hostTaskId: entry.hostTaskId });
+      }
       const outcome = await session.rpc.tasks.cancel({ id: entry.hostTaskId });
       if (!outcome.cancelled) throw new Error("Host cancellation was not confirmed");
       return result({ status: "ok", cancelled: true, hostTaskId: entry.hostTaskId });
@@ -339,20 +349,33 @@ tools.push({
       invocationId: invocation.toolCallId, reviewer: args.reviewer || "rubber-duck" };
     const connection = pipe(input);
     semanticScope = input.repo;
-    let hostTaskId, observer, key;
+    let hostTaskId, observer, key, cleanupAttempted = false;
     let abort;
     try {
       const prepared = await connection.next();
       if (prepared.status !== "prepared") return result(prepared);
+      semanticFiles = (prepared.sourceFiles || []).map(path => {
+        const file = resolve(input.repo, path);
+        const suffix = relative(input.repo, file);
+        const info = lstatSync(file);
+        if (suffix.startsWith("..") || isAbsolute(suffix) ||
+            suffix.split(/[\\/]/).some(part => [".git", ".architrave"].includes(part.toLowerCase())) ||
+            !info.isFile() || info.isSymbolicLink() || realpathSync(file) !== file) return null;
+        return file;
+      }).filter(Boolean);
       observer = observeTask(prepared.maxTurns, true);
       const admitted = await session.rpc.tasks.startAgent({
-        agentType: prepared.agentType, prompt: prepared.prompt,
+        agentType: prepared.agentType, prompt: prepared.prompt +
+          "\nTracked regular source inventory (no recursive glob or directory view; search only these files):\n" +
+          JSON.stringify(semanticFiles),
         name: `Architrave semantic ${args.task_id}`, description: "Independent frozen-source gate",
       });
       hostTaskId = admitted.agentId;
       key = `review:${args.run_id}:${args.task_id}:${invocation.toolCallId}`;
-      active.set(key, { hostTaskId, connection, repo: args.repo });
-      abort = () => { void session.rpc.tasks.cancel({ id: hostTaskId }); };
+      active.set(key, { key, hostTaskId, connection, repo: input.repo });
+      abort = () => { void session.rpc.tasks.cancel({ id: hostTaskId }).catch(error => {
+        process.stderr.write(`Native semantic cancellation failed: ${String(error)}\n`);
+      }); };
       invocation.signal?.addEventListener("abort", abort, { once: true });
       const observation = observer.wait(hostTaskId, Date.parse(prepared.expiresAt), () => true);
       observation.catch(() => {});
@@ -366,25 +389,52 @@ tools.push({
         text: String(observed.result || observed.latestResponse || ""),
         completion: observed.completionEvent,
       });
-      return result(await connection.next());
+      const outcome = await connection.next();
+      cleanupAttempted = true;
+      const entry = active.get(key);
+      const cleanupErrors = await cleanupSemanticOwner(hostTaskId, connection, entry);
+      if (cleanupErrors.length && entry) entry.recoveryPending = true;
+      else if (key) active.delete(key);
+      return result({ ...outcome, cleanup: { confirmed: !cleanupErrors.length, errors: cleanupErrors },
+        ...(cleanupErrors.length ? { recoveryOwner: hostTaskId } : {}) });
     } catch (error) {
       return result({ status: "failed", error: { code: "NATIVE_SEMANTIC_FAILED", message: String(error) }, hostTaskId });
     } finally {
       invocation.signal?.removeEventListener("abort", abort);
-      if (key) active.delete(key);
-      observer?.close();
-      try {
-        if (hostTaskId) {
-          await session.rpc.tasks.cancel({ id: hostTaskId });
-          await session.rpc.tasks.remove({ id: hostTaskId });
-        }
-      } finally {
-        try { await connection.close(); }
-        finally { semanticScope = undefined; }
+      try { observer?.close(); }
+      catch (error) { process.stderr.write(`Native semantic observer cleanup failed: ${String(error)}\n`); }
+      if (!cleanupAttempted) {
+        const entry = active.get(key);
+        const errors = await cleanupSemanticOwner(hostTaskId, connection, entry);
+        if (errors.length) {
+          if (entry) entry.recoveryPending = true;
+          process.stderr.write(`Native semantic cleanup needs recovery: ${errors.join("; ")}\n`);
+        } else if (key) active.delete(key);
       }
+      semanticScope = undefined; semanticFiles = undefined;
     }
   }),
 });
+
+async function cleanupSemanticOwner(owner, connection, progress = {}) {
+  const errors = [];
+  if (owner && !progress.hostRemoved) {
+    try {
+      if (!progress.cancelled) {
+        const outcome = await session.rpc.tasks.cancel({ id: owner });
+        if (!outcome.cancelled) throw new Error("Host cancellation was not confirmed");
+        progress.cancelled = true;
+      }
+      await session.rpc.tasks.remove({ id: owner });
+      progress.hostRemoved = true;
+    } catch (error) { errors.push(`host cleanup: ${String(error)}`); }
+  }
+  try {
+    if (!progress.bridgeClosed) { await connection.close(); progress.bridgeClosed = true; }
+  }
+  catch (error) { errors.push(`bridge cleanup: ${String(error)}`); }
+  return errors;
+}
 
 tools.push({
   name: "architrave_native_batch",
@@ -406,8 +456,8 @@ session = await joinSession({ tools, hooks: {
     if (semanticScope) {
       if (["tool_search_tool", "functions.tool_search_tool"].includes(input.toolName)) return;
       if (["skill", "functions.skill"].includes(input.toolName) && input.toolArgs?.skill === "architrave-review") return;
-      if (!["view", "rg", "glob", "functions.view", "functions.rg", "functions.glob"].includes(input.toolName)) {
-        return { permissionDecision: "deny", permissionDecisionReason: "SEMANTIC_READ_ONLY: only scoped view/rg/glob; no execute, mutation, control-plane or child tools" };
+      if (!["view", "rg", "functions.view", "functions.rg"].includes(input.toolName)) {
+        return { permissionDecision: "deny", permissionDecisionReason: "SEMANTIC_READ_ONLY: only tracked file view/bounded rg; no execute, mutation, control-plane or child tools" };
       }
       const name = input.toolName.replace(/^functions\./, "");
       const args = input.toolArgs;
@@ -418,7 +468,11 @@ session = await joinSession({ tools, hooks: {
         const paths = name === "view" ? [args.path] :
           Array.isArray(args.paths) ? args.paths : [args.paths || semanticScope];
         if (!paths.length) throw new Error("no source paths");
-        const safe = paths.map(path => {
+        const regularSource = file => {
+          const info = lstatSync(file);
+          return info.isFile() && !info.isSymbolicLink() && realpathSync(file) === file;
+        };
+        const roots = paths.map(path => {
           if (typeof path !== "string") throw new Error("invalid source path");
           const absolute = realpathSync(resolve(semanticScope, path));
           const suffix = relative(semanticScope, absolute);
@@ -428,7 +482,17 @@ session = await joinSession({ tools, hooks: {
           }
           return absolute;
         });
-        return { modifiedArgs: { ...args, ...(name === "view" ? { path: safe[0] } : { paths: safe }) } };
+        if (name === "view") {
+          if (!semanticFiles?.includes(roots[0]) || !regularSource(roots[0])) throw new Error("view requires a tracked regular source file");
+          return { modifiedArgs: { ...args, path: roots[0] } };
+        }
+        const allowed = ["pattern", "paths", "output_mode", "glob", "type", "-i", "-A", "-B", "-C", "-n", "head_limit", "multiline"];
+        if (Object.keys(args).some(key => !allowed.includes(key))) throw new Error("unsupported recursive search override");
+        const files = (semanticFiles || []).filter(file => roots.some(root => file === root ||
+          (!relative(root, file).startsWith("..") && !isAbsolute(relative(root, file)))));
+        if (!files.length) throw new Error("no tracked regular source files in requested search");
+        if (!files.every(regularSource)) throw new Error("tracked source path changed or aliases private data");
+        return { modifiedArgs: { ...args, paths: files } };
       } catch (error) {
         return { permissionDecision: "deny", permissionDecisionReason: `SEMANTIC_READ_ONLY: ${error.code || error.message}` };
       }

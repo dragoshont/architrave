@@ -84,7 +84,8 @@ def main():
                 invocation_id=request["invocationId"], reviewer=request["reviewer"],
             )
             emit({"status": "prepared", "prompt": prompt, "agentType": request["reviewer"],
-                  "maxTurns": review.budget.get("maxTurns", 12), "expiresAt": review.binding["expiresAt"]})
+                  "maxTurns": review.budget.get("maxTurns", 12), "expiresAt": review.binding["expiresAt"],
+                  "sourceFiles": review.source_files})
             admitted = receive()
             if set(admitted) != {"status", "hostTaskId"} or admitted["status"] != "admitted":
                 raise RuntimeFailure("NATIVE_ADMISSION_FAILED", "fresh independent reviewer was not admitted")

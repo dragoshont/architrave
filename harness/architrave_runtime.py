@@ -3453,7 +3453,8 @@ class RunStore:
             "architrave.config.json, governing sources and gates/rubric.md. Grade source and observed deterministic "
             "evidence; publication/family receipt admission is the host qualifier's responsibility, not a circular "
             "condition for your source verdict. Use the configured profile; do not invent product acceptance. "
-            "READ ONLY: only scoped view/rg/glob tools are permitted, with absolute paths inside the supplied scope. "
+            "READ ONLY: only view of tracked regular source files and source-inventory-bounded rg are permitted. "
+            "No recursive glob or directory view; use the supplied source inventory and absolute paths. "
             "No shell/execute, private .git/.architrave reads, file/history/Run/policy changes, scratch files, "
             "agent spawning, control-plane tools, provider SDK or agent CLI. The trusted executor has already "
             "bound the exact source commit/hash; do not execute git to rediscover it. "
@@ -3466,7 +3467,12 @@ class RunStore:
             f"{budget['maxOutputBytes']} UTF-8 bytes. High semantic effort is requested only within host-supported "
             "defaults; no per-task reasoning override is available. Bound subject:\n" + canonical_json(redact(instructions))
         )
-        return NativeSemanticTicket(self.__semantic_issuer, binding, challenge, budget), prompt
+        ticket = NativeSemanticTicket(self.__semantic_issuer, binding, challenge, budget)
+        ticket.source_files = run_command(["git", "ls-files", "-z"], self.repository).split("\0")
+        ticket.source_files = [path for path in ticket.source_files if path]
+        if len(ticket.source_files) > 4096:
+            raise RuntimeFailure("SEMANTIC_SOURCE_TOO_LARGE", "bounded native source inventory exceeded; use a supported smaller scope")
+        return ticket, prompt
 
     def bind_native_semantic_owner(self, ticket: NativeSemanticTicket, host_task_id: str) -> None:
         if (not isinstance(ticket, NativeSemanticTicket) or ticket.issuer is not self.__semantic_issuer
@@ -3900,6 +3906,12 @@ class RunStore:
                     raise RuntimeFailure("SEMANTIC_RESULT_UNTRUSTED", "atomic producer admission requires its verified live capability")
                 if any(item["id"] == artifact["id"] for item in state["artifacts"]):
                     raise RuntimeFailure("EVIDENCE_REPLAY", "native semantic artifact already exists")
+                if state["revision"] != ticket.binding["revision"]:
+                    raise RuntimeFailure("SEMANTIC_RESULT_STALE", "review scope changed before atomic gate admission")
+                self._assert_native_semantic_receipt(
+                    state, artifact, self._read_json_receipt(artifact["path"], "semantic"),
+                    task_id, list(criteria or []), family,
+                )
                 artifact["attestation"] = self._artifact_attestation(artifact)
                 state["artifacts"].append(artifact)
             if any(result["id"] == gate_id for result in state["gateResults"]):

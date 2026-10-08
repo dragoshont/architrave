@@ -202,12 +202,21 @@ class InstallUpdateTests(unittest.TestCase):
         result = self.run_cli("update", str(target), expected=2)
         self.assertIn("MANUAL_ACTION_REQUIRED", result.stderr)
         self.assertEqual(original, active.read_bytes())
-        self.run_cli("retire-hooks", str(target), expected=2)
+        retired = self.run_cli("retire-hooks", str(target), expected=2)
+        self.assertIn("MANUAL_ACTION_REQUIRED", retired.stderr)
+        dry = self.run_cli("retire-hooks", "--dry-run", str(target), expected=2)
+        self.assertIn("MANUAL_ACTION_REQUIRED", dry.stderr)
         self.assertEqual(original, active.read_bytes())
         active.write_text('{"hooks":{},"hooks":{"PostToolUse":[{"type":"command","command":"./gates/quality-gate.sh --hook-json","timeout":20}]}}')
         duplicate = active.read_bytes()
-        self.run_cli("retire-hooks", str(target), expected=2)
+        retired = self.run_cli("retire-hooks", str(target), expected=2)
+        self.assertIn("MANUAL_ACTION_REQUIRED", retired.stderr)
         self.assertEqual(duplicate, active.read_bytes())
+        active.write_text("{malformed")
+        malformed = active.read_bytes()
+        retired = self.run_cli("retire-hooks", str(target), expected=2)
+        self.assertIn("MANUAL_ACTION_REQUIRED", retired.stderr)
+        self.assertEqual(malformed, active.read_bytes())
 
     def test_quality_retirement_conflicting_edit_rolls_back_without_deleting_custom_data(self) -> None:
         target = self.workspace / "hook race"
@@ -847,6 +856,34 @@ class InstallUpdateTests(unittest.TestCase):
         unsafe_before = snapshot(unsafe)
         self.run_cli("update", str(unsafe), expected=1)
         self.assertEqual(snapshot(unsafe), unsafe_before)
+
+    def test_quality_retirement_edit_after_backup_preserves_custom_and_rolls_back_applied_write(self) -> None:
+        target = self.workspace / "after backup"
+        target.mkdir()
+        active = target / ".github/hooks/design-guard.json"
+        active.parent.mkdir(parents=True)
+        active.write_bytes((ROOT / "gates/hooks/design-guard.json").read_bytes())
+        product = target / "managed.txt"
+        product.write_bytes(b"before")
+        managed = self.module.ManagedRoot(target, "fixture")
+        plan = self.module.quality_hook_plan(managed, ROOT)
+        custom = b'{"hooks":{"PostToolUse":[{"type":"command","command":"new-custom-after-backup"}]}}'
+        original = self.module.ManagedTransaction._write_manifest
+        edited = False
+        def after_backup(transaction, value):
+            nonlocal edited
+            original(transaction, value)
+            if not edited and value["status"] == "prepared" and value["applied"] == 0:
+                active.write_bytes(custom)
+                edited = True
+        with mock.patch.object(self.module.ManagedTransaction, "_write_manifest", after_backup):
+            with self.assertRaises(self.module.InstallerError):
+                with self.module.ManagedTransaction(managed):
+                    managed.replace_bytes("managed.txt", b"applied-new-value")
+                    self.module.apply_quality_hook_plan(managed, plan)
+        self.assertEqual(custom, active.read_bytes())
+        self.assertEqual(b"before", product.read_bytes())
+        self.assertFalse((target / ".architrave-install-transaction").exists())
 
     def test_public_entrypoints_are_python_only_launch_shims(self) -> None:
         install_sh = (ROOT / "tools/install.sh").read_text(encoding="utf-8")
