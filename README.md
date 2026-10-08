@@ -12,6 +12,22 @@ prove the requested product outcome actually occurred.
 
 ![Architrave — ground in the repo, route to specialists, gate with a judge plus real checks, then ship](assets/overview.png)
 
+## Unreleased follow-up: passive session companion
+
+The portable ribbon renderer also provides a lightweight **Session companion**,
+independent of the named Architrave agent, repository config and canonical Runs.
+Once explicitly adopted as a user extension, it attempts one automatic open in
+new supported sessions. Host-reported model, reasoning-effort setting and context
+usage stay distinct from observed model-call identity; missing telemetry stays
+unavailable. Activity is indeterminate, never invented completion.
+Close-this-session and durable user opt-out do not change work or permissions.
+No tools, prompt injections, workers or recurring model calls are added.
+Owned SDK subagents show names, roles, lifecycle and assigned slices with
+model details on demand; app-native child-session visibility remains explicitly
+unavailable through the current extension API.
+See [companion adoption and supported boundaries](docs/route-ribbon.md#session-companion-unreleased-follow-up).
+This is separate from v0.14.1; no candidate global adoption is implied.
+
 ## Latest news: v0.14.1 candidate
 
 The optional **Route Ribbon** turns a compact Run snapshot into a segmented,

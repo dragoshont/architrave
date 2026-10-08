@@ -192,6 +192,37 @@ class RibbonTests(unittest.TestCase):
             installer.install_canvas(ROOT, target)
         self.assertEqual("not a directory", (target / ".github").read_text(encoding="utf-8"))
 
+    def test_companion_install_is_one_file_and_preserves_durable_opt_out(self):
+        home = Path(self.temp.name) / "copilot-home"
+        artifacts = home / "extensions" / "architrave-ribbon" / "artifacts"
+        artifacts.mkdir(parents=True)
+        preferences = artifacts / "preferences.json"
+        preferences.write_text('{"enabled":false}', encoding="utf-8")
+        installer.install_companion(ROOT, home)
+        entry = artifacts.parent / "extension.mjs"
+        source = ROOT / ".github" / "extensions" / "architrave-ribbon" / "extension.mjs"
+        self.assertEqual(source.read_bytes(), entry.read_bytes())
+        self.assertEqual('{"enabled":false}', preferences.read_text(encoding="utf-8"))
+        self.assertEqual({"extensions/architrave-ribbon/extension.mjs",
+                          "extensions/architrave-ribbon/artifacts/preferences.json"},
+                         {path.relative_to(home).as_posix() for path in home.rglob("*") if path.is_file()})
+        entry.write_text("old renderer", encoding="utf-8")
+        installer.install_companion(ROOT, home)
+        self.assertEqual(source.read_bytes(), entry.read_bytes())
+        self.assertEqual('{"enabled":false}', preferences.read_text(encoding="utf-8"))
+
+    def test_companion_install_requires_explicit_existing_home_and_safe_paths(self):
+        missing = Path(self.temp.name) / "missing"
+        with self.assertRaises(installer.InstallerError):
+            installer.install_companion(ROOT, missing)
+        self.assertFalse(missing.exists())
+        home = Path(self.temp.name) / "copilot-home"
+        home.mkdir()
+        (home / "extensions").write_text("preserve", encoding="utf-8")
+        with self.assertRaises(installer.InstallerError):
+            installer.install_companion(ROOT, home)
+        self.assertEqual("preserve", (home / "extensions").read_text(encoding="utf-8"))
+
 
 if __name__ == "__main__":
     unittest.main()

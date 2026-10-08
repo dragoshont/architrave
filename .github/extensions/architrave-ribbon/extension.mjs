@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import { randomBytes, createHash } from "node:crypto";
 import { mkdir, lstat, readFile, writeFile, rename, unlink, realpath } from "node:fs/promises";
 import { join } from "node:path";
+import { homedir } from "node:os";
 import { joinSession, createCanvas, CanvasError } from "@github/copilot-sdk/extension";
 
 const LIMIT = 65536;
@@ -57,6 +58,358 @@ const updateSchema = object({ snapshot: snapshotSchema, expectedDigest: { anyOf:
 const servers = new Map();
 const queues = new Map();
 let storageRoot;
+const companion = {
+    activity: "unavailable", selectedModel: null, selectedEffort: null,
+    observedModel: null, observedEffort: null, contextTier: null, usage: null,
+    observedAt: null, diagnostic: null, autoOpen: true,
+    subagentsStatus: "unavailable", subagentsDiagnostic: null,
+};
+const activeTools = new Map();
+const waiting = new Map();
+const subagents = new Map();
+const pendingSubagents = new Map();
+const childVersions = new Map();
+let childRevision = 0, displayRevision = 0;
+let tasksRefreshing = false, tasksQueued = false;
+let activity = "unavailable", selectionRevision = 0, sessionPreferences;
+const compact = value => typeof value === "string" && value.length <= 120 ? value : null;
+const caption = value => typeof value === "string" ? value.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 240) : null;
+const validCount = value => Number.isSafeInteger(value) && value >= 0;
+
+async function refreshSubagents() {
+    if (tasksRefreshing) { tasksQueued = true; return; }
+    if (typeof session.rpc?.tasks?.list !== "function") return;
+    tasksRefreshing = true;
+    try {
+        do {
+            tasksQueued = false;
+            const requestedAt = childRevision;
+            const result = await session.rpc.tasks.list();
+            if (!Array.isArray(result.tasks)) throw new CanvasError("companion_tasks_invalid", "Invalid host task list");
+            const agents = result.tasks.filter(task => task.type === "agent");
+            const next = new Map();
+            for (const task of agents.slice(0, 32)) {
+                if (!compact(task.id)) continue;
+                const pending = !subagents.has(task.id) && pendingSubagents.get(task.id);
+                const previous = subagents.get(task.id) || pending;
+                const versions = childVersions.get(task.id) || {};
+                const status = versions.status > requestedAt || pending?.status ? previous?.status :
+                    ["running", "idle", "completed", "failed", "cancelled"].includes(task.status) ? task.status : "unknown";
+                next.set(task.id, { id: task.id, toolCallId: compact(task.toolCallId),
+                    name: caption(task.displayName) || caption(task.description) || "Unnamed subagent",
+                    role: compact(task.agentType), assignedSlice: caption(task.description),
+                    status,
+                    requestedModel: compact(task.model), resolvedModel: versions.model > requestedAt || pending?.resolvedModel
+                        ? previous?.resolvedModel : compact(task.resolvedModel),
+                    observedModel: previous?.observedModel || null, observedEffort: previous?.observedEffort || null,
+                    configuredEffort: previous?.configuredEffort || null, contextTier: previous?.contextTier || null,
+                    usage: previous?.usage || null, currentActivity: status === "running" ? previous?.currentActivity || null : null,
+                });
+            }
+            subagents.clear();
+            for (const [key, value] of next) subagents.set(key, value);
+            for (const key of next.keys()) pendingSubagents.delete(key);
+            if (!tasksQueued) pendingSubagents.clear();
+            for (const key of childVersions.keys())
+                if (!subagents.has(key) && !pendingSubagents.has(key)) childVersions.delete(key);
+            companion.subagentsStatus = "observed";
+            companion.subagentsDiagnostic = agents.length > 32 ? "Showing the first 32 host-tracked subagents." : null;
+            notifyCompanion();
+        } while (tasksQueued);
+    } catch (error) {
+        pendingSubagents.clear();
+        for (const key of childVersions.keys()) if (!subagents.has(key)) childVersions.delete(key);
+        companion.subagentsStatus = "unavailable";
+        companion.subagentsDiagnostic = "Host task metadata unavailable; any displayed rows are last observed, not current.";
+        process.stderr.write(`Architrave companion task metadata unavailable: ${compact(error.code) || "unsupported"}\n`);
+        notifyCompanion();
+    } finally { tasksRefreshing = false; }
+}
+function observeSubagent(event) {
+    if (!["assistant.usage", "subagent.configured", "session.usage_info", "tool.execution_start",
+        "tool.execution_complete", "subagent.completed", "subagent.failed", "session.model_change",
+        "session.context_cleared"].includes(event.type)) return;
+    const data = event.data || {};
+    let child = subagents.get(event.agentId) ||
+        (["subagent.completed", "subagent.failed"].includes(event.type)
+            ? [...subagents.values()].find(item => item.toolCallId === data.toolCallId) : null);
+    // Keep only field-level observations while an ownership read is pending.
+    // Unconfirmed IDs never render and are discarded when that read settles.
+    if (!child && tasksRefreshing && compact(event.agentId)) {
+        child = pendingSubagents.get(event.agentId);
+        if (!child && pendingSubagents.size < 32) {
+            child = { id: event.agentId };
+            pendingSubagents.set(event.agentId, child);
+        }
+    }
+    if (!child) return;
+    const versions = childVersions.get(child.id) || {};
+    switch (event.type) {
+    case "assistant.usage":
+        if (data.initiator && data.initiator !== "sub-agent") return;
+        child.observedModel = compact(data.model); child.observedEffort = compact(data.reasoningEffort); break;
+    case "subagent.configured":
+        child.resolvedModel = compact(data.model); child.configuredEffort = compact(data.reasoningEffort);
+        child.contextTier = compact(data.contextTier); versions.model = ++childRevision; break;
+    case "session.usage_info":
+        child.usage = validCount(data.currentTokens) && validCount(data.tokenLimit) && data.tokenLimit > 0
+            ? { currentTokens: data.currentTokens, tokenLimit: data.tokenLimit, capturedAt: compact(event.timestamp) } : null;
+        break;
+    case "tool.execution_start": child.currentActivity = compact(data.toolName); break;
+    case "tool.execution_complete": child.currentActivity = null; break;
+    case "subagent.completed":
+    case "subagent.failed":
+        child.observedModel ||= compact(data.firstDispatchedModel);
+        child.status = data.cancelled ? "cancelled" : event.type === "subagent.failed" ? "failed" : "completed";
+        child.currentActivity = null; versions.status = ++childRevision; break;
+    case "session.model_change":
+        child.resolvedModel = compact(data.newModel); child.configuredEffort = compact(data.reasoningEffort);
+        child.observedModel = child.observedEffort = child.usage = null; versions.model = ++childRevision; break;
+    case "session.context_cleared": child.usage = null; break;
+    default: return;
+    }
+    childVersions.set(child.id, versions);
+    notifyCompanion();
+}
+function notifyCompanion() {
+    companion.activity = waiting.size ? [...waiting.values()][0] : activeTools.size ? "working" : activity;
+    for (const entry of servers.values()) if (entry.domainKey === null)
+        for (const response of entry.clients) {
+            if (response.writableLength > 8192) response.destroy();
+            else response.write("data: changed\n\n");
+        }
+}
+function companionSnapshot() {
+    return { ...companion, activeTools: [...activeTools.values()], subagents: [...subagents.values()] };
+}
+function resetActivity(state) {
+    activeTools.clear(); waiting.clear(); activity = state;
+}
+export function observeSession(event) {
+    if (["session.canvas.opened", "session.canvas.closed"].includes(event.type)) { displayRevision++; return; }
+    if (event.type === "session.background_tasks_changed" && !event.agentId) { void refreshSubagents(); return; }
+    if (event.agentId || event.type.startsWith("subagent.")) { observeSubagent(event); return; }
+    if (event.agentId || event.data?.parentToolCallId) return;
+    const data = event.data || {};
+    switch (event.type) {
+    case "session.model_change":
+        selectionRevision++;
+        companion.selectedModel = compact(data.newModel);
+        companion.selectedEffort = compact(data.reasoningEffort);
+        companion.contextTier = compact(data.contextTier);
+        companion.observedModel = companion.observedEffort = companion.observedAt = companion.usage = null;
+        break;
+    case "session.model_deselected":
+        selectionRevision++;
+        companion.selectedModel = companion.observedModel = companion.observedEffort = companion.observedAt = companion.usage = null;
+        break;
+    case "assistant.usage":
+        if (data.initiator || data.interactionType && data.interactionType !== "conversation-agent") return;
+        companion.observedModel = compact(data.model);
+        companion.observedEffort = compact(data.reasoningEffort);
+        companion.observedAt = compact(event.timestamp);
+        break;
+    case "session.usage_info":
+        if (!validCount(data.currentTokens) || !validCount(data.tokenLimit) || data.tokenLimit === 0 ||
+            !validCount(data.messagesLength)) {
+            companion.usage = null; companion.diagnostic = "Host sent invalid context counts.";
+            break;
+        }
+        companion.usage = { currentTokens: data.currentTokens, tokenLimit: data.tokenLimit,
+            capturedAt: compact(event.timestamp) };
+        for (const key of ["systemTokens", "conversationTokens", "toolDefinitionsTokens"])
+            if (validCount(data[key])) companion.usage[key] = data[key];
+        break;
+    case "session.context_cleared":
+        companion.usage = companion.observedModel = companion.observedEffort = companion.observedAt = null;
+        resetActivity("ready");
+        break;
+    case "assistant.turn_start": activity = "working"; break;
+    case "tool.execution_start":
+        if (compact(data.toolCallId) && activeTools.size < 32)
+            activeTools.set(data.toolCallId, compact(data.toolName) || "Tool");
+        else companion.diagnostic = "Activity detail limit reached; showing bounded tool lanes.";
+        activity = "working";
+        break;
+    case "tool.execution_complete":
+        activeTools.delete(data.toolCallId);
+        if (data.success === false) activity = "error";
+        break;
+    case "permission.requested":
+        if (data.resolvedByHook) return;
+        if (compact(data.requestId) && waiting.size < 32) waiting.set(data.requestId, "blocked");
+        break;
+    case "user_input.requested":
+    case "elicitation.requested":
+        if (compact(data.requestId) && waiting.size < 32) waiting.set(data.requestId, "waiting");
+        break;
+    case "permission.completed":
+    case "user_input.completed":
+    case "elicitation.completed":
+        waiting.delete(data.requestId);
+        break;
+    case "session.error": resetActivity("error"); break;
+    case "session.idle":
+        activeTools.clear();
+        if (activity !== "error") activity = "idle";
+        break;
+    case "session.shutdown": resetActivity("stopped"); break;
+    default: return;
+    }
+    notifyCompanion();
+}
+
+async function preferencePath(global = false) {
+    const root = global ? (process.env.COPILOT_HOME || join(homedir(), ".copilot")) : session.workspacePath;
+    if (!root) throw new CanvasError("companion_storage_unavailable", "Host did not supply session artifact storage");
+    // Never create global storage on startup. Only an explicit preference change writes it.
+    return global ? join(root, "extensions", "architrave-ribbon", "artifacts", "preferences.json")
+        : join(root, "artifacts", "architrave-ribbon", "session.json");
+}
+async function readPreferences(global = false) {
+    const path = await preferencePath(global);
+    const root = global ? (process.env.COPILOT_HOME || join(homedir(), ".copilot")) : session.workspacePath;
+    let parent = root;
+    for (const part of ["", ...(global ? ["extensions", "architrave-ribbon", "artifacts"] : ["artifacts", "architrave-ribbon"])]) {
+        if (part) parent = join(parent, part);
+        let info;
+        try { info = await lstat(parent); } catch (error) { if (error.code === "ENOENT") return {}; throw error; }
+        if (!info.isDirectory() || info.isSymbolicLink())
+            throw new CanvasError("companion_storage_unsafe", "Companion preference directory is not a real directory");
+    }
+    let info;
+    try { info = await lstat(path); } catch (error) { if (error.code === "ENOENT") return {}; throw error; }
+    if (!info.isFile() || info.isSymbolicLink() || info.size > 1024)
+        throw new CanvasError("companion_storage_unsafe", "Companion preferences must be a bounded regular file");
+    const value = JSON.parse(await readFile(path, "utf8"));
+    const allowed = global ? ["enabled"] : ["opened", "dismissed"];
+    if (!value || typeof value !== "object" || Array.isArray(value) ||
+        Object.entries(value).some(([key, entry]) => !allowed.includes(key) || typeof entry !== "boolean"))
+        throw new CanvasError("companion_preferences_invalid", "Invalid companion preferences; auto-open is suppressed");
+    return value;
+}
+async function writePreferences(value, global = false) {
+    const root = global ? (process.env.COPILOT_HOME || join(homedir(), ".copilot")) : session.workspacePath;
+    const parts = global ? ["extensions", "architrave-ribbon", "artifacts"] : ["artifacts", "architrave-ribbon"];
+    await directory(root);
+    let parent = root;
+    for (const part of parts) { parent = join(parent, part); await directory(parent); }
+    const path = await preferencePath(global);
+    await readPreferences(global);
+    const temporary = path + "." + randomBytes(16).toString("hex") + ".tmp";
+    try {
+        await writeFile(temporary, JSON.stringify(value), { flag: "wx", mode: 0o600 });
+        await rename(temporary, path);
+    } finally {
+        try { await unlink(temporary); } catch (error) { if (error.code !== "ENOENT") throw error; }
+    }
+}
+function diagnostic(code) {
+    companion.diagnostic = code;
+    process.stderr.write(`Architrave companion: ${code}\n`);
+    notifyCompanion();
+}
+async function startCompanion() {
+    if (typeof session.on !== "function") return;
+    const openingRevision = displayRevision;
+    session.on(observeSession);
+    void refreshSubagents();
+    const revision = selectionRevision;
+    if (typeof session.rpc?.model?.getCurrent === "function") {
+        try {
+            const current = await session.rpc.model.getCurrent();
+            if (revision === selectionRevision) {
+                companion.selectedModel = compact(current.modelId);
+                companion.selectedEffort = compact(current.reasoningEffort);
+                companion.contextTier = compact(current.contextTier);
+            }
+        } catch (error) { diagnostic(`Model settings unavailable from this host connection (${compact(String(error.code)) || "unsupported"}).`); }
+    }
+    notifyCompanion();
+    try {
+        companion.autoOpen = (await readPreferences(true)).enabled !== false;
+        sessionPreferences = { ...await readPreferences(), ...sessionPreferences };
+        if (!companion.autoOpen || sessionPreferences.dismissed || sessionPreferences.opened) return;
+        if (typeof session.rpc?.canvas?.open !== "function" || typeof session.rpc.canvas.listOpen !== "function") {
+            diagnostic("Automatic canvas opening unavailable on this host."); return;
+        }
+        const { openCanvases } = await session.rpc.canvas.listOpen();
+        // Do not take focus from an existing panel, including on resume/reload.
+        await serial("companion-session", async () => {
+            sessionPreferences = { ...await readPreferences(), ...sessionPreferences, opened: true };
+            await writePreferences(sessionPreferences);
+        });
+        if (openCanvases.length) return;
+        companion.autoOpen = (await readPreferences(true)).enabled !== false;
+        const latest = await session.rpc.canvas.listOpen();
+        if (latest.openCanvases.length || displayRevision !== openingRevision || !companion.autoOpen ||
+            sessionPreferences.dismissed) return;
+        await session.rpc.canvas.open({ canvasId: "architrave-session",
+            instanceId: "architrave-session-companion", input: {} });
+    } catch (error) { diagnostic(`Automatic canvas opening unavailable or suppressed (${compact(String(error.code)) || "invalid preferences"}); inspect host extension support and preferences.`); }
+}
+
+export function renderCompanion(nonce) {
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Session companion</title><style nonce="${nonce}">
+:root{color-scheme:light dark;--bg:var(--background-color-default,#171a1e);--ink:var(--text-color-default,#f0f2f4);--muted:var(--text-color-muted,#b8c0ca);--line:var(--border-color-default,#48515c);--accent:var(--true-color-blue,#92c7ff)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 var(--font-sans,system-ui,sans-serif)}main{max-width:800px;padding:24px;margin:auto}header{display:flex;align-items:center;justify-content:space-between;gap:16px}h1{font-size:18px;margin:0}h2{font-size:24px;font-weight:600;margin:28px 0 12px}p{color:var(--muted);overflow-wrap:anywhere}button{font:inherit;color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:5px;padding:8px 12px;min-height:40px;cursor:pointer}button:hover{border-color:var(--ink)}button:disabled{opacity:.6;cursor:wait}button:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid var(--color-focus-outline,#8db9ff);outline-offset:3px}
+.track{height:8px;overflow:hidden;background:var(--line);border-radius:2px}.track span{display:block;height:100%;background:var(--accent);width:0}.track.active span{width:30%;animation:travel 2s ease-in-out infinite alternate}.track.paused span{width:100%;background:var(--muted)}@keyframes travel{to{transform:translateX(233%)}}@media(prefers-reduced-motion:reduce){.track.active span{animation:none;width:100%;background:repeating-linear-gradient(90deg,var(--accent) 0 12px,transparent 12px 18px)}}
+dl{display:grid;grid-template-columns:minmax(100px,1fr) minmax(0,2fr);gap:8px 20px;margin:24px 0}dt{color:var(--muted)}dd{margin:0;overflow-wrap:anywhere}#context{margin-top:24px}meter{width:100%;height:10px;accent-color:var(--accent)}.small{font-size:12px}#lanes{list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:8px}#lanes li{padding:4px 8px;border:1px solid var(--line);overflow-wrap:anywhere}details{border-top:1px solid var(--line);padding-top:16px;margin-top:24px}summary{cursor:pointer}label{display:flex;align-items:center;gap:10px;min-height:44px}#error{color:var(--true-color-red,#ffa7a7)}@media(max-width:420px){main{padding:16px}dl{grid-template-columns:1fr;gap:4px}dd{margin-bottom:10px}header{align-items:flex-start}}
+</style></head><body><main>
+<!-- THESIS: quiet session activity, never invented completion. OWN-WORLD: host tokens and ribbon line.
+STORY: see state and settings, dismiss without changing work. FIRST VIEWPORT: state, activity, compact facts.
+FORM: narrow extension of the existing read-only ribbon; no new visual system. -->
+<header><h1>Session companion</h1><button id="close">Close this session</button></header>
+<h2 id="activity" role="status">Activity unavailable</h2><div class="track" id="track" aria-hidden="true"><span></span></div>
+<ul id="lanes" aria-label="Observed active tools"></ul>
+<dl><dt>Selected model</dt><dd id="selected">Unavailable</dd><dt>Effort setting</dt><dd id="effort">Unavailable</dd>
+<dt>Last observed model</dt><dd id="observed">Not observed</dd><dt>Observed effort</dt><dd id="observed-effort">Not observed</dd></dl>
+<section id="context" aria-label="Host context usage"><p id="usage">Context usage unavailable</p><meter id="meter" min="0" max="1" value="0" hidden aria-label="Context used"></meter></section>
+<section aria-label="Child visibility"><h2 style="font-size:16px">Session subagents</h2><p id="children-state" class="small">Host metadata unavailable</p><div id="children"></div>
+<p class="small">App child sessions: unavailable through this extension API. Subagents are not project/chat child sessions.</p></section>
+<p id="error" role="alert"></p><details><summary>Display preferences &amp; source</summary>
+<label><input id="enabled" type="checkbox" checked>Automatically show in new sessions</label>
+<p class="small">This preference follows this user. Closing affects only this session. Neither changes permissions or starts workers.</p>
+<p class="small" id="source">Host events only; no task denominator, no completion percentage.</p><p class="small" id="diagnostic"></p>
+</details></main><script nonce="${nonce}">
+const el=id=>document.getElementById(id);const labels={unavailable:'Activity unavailable',ready:'Ready',working:'Working',blocked:'Waiting for permission',waiting:'Waiting for input',error:'Error reported',idle:'Idle',stopped:'Stopped'};
+function item(tag,text){const n=document.createElement(tag);n.textContent=text;return n}
+function children(data){
+ const root=el('children'),opened=new Set([...root.querySelectorAll('details[open]')].map(n=>n.dataset.id));root.replaceChildren();
+ el('children-state').textContent=data.subagentsDiagnostic||(data.subagentsStatus==='observed'?(data.subagents.length?'Host-tracked subagents; assigned slices are not completion.':'No subagents reported by this session.'):'Host task metadata unavailable');
+ for(const child of data.subagents){
+  const row=document.createElement('details');row.dataset.id=child.id;row.open=opened.has(child.id);row.style.marginTop='12px';
+  const summary=item('summary',child.name+' / '+(child.role||'Role unavailable')+' / '+child.status);
+  const slice=item('span','Assigned: '+(child.assignedSlice||'Unavailable'));slice.className='small';slice.style.display='block';summary.append(slice);row.append(summary);
+  const facts=document.createElement('dl');
+  for(const [label,value] of [['Role',child.role],['Requested model',child.requestedModel],['Resolved model',child.resolvedModel],['Observed model',child.observedModel],['Effort setting',child.configuredEffort],['Observed effort',child.observedEffort],['Current activity',child.currentActivity],['Context tier',child.contextTier]])
+   facts.append(item('dt',label),item('dd',value||'Unavailable'));
+  row.append(facts);
+  if(child.usage)row.append(item('p',child.usage.currentTokens.toLocaleString()+' / '+child.usage.tokenLimit.toLocaleString()+' context tokens (host observed)'));
+  root.append(row);
+ }
+}
+function draw(data){
+ el('activity').textContent=labels[data.activity]||labels.unavailable;
+ el('track').className='track'+(data.activity==='working'?' active':['waiting','blocked','error'].includes(data.activity)?' paused':'');
+ for(const [id,key,empty] of [['selected','selectedModel','Unavailable'],['effort','selectedEffort','Unavailable'],['observed','observedModel','Not observed'],['observed-effort','observedEffort','Not observed']])el(id).textContent=data[key]||empty;
+ el('lanes').replaceChildren();for(const name of data.activeTools){const li=document.createElement('li');li.textContent=name;el('lanes').append(li)}
+ const u=data.usage;el('meter').hidden=!u;
+ el('usage').textContent=u?u.currentTokens.toLocaleString()+' / '+u.tokenLimit.toLocaleString()+' context tokens':'Context usage unavailable';
+ if(u){el('meter').max=u.tokenLimit;el('meter').value=Math.min(u.currentTokens,u.tokenLimit);el('meter').setAttribute('aria-valuetext',el('usage').textContent)}
+ el('enabled').checked=data.autoOpen;el('diagnostic').textContent=data.diagnostic||'';
+ children(data);
+ el('source').textContent='Host events only; no task denominator, no completion percentage.'+(u?.capturedAt?' Context observed '+u.capturedAt+'.':'')+(data.observedAt?' Last model call '+data.observedAt+'.':'')+(data.contextTier?' Context tier: '+data.contextTier+'.':'');
+}
+let refreshing=false,queued=false;
+async function refresh(){if(refreshing){queued=true;return}refreshing=true;try{const r=await fetch('snapshot',{cache:'no-store'});if(!r.ok)throw Error('Session display unavailable. Reopen from the canvas catalog.');draw(await r.json());el('error').textContent=''}catch(e){el('error').textContent=e.message}finally{refreshing=false;if(queued){queued=false;refresh()}}}
+async function action(name,body){const r=await fetch(name,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!r.ok)throw Error('Display preference could not be saved. Check extension support and storage.')}
+el('enabled').onchange=async()=>{el('enabled').disabled=true;try{await action('preferences',{enabled:el('enabled').checked});await refresh()}catch(e){el('error').textContent=e.message}finally{el('enabled').disabled=false}};
+el('close').onclick=async()=>{el('close').disabled=true;try{await action('dismiss',{});el('activity').textContent='Closed for this session'}catch(e){el('error').textContent=e.message;el('close').disabled=false}};
+refresh();const events=new EventSource('events');events.onmessage=refresh;events.onerror=()=>{el('error').textContent='Display disconnected. Values may be stale; reopen from the canvas catalog.';el('track').className='track'};window.addEventListener('pagehide',()=>events.close());
+</script></body></html>`;
+}
 
 function fail(message) { throw new CanvasError("ribbon_input_invalid", message); }
 function timestamp(value, label) {
@@ -295,7 +648,7 @@ el('refresh').onclick=refresh;refresh();const events=new EventSource('events');e
 </script></body></html>`;
 }
 
-async function startServer(domainKey) {
+async function startServer(domainKey, instanceId) {
     const token = randomBytes(24).toString("hex");
     const nonce = randomBytes(18).toString("base64");
     const clients = new Set();
@@ -305,18 +658,50 @@ async function startServer(domainKey) {
         res.setHeader("Referrer-Policy", "no-referrer");
         const host = `127.0.0.1:${server.address().port}`;
         if (req.headers.host !== host || req.headers.origin && req.headers.origin !== `http://${host}` ||
-            req.method !== "GET" || !req.url?.startsWith(`/${token}/`)) {
+            !["GET", "POST"].includes(req.method) || !req.url?.startsWith(`/${token}/`) ||
+            req.method === "POST" && (domainKey !== null || req.headers.origin !== `http://${host}` ||
+                req.headers["content-type"] !== "application/json")) {
             res.writeHead(403); res.end("Forbidden"); return;
         }
         try {
             const route = req.url.slice(token.length + 2);
-            if (route === "") {
+            if (req.method === "POST") {
+                if (!["preferences", "dismiss"].includes(route)) { res.writeHead(404); res.end("Not found"); return; }
+                let body = "";
+                for await (const chunk of req) {
+                    body += chunk.toString("utf8");
+                    if (Buffer.byteLength(body) > 256) { res.writeHead(413); res.end("Request too large"); return; }
+                }
+                let value;
+                try { value = JSON.parse(body); }
+                catch { res.writeHead(400); res.end("Invalid JSON"); return; }
+                if (route === "preferences") {
+                    check(value, object({ enabled: { type: "boolean" } }), "preferences");
+                    displayRevision++;
+                    await serial("companion-preferences", () => writePreferences(value, true));
+                    companion.autoOpen = value.enabled;
+                    notifyCompanion();
+                } else {
+                    check(value, object({}), "dismiss");
+                    displayRevision++;
+                    sessionPreferences = { ...(sessionPreferences || {}), dismissed: true };
+                    await serial("companion-session", () => writePreferences(sessionPreferences));
+                    res.end("{}");
+                    try {
+                        if (typeof session.rpc?.canvas?.close !== "function")
+                            throw new CanvasError("companion_close_unavailable", "Use the host panel close control");
+                        await session.rpc.canvas.close({ instanceId });
+                    } catch (error) { diagnostic(`Session auto-open suppressed; host close unavailable (${compact(String(error.code)) || "unsupported"}).`); }
+                    return;
+                }
+                res.setHeader("Content-Type", "application/json"); res.end("{}");
+            } else if (route === "") {
                 res.setHeader("Content-Type", "text/html; charset=utf-8");
                 res.setHeader("Content-Security-Policy", `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'`);
-                res.end(renderHtml(nonce));
+                res.end(domainKey === null ? renderCompanion(nonce) : renderHtml(nonce));
             } else if (route === "snapshot") {
                 res.setHeader("Content-Type", "application/json");
-                res.end(JSON.stringify(await readSnapshot(domainKey)));
+                res.end(JSON.stringify(domainKey === null ? companionSnapshot() : await readSnapshot(domainKey)));
             } else if (route === "events") {
                 if (clients.size >= 16) { res.writeHead(429); res.end("Too many observers"); return; }
                 res.writeHead(200, { "Content-Type": "text/event-stream", Connection: "keep-alive" });
@@ -324,8 +709,8 @@ async function startServer(domainKey) {
                 res.on("close", () => clients.delete(res));
             } else { res.writeHead(404); res.end("Not found"); }
         } catch (error) {
-            await session.log(`Ribbon snapshot read failed: ${error.code || "invalid artifact"}`, { level: "error" });
-            res.writeHead(500); res.end("Snapshot unavailable; check extension logs");
+            process.stderr.write(`Ribbon display request failed: ${error.code || "invalid artifact"}\n`);
+            res.writeHead(error.code === "ribbon_input_invalid" ? 400 : 500); res.end("Display request failed; check extension logs");
         }
     });
     server.requestTimeout = 5000;
@@ -342,34 +727,52 @@ async function close(instanceId) {
     entry.server.closeAllConnections();
     await closed;
 }
-const session = await joinSession({ canvases: [createCanvas({
-    id: "architrave-ribbon", displayName: "Route Ribbon",
-    description: "Read-only Architrave route, blockers, bypasses and retry evidence from durable agent-fed snapshots.",
-    inputSchema: openSchema,
-    open: async ctx => {
-        check(ctx.input, openSchema, "input");
-        if (!storageRoot) {
+async function openPanel(ctx) {
+        displayRevision++;
+        const input = ctx.input ?? {};
+        const domainKey = input.domainKey || null;
+        if (input.snapshot && !domainKey) fail("Snapshot requires domainKey");
+        if (domainKey && !storageRoot) {
             if (!session.workspacePath) throw new CanvasError("ribbon_storage_unavailable", "Host did not supply workspace artifact storage");
             storageRoot = await realpath(session.workspacePath);
         }
-        if (ctx.input.snapshot) {
-            if (ctx.input.snapshot.domainKey !== ctx.input.domainKey) fail("Open snapshot domain mismatch");
-            const prior = await readSnapshot(ctx.input.domainKey);
-            if (!prior) await saveSnapshot(ctx.input.snapshot, null);
+        if (input.snapshot) {
+            if (input.snapshot.domainKey !== domainKey) fail("Open snapshot domain mismatch");
+            const prior = await readSnapshot(domainKey);
+            if (!prior) await saveSnapshot(input.snapshot, null);
         }
         const existing = servers.get(ctx.instanceId);
-        if (existing && existing.domainKey !== ctx.input.domainKey) fail("Panel domain cannot change; open a fresh instance");
+        if (existing && existing.domainKey !== domainKey) fail("Panel domain cannot change; open a fresh instance");
         if (!existing) {
             if (servers.size >= 8) throw new CanvasError("ribbon_limit", "Close an existing ribbon before opening another");
-            servers.set(ctx.instanceId, await startServer(ctx.input.domainKey));
+            servers.set(ctx.instanceId, await startServer(domainKey, ctx.instanceId));
         }
-        return { url: servers.get(ctx.instanceId).url, title: "Architrave / Route Ribbon", status: "Read-only snapshot" };
+        return { url: servers.get(ctx.instanceId).url, title: domainKey ? "Architrave / Route Ribbon" : "Session companion",
+            status: domainKey ? "Read-only snapshot" : "Passive host events" };
+}
+async function closePanel(ctx) {
+    displayRevision++;
+    if (servers.get(ctx.instanceId)?.domainKey === null) {
+        try {
+            sessionPreferences = { ...(sessionPreferences || {}), dismissed: true };
+            await serial("companion-session", () => writePreferences(sessionPreferences));
+        } finally { await close(ctx.instanceId); }
+    } else await close(ctx.instanceId);
+}
+const session = await joinSession({ canvases: [createCanvas({
+    id: "architrave-ribbon", displayName: "Route Ribbon",
+    description: "Read-only Run route, blockers and evidence from explicit canonical snapshots.",
+    inputSchema: openSchema,
+    open: async ctx => {
+        check(ctx.input, openSchema, "input");
+        return openPanel(ctx);
     },
     actions: [
         { name: "get_snapshot", description: "Read saved snapshot and its display digest; no canonical mutations.",
             inputSchema: object({}), handler: async ctx => {
                 const entry = servers.get(ctx.instanceId);
                 if (!entry) throw new CanvasError("ribbon_not_open", "Reopen this ribbon after provider reload");
+                if (entry.domainKey === null) throw new CanvasError("ribbon_domain_required", "Open a Run domain to read its projection; session telemetry stays outside model context");
                 const snapshot = await readSnapshot(entry.domainKey);
                 return { snapshot, digest: snapshotDigest(snapshot) };
             } },
@@ -382,8 +785,18 @@ const session = await joinSession({ canvases: [createCanvas({
                 return saveSnapshot(ctx.input.snapshot, ctx.input.expectedDigest);
             } },
     ],
-    onClose: ctx => close(ctx.instanceId),
+    onClose: closePanel,
+}), createCanvas({
+    id: "architrave-session", displayName: "Session companion",
+    description: "Passive session activity, model, effort and host-reported context usage.",
+    inputSchema: object({}),
+    open: async ctx => {
+        check(ctx.input ?? {}, object({}), "input");
+        return openPanel(ctx);
+    },
+    onClose: closePanel,
 })] });
+await startCompanion();
 for (const signal of ["SIGTERM", "SIGINT"]) process.once(signal, () => {
     Promise.all([...servers.keys()].map(close)).then(() => process.exit(0), error => {
         process.stderr.write(`Ribbon cleanup failed: ${error.message}\n`); process.exit(1);

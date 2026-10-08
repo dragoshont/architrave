@@ -1,5 +1,21 @@
 # Roadmap
 
+## Unreleased follow-up - Passive session companion
+
+- [x] Ordinary-session display in the same portable renderer, without a Run,
+  repository or named agent; lightweight discovery does not disclose Run schemas.
+- [x] Passive host events for bounded activity and usage, selected vs observed
+  model/effort, truthful unknowns, no routine transcript/model traffic.
+- [x] Owned SDK-subagent names, roles, lifecycle, explicit assigned slice and
+  model details; app-native child-session visibility explicitly unavailable.
+- [x] One-shot opening, session dismissal, durable user preference and explicit
+  standalone one-file adoption, with no permissions or orchestration changes.
+- [ ] Fresh-session lifecycle and same-host context-delta qualification;
+  fixture success alone does not close native-host or footprint claims.
+- [x] Preserve committed v0.14.1 corrections through `6b15d16`; later release
+  fixes must still be preserved before eventual landing.
+- [ ] Reviewed published-source adoption only, not candidate global installation.
+
 ## Milestone 10.1 - Optional Route Ribbon (v0.14.1 candidate)
 
 - [x] One portable, optional Copilot canvas with a segmented route and evidence

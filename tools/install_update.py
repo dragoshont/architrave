@@ -1369,6 +1369,8 @@ def parser() -> argparse.ArgumentParser:
     subcommands.add_parser("native-host-install", help="install the minimal joined Copilot host extension and pinned Python bridge")
     canvas = subcommands.add_parser("canvas-install", help="opt-in install/refresh of the single-file Copilot Route Ribbon")
     canvas.add_argument("target")
+    companion = subcommands.add_parser("companion-install", help="explicit one-file user companion adoption; default-on in future supported sessions")
+    companion.add_argument("copilot_home", help="existing Copilot home directory; no global path is guessed")
     retire = subcommands.add_parser("retire-hooks", help="retire only recognized legacy automatic quality hooks")
     retire.add_argument("--dry-run", action="store_true")
     retire.add_argument("target")
@@ -1393,6 +1395,24 @@ def install_canvas(kit: Path, target: Path) -> int:
     transaction.__exit__(None, None, None)
     print(f"Route Ribbon installed/refreshed: {managed.path(relative)}")
     print("Reload supported Copilot extensions. Optional canvas only; no plugin settings or canonical Run state changed.")
+    return 0
+
+
+def install_companion(kit: Path, copilot_home: Path) -> int:
+    """Adopt only the passive renderer, not the plugin's agent/skill catalogs."""
+    source = kit / ".github" / "extensions" / "architrave-ribbon" / "extension.mjs"
+    require_source_file(source, "companion-install")
+    managed = ManagedRoot(copilot_home, "companion-install")
+    relative = "extensions/architrave-ribbon/extension.mjs"
+    managed.preflight_tree("extensions/architrave-ribbon")
+    managed.preflight_file(relative)
+    transaction = ManagedTransaction(managed)
+    transaction.__enter__()
+    managed.ensure_dir("extensions/architrave-ribbon")
+    managed.replace_file(source, relative)
+    transaction.__exit__(None, None, None)
+    print(f"Session companion installed/refreshed: {managed.path(relative)}")
+    print("Future supported sessions auto-open once. Existing opt-out/preferences are preserved; no agents, skills, permissions or plugin settings changed.")
     return 0
 
 
@@ -1456,6 +1476,8 @@ def main(argv: list[str] | None = None) -> int:
             return install_native_host(kit)
         if args.command == "canvas-install":
             return install_canvas(kit, Path(args.target))
+        if args.command == "companion-install":
+            return install_companion(kit, Path(args.copilot_home))
         if args.command == "retire-hooks":
             return retire_quality_hooks(kit, Path(args.target), dry_run=args.dry_run)
         if args.command == "adoption-status":
