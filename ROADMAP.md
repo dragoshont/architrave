@@ -10,6 +10,8 @@
   model details; app-native child-session visibility explicitly unavailable.
 - [x] One-shot opening, session dismissal, durable user preference and explicit
   standalone one-file adoption, with no permissions or orchestration changes.
+- [x] Live desktop/narrow rendering and exact-source close-this-session followed
+  by supported reload/no-reopen; global checkbox was not exercised.
 - [ ] Fresh-session lifecycle and same-host context-delta qualification;
   fixture success alone does not close native-host or footprint claims.
 - [x] Preserve committed v0.14.1 corrections through `6b15d16`; later release

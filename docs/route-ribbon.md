@@ -113,11 +113,19 @@ discarded, not stored or fed back to the model. An unavailable metadata read
 marks retained rows last-observed rather than current. There are no task
 mutations, automatic workers or new task graph.
 
-**App-native project/chat child sessions are different.** The installed SDK
-does not expose their parent/child ownership and descriptive metadata through
-this extension connection. The canvas explicitly says their visibility is
-unavailable; it does not infer them from client tasks or substitute subagents.
-No private app database/files/IPC or unrelated-session enumeration is used.
+**App-native project/chat child sessions are different.** No ownership-scoped
+child metadata/invalidation route has been qualified for this passive
+extension. The SDK also offers a native tool-execution pipeline; the host's
+app tools appearing in its metadata is not proof of extension execution
+permission, context-free results or owned-child event coverage. The canvas
+therefore says their visibility is unavailable; it does not infer them from
+client tasks or substitute subagents. No private app database/files/IPC or
+unrelated-session enumeration is used. This is a qualification boundary, not a
+claim that every supported future host integration is impossible.
+One live `tools.execute(get_session)` read for the owning root session succeeded
+and produced an external-tool request without a model-issued call reference.
+That does not establish context-cost attribution or an owned-child invalidation
+stream; the companion does not adopt it as a polling or enumeration workaround.
 The live extension-role probe returned four shell tasks and no agents, proving
 the read is allowed but **not** native populated-child rendering.
 
@@ -150,6 +158,16 @@ and reduced-motion behavior were observed. Usage was 302206/922000, selected
 model `gpt-6.1-sol`, effort `high`; effective identity remained **Not observed**.
 This proves the no-agent/empty-child surface, not populated native children.
 
+The final renderer (`1362f855b39cf5e03a7123a91f91065792590189e9583b501451ca162a25d8f9`)
+was separately staged session-only and reloaded through the supported host
+tools. A live `architrave-session` panel displayed model/effort/context, and its
+visible **Close this session** button was clicked. After another supported
+reload, an independent joined observer's `canvas.listOpen()` reported no
+companion. The extension-owned session artifact was exactly
+`{"opened":true,"dismissed":true}`. This proves dismissal survives provider
+reload without automatic reopening. The global checkbox was not touched.
+The previous renderer's loopback endpoint also became unavailable after reload.
+
 A fresh proof chat was created idle and the session-scoped file staged before
 its first **model turn**, but after the CLI's `session.start`. Initial discovery
 therefore did not include it. One supported reload loaded it and reached its
@@ -164,7 +182,8 @@ targeted regressions now cover late panel activity, pending ownership reads,
 queued discovery, and stale-list/model/completion interleavings. Completion's
 first-dispatched model cannot overwrite a later observed call. Reviews and
 fixtures do not establish cross-family release acceptance or close the remaining
-native lifecycle/context-budget claims.
+pristine-startup, clear/resume, global-opt-out, populated-child or context-budget
+claims. No candidate user/global deployment or publication was performed.
 
 Focused follow-up command:
 `node --experimental-vm-modules scripts/test-session-companion.mjs`.
