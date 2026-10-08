@@ -99,6 +99,35 @@ equal weight 1, not inferred complexity). Active effort, wait duration, tokens
 and cost remain **Unknown**: this slice has no authenticated host-usage coverage.
 No file-byte/token conversion, provider SDK, polling daemon or telemetry store.
 
+## Parallel workstreams
+
+The overview remains a segmented ribbon, not a serial execution plan. When
+multiple stream groups exist, stacked labelled lanes expose each stream's
+slices, state/blockers, scoped outcome and source/owner drilldown. A single
+stream remains compact. Groups derive from canonical task lane plus work kind:
+delivery is separate from exploratory diagnostic/research, reference, review
+and operations. Unknown/unassigned lane identifiers are labelled, not guessed.
+Existing scheduling/deferral rules are unchanged; unrelated research that the
+Run deferred is displayed deferred, while an approved independent feasibility
+probe keeps its actual active state.
+
+Canonical cross-stream prerequisites project as **BLOCKS** and must match the
+step dependency graph. An agent may add explicit **INFORMS** relationships as
+`display-only annotation`: they describe how findings support a decision,
+never create prerequisites or modify acceptance/policy. Completed investigation
+is scoped work, not a shipped/product-verified milestone; rejected routes stay
+stopped and historical relationships never become current blockers.
+
+Each stream has an explicit display source reference (domain/Run/revision/
+objective/capture/commit/hash/freshness). Canonical single-Run projections share
+that Run's source; manually composed views can supply independently sourced
+snapshots without auto-scanning repositories or merging canonical state.
+Stream source identity/order is guarded during display updates. Owner identity
+and canonical owner start/finish are shown when reported; absent values remain
+Unknown/Unassigned. These spans include waiting, not active effort.
+Two active labels do not prove measured wall-clock concurrency. Parallel weights
+are never summed into elapsed wall time or overall completion.
+
 ## Persistence and lifecycle
 
 Python creates `domainKey = <repository-path SHA-256 prefix>:<runId>`. This is

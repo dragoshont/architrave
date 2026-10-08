@@ -27,6 +27,20 @@ Releases at or before **v0.8.12** are on the
 - Display-digest compare-and-swap updates allow equal-Run-revision refreshes
   while rejecting competing/stale display writes, with ordering and reload
   regressions. Empty event history fails with an explicit projection error.
+- Fresh source-bound native semantic execution through the joined host, using
+  owned reviewer results, actual first-dispatched model metadata and one-use
+  owner/challenge-bound authenticated producer receipts.
+- Optional stacked workstream lanes with independent slice/source/owner states,
+  canonical cross-stream BLOCKS and non-authoritative INFORMS annotations.
+
+### Changed
+- Automatic PostToolUse quality registration is retired. The same deterministic
+  quick validator runs explicitly after relevant config/design/product-copy
+  changes and final integration, with mandatory checkpoint/CI evidence.
+- Install/update retires only exact recognized legacy definitions transactionally;
+  custom/mixed/unknown hooks are preserved with manual action. A hooks-only
+  `retire-hooks --dry-run TARGET` preview supports post-release owner cleanup;
+  public quality-gate CLI compatibility and native permission guards remain.
 
 ### Limitations
 - Copilot canvas capability required; no Codex/Claude canvas claim. Agent-fed

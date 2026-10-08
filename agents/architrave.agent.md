@@ -1,7 +1,7 @@
 ---
 name: "Architrave"
 description: "Thin mission supervisor: direct work first, bounded host-native children when useful, durable policy/evidence/recovery, and independently verified outcomes."
-tools: [read, search, edit, execute, agent, web, todo, "architrave_native_dispatch", "architrave_native_batch", "architrave_native_cancel", "architrave_native_status", "architrave_native_gate", "architrave_native_recover", "@storybook/addon-mcp/*", "figma/*", "mcp__figma_*", "mobbin/*", "mcp__mobbin_*", "searxng/*", "mcp__searxng_*"]
+tools: [read, search, edit, execute, agent, web, todo, "architrave_native_dispatch", "architrave_native_batch", "architrave_native_cancel", "architrave_native_status", "architrave_native_gate", "architrave_native_recover", "architrave_native_review", "@storybook/addon-mcp/*", "figma/*", "mcp__figma_*", "mobbin/*", "mcp__mobbin_*", "searxng/*", "mcp__searxng_*"]
 agents: ["CTO", "Product Research", "Operations UX", "UX Architect", "UI Visual", "Platform Design", "Service Architect", "Backend Planner", "Backend Implementer", "Infra Engineer", "Runtime Observer", "Tournament Analyst", "Adversarial Judge", "Explore"]
 user-invocable: true
 ---
@@ -47,6 +47,13 @@ Use its supported primitives; never launch an agent CLI or provider SDK worker.
   R0/R1 mechanically decidable changes use the focused check; semantic R2 adds
   one independent review; R3 adds real product evidence; R4 adds security/policy.
   Two families only when `review.crossFamily` explicitly requires it.
+- No automatic PostToolUse quality command is installed. MUST execute
+  `python gates/gate_runner.py quality-gate` after relevant config, referenced
+  design JSON or configured product-copy changes, and at final integration.
+  Retain the actual exit/output proof; mandatory failure blocks completion.
+  This is the same deterministic quick validator, not an LLM substitute.
+  Targeted build/test and risk-scaled CI remain required; never run full suites
+  on every turn. Native permission/scope/depth guards are unchanged.
 - Consult architrave:cto at start and on stall **inline** through its checklist,
   not an extra agent by default. Push back KEEP/CUT/DEFER with one reason before
   new scope. Do not let supporting harness work displace the product.
@@ -71,6 +78,7 @@ Load only the matching skill/pack, and only when its behavior is needed:
 | Admin/operations UX | `knowledge/operations-ux.md` |
 | Product observation | Configured `harness/legibility.py` commands |
 | Independent review | `architrave-review`; `gates/rubric.md` |
+| Joined semantic producer | `docs/native-semantic-review.md`; fresh `architrave_native_review`, never copied verdict import |
 | Optional Copilot Route Ribbon | `docs/route-ribbon.md`; read-only `ribbon-snapshot` projection, never canonical authority |
 | Material competing options | `architrave-tournament` (includes do nothing and smallest viable) |
 | Durable learning | `knowledge/learning-loop.md` |

@@ -701,15 +701,17 @@ class ManagedRoot:
         source_info = source.lstat()
         self.create_bytes(relative, source.read_bytes(), stat.S_IMODE(source_info.st_mode))
 
-    def remove_file(self, relative: str) -> None:
+    def remove_file(self, relative: str, *, expected_sha256: str | None = None) -> None:
         if self.transaction is not None:
-            self.transaction.stage_remove(relative)
+            self.transaction.stage_remove(relative, expected_sha256=expected_sha256)
             return
         self.preflight_file(relative)
         path = self.path(relative)
         if _lstat(path) is None:
             return
         self.require_file(relative)
+        if expected_sha256 and sha256_file(path) != expected_sha256:
+            raise InstallerError("retire-hooks: definition changed after inspection; preserved")
         path.unlink()
         if _lstat(path) is not None:
             raise InstallerError(f"{self.label}: managed file remains after removal: {relative}")
@@ -815,9 +817,9 @@ class ManagedTransaction:
             self.created_dirs.add(parent)
             parent = parent.parent
 
-    def stage_remove(self, relative: str) -> None:
+    def stage_remove(self, relative: str, *, expected_sha256: str | None = None) -> None:
         self.managed.preflight_file(relative)
-        self.operations.append({"kind": "remove", "relative": relative})
+        self.operations.append({"kind": "remove", "relative": relative, "expectedSha256": expected_sha256})
 
     def commit(self) -> None:
         manifest_operations: list[dict[str, object]] = []
@@ -859,6 +861,9 @@ class ManagedTransaction:
                     os.replace(stage, destination)
                     os.chmod(destination, stat.S_IMODE(int(operation["mode"])))
                 else:
+                    expected = operation.get("expectedSha256")
+                    if expected and (not destination.is_file() or sha256_file(self.managed.require_file(relative)) != expected):
+                        raise InstallerError("retire-hooks: definition changed after inspection; preserved by transaction rollback")
                     destination.unlink(missing_ok=True)
                 manifest["applied"] = index + 1
                 self._write_manifest(manifest)
@@ -1011,10 +1016,9 @@ def update_agents(managed: ManagedRoot, kit: Path, profile: str) -> None:
 
 
 def copy_shared_assets(managed: ManagedRoot, kit: Path) -> None:
-    managed.ensure_dir("gates/hooks")
+    managed.ensure_dir("gates")
     for name in GATE_FILES:
         managed.replace_file(kit / "gates" / name, f"gates/{name}")
-    managed.copy_tree(kit / "gates" / "hooks", "gates/hooks")
     print("  ok gates")
     managed.ensure_dir("knowledge")
     managed.copy_tree(kit / "knowledge", "knowledge")
@@ -1025,9 +1029,55 @@ def copy_shared_assets(managed: ManagedRoot, kit: Path) -> None:
     print("  native agent workers require one user-scope setup: python <kit>/tools/install_update.py native-host-install")
 
 
-def active_hook(kit: Path, entrypoint: str) -> Path:
-    name = "design-guard.windows.json" if entrypoint == "windows" else "design-guard.json"
-    return kit / "gates" / "hooks" / name
+LEGACY_QUALITY_HOOKS = (
+    ".github/hooks/design-guard.json",
+    "gates/hooks/design-guard.json",
+    "gates/hooks/design-guard.windows.json",
+)
+
+
+def _hook_definition(content: bytes) -> object:
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate hook field")
+            result[key] = value
+        return result
+    return json.loads(content.decode("utf-8-sig"), object_pairs_hook=unique)
+
+
+def quality_hook_plan(managed: ManagedRoot, kit: Path) -> dict[str, dict[str, object]]:
+    known = [_hook_definition((kit / "gates" / "hooks" / name).read_bytes())
+             for name in ("design-guard.json", "design-guard.windows.json")]
+    plan = {}
+    for relative in LEGACY_QUALITY_HOOKS:
+        managed.preflight_file(relative)
+        if _lstat(managed.path(relative)) is None:
+            plan[relative] = {"action": "absent", "sha256": None}
+            continue
+        content = managed.require_file(relative).read_bytes()
+        try:
+            definition = _hook_definition(content)
+        except (ValueError, UnicodeError):
+            action = "preserve-manual-action"
+        else:
+            action = "remove-recognized" if definition in known else "preserve-manual-action"
+        plan[relative] = {"action": action, "sha256": hashlib.sha256(content).hexdigest() if action == "remove-recognized" else None}
+    return plan
+
+
+def apply_quality_hook_plan(managed: ManagedRoot, plan: dict[str, dict[str, object]]) -> bool:
+    manual = False
+    for relative, item in plan.items():
+        action = item["action"]
+        if action == "remove-recognized":
+            managed.remove_file(relative, expected_sha256=str(item["sha256"]))
+            print(f"  scheduled recognized automatic quality hook retirement: {relative}")
+        elif action == "preserve-manual-action":
+            manual = True
+            print(f"  MANUAL_ACTION_REQUIRED: preserved custom/unknown hook definition: {relative}", file=sys.stderr)
+    return manual
 
 
 def update_gitignore(managed: ManagedRoot) -> None:
@@ -1075,7 +1125,6 @@ def assert_required_tree_staged(transaction: ManagedTransaction) -> None:
         "harness/native_host.py",
         "gates/gate_runner.py",
         "knowledge/execution-policy.md",
-        "gates/hooks/design-guard.json",
     }
     missing = sorted(required - staged)
     if missing:
@@ -1106,10 +1155,8 @@ def install(args: argparse.Namespace, kit: Path) -> int:
         source_trees=("agents", "gates", "knowledge", "harness"),
         destination_trees=(
             ".github/agents",
-            ".github/hooks",
             ".github/workflows",
             "gates",
-            "gates/hooks",
             "knowledge",
             "harness",
         ),
@@ -1134,13 +1181,14 @@ def install(args: argparse.Namespace, kit: Path) -> int:
     except (OSError, UnicodeError) as exc:
         raise InstallerError("install: packaged AGENTS stanza is not readable UTF-8") from exc
     version = plugin_version(kit, "install")
+    hook_plan = quality_hook_plan(managed, kit)
     if args.codex:
         run_codex(kit, managed, preflight=True, label="install")
 
     transaction = ManagedTransaction(managed)
     transaction.__enter__()
     print(f"Architrave -> installing into: {managed.root}")
-    for directory in (".github/agents", ".github/hooks", ".github/workflows", "gates/hooks", "knowledge", "harness"):
+    for directory in (".github/agents", ".github/workflows", "gates", "knowledge", "harness"):
         managed.ensure_dir(directory)
     install_agents(managed, kit, args.profile)
     copy_shared_assets(managed, kit)
@@ -1163,8 +1211,8 @@ def install(args: argparse.Namespace, kit: Path) -> int:
 
     update_gitignore(managed)
     update_agents_stanza(managed, kit)
-    managed.replace_file(active_hook(kit, args.entrypoint), ".github/hooks/design-guard.json")
-    print("  ok .github/hooks/design-guard.json")
+    manual_hooks = apply_quality_hook_plan(managed, hook_plan)
+    print("  ok executable quality gate retained; no automatic PostToolUse hook registered")
     setup = managed.path(".github/workflows/copilot-setup-steps.yml")
     if _lstat(setup) is None:
         managed.create_file(
@@ -1181,7 +1229,7 @@ def install(args: argparse.Namespace, kit: Path) -> int:
     transaction.__exit__(None, None, None)
     print(f"  ok stamped gates/.kit-version = {version}")
     print(f"\nDone. Edit architrave.config.json to match this repo (profile: {args.profile}).")
-    return 0
+    return 2 if manual_hooks else 0
 
 
 def update(args: argparse.Namespace, kit: Path) -> int:
@@ -1199,7 +1247,7 @@ def update(args: argparse.Namespace, kit: Path) -> int:
     if profile == "application" and not constitutions:
         raise InstallerError("update: packaged constitutions are missing")
     source_trees = ("gates", "knowledge", "harness") + (("agents",) if args.agents else ())
-    destination_trees = (".github/hooks", "gates", "gates/hooks", "knowledge", "harness")
+    destination_trees = ("gates", "knowledge", "harness")
     if args.agents:
         destination_trees += (".github/agents",)
     preflight_common(
@@ -1234,19 +1282,20 @@ def update(args: argparse.Namespace, kit: Path) -> int:
     if args.codex:
         run_codex(kit, managed, preflight=True, label="update")
     version = plugin_version(kit, "update")
+    hook_plan = quality_hook_plan(managed, kit)
 
     transaction = ManagedTransaction(managed)
     transaction.__enter__()
     print(f"Architrave -> refreshing assets in: {managed.root} (kit v{version})")
-    for directory in (".github/hooks", "gates/hooks", "knowledge", "harness"):
+    for directory in ("gates", "knowledge", "harness"):
         managed.ensure_dir(directory)
     if args.agents:
         update_agents(managed, kit, profile)
     else:
         print("  - agents left unchanged (use --agents to refresh .github/agents/)")
     copy_shared_assets(managed, kit)
-    managed.replace_file(active_hook(kit, args.entrypoint), ".github/hooks/design-guard.json")
-    print("  ok active workspace hook refreshed")
+    manual_hooks = apply_quality_hook_plan(managed, hook_plan)
+    print("  ok automatic quality hook retired where recognized; native permission guards unchanged")
     if profile == "knowledge":
         for name in ("constitution-apple.md", "constitution-windows.md"):
             managed.remove_file(name)
@@ -1264,7 +1313,7 @@ def update(args: argparse.Namespace, kit: Path) -> int:
     transaction.__exit__(None, None, None)
     print(f"  ok stamped gates/.kit-version = {version}")
     print("Done. (architrave.config.json left untouched.)")
-    return 0
+    return 2 if manual_hooks else 0
 
 
 def parser() -> argparse.ArgumentParser:
@@ -1320,6 +1369,9 @@ def parser() -> argparse.ArgumentParser:
     subcommands.add_parser("native-host-install", help="install the minimal joined Copilot host extension and pinned Python bridge")
     canvas = subcommands.add_parser("canvas-install", help="opt-in install/refresh of the single-file Copilot Route Ribbon")
     canvas.add_argument("target")
+    retire = subcommands.add_parser("retire-hooks", help="retire only recognized legacy automatic quality hooks")
+    retire.add_argument("--dry-run", action="store_true")
+    retire.add_argument("target")
     adoption = subcommands.add_parser("adoption-status", help="read-only version/hash provenance, never session-loaded proof")
     adoption.add_argument("target", nargs="?", default=".")
     return result
@@ -1342,6 +1394,24 @@ def install_canvas(kit: Path, target: Path) -> int:
     print(f"Route Ribbon installed/refreshed: {managed.path(relative)}")
     print("Reload supported Copilot extensions. Optional canvas only; no plugin settings or canonical Run state changed.")
     return 0
+
+
+def retire_quality_hooks(kit: Path, target: Path, *, dry_run: bool = False) -> int:
+    managed = ManagedRoot(target, "retire-hooks")
+    if managed.root == kit:
+        raise InstallerError("retire-hooks: target an adopted repository, not the kit's recognition templates")
+    plan = quality_hook_plan(managed, kit)
+    print(json.dumps({"target": str(managed.root), "dryRun": dry_run, "qualityHooks": plan,
+                      "nativePermissionGuards": "unchanged", "otherHooks": "untouched"}, indent=2))
+    if dry_run:
+        return 2 if any(item["action"] == "preserve-manual-action" for item in plan.values()) else 0
+    if not any(item["action"] == "remove-recognized" for item in plan.values()):
+        return 2 if any(item["action"] == "preserve-manual-action" for item in plan.values()) else 0
+    transaction = ManagedTransaction(managed)
+    transaction.__enter__()
+    manual = apply_quality_hook_plan(managed, plan)
+    transaction.__exit__(None, None, None)
+    return 2 if manual else 0
 
 
 def adoption_status(kit: Path, target: Path) -> int:
@@ -1386,6 +1456,8 @@ def main(argv: list[str] | None = None) -> int:
             return install_native_host(kit)
         if args.command == "canvas-install":
             return install_canvas(kit, Path(args.target))
+        if args.command == "retire-hooks":
+            return retire_quality_hooks(kit, Path(args.target), dry_run=args.dry_run)
         if args.command == "adoption-status":
             return adoption_status(kit, Path(args.target))
         return install_exact_target_executor(args, kit)

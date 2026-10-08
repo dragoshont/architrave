@@ -1,0 +1,237 @@
+#!/usr/bin/env python3
+"""Synthetic boundary fixtures; real joined-host evidence is collected separately."""
+from __future__ import annotations
+
+import datetime as dt
+import json
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import unittest
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "harness"))
+from architrave_runtime import NativeSemanticTicket, RunStore, RuntimeFailure, missing_gate_requirements
+
+
+class NativeReviewTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.temp.name) / "repo"
+        self.repo.mkdir()
+        self.repo = self.repo.resolve()
+        self.git("init", "-q")
+        self.git("config", "user.email", "fixture@example.invalid")
+        self.git("config", "user.name", "Fixture")
+        (self.repo / ".gitignore").write_text(".architrave/\n")
+        (self.repo / "README.md").write_text("Public synthetic fixture\n")
+        (self.repo / "architrave.config.json").write_text(json.dumps({
+            "kind": "knowledge", "build": "git diff --check", "test": "git diff --check",
+            "review": {"crossFamily": True},
+        }))
+        self.git("add", ".")
+        self.git("commit", "-qm", "fixture")
+        self.store = RunStore(self.repo)
+        self.store.create(run_id="review", goal="Qualify source", outcome="Source reviewed",
+                          criteria=[{"id": "QUAL", "description": "Source reviewed", "scope": "fixture",
+                                     "risk": "R3", "verificationType": "semantic", "blocking": True}])
+        self.store.add_task("review", {
+            "id": "source", "title": "Review source", "objective": "Review frozen source",
+            "acceptanceCriteria": ["QUAL"], "risk": "R3", "workerProfile": "native",
+            "pushback": "KEEP:synthetic boundary fixture",
+            "workPacket": {"budget": {"timeoutSeconds": 300, "maxOutputBytes": 8192, "maxTurns": 20}},
+        })
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def git(self, *args):
+        return subprocess.run(["git", *args], cwd=self.repo, capture_output=True, text=True, check=True).stdout.strip()
+
+    def prepared(self, role="code-review", agent="agent-one"):
+        ticket, prompt = self.store.prepare_native_semantic_review(
+            "review", "source", host_owner="owner-one", invocation_id="call-one", reviewer=role)
+        self.assertIn(ticket.challenge, prompt)
+        self.store.bind_native_semantic_owner(ticket, agent)
+        return ticket
+
+    def report(self, ticket, verdict="PASS"):
+        return {
+            "verdict": verdict, "criteria": ["QUAL"], "sourceCommit": ticket.binding["source"]["commit"],
+            "sourceSha256": ticket.binding["source"]["sha256"], "challenge": ticket.challenge,
+            "summary": "Synthetic fixture only; not production evidence.", "findings": [],
+        }
+
+    def completion(self, ticket, model="gpt-fixture"):
+        return {
+            "id": "event-one", "type": "subagent.completed", "agentId": ticket.binding["hostTaskId"],
+            "toolCallId": ticket.binding["hostTaskId"], "agentName": ticket.binding["role"],
+            "firstDispatchedModel": model, "modelSelectionSource": "fixture",
+            "timestamp": dt.datetime.now(dt.timezone.utc).isoformat(),
+            "ephemeral": False, "cancelled": False,
+        }
+
+    def accept(self, ticket, report=None, event=None, **overrides):
+        values = {
+            "host_task_id": ticket.binding["hostTaskId"], "host_status": "idle",
+            "text": json.dumps(report if report is not None else self.report(ticket)),
+            "completion": event if event is not None else self.completion(ticket),
+        }
+        values.update(overrides)
+        return self.store.accept_native_semantic_review(ticket, **values)
+
+    def assert_code(self, code, action):
+        with self.assertRaises(RuntimeFailure) as error:
+            action()
+        self.assertEqual(code, error.exception.code)
+
+    def test_real_capability_shape_records_gate_not_outcome_and_rejects_replay(self):
+        ticket = self.prepared()
+        result = self.accept(ticket)
+        self.assertEqual("PASS", result["status"])
+        state = self.store.load("review")
+        artifact = state["artifacts"][0]
+        self.assertEqual("semantic-judge", artifact["producer"])
+        self.assertEqual("source", artifact["consumedByTask"])
+        self.assertEqual("UNTESTED", state["acceptanceCriteria"][0]["status"])
+        self.assertEqual("READY", state["tasks"][0]["status"])
+        self.assert_code("SEMANTIC_RESULT_UNTRUSTED", lambda: self.accept(ticket))
+        self.assert_code("SEMANTIC_ALREADY_OBSERVED", lambda: self.prepared())
+        self.assert_code("DUPLICATE_REVIEW_FAMILY", lambda: self.store.record_gate(
+            "review", gate_id="replay", task_id="source", gate_type="semantic", status="PASS",
+            family="openai", criteria=["QUAL"], evidence_refs=[result["artifactRef"]], reviewer="host-native"))
+
+    def test_two_observed_families_not_labels_satisfy_semantic_floor(self):
+        first = self.accept(self.prepared())
+        second_ticket = self.prepared("rubber-duck", "agent-two")
+        second = self.accept(second_ticket, event=self.completion(second_ticket, "claude-fixture"))
+        self.assertEqual(["openai", "anthropic"], [first["family"], second["family"]])
+        state = self.store.load("review")
+        self.assertNotIn("QUAL:semantic-independent-2", missing_gate_requirements(state, state["acceptanceCriteria"]))
+        self.assertIn("QUAL:e2e-or-reality", missing_gate_requirements(state, state["acceptanceCriteria"]))
+
+    def test_serialized_and_foreign_ticket_cannot_import_verdict(self):
+        ticket = self.prepared()
+        self.assert_code("SEMANTIC_RESULT_UNTRUSTED", lambda: self.store.accept_native_semantic_review(
+            ticket.binding, host_task_id="agent-one", host_status="idle", text=json.dumps(self.report(ticket)),
+            completion=self.completion(ticket)))
+
+    def test_foreign_process_issuer_is_rejected(self):
+        ticket = self.prepared()
+        forged = NativeSemanticTicket(object(), ticket.binding, ticket.challenge, ticket.budget)
+        self.assert_code("SEMANTIC_RESULT_UNTRUSTED", lambda: self.accept(forged))
+
+    def test_wrong_nonce_source_or_caller_model_report_has_no_producer_receipt(self):
+        for corrupt in [
+            lambda r: r.update(challenge="caller-value"),
+            lambda r: r.update(sourceCommit="other-source"),
+            lambda r: r.update(criteria=["OTHER"]),
+            lambda r: r.update(firstDispatchedModel="claude-claimed"),
+        ]:
+            ticket = self.prepared()
+            report = self.report(ticket)
+            corrupt(report)
+            self.assert_code("SEMANTIC_RESULT_INVALID", lambda: self.accept(ticket, report))
+            self.assertEqual([], self.store.load("review")["artifacts"])
+
+    def test_wrong_completion_agent_call_role_and_cancellation_are_rejected(self):
+        for field, value in [
+            ("agentId", "other-agent"), ("toolCallId", "outer-call-not-SDK-agent"),
+            ("agentName", "another-role"), ("cancelled", True), ("ephemeral", True),
+        ]:
+            ticket = self.prepared()
+            event = self.completion(ticket)
+            event[field] = value
+            self.assert_code("SEMANTIC_HOST_PROVENANCE", lambda: self.accept(ticket, event=event))
+            self.assertEqual([], self.store.load("review")["artifacts"])
+
+    def test_missing_actual_first_model_has_no_configured_or_report_fallback(self):
+        ticket = self.prepared()
+        event = self.completion(ticket)
+        event["firstDispatchedModel"] = None
+        event["model"] = "gpt-claimed-fallback"
+        self.assert_code("SEMANTIC_FAMILY_UNCONFIRMED", lambda: self.accept(ticket, event=event))
+
+    def test_changed_source_or_hold_invalidates_inflight_scope(self):
+        ticket = self.prepared()
+        (self.repo / "README.md").write_text("Changed during review\n")
+        self.assert_code("SEMANTIC_SOURCE_STALE", lambda: self.accept(ticket))
+        self.assertEqual([], self.store.load("review")["artifacts"])
+
+    def test_pending_human_hold_is_preserved_and_changed_hold_blocks_result(self):
+        ticket = self.prepared()
+        self.store.wait_external("review", checkpoint_id="human", task_id="source",
+                                 checkpoint_type="HUMAN_JUDGMENT_REQUIRED", principal="human",
+                                 provider="manual", reason="Synthetic human decision")
+        self.assert_code("SEMANTIC_RESULT_STALE", lambda: self.accept(ticket))
+        held = self.prepared()
+        result = self.accept(held)
+        self.assertEqual("PASS", result["verdict"])
+        state = self.store.load("review")
+        self.assertEqual("PENDING", state["externalCheckpoints"][0]["status"])
+        self.assertEqual("WAITING_EXTERNAL", state["tasks"][0]["status"])
+        self.assertEqual([], state["policy"]["allow"])
+
+    def test_expired_and_stale_revision_cannot_admit(self):
+        ticket = self.prepared()
+        ticket.binding["expiresAt"] = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(seconds=1)).isoformat()
+        self.assert_code("SEMANTIC_RESULT_STALE", lambda: self.accept(ticket))
+        ticket = self.prepared()
+        self.store.record_review_result("review", verdict="REVISE")
+        self.assert_code("SEMANTIC_RESULT_STALE", lambda: self.accept(ticket))
+
+    def test_nonpass_receipt_is_observed_not_pass_and_cannot_be_relabelled(self):
+        ticket = self.prepared()
+        result = self.accept(ticket, self.report(ticket, "REVISE"))
+        self.assertEqual("BLOCKED", result["status"])
+        self.assert_code("SEMANTIC_RECEIPT", lambda: self.store.record_gate(
+            "review", gate_id="false-pass", task_id="source", gate_type="semantic", status="PASS",
+            family="openai", criteria=["QUAL"], evidence_refs=[result["artifactRef"]], reviewer="host-native"))
+
+    def test_exact_json_fence_is_formatting_not_an_arbitrary_verdict_search(self):
+        ticket = self.prepared()
+        text = "```json\n" + json.dumps(self.report(ticket)) + "\n```"
+        self.assertEqual("PASS", self.accept(ticket, text=text)["verdict"])
+
+    def test_narrative_or_multiple_fences_cannot_import_a_pass_fragment(self):
+        for prefix, suffix in [("Claimed PASS before report\n", ""), ("```json\n", "\n```\nextra output")]:
+            ticket = self.prepared()
+            text = prefix + json.dumps(self.report(ticket)) + suffix
+            self.assert_code("SEMANTIC_RESULT_INVALID", lambda: self.accept(ticket, text=text))
+
+    def test_caller_labelled_file_is_not_semantic_producer(self):
+        path = self.store.run_dir("review") / "claimed.json"
+        path.write_text(json.dumps({"verdict": "PASS", "family": "openai", "criteria": ["QUAL"]}))
+        self.store.record_artifact("review", artifact_id="claimed", kind="semantic-verdict",
+                                   path=path.relative_to(self.repo).as_posix(), evidence_refs=["task:source"])
+        self.assert_code("EVIDENCE_PROVENANCE", lambda: self.store.record_gate(
+            "review", gate_id="claimed", task_id="source", gate_type="semantic", status="PASS",
+            family="openai", criteria=["QUAL"], evidence_refs=["artifact:claimed"], reviewer="host-native"))
+
+    def test_tampered_native_receipt_is_rejected_on_load(self):
+        result = self.accept(self.prepared())
+        state = self.store.load("review")
+        artifact = next(a for a in state["artifacts"] if f"artifact:{a['id']}" == result["artifactRef"])
+        path = self.repo / artifact["path"]
+        receipt = json.loads(path.read_text())
+        receipt["completion"]["firstDispatchedModel"] = "claude-forged"
+        path.write_text(json.dumps(receipt))
+        self.assert_code("ARTIFACT_TAMPERED", lambda: self.store.load("review"))
+
+    def test_changed_frozen_source_excludes_old_semantic_floor_and_allows_fresh_review(self):
+        result = self.accept(self.prepared())
+        (self.repo / "README.md").write_text("New frozen source\n")
+        self.git("add", ".")
+        self.git("commit", "-qm", "new source")
+        self.store.resume("review", accept_commit=True)
+        state = self.store.load("review")
+        self.assertIn("QUAL:semantic-independent-2", missing_gate_requirements(state, state["acceptanceCriteria"]))
+        self.assert_code("SEMANTIC_SOURCE_STALE", lambda: self.store.set_criterion(
+            "review", "QUAL", "PASS", [result["gateRef"]]))
+        new = self.accept(self.prepared())
+        self.assertNotEqual(new["source"], result["source"])
+
+
+if __name__ == "__main__":
+    unittest.main()

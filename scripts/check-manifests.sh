@@ -328,6 +328,11 @@ else
 fi
 
 echo "== durable Run v2 control-plane fixtures =="
+if node --experimental-vm-modules scripts/test-native-review.mjs; then
+  ok "native semantic trusted-transport fixtures"
+else
+  err "native semantic trusted-transport fixtures failed"
+fi
 if node --experimental-vm-modules scripts/test-ribbon.mjs; then
   ok "optional single-file Route Ribbon renderer"
 else
@@ -338,6 +343,8 @@ for test_script in \
   scripts/test-runtime-v2.py \
   scripts/test-worker-adapters.py \
   scripts/test-native-host.py \
+  scripts/test-native-review.py \
+  scripts/test-quality-cadence.py \
   scripts/test-ribbon.py \
   scripts/test-invariant-engine.py \
   scripts/test-legibility.py \

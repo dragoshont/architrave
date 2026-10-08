@@ -398,11 +398,31 @@ class NativeWorkerTicket:
         self.consumed = False
 
 
+class NativeSemanticTicket:
+    """Single-invocation authority; never a serialized verdict-import capability."""
+
+    def __init__(self, issuer: object, binding: dict[str, Any], challenge: str, budget: dict[str, Any]):
+        self.issuer = issuer
+        self.binding = binding
+        self.challenge = challenge
+        self.budget = budget
+        self.consumed = False
+
+
+def native_review_family(model: str) -> str:
+    if isinstance(model, str) and model.startswith(("gpt-", "o1", "o3", "o4")):
+        return "openai"
+    if isinstance(model, str) and model.startswith("claude-"):
+        return "anthropic"
+    raise RuntimeFailure("SEMANTIC_FAMILY_UNCONFIRMED", "host first-dispatched model has no supported family mapping")
+
+
 class RunStore:
     def __init__(self, repository: Path | str):
         self.repository = Path(repository).resolve()
         self.runs_root = self.repository / ".architrave" / "runs"
         self.__native_issuer = object()
+        self.__semantic_issuer = object()
         self.key_path = self.repository / ".architrave" / "runtime.key"
         self.__objective_capability = object()
         self.__policy_capability = object()
@@ -3356,6 +3376,233 @@ class RunStore:
         ticket.consumed = True
         return {**result, "artifactRef": f"artifact:{artifact_id}"}
 
+    def _semantic_authority(self, state: dict[str, Any], task: dict[str, Any]) -> str:
+        scope = {key: value for key, value in task.items()
+                 if key not in {"status", "attempts", "lease", "retryNotBefore", "retryHypothesis", "loop"}}
+        return sha256_value({
+            "policy": state["policy"], "autonomy": state["autonomy"],
+            "objective": state["objective"], "task": scope,
+            "pending": [item for item in state["externalCheckpoints"] if item["status"] == "PENDING"],
+        })
+
+    def _native_review_storage(self, run_id: str) -> Path:
+        current = self.repository
+        for part in (".architrave", "runs", require_id(run_id, "run id"), "workers"):
+            current = current / part
+            try:
+                info = current.lstat()
+            except FileNotFoundError:
+                continue
+            if not stat.S_ISDIR(info.st_mode) or current.is_symlink() or _is_reparse_point(info):
+                raise RuntimeFailure("SEMANTIC_STORAGE_UNSAFE", "native review storage must use real in-repository directories")
+        return current
+
+    def prepare_native_semantic_review(
+        self, run_id: str, task_id: str, *, host_owner: str, invocation_id: str, reviewer: str,
+    ) -> tuple[NativeSemanticTicket, str]:
+        """Only the installed joined bridge executes this producer, never an imported report."""
+        from worker_adapters import git_status, workspace_fingerprint
+
+        if reviewer not in {"code-review", "rubber-duck"}:
+            raise RuntimeFailure("SEMANTIC_REVIEWER_UNSUPPORTED", "a supported independent review role is required")
+        require_id(host_owner, "joined owner")
+        require_id(invocation_id, "host invocation")
+        state = self.load(run_id)
+        self._assert_repository_baseline(state)
+        self._native_review_storage(run_id)
+        task = find_task(state, task_id)
+        if task["objectiveVersion"] != state["objective"]["version"] or task["status"] in {"DEFERRED", "CANCELLED", "FAILED", "RUNNING"}:
+            raise RuntimeFailure("SEMANTIC_SCOPE_INVALID", "review must bind a current, stable task")
+        if git_status(self.repository):
+            raise RuntimeFailure("SEMANTIC_SOURCE_UNFROZEN", "commit the review subject before native semantic execution")
+        budget = effective_work_budget(state, task)
+        signal = budget_signal(state, self.events(run_id), self.repository)
+        if signal and signal["signal"] == "BUDGET_100":
+            raise RuntimeFailure("BUDGET_100", "budget exhausted; no native semantic model invocation")
+        source = {"commit": state["baseline"]["commit"],
+                  "sha256": workspace_fingerprint(self.repository, include_ignored=False)}
+        for artifact in state["artifacts"]:
+            if artifact["producer"] != "semantic-judge":
+                continue
+            prior = self._read_json_receipt(artifact["path"], "semantic")
+            binding = prior.get("binding") or {}
+            if (prior.get("schema") == "architrave.native-semantic-review.v1"
+                    and binding.get("taskId") == task_id and binding.get("source") == source
+                    and binding.get("objectiveVersion") == state["objective"]["version"]
+                    and binding.get("authority") == self._semantic_authority(state, task)
+                    and binding.get("role") == reviewer):
+                raise RuntimeFailure("SEMANTIC_ALREADY_OBSERVED", "this role already reviewed the frozen subject; new source/evidence is required")
+        challenge = secrets.token_hex(32)
+        now = dt.datetime.now(dt.timezone.utc)
+        binding = {
+            "runId": run_id, "taskId": task_id, "criteria": list(task["acceptanceCriteria"]),
+            "objectiveVersion": state["objective"]["version"], "revision": state["revision"],
+            "source": source, "authority": self._semantic_authority(state, task),
+            "owner": host_owner, "invocationId": invocation_id, "role": reviewer,
+            "hostTaskId": None, "challengeHash": sha256_value(challenge),
+            "preparedAt": now.isoformat(), "expiresAt": (now + dt.timedelta(seconds=budget["timeoutSeconds"])).isoformat(),
+        }
+        instructions = {
+            "scope": str(self.repository), "source": source, "criteria": binding["criteria"],
+            "objective": state["objective"]["description"], "task": task["objective"],
+            "challenge": challenge,
+        }
+        prompt = (
+            "Independently review the FULL frozen source, not a previous report. Read repository instructions, "
+            "architrave.config.json, governing sources and gates/rubric.md. Grade source and observed deterministic "
+            "evidence; publication/family receipt admission is the host qualifier's responsibility, not a circular "
+            "condition for your source verdict. Use the configured profile; do not invent product acceptance. "
+            "READ ONLY: only scoped view/rg/glob tools are permitted, with absolute paths inside the supplied scope. "
+            "No shell/execute, private .git/.architrave reads, file/history/Run/policy changes, scratch files, "
+            "agent spawning, control-plane tools, provider SDK or agent CLI. The trusted executor has already "
+            "bound the exact source commit/hash; do not execute git to rediscover it. "
+            "Do not rerun unrelated full suites. Return only ONE JSON object with exactly "
+            "these keys: verdict (PASS|REVISE|FAIL), criteria (the supplied IDs), sourceCommit, sourceSha256, "
+            "challenge (the supplied nonce), summary (nonempty, <=1600 characters), findings (<=12 objects, "
+            "each exactly severity (blocker|major|minor), path (repository-relative), message (<=800 characters)). "
+            "PASS cannot contain blocker/major findings. Put uncovered verification/publication phases in summary; "
+            "do not guess model/family or put model fields in your report. Keep output within "
+            f"{budget['maxOutputBytes']} UTF-8 bytes. High semantic effort is requested only within host-supported "
+            "defaults; no per-task reasoning override is available. Bound subject:\n" + canonical_json(redact(instructions))
+        )
+        return NativeSemanticTicket(self.__semantic_issuer, binding, challenge, budget), prompt
+
+    def bind_native_semantic_owner(self, ticket: NativeSemanticTicket, host_task_id: str) -> None:
+        if (not isinstance(ticket, NativeSemanticTicket) or ticket.issuer is not self.__semantic_issuer
+                or ticket.consumed or ticket.binding["hostTaskId"] is not None):
+            raise RuntimeFailure("SEMANTIC_RESULT_UNTRUSTED", "a live, unbound joined review invocation is required")
+        require_id(host_task_id, "admitted reviewer")
+        ticket.binding["hostTaskId"] = host_task_id
+
+    def _assert_native_semantic_receipt(
+        self, state: dict[str, Any], artifact: dict[str, Any], receipt: dict[str, Any],
+        task_id: str | None, criteria: Sequence[str], family: str, *, allow_consumed: bool = False,
+    ) -> None:
+        from worker_adapters import git_status, workspace_fingerprint
+
+        binding = receipt.get("binding") or {}
+        observed = receipt.get("completion") or {}
+        task = find_task(state, str(binding.get("taskId", "")))
+        source = {"commit": run_command(["git", "rev-parse", "HEAD"], self.repository),
+                  "sha256": workspace_fingerprint(self.repository, include_ignored=False)}
+        if (binding.get("runId") != state["runId"] or task_id != task["id"]
+                or binding.get("objectiveVersion") != state["objective"]["version"]
+                or task["objectiveVersion"] != state["objective"]["version"]
+                or set(criteria) != set(binding.get("criteria") or [])
+                or binding.get("source") != source or git_status(self.repository)
+                or binding.get("authority") != self._semantic_authority(state, task)):
+            raise RuntimeFailure("SEMANTIC_SOURCE_STALE", "native semantic receipt no longer binds current scope/source/policy/holds")
+        if (observed.get("agentId") != binding.get("hostTaskId")
+                or observed.get("toolCallId") != binding.get("hostTaskId")
+                or observed.get("agentName") != binding.get("role")
+                or observed.get("type") != "subagent.completed" or observed.get("cancelled")
+                or observed.get("ephemeral") or not observed.get("id")
+                or native_review_family(observed.get("firstDispatchedModel")) != family
+                or receipt.get("family") != family):
+            raise RuntimeFailure("SEMANTIC_HOST_PROVENANCE", "native receipt owner/completion/actual-model provenance is invalid")
+        if artifact["consumedByTask"] is not None and not (
+                allow_consumed and artifact["consumedByTask"] == task_id):
+            raise RuntimeFailure("EVIDENCE_REPLAY", "native semantic producer evidence was already consumed")
+
+    def _native_semantic_gate_is_current(self, state: dict[str, Any], gate: dict[str, Any]) -> bool:
+        refs = set(gate["evidenceRefs"])
+        for artifact in state["artifacts"]:
+            if f"artifact:{artifact['id']}" not in refs or artifact["producer"] != "semantic-judge":
+                continue
+            receipt = self._read_json_receipt(artifact["path"], "semantic")
+            if receipt.get("schema") != "architrave.native-semantic-review.v1":
+                continue
+            try:
+                self._assert_native_semantic_receipt(
+                    state, artifact, receipt, gate["taskId"], gate["criteria"], gate["family"], allow_consumed=True,
+                )
+            except RuntimeFailure as exc:
+                if exc.code == "SEMANTIC_SOURCE_STALE":
+                    return False
+                raise
+        return True
+
+    def accept_native_semantic_review(
+        self, ticket: NativeSemanticTicket, *, host_task_id: str, host_status: str,
+        text: str, completion: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Trusted private transport completion, not a caller-labelled result or file importer."""
+        from worker_adapters import workspace_fingerprint
+
+        if (not isinstance(ticket, NativeSemanticTicket) or ticket.issuer is not self.__semantic_issuer
+                or ticket.consumed):
+            raise RuntimeFailure("SEMANTIC_RESULT_UNTRUSTED", "native semantic results require a live process-held invocation")
+        ticket.consumed = True
+        binding = ticket.binding
+        state = self.load(binding["runId"])
+        task = find_task(state, binding["taskId"])
+        if (state["revision"] != binding["revision"] or parse_iso(binding["expiresAt"]) <= dt.datetime.now(dt.timezone.utc)
+                or binding["hostTaskId"] != host_task_id or host_status not in {"idle", "completed"}):
+            raise RuntimeFailure("SEMANTIC_RESULT_STALE", "review owner/revision/deadline is stale or replayed")
+        if not isinstance(text, str) or len(text.encode("utf-8")) > ticket.budget["maxOutputBytes"]:
+            raise RuntimeFailure("SEMANTIC_RESULT_INVALID", "review output exceeds its canonical bound")
+        structured = text.strip()
+        if structured.startswith("```json\n") and structured.endswith("\n```"):
+            structured = structured[len("```json\n"):-len("\n```")].strip()
+        try:
+            report = json.loads(structured, object_pairs_hook=_reject_duplicate_json_keys)
+        except (ValueError, json.JSONDecodeError) as exc:
+            raise RuntimeFailure("SEMANTIC_RESULT_INVALID", "reviewer must return the requested structured JSON") from exc
+        fields = {"verdict", "criteria", "sourceCommit", "sourceSha256", "challenge", "summary", "findings"}
+        if (not isinstance(report, dict) or set(report) != fields
+                or report["verdict"] not in {"PASS", "REVISE", "FAIL"}
+                or report["criteria"] != binding["criteria"] or report["challenge"] != ticket.challenge
+                or report["sourceCommit"] != binding["source"]["commit"]
+                or report["sourceSha256"] != binding["source"]["sha256"]
+                or not isinstance(report["summary"], str) or not report["summary"].strip() or len(report["summary"]) > 1600
+                or not isinstance(report["findings"], list) or len(report["findings"]) > 12):
+            raise RuntimeFailure("SEMANTIC_RESULT_INVALID", "review scope/challenge/verdict shape is invalid")
+        for finding in report["findings"]:
+            if (not isinstance(finding, dict) or set(finding) != {"severity", "path", "message"}
+                    or finding["severity"] not in {"blocker", "major", "minor"} or not isinstance(finding["path"], str)
+                    or not isinstance(finding["message"], str) or not finding["message"].strip() or len(finding["message"]) > 800):
+                raise RuntimeFailure("SEMANTIC_RESULT_INVALID", "review finding is malformed")
+            safe_relative_path(finding["path"], "review finding path")
+            if report["verdict"] == "PASS" and finding["severity"] in {"blocker", "major"}:
+                raise RuntimeFailure("SEMANTIC_RESULT_INVALID", "PASS contradicts blocking findings")
+        if (not isinstance(completion, dict) or not isinstance(completion.get("timestamp"), str)
+                or parse_iso(completion["timestamp"]) < parse_iso(binding["preparedAt"])
+                or parse_iso(completion["timestamp"]) > dt.datetime.now(dt.timezone.utc) + dt.timedelta(seconds=5)
+                or parse_iso(completion["timestamp"]) > parse_iso(binding["expiresAt"])):
+            raise RuntimeFailure("SEMANTIC_HOST_PROVENANCE", "completion is outside the live review interval")
+        family = native_review_family(completion.get("firstDispatchedModel"))
+        artifact = {"consumedByTask": None}
+        receipt = {
+            "schema": "architrave.native-semantic-review.v1", "verdict": report["verdict"],
+            "family": family, "reviewer": "host-native", "criteria": binding["criteria"],
+            "binding": binding, "completion": completion, "report": redact({
+                "summary": report["summary"], "findings": report["findings"],
+            }), "resultSha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            "observedAt": utc_now(), "effort": {"requested": "high", "effective": None},
+        }
+        self._assert_native_semantic_receipt(state, artifact, receipt, task["id"], binding["criteria"], family)
+        if workspace_fingerprint(self.repository, include_ignored=False) != binding["source"]["sha256"]:
+            raise RuntimeFailure("SEMANTIC_SOURCE_STALE", "reviewed source changed before receipt creation")
+        artifact_id = f"native-semantic-{uuid.uuid4().hex}"
+        path = self._native_review_storage(state["runId"]) / f"{artifact_id}.json"
+        self._atomic_write(path, receipt)
+        self._record_artifact(
+            state["runId"], artifact_id=artifact_id, kind="semantic-verdict",
+            path=path.relative_to(self.repository).as_posix(), evidence_refs=[f"task:{task['id']}"],
+            actor="native-semantic-review", producer="semantic-judge",
+        )
+        status = {"PASS": "PASS", "REVISE": "BLOCKED", "FAIL": "FAIL"}[report["verdict"]]
+        gate_id = f"semantic-{uuid.uuid4().hex}"
+        self.record_gate(
+            state["runId"], gate_id=gate_id, task_id=task["id"], gate_type="semantic", status=status,
+            evidence_refs=[f"artifact:{artifact_id}"], family=family, criteria=binding["criteria"],
+            reviewer="host-native", effort="high", actor="native-semantic-review",
+        )
+        return {"status": status, "verdict": report["verdict"], "family": family,
+                "artifactRef": f"artifact:{artifact_id}", "gateRef": f"gate:{gate_id}",
+                "source": binding["source"], "hostTaskId": host_task_id,
+                "completionEventId": completion["id"], "summary": receipt["report"]["summary"]}
+
     def recover_workers(self, run_id: str, *, task_id: str | None = None) -> dict[str, Any]:
         """Close orphan/expired records; an explicit failed task recovery never runs commands."""
         def mutate(state: dict[str, Any]) -> dict[str, Any]:
@@ -3548,6 +3795,14 @@ class RunStore:
         refs = {ref for gate in state["gateResults"] if gate["id"] in gate_ids for ref in gate["evidenceRefs"]}
         observed_source = None
         for artifact in state["artifacts"]:
+            if f"artifact:{artifact['id']}" in refs and artifact["producer"] == "semantic-judge":
+                receipt = self._read_json_receipt(artifact["path"], "semantic")
+                if receipt.get("schema") == "architrave.native-semantic-review.v1":
+                    for gate in state["gateResults"]:
+                        if gate["id"] in gate_ids and f"artifact:{artifact['id']}" in gate["evidenceRefs"]:
+                            self._assert_native_semantic_receipt(
+                                state, artifact, receipt, gate["taskId"], gate["criteria"], gate["family"], allow_consumed=True,
+                            )
             if f"artifact:{artifact['id']}" in refs and artifact["producer"] == "legibility":
                 self._assert_product_binding(state, artifact, task_id=None, criteria=None)
             if f"artifact:{artifact['id']}" not in refs or artifact["producer"] != "deterministic":
@@ -3656,6 +3911,7 @@ class RunStore:
                 and item["status"] == "PASS" and item.get("family") == family
                 and item.get("objectiveVersion") == state["objective"]["version"]
                 and high_risk.intersection(bound_criteria).intersection(item["criteria"])
+                and self._native_semantic_gate_is_current(state, item)
             ), None)
             if duplicate:
                 raise RuntimeFailure(
@@ -3697,8 +3953,11 @@ class RunStore:
                         if artifact["id"] not in artifact_ids:
                             continue
                         verdict = self._read_json_receipt(artifact["path"], "semantic")
-                        if verdict.get("family") != family or not set(bound_criteria).issubset(set(verdict.get("criteria") or [])):
+                        if (verdict.get("verdict") != "PASS" or verdict.get("family") != family
+                                or not set(bound_criteria).issubset(set(verdict.get("criteria") or []))):
                             raise RuntimeFailure("SEMANTIC_RECEIPT", "semantic gate does not match verdict family/criteria")
+                        if verdict.get("schema") == "architrave.native-semantic-review.v1":
+                            self._assert_native_semantic_receipt(state, artifact, verdict, task_id, bound_criteria, family)
                 if gate_type in {"reality", "e2e"}:
                     # A reality/e2e PASS gate proves exactly one verification surface (web,
                     # electron, ios, deployment, runtime). Evidence spanning zero or more than
@@ -3777,6 +4036,13 @@ class RunStore:
                         if receipt.get("result", {}).get("status") != "pass" or receipt.get("result", {}).get("mismatches") != []:
                             raise RuntimeFailure("MUTATION_RECEIPT", "mutation PASS gate requires a fully matching receipt")
             now = utc_now()
+            if status == "PASS" and gate_type == "semantic":
+                for artifact in state["artifacts"]:
+                    if artifact["id"] in artifact_ids:
+                        receipt = self._read_json_receipt(artifact["path"], "semantic")
+                        if receipt.get("schema") == "architrave.native-semantic-review.v1":
+                            artifact["consumedByTask"] = task_id
+                            artifact["attestation"] = self._artifact_attestation(artifact)
             state["gateResults"].append(
                 {
                     "id": gate_id,
@@ -5493,6 +5759,7 @@ def missing_gate_requirements(state: dict[str, Any], criteria: Sequence[dict[str
     configured = repo_config.get("evaluation") or {}
     risk_policy = configured.get("riskPolicy") or {}
     cross_family = bool((repo_config.get("review") or {}).get("crossFamily"))
+    store = RunStore(state["baseline"]["repository"])
     missing: list[str] = []
     for criterion in criteria:
         requirements = list(
@@ -5514,6 +5781,7 @@ def missing_gate_requirements(state: dict[str, Any], criteria: Sequence[dict[str
             if gate["status"] == "PASS"
             and gate.get("objectiveVersion", 1) == state["objective"]["version"]
             and criterion["id"] in gate["criteria"]
+            and (gate["type"] != "semantic" or store._native_semantic_gate_is_current(state, gate))
         ]
         capabilities: set[str] = {gate["type"] for gate in passed}
         if any(gate["type"] == "semantic" for gate in passed):

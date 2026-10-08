@@ -40,11 +40,12 @@ class RibbonTests(unittest.TestCase):
     def git(self, *args):
         return subprocess.run(["git", *args], cwd=self.repo, capture_output=True, text=True, check=True).stdout.strip()
 
-    def task(self, identifier, dependencies=()):
+    def task(self, identifier, dependencies=(), **options):
         self.store.add_task("run", {
             "id": identifier, "title": identifier, "objective": "Observe fixture",
             "acceptanceCriteria": ["OUTCOME-001"], "dependencies": list(dependencies),
             "pushback": "KEEP:generic fixture", "maxAttempts": 3,
+            **options,
         })
 
     def test_projection_read_only_and_dependencies(self):
@@ -123,6 +124,44 @@ class RibbonTests(unittest.TestCase):
         self.assertEqual("stopped", step["state"])
         self.assertEqual("human", step["blocker"])
         self.assertIn("Pending human checkpoint", step["reason"])
+
+    def test_parallel_work_kind_lanes_keep_independent_states_and_owners(self):
+        self.task("prerequisite")
+        self.task("delivery", ["prerequisite"])
+        self.task("feasibility", workKind="diagnostic", lane="feasibility", isMinimalAcceptanceTest=True)
+        self.store.start_task("run", "feasibility", worker_id="research-owner")
+        result = ribbon_snapshot(self.store, "run")
+        indexed = {step["id"]: step for step in result["steps"]}
+        self.assertEqual("blocked", indexed["delivery"]["state"])
+        self.assertEqual("active", indexed["feasibility"]["state"])
+        self.assertEqual("research-owner", indexed["feasibility"]["owner"])
+        self.assertNotEqual(indexed["delivery"]["streamId"], indexed["feasibility"]["streamId"])
+        stream = next(item for item in result["streams"] if item["id"] == indexed["feasibility"]["streamId"])
+        self.assertEqual("exploratory", stream["kind"])
+        self.assertIn("not product shipped", stream["outcome"])
+        self.assertEqual(result["revision"], stream["sourceRef"]["revision"])
+        self.assertEqual([], result["relations"])
+
+    def test_cross_stream_prerequisite_is_blocks_not_inferred_informs(self):
+        self.task("research", workKind="research", lane="research")
+        self.task("implementation", ["research"])
+        result = ribbon_snapshot(self.store, "run")
+        self.assertEqual(1, len(result["relations"]))
+        relation = result["relations"][0]
+        self.assertEqual(("research", "implementation", "blocks", "canonical dependency"),
+                         (relation["fromStep"], relation["toStep"], relation["type"], relation["provenance"]))
+
+    def test_completed_research_is_scoped_not_product_verified_and_unknown_lane_is_labelled(self):
+        self.task("research", workKind="research")
+        state = self.store.load("run")
+        state["tasks"][0]["status"] = "COMPLETED"
+        state["tasks"][0]["lane"] = "unknown-lane"
+        with patch.object(self.store, "load", return_value=state):
+            result = ribbon_snapshot(self.store, "run")
+        self.assertEqual("done", result["steps"][0]["state"])
+        self.assertIsNone(result["steps"][0]["owner"])
+        self.assertIn("Unassigned lane", result["streams"][0]["label"])
+        self.assertEqual("exploratory", result["streams"][0]["kind"])
 
     def test_installer_opt_in_exact_bytes_and_refresh(self):
         target = Path(self.temp.name) / "consumer"

@@ -119,10 +119,8 @@ class InstallUpdateTests(unittest.TestCase):
         self.assertNotIn("kind", application_config)
         self.assertTrue((application / "constitution-apple.md").is_file())
         self.assertTrue((application / ".github/agents/ui-visual.agent.md").is_file())
-        self.assertEqual(
-            (application / ".github/hooks/design-guard.json").read_bytes(),
-            (ROOT / "gates/hooks/design-guard.windows.json").read_bytes(),
-        )
+        self.assertFalse((application / ".github/hooks/design-guard.json").exists())
+        self.assertFalse((application / "gates/hooks").exists())
 
         self.run_cli(
             "install",
@@ -157,9 +155,76 @@ class InstallUpdateTests(unittest.TestCase):
         for relative in (
             "harness/architrave_runtime.py",
             "knowledge/execution-policy.md",
-            "gates/hooks/design-guard.json",
+            "gates/gate_runner.py",
         ):
             self.assertTrue((knowledge / relative).is_file(), relative)
+
+    def test_known_legacy_quality_hooks_are_retired_transactionally_and_idempotently(self) -> None:
+        for source in ("design-guard.json", "design-guard.windows.json"):
+            target = self.workspace / source
+            target.mkdir()
+            self.run_cli("install", "--profile", "knowledge", str(target))
+            active = target / ".github/hooks/design-guard.json"
+            active.parent.mkdir(parents=True)
+            content = json.loads((ROOT / "gates/hooks" / source).read_text())
+            active.write_text(json.dumps(content))
+            copied = target / "gates/hooks" / source
+            copied.parent.mkdir(parents=True)
+            copied.write_text(json.dumps(content))
+            other = active.parent / "other-plugin.json"
+            other.write_text('{"hooks":{"PreToolUse":[{"type":"command","command":"preserve-user-policy"}]}}')
+            (target / "product.txt").write_text("preserve product")
+            before_other = other.read_bytes()
+            before_config = (target / "architrave.config.json").read_bytes()
+            dry = self.run_cli("retire-hooks", "--dry-run", str(target))
+            self.assertIn("remove-recognized", dry.stdout)
+            self.assertTrue(active.exists())
+            self.run_cli("update", str(target))
+            self.assertFalse(active.exists())
+            self.assertFalse(copied.exists())
+            self.assertEqual(before_other, other.read_bytes())
+            self.assertEqual(before_config, (target / "architrave.config.json").read_bytes())
+            self.assertEqual("preserve product", (target / "product.txt").read_text())
+            first = snapshot(target)
+            self.run_cli("update", str(target))
+            self.assertEqual(first, snapshot(target))
+
+    def test_custom_quality_hook_is_preserved_with_explicit_manual_action(self) -> None:
+        target = self.workspace / "custom hooks"
+        target.mkdir()
+        self.run_cli("install", "--profile", "knowledge", str(target))
+        active = target / ".github/hooks/design-guard.json"
+        active.parent.mkdir(parents=True)
+        owned = json.loads((ROOT / "gates/hooks/design-guard.windows.json").read_text())
+        owned["hooks"]["PostToolUse"].append({"type": "command", "command": "user-check"})
+        active.write_text(json.dumps(owned))
+        original = active.read_bytes()
+        result = self.run_cli("update", str(target), expected=2)
+        self.assertIn("MANUAL_ACTION_REQUIRED", result.stderr)
+        self.assertEqual(original, active.read_bytes())
+        self.run_cli("retire-hooks", str(target), expected=2)
+        self.assertEqual(original, active.read_bytes())
+        active.write_text('{"hooks":{},"hooks":{"PostToolUse":[{"type":"command","command":"./gates/quality-gate.sh --hook-json","timeout":20}]}}')
+        duplicate = active.read_bytes()
+        self.run_cli("retire-hooks", str(target), expected=2)
+        self.assertEqual(duplicate, active.read_bytes())
+
+    def test_quality_retirement_conflicting_edit_rolls_back_without_deleting_custom_data(self) -> None:
+        target = self.workspace / "hook race"
+        target.mkdir()
+        active = target / ".github/hooks/design-guard.json"
+        active.parent.mkdir(parents=True)
+        active.write_bytes((ROOT / "gates/hooks/design-guard.json").read_bytes())
+        managed = self.module.ManagedRoot(target, "fixture")
+        plan = self.module.quality_hook_plan(managed, ROOT)
+        custom = b'{"hooks":{"PostToolUse":[{"type":"command","command":"custom-changed"}]}}'
+        with self.assertRaises(self.module.InstallerError):
+            with self.module.ManagedTransaction(managed):
+                self.module.apply_quality_hook_plan(managed, plan)
+                active.write_bytes(custom)
+        self.assertEqual(custom, active.read_bytes())
+        self.assertFalse((target / ".architrave-install.lock").exists())
+        self.assertFalse((target / ".architrave-install-transaction").exists())
 
     @unittest.skipIf(sys.version_info < (3, 11), "optional Codex role installation requires Python 3.11+")
     def test_update_agents_codex_and_idempotency(self) -> None:

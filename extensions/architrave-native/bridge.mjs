@@ -21,6 +21,7 @@ for (const [path, digest] of Object.entries(installed.files)) verifyFile(path, d
 const bridgePath = join(installed.root, "harness", "native_host.py");
 const active = new Map();
 let pendingDispatches = 0;
+let semanticScope;
 let session;
 
 function pipe(request) {
@@ -72,7 +73,7 @@ async function hostTasks() {
   return (await session.rpc.tasks.list()).tasks;
 }
 
-function observeTask(maxTurns) {
+function observeTask(maxTurns, requireCompletion = false) {
   const records = new Map();
   let id, fresh, resolve, reject, timer;
     let reading = false;
@@ -102,7 +103,9 @@ function observeTask(maxTurns) {
         const task = (await hostTasks()).find(task => task.id === id && task.type === "agent");
         if (!task) finish(new Error("Joined host lost the admitted task"));
         else if (["completed", "idle", "failed", "cancelled"].includes(task.status) &&
-                 (fresh(task) || cancellationRequested && task.status === "cancelled")) {
+                 (fresh(task) || cancellationRequested && task.status === "cancelled") &&
+                 (!requireCompletion || records.get(id)?.completionEvent ||
+                   ["failed", "cancelled"].includes(task.status))) {
           const record = records.get(id) || {};
           finish(null, { ...task, ...record, turnsObserved: record.turns || null,
             budgetStop: cancellationRequested ? "turns" : null });
@@ -122,10 +125,22 @@ function observeTask(maxTurns) {
         enforceTurns();
       }
       if (event.agentId && (!id || event.agentId === id) && ["subagent.completed", "subagent.failed"].includes(event.type)) {
+        const completionEvent = {
+          id: event.id, type: event.type, agentId: event.agentId, timestamp: event.timestamp,
+          ephemeral: Boolean(event.ephemeral), cancelled: Boolean(event.data.cancelled),
+          toolCallId: event.data.toolCallId, agentName: event.data.agentName,
+          firstDispatchedModel: event.data.firstDispatchedModel || null,
+          modelSelectionSource: event.data.modelSelectionSource || null,
+        };
+        const previous = records.get(event.agentId)?.completionEvent;
+        if (previous && JSON.stringify(previous) !== JSON.stringify(completionEvent)) {
+          finish(new Error("Conflicting host completion provenance"));
+          return;
+        }
         records.set(event.agentId, { ...records.get(event.agentId),
           usageTotal: event.data.totalTokens ?? null,
           totalToolCalls: event.data.totalToolCalls ?? null,
-          effectiveModel: event.data.firstDispatchedModel || event.data.model || null });
+          effectiveModel: event.data.firstDispatchedModel || event.data.model || null, completionEvent });
       }
       if (event.type === "session.background_tasks_changed" || event.type.startsWith("subagent.")) {
         void inspect();
@@ -189,6 +204,7 @@ const tools = [
     }, required: ["repo", "run_id", "task_id"], additionalProperties: false },
     handler: async (args, invocation) => withAdmission(async () => {
       const tasks = await hostTasks();
+      if (semanticScope) throw new Error("SEMANTIC_REVIEW_BUSY: frozen review owns this joined session");
       const owned = new Set([...active.values()].map(entry => entry.hostTaskId));
       const outside = tasks.filter(task => task.type === "agent" && task.status === "running" && !owned.has(task.id)).length;
       if (outside + pendingDispatches > 3) {
@@ -306,6 +322,71 @@ const tools = [
 ];
 
 tools.push({
+  name: "architrave_native_review",
+  description: "Execute one fresh source-bound semantic review through the joined host and admit only its observed result/model receipt. No verdict import or model pin.",
+  parameters: { type: "object", properties: { ...identitySchema,
+    reviewer: { type: "string", enum: ["code-review", "rubber-duck"] },
+  }, required: ["repo", "run_id", "task_id"], additionalProperties: false },
+  handler: async (args, invocation) => withAdmission(async () => {
+    if (Object.keys(args).some(key => !["repo", "run_id", "task_id", "reviewer"].includes(key))) {
+      throw new Error("Semantic execution accepts no claimed verdict, producer, event or model");
+    }
+    const tasks = await hostTasks();
+    if (semanticScope || pendingDispatches !== 1 || tasks.some(task => task.type === "agent" && task.status === "running")) {
+      throw new Error("SEMANTIC_REVIEW_BUSY: frozen-source reviews run alone in this joined session");
+    }
+    const input = { ...request(args, "semantic-review", invocation),
+      invocationId: invocation.toolCallId, reviewer: args.reviewer || "rubber-duck" };
+    const connection = pipe(input);
+    semanticScope = input.repo;
+    let hostTaskId, observer, key;
+    let abort;
+    try {
+      const prepared = await connection.next();
+      if (prepared.status !== "prepared") return result(prepared);
+      observer = observeTask(prepared.maxTurns, true);
+      const admitted = await session.rpc.tasks.startAgent({
+        agentType: prepared.agentType, prompt: prepared.prompt,
+        name: `Architrave semantic ${args.task_id}`, description: "Independent frozen-source gate",
+      });
+      hostTaskId = admitted.agentId;
+      key = `review:${args.run_id}:${args.task_id}:${invocation.toolCallId}`;
+      active.set(key, { hostTaskId, connection, repo: args.repo });
+      abort = () => { void session.rpc.tasks.cancel({ id: hostTaskId }); };
+      invocation.signal?.addEventListener("abort", abort, { once: true });
+      const observation = observer.wait(hostTaskId, Date.parse(prepared.expiresAt), () => true);
+      observation.catch(() => {});
+      connection.send({ status: "admitted", hostTaskId });
+      const bound = await connection.next();
+      if (bound.status !== "bound") throw new Error(bound.error?.message || "Semantic host binding failed");
+      const observed = await observation;
+      if (!observed || !observed.completionEvent) throw new Error("SEMANTIC_HOST_PROVENANCE: completion metadata unavailable within bound");
+      connection.send({
+        hostTaskId, hostStatus: observed.status,
+        text: String(observed.result || observed.latestResponse || ""),
+        completion: observed.completionEvent,
+      });
+      return result(await connection.next());
+    } catch (error) {
+      return result({ status: "failed", error: { code: "NATIVE_SEMANTIC_FAILED", message: String(error) }, hostTaskId });
+    } finally {
+      invocation.signal?.removeEventListener("abort", abort);
+      if (key) active.delete(key);
+      observer?.close();
+      try {
+        if (hostTaskId) {
+          await session.rpc.tasks.cancel({ id: hostTaskId });
+          await session.rpc.tasks.remove({ id: hostTaskId });
+        }
+      } finally {
+        try { await connection.close(); }
+        finally { semanticScope = undefined; }
+      }
+    }
+  }),
+});
+
+tools.push({
   name: "architrave_native_batch",
   description: "Invoke two or three pre-decomposed independent canonical WorkPackets concurrently through the same native dispatch. No automatic decomposition or recursive spawning.",
   parameters: { type: "object", properties: {
@@ -322,8 +403,38 @@ tools.push({
 
 session = await joinSession({ tools, hooks: {
   onPreToolUse: (input, invocation) => {
+    if (semanticScope) {
+      if (["tool_search_tool", "functions.tool_search_tool"].includes(input.toolName)) return;
+      if (["skill", "functions.skill"].includes(input.toolName) && input.toolArgs?.skill === "architrave-review") return;
+      if (!["view", "rg", "glob", "functions.view", "functions.rg", "functions.glob"].includes(input.toolName)) {
+        return { permissionDecision: "deny", permissionDecisionReason: "SEMANTIC_READ_ONLY: only scoped view/rg/glob; no execute, mutation, control-plane or child tools" };
+      }
+      const name = input.toolName.replace(/^functions\./, "");
+      const args = input.toolArgs;
+      if (!args || typeof args !== "object" || Array.isArray(args)) {
+        return { permissionDecision: "deny", permissionDecisionReason: "SEMANTIC_READ_ONLY: malformed read arguments" };
+      }
+      try {
+        const paths = name === "view" ? [args.path] :
+          Array.isArray(args.paths) ? args.paths : [args.paths || semanticScope];
+        if (!paths.length) throw new Error("no source paths");
+        const safe = paths.map(path => {
+          if (typeof path !== "string") throw new Error("invalid source path");
+          const absolute = realpathSync(resolve(semanticScope, path));
+          const suffix = relative(semanticScope, absolute);
+          if (suffix.startsWith("..") || isAbsolute(suffix) ||
+              suffix.split(/[\\/]/).some(part => [".git", ".architrave"].includes(part.toLowerCase()))) {
+            throw new Error("private or out-of-scope source");
+          }
+          return absolute;
+        });
+        return { modifiedArgs: { ...args, ...(name === "view" ? { path: safe[0] } : { paths: safe }) } };
+      } catch (error) {
+        return { permissionDecision: "deny", permissionDecisionReason: `SEMANTIC_READ_ONLY: ${error.code || error.message}` };
+      }
+    }
     if ((active.size || pendingDispatches) && input.sessionId !== invocation.sessionId &&
-        /(?:^|[./-])(?:task|create_session|open_pr_session|open_issue_session|fork_session|run_workflow|run_dynamic_workflow|architrave_native_dispatch|architrave_native_batch)$/.test(input.toolName)) {
+        /(?:^|[./-])(?:task|create_session|open_pr_session|open_issue_session|fork_session|run_workflow|run_dynamic_workflow|architrave_native_dispatch|architrave_native_batch|architrave_native_review)$/.test(input.toolName)) {
       return { permissionDecision: "deny", permissionDecisionReason: "CHILD_DEPTH: a bounded Architrave child may not spawn descendants (max depth one)" };
     }
   },

@@ -5,7 +5,7 @@ import hashlib
 import json
 from typing import Any
 
-from architrave_runtime import RunStore, RuntimeFailure, redact, state_summary
+from architrave_runtime import RunStore, RuntimeFailure, feasibility_status, redact, state_summary
 
 
 def compact(value: Any) -> str:
@@ -27,11 +27,26 @@ def ribbon_snapshot(store: RunStore, run_id: str | None = None) -> dict[str, Any
     criteria = {item["id"]: item for item in state["acceptanceCriteria"]}
     artifacts = {f"artifact:{item['id']}": item for item in state["artifacts"]}
     steps = []
+    streams = {}
+    known_lanes = {lane["id"] for lane in [*state["lanes"]["active"], *state["lanes"]["deferred"]]}
     deadlines = []
     reasons = {event["taskId"]: event["payload"]["reason"] for event in events
                if event.get("taskId") and event["payload"].get("reason")
                and event["type"] in {"task.failed", "task.skipped", "task.deferred"}}
     for task in tasks.values():
+        work_kind = task.get("workKind") or "unassigned"
+        category = ("delivery" if work_kind == "product" else
+                    "reference" if task.get("reference") and work_kind != "product" else
+                    "exploratory" if work_kind in {"research", "diagnostic"} else
+                    "review" if work_kind == "review" else
+                    "operations" if work_kind in {"communications", "infrastructure"} else "unassigned")
+        lane = task.get("lane")
+        stream_id = "stream-" + hashlib.sha256(f"{lane}:{category}".encode()).hexdigest()[:16]
+        label = f"{lane} / {category}" if lane in known_lanes else f"Unassigned lane ({lane or 'unknown'}) / {category}"
+        streams.setdefault(stream_id, {"id": stream_id, "label": label, "kind": category,
+                                      "outcome": ("Scoped investigation/reference findings; not product shipped or verified."
+                                                  if category in {"exploratory", "reference"}
+                                                  else "Independent scoped work; acceptance remains source-bound.")})
         current = task["objectiveVersion"] == state["objective"]["version"]
         status = task["status"]
         display = {
@@ -56,7 +71,7 @@ def ribbon_snapshot(store: RunStore, run_id: str | None = None) -> dict[str, Any
         evidence = list(task.get("evidenceRefs") or [])
         if display == "done" and not evidence:
             evidence = [f"task:{task['id']} (canonical scoped completion; not product verification)"]
-        if current and display == "done" and source["baselineFresh"]:
+        if current and display == "done" and source["baselineFresh"] and category == "delivery":
             product = []
             for criterion_id in task["acceptanceCriteria"]:
                 criterion = criteria[criterion_id]
@@ -102,11 +117,24 @@ def ribbon_snapshot(store: RunStore, run_id: str | None = None) -> dict[str, Any
         if current and feasibility:
             deadlines.append(feasibility["expiresAt"])
             reason += f" Lane deadline: {feasibility['expiresAt']}; decision: {feasibility['decision']}."
+            reset = feasibility_status(state, task)
+            if display not in {"done", "verified", "bypassed"} and reset and (
+                    reset["expired"] or reset["decision"] == "PARK"):
+                display = "stopped"
+                reason += " Explicit parked/expired feasibility window; not product verification."
+        owners = [worker for worker in state["workers"] if worker.get("taskId") == task["id"]]
+        owner = next((worker for worker in owners if worker["id"] == (task.get("lease") or {}).get("owner")),
+                     owners[-1] if owners else None)
+        host = (owner or {}).get("nativeBinding") or {}
         steps.append({
             "id": task["id"], "title": compact(task["title"]), "state": display, "current": current,
             "reason": compact(reason), "evidence": [compact(item) for item in evidence],
             "dependencies": task["dependencies"], "blocker": blocker, "attempts": task["attempts"],
             "retry": retry, "weightEstimate": 1,
+            "streamId": stream_id, "workKind": work_kind,
+            "owner": owner["id"] if owner else None, "hostOwner": host.get("owner"),
+            "hostTaskId": host.get("hostTaskId"), "startedAt": (owner or {}).get("startedAt"),
+            "finishedAt": (owner or {}).get("finishedAt"),
         })
     milestone = None
     for event in events:
@@ -115,6 +143,7 @@ def ribbon_snapshot(store: RunStore, run_id: str | None = None) -> dict[str, Any
         payload = event["payload"]
         if (event["type"] == "product.milestone" and payload.get("taskId") in tasks
                 and tasks[payload["taskId"]]["objectiveVersion"] == state["objective"]["version"]
+                and tasks[payload["taskId"]].get("workKind") == "product"
                 and payload.get("source") == {"commit": source["observedCommit"], "sha256": source["sha256"]}):
             milestone = compact(f"{payload['milestone']} / criterion:{payload['criterionId']} / "
                                 f"task:{payload['taskId']} / event:{event['sequence']} / "
@@ -133,6 +162,25 @@ def ribbon_snapshot(store: RunStore, run_id: str | None = None) -> dict[str, Any
         "next": compact(summary["nextCheapestTest"]) if summary["nextCheapestTest"] else None,
         "milestone": milestone, "steps": steps,
     }
-    if len(json.dumps(result).encode("utf-8")) > 65536 or any(len(step["evidence"]) > 12 for step in steps):
+    for stream in streams.values():
+        stream["sourceRef"] = {
+            "domainKey": result["domainKey"], "runId": state["runId"], "revision": state["revision"],
+            "objectiveVersion": state["objective"]["version"], "capturedAt": summary["observedAt"],
+            "commit": source["observedCommit"], "sha256": source["sha256"],
+            "freshness": result["source"]["freshness"],
+        }
+    result["streams"] = list(streams.values())
+    indexed = {step["id"]: step for step in steps}
+    result["relations"] = [
+        {"fromStep": parent, "toStep": step["id"], "type": "blocks",
+         "reason": ("Canonical prerequisite; not a non-blocking research annotation."
+                    if step["current"] and indexed[parent]["current"]
+                    else "Historical prerequisite from a superseded objective; not a current blocker."),
+         "provenance": "canonical dependency"}
+        for step in steps for parent in step["dependencies"]
+        if indexed[parent]["streamId"] != step["streamId"]
+    ]
+    if (len(json.dumps(result).encode("utf-8")) > 65536 or len(result["relations"]) > 160
+            or any(len(step["evidence"]) > 12 for step in steps)):
         raise RuntimeFailure("RIBBON_SNAPSHOT_LIMIT", "Projection exceeds canvas bounds; no evidence is silently dropped")
     return result

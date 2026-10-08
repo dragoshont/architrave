@@ -20,6 +20,13 @@ stay distinct, with visible bypasses, human/resource/dependency blockers,
 explicit stops and fingerprint-backed retry history. One portable
 `extension.mjs`, no npm runtime dependencies beyond the Copilot host SDK.
 Snapshots persist by repository/Run identity and rehydrate after extension reload.
+Parallel workstream data adds labelled stacked lanes while preserving the
+segmented overview. Delivery, exploration and reference work remain distinct;
+display-only INFORMS annotations never become scheduling dependencies.
+The joined native bridge can now execute and admit a fresh source-bound semantic
+review from actual host completion/model evidence. Automatic PostToolUse quality
+commands are retired; explicit focused quick checks and required CI preserve
+the executable validators without pretending prose is automatic enforcement.
 This is an **agent-fed snapshot, not a live telemetry feed**. Missing active
 effort, wait duration, tokens and cost stay Unknown.
 See [Route Ribbon installation and snapshot contract](docs/route-ribbon.md).
@@ -180,7 +187,7 @@ claude plugin marketplace update architrave
 claude plugin update architrave@architrave
 ```
 
-After updating the plugin, users **must also refresh each adopted repo's copied kit assets**. A plugin update refreshes the locally installed agent package only; it does not change copied gates, the active `.github/hooks/design-guard.json`, harness, knowledge, profile-appropriate constitutions, or the managed `AGENTS.md` stanza. Run the matching repo script in every adopted repo. This leaves `architrave.config.json` and copied `.github/agents` untouched by default:
+After updating the plugin, users **must also refresh each adopted repo's copied kit assets** at a safe owner boundary. A plugin update does not change copied gates, harness, knowledge, profile-appropriate constitutions, or the managed `AGENTS.md` stanza. The updater retires only exact recognized legacy Architrave quality-hook definitions; custom/mixed/unknown definitions are preserved with `MANUAL_ACTION_REQUIRED` (exit 2). It never registers a new automatic PostToolUse quality hook. Configuration and copied agents remain untouched unless `--agents` is requested:
 
 ```bash
 python /path/to/architrave/tools/install_update.py update .
@@ -378,6 +385,11 @@ from the installed kit once, then use the supported extensions reload. Invoke
 `architrave_native_dispatch` with the absolute adopted repo, Run and task IDs;
 `architrave_native_gate` independently observes the configured test/build or
 installed quick gate. `status` is a fresh projection; worker done is never PASS.
+`architrave_native_review` executes/admit a fresh independent source review
+through the same trusted joined producer; see
+[native semantic execution](docs/native-semantic-review.md).
+For quality-hook cadence and exact hooks-only post-release retirement, see
+[quality checks without automatic turn hooks](docs/quality-check-cadence.md).
 The copied kit/bridge supports Python 3.9+ (including macOS system 3.9.6);
 optional `--codex` role adoption still requires Python 3.11+.
 
@@ -618,13 +630,13 @@ python /path/to/architrave/tools/install_update.py install .
 
 This copies agents, gates, the complete harness, and knowledge packs; scaffolds
 config; ignores private Runs and worktrees; injects the grounding stanza; wires
-the hook; and drops cloud setup. Existing configs remain valid. The application
+explicit quick-check instructions; and drops cloud setup. Existing configs remain valid. The application
 profile also copies native constitutions; the knowledge profile omits them.
 
 **Important update rule:** after every Architrave plugin update, run
 `python tools/install_update.py update <repo>` in each adopted repo.
 Plugin updates do not rewrite copied repo assets. The Python updater refreshes
-gates, the active platform-specific workspace hook, harness, knowledge,
+gates, recognized legacy quality-hook retirement, harness, knowledge,
 profile-appropriate constitutions, the run-artifact ignore, and the managed
 `AGENTS.md` stanza while leaving `architrave.config.json` and `.github/agents`
 alone by default; pass `--agents` only when deliberately refreshing copied

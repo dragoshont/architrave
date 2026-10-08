@@ -33,8 +33,22 @@ export const snapshotSchema = object({
             stopped: { type: "boolean" }, reason: text,
         })] },
         weightEstimate: { type: "number", minimum: 1, maximum: 10 },
+        streamId: id, workKind: text, owner: nullableText, hostOwner: nullableText, hostTaskId: nullableText,
+        startedAt: nullableText, finishedAt: nullableText,
+    }, ["id", "title", "state", "current", "reason", "evidence", "dependencies", "blocker", "attempts", "retry", "weightEstimate"]) },
+    streams: { type: "array", maxItems: 80, items: object({
+        id, label: text, kind: { enum: ["delivery", "exploratory", "reference", "review", "operations", "unassigned"] },
+        outcome: text, sourceRef: object({
+            domainKey: id, runId: id, revision: count, objectiveVersion: count, capturedAt: text, commit: text, sha256: text,
+            freshness: { enum: ["current", "stale", "unknown"] },
+        }),
     }) },
-});
+    relations: { type: "array", maxItems: 160, items: object({
+        fromStep: id, toStep: id, type: { enum: ["blocks", "informs"] }, reason: text,
+        provenance: { enum: ["canonical dependency", "display-only annotation"] },
+    }) },
+}, ["schema", "domainKey", "runId", "revision", "objectiveVersion", "title", "objective",
+    "capturedAt", "startedAt", "deadline", "source", "next", "milestone", "steps"]);
 const openSchema = object({ domainKey: id, snapshot: snapshotSchema }, ["domainKey"]);
 const updateSchema = object({ snapshot: snapshotSchema, expectedDigest: { anyOf: [
     { type: "string", minLength: 64, maxLength: 64, pattern: "^[a-f0-9]{64}$" }, { type: "null" },
@@ -44,6 +58,10 @@ const queues = new Map();
 let storageRoot;
 
 function fail(message) { throw new CanvasError("ribbon_input_invalid", message); }
+function timestamp(value, label) {
+    if (!/^\d{4}-\d\d-\d\dT.*(?:Z|[+-]\d\d:\d\d)$/.test(value) || !Number.isFinite(Date.parse(value)))
+        fail(`${label}: expected timestamp with timezone`);
+}
 function check(value, schema, path = "snapshot") {
     if (schema.anyOf) {
         if (!schema.anyOf.some(option => { try { check(value, option, path); return true; } catch (error) {
@@ -78,8 +96,7 @@ export function validateSnapshot(value) {
     check(value, snapshotSchema);
     if (Buffer.byteLength(JSON.stringify(value)) > LIMIT) fail("snapshot: exceeds 64 KiB");
     for (const key of ["capturedAt", "startedAt", "deadline"]) {
-        if (value[key] !== null && (!/^\d{4}-\d\d-\d\dT.*(?:Z|[+-]\d\d:\d\d)$/.test(value[key]) ||
-            !Number.isFinite(Date.parse(value[key])))) fail(`${key}: expected timestamp with timezone`);
+        if (value[key] !== null) timestamp(value[key], key);
     }
     if (Date.parse(value.startedAt) > Date.parse(value.capturedAt) ||
         value.deadline && Date.parse(value.deadline) < Date.parse(value.startedAt)) fail("snapshot: invalid time order");
@@ -100,6 +117,30 @@ export function validateSnapshot(value) {
         if (step.retry?.stopped && step.state !== "stopped") fail("steps: stopped retry must retain stop state");
     }
     value.steps.forEach(step => visit(step));
+    const streams = new Map((value.streams || []).map(stream => [stream.id, stream]));
+    if (streams.size !== (value.streams || []).length) fail("streams: duplicate ID");
+    for (const stream of streams.values()) timestamp(stream.sourceRef.capturedAt, "stream capture");
+    for (const step of value.steps) {
+        if (step.streamId && !streams.has(step.streamId)) fail("steps: missing workstream");
+        if (step.state === "verified" && step.streamId && streams.get(step.streamId).kind !== "delivery")
+            fail("steps: investigation/reference completion is not product verified");
+        for (const key of ["startedAt", "finishedAt"]) if (step[key]) timestamp(step[key], "owner span");
+        if (step.finishedAt && (!step.startedAt || Date.parse(step.finishedAt) < Date.parse(step.startedAt)))
+            fail("steps: invalid owner span order");
+    }
+    const relationships = new Set();
+    for (const relation of value.relations || []) {
+        if (!byId.has(relation.fromStep) || !byId.has(relation.toStep) || relation.fromStep === relation.toStep)
+            fail("relations: invalid step reference");
+        const key = relation.fromStep + ":" + relation.toStep + ":" + relation.type;
+        if (relationships.has(key)) fail("relations: duplicate relationship");
+        relationships.add(key);
+        if (relation.provenance === "canonical dependency" &&
+            (relation.type !== "blocks" || !byId.get(relation.toStep).dependencies.includes(relation.fromStep)))
+            fail("relations: canonical BLOCKS must match a real prerequisite");
+        if (relation.type === "informs" && relation.provenance !== "display-only annotation")
+            fail("relations: INFORMS is display-only, not scheduling authority");
+    }
     return value;
 }
 
@@ -151,6 +192,14 @@ async function saveSnapshot(value, expectedDigest) {
         if (prior && (value.runId !== prior.runId || value.revision < prior.revision ||
             value.objectiveVersion < prior.objectiveVersion || Date.parse(value.capturedAt) < Date.parse(prior.capturedAt)))
             throw new CanvasError("ribbon_stale_snapshot", "Snapshot cannot rewind domain history");
+        for (const stream of value.streams || []) {
+            const previous = (prior?.streams || []).find(item => item.id === stream.id)?.sourceRef;
+            const current = stream.sourceRef;
+            if (previous && (previous.domainKey !== current.domainKey || previous.runId !== current.runId ||
+                current.revision < previous.revision || current.objectiveVersion < previous.objectiveVersion ||
+                Date.parse(current.capturedAt) < Date.parse(previous.capturedAt)))
+                throw new CanvasError("ribbon_stale_snapshot", "A workstream cannot rewind or silently change source identity");
+        }
         const path = await statePath(value.domainKey);
         const temporary = path + "." + randomBytes(16).toString("hex") + ".tmp";
         try {
@@ -172,27 +221,56 @@ export function renderHtml(nonce) {
 :root{color-scheme:light dark;--bg:var(--background-color-default,#171a1e);--ink:var(--text-color-default,#f0f2f4);--muted:var(--text-color-muted,#b8c0ca);--line:var(--border-color-default,#48515c);--done:#88d3a0;--verified:#a6ddff;--active:#f1cb7c;--blocked:#f2a392;--deferred:#b9c5d5;--bypassed:#b9c5d5;--stopped:#efaeb9;--planned:#b0bac7}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 var(--font-sans,system-ui,sans-serif)}main{max-width:1180px;margin:auto;padding:24px}h1{font-size:21px;margin:0 0 24px}h2{font-size:clamp(24px,4vw,36px);line-height:1.2;margin:22px 0 12px}h3{font-size:16px;margin:20px 0 8px}p{max-width:75ch;color:var(--muted);margin:8px 0;overflow-wrap:anywhere}button{font:inherit;cursor:pointer;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:8px 10px}button:focus-visible{outline:3px solid var(--color-focus-outline,#8db9ff);outline-offset:3px}button:hover{border-color:var(--ink)}button[aria-pressed=true]{outline:2px solid var(--ink);outline-offset:2px}.context{border-block:1px solid var(--line);padding:12px 0;margin:18px 0}.small{font-size:12px}.strip{display:flex;gap:6px;overflow-x:auto;padding:5px 3px 10px;margin:20px 0}.segment{flex:var(--weight);min-width:38px;min-height:54px;background:var(--c);color:#171a1e;border:0;font-weight:700}.segment.bypassed,.segment.deferred{background:repeating-linear-gradient(135deg,#26303b 0px,#26303b 5px,var(--c) 5px,var(--c) 7px);color:#fff}.segment.planned,.segment.stopped{background:transparent;border:2px dashed var(--c);color:var(--c)}.work{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:26px}.rows{min-width:0}.row{display:grid;grid-template-columns:1fr auto;gap:10px;border-bottom:1px solid var(--line);padding:14px 0}.row button{text-align:left;border:0;padding:0;overflow-wrap:anywhere}.state{color:var(--c);font-size:12px}.row p{grid-column:1/-1;font-size:13px}.inspect{border:1px solid var(--line);padding:16px;align-self:start;position:sticky;top:12px;min-width:0;overflow-wrap:anywhere}.inspect h3:first-child{margin-top:0}.inspect p{font-size:13px}.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px}.legend span{color:var(--c)}#error{color:var(--blocked)}footer{margin-top:24px;border-top:1px solid var(--line);padding-top:12px}
 @media(max-width:720px){main{padding:18px}.work{grid-template-columns:1fr}.inspect{position:static;order:-1}.row{grid-template-columns:1fr}.strip{gap:5px}body{font-size:16px}}
+.stream{border-top:1px solid var(--line);padding:14px 0}.stream h3{margin:0 0 6px}.stream .strip{margin:8px 0}.stream p{font-size:13px}.relations{padding:8px 0 16px}
 [data-color-mode=light]{--done:#256b3d;--verified:#245f87;--active:#735000;--blocked:#983a23;--deferred:#485a70;--bypassed:#485a70;--stopped:#993343;--planned:#485a70}[data-color-mode=light] .segment:not(.planned):not(.stopped){color:#fff}
-</style></head><body><main><h1>Architrave / Route Ribbon</h1><p id="error" role="alert"></p><div id="summary"></div><div class="legend" id="legend" aria-label="Step states"></div><nav class="strip" id="ribbon" aria-label="Route steps"></nav><p class="small">Segment widths are estimated relative weights, not measured time or tokens. Bypassed and deferred steps are not done.</p><div class="work"><section class="rows" id="rows" aria-label="Step details"></section><aside class="inspect" id="inspector" aria-live="polite">Select a step to inspect its reason and evidence.</aside></div><footer><p class="small">Read-only, agent-fed snapshot. Refresh reads the latest saved projection; no Run, policy, hold or acceptance mutations.</p><button id="refresh">Refresh snapshot</button></footer></main><script nonce="${nonce}">
+</style></head><body><main><h1>Architrave / Route Ribbon</h1><p id="error" role="alert"></p><div id="summary"></div><div class="legend" id="legend" aria-label="Step states"></div><nav class="strip" id="ribbon" aria-label="Route steps"></nav><p class="small">Overview order is display only, not a serial schedule. Widths are estimated relative weights, not time, tokens or overall completion. Bypassed and deferred steps are not done.</p><section id="lanes" aria-label="Workstreams" hidden></section><div class="work"><section class="rows" id="rows" aria-label="Step details"></section><aside class="inspect" id="inspector" aria-live="polite">Select a step to inspect its reason and evidence.</aside></div><footer><p class="small">Read-only, agent-fed snapshot. Refresh reads the latest saved projection; no Run, policy, hold or acceptance mutations.</p><button id="refresh">Refresh snapshot</button></footer></main><script nonce="${nonce}">
 const labels=${JSON.stringify(states)};const el=id=>document.getElementById(id);let snapshot=null,selected=null;
 function make(tag,text,cls){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n}
 function tint(n,state){n.style.setProperty('--c','var(--'+state+')');return n}
 function label(step){return labels[step.state]+(step.current?'':' / historical')+(step.blocker?' / '+step.blocker:'')}
+function relationshipText(relation,data){
+ const from=data.steps.find(s=>s.id===relation.fromStep),to=data.steps.find(s=>s.id===relation.toStep);
+ return (from.current&&to.current?'':'Historical / not current: ')+from.title+' '+relation.type.toUpperCase()+' '+to.title+' / '+relation.provenance+': '+relation.reason;
+}
 function inspect(step){
  selected=step.id;const root=el('inspector');
  root.replaceChildren(make('h3',step.title),tint(make('p',label(step)),step.state),make('p',step.reason),make('h3','Evidence / provenance'));
+ const stream=(snapshot.streams||[]).find(s=>s.id===step.streamId);
+ if(stream){const ref=stream.sourceRef;root.append(make('h3',stream.label),make('p',stream.kind+' / '+stream.outcome),make('p','Run '+ref.runId+' / revision '+ref.revision+' / '+ref.freshness+' at '+ref.capturedAt),make('p','Source '+ref.commit+' / SHA-256 '+ref.sha256))}
+ root.append(make('p','Owner: '+(step.owner||'Unassigned')+' / joined owner: '+(step.hostOwner||'Unknown')+' / host task: '+(step.hostTaskId||'Unknown')),
+  make('p','Canonical owner span: '+(step.startedAt||'Unknown')+' → '+(step.finishedAt||'Unknown')+'. Includes waits; not active effort or a measured concurrency claim.'));
  for(const ref of step.evidence)root.append(make('p',ref));
  if(!step.evidence.length)root.append(make('p','No qualifying evidence recorded.'));
  root.append(make('h3','Dependencies'));
  for(const id of step.dependencies){const parent=snapshot.steps.find(s=>s.id===id);const b=make('button',parent.title);b.onclick=()=>inspect(parent);root.append(b)}
  if(!step.dependencies.length)root.append(make('p','No prerequisite recorded.'));
+ for(const relation of snapshot.relations||[])if(relation.fromStep===step.id||relation.toStep===step.id){
+  root.append(make('p',relationshipText(relation,snapshot)));
+ }
  root.append(make('p','Attempts: '+step.attempts+'. Estimated weight: '+step.weightEstimate+'.'));
  if(step.retry)root.append(make('h3',step.retry.stopped?'Explicit repeated-failure stop':'Retry evidence'),make('p',step.retry.reason),make('p','Failure fingerprint: '+step.retry.fingerprint),make('p','Evidence fingerprint: '+step.retry.evidenceFingerprint+' / repetitions: '+step.retry.repeated));
- for(const b of el('ribbon').children)b.setAttribute('aria-pressed',String(b.dataset.id===step.id));
+ for(const b of document.querySelectorAll('.segment[data-id]'))b.setAttribute('aria-pressed',String(b.dataset.id===step.id));
+}
+function streamLanes(data){
+ const root=el('lanes');root.replaceChildren();root.hidden=(data.streams||[]).length<2;
+ if(root.hidden)return;
+ root.append(make('h3','Workstreams'),make('p','Independent scoped lanes, not a measured concurrency timeline. Two active labels do not prove overlapping execution. Timing/effort stays Unknown without recorded spans.','small'));
+ for(const stream of data.streams){
+  const group=data.steps.filter(step=>step.streamId===stream.id),lane=make('section',undefined,'stream');
+  lane.dataset.stream=stream.id;
+  const statuses=[...new Set(group.filter(step=>step.current).map(step=>label(step)))];
+  lane.append(make('h3',stream.label),make('p',stream.kind+' / '+(statuses.join(' · ')||'Historical / no current slice')),make('p',stream.outcome));
+  const strip=make('nav',undefined,'strip');strip.setAttribute('aria-label',stream.label+' slices');
+  for(const step of group){const b=tint(make('button',String(data.steps.indexOf(step)+1),'segment '+step.state),step.state);b.style.setProperty('--weight',step.weightEstimate);b.dataset.id=step.id;b.setAttribute('aria-label',step.title+' / '+label(step));b.onclick=()=>inspect(step);strip.append(b)}
+  lane.append(strip);root.append(lane);
+ }
+ const relations=make('div',undefined,'relations');
+ for(const relation of data.relations||[])relations.append(make('p',relationshipText(relation,data)));
+ root.append(relations);
 }
 function draw(data){
  snapshot=data;el('error').textContent='';for(const id of ['summary','ribbon','rows','legend'])el(id).replaceChildren();
- if(!data){el('summary').append(make('h2','No snapshot yet'),make('p','Supply a validated Run projection with update_snapshot. Opening a panel does not invent progress.'));el('inspector').textContent='No steps to inspect.';return}
+ if(!data){el('lanes').hidden=true;el('lanes').replaceChildren();el('summary').append(make('h2','No snapshot yet'),make('p','Supply a validated Run projection with update_snapshot. Opening a panel does not invent progress.'));el('inspector').textContent='No steps to inspect.';return}
  const d=data;el('summary').append(make('h2',d.title),make('p',d.objective));const context=make('div',undefined,'context');
  const age=Math.max(0,Math.floor((Date.now()-Date.parse(d.capturedAt))/60000));
  context.append(make('p','Snapshot '+d.capturedAt+' / '+age+' min old / '+d.source.freshness+' at capture'),make('p','Source '+d.source.commit+' / SHA-256 '+d.source.sha256+' / revision '+d.revision+' / objective '+d.objectiveVersion,'small'),make('p',d.source.provenance,'small'));
@@ -207,6 +285,7 @@ function draw(data){
   const row=make('div',undefined,'row');const title=make('button',step.title);title.onclick=()=>inspect(step);
   row.append(title,tint(make('span',label(step)+(step.retry?' / retry':''),'state'),step.state),make('p',step.reason));el('rows').append(row);
  });
+ streamLanes(d);
  const current=d.steps.find(s=>s.id===selected)||d.steps.find(s=>s.current&&(s.state==='active'||s.state==='blocked'))||d.steps[0];
  if(current)inspect(current);else el('inspector').textContent='No steps recorded.';
 }

@@ -47,9 +47,19 @@ jobs:
         shell: powershell
         run: |
           python scripts/test_install_update.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python scripts/test-native-host.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python scripts/test-native-review.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --experimental-vm-modules scripts/test-native-review.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python scripts/test-quality-cadence.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python scripts/test-ribbon.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node --experimental-vm-modules scripts/test-ribbon.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-config-profiles.ps1
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-validate-run.ps1
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-validate-learning.ps1

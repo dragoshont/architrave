@@ -9,7 +9,14 @@
   fingerprints remain separate. No orchestration or canonical state writes.
 - [x] Domain-keyed durable display snapshots, extension-reload rehydration,
   loopback-only serving and opt-in managed project installation/refresh.
-- [ ] Tag/publication and consumer adoption (not authorized by release preparation).
+- [x] Stacked workstream views grounded in Run/task lanes and work kinds, with
+  independent slices/source/owner and explicit BLOCKS vs display-only INFORMS.
+- [x] Fresh joined native semantic producer with source/policy/holds/owner/
+  challenge binding, actual host family and one-use evidence.
+- [x] Retired automatic quality registrations; exact recognized transactional
+  retirement, custom-hook preservation and explicit executable check cadence.
+- [ ] Approved publication after final requested reviews and CI; consumer
+  installation/adoption remains separate owner authorization.
 
 ## Milestone 10 - Truthful adaptive supervision (v0.14.0)
 
@@ -49,7 +56,7 @@
 - [x] `gates/reconcile.sh` + `gates/reconcile.ps1` — design↔code drift checker (regenerate from tokens via `config.tokenBuild`, diff against committed code).
 - [x] `gates/checks.sh` + `gates/checks.ps1` — deterministic gate runner driven by `architrave.config.json` (generate/build/test + designMap/tokens JSON valid; `--quick` / `-Quick` for hooks).
 - [x] `gates/quality-gate.sh` + `gates/quality-gate.ps1` — lightweight quick gate (fast JSON guard + reconcile/judge reminder).
-- [x] `gates/hooks/design-guard.json` (POSIX) + `design-guard.windows.json` (pwsh) — PostToolUse JSON‑validity guard.
+- [x] `gates/hooks/design-guard.json` (POSIX) + `design-guard.windows.json` (pwsh) — legacy recognition definitions only in 0.14.1; automatic registration retired.
 - [x] `harness/init-run.*` + `validate-run.*` + `semantic-review.*` — durable run artifacts, learning notes, and optional judge prompt helper.
 
 > **Cross-platform:** every gate ships thin POSIX `.sh` and PowerShell `.ps1`

@@ -57,6 +57,28 @@ try {
     const unicode = structuredClone(fixture); unicode.title = JSON.parse(python.stdout);
     first.validate(unicode);
     ok([...unicode.title].length === 1200 && unicode.title.length === 2400);
+    const parallel = structuredClone(fixture);
+    parallel.steps[0].streamId = "exploration";
+    parallel.steps[1].streamId = "delivery";
+    parallel.steps[2].streamId = "delivery";
+    parallel.steps[2].dependencies = [];
+    const sourceRef = { domainKey: fixture.domainKey, runId: fixture.runId, revision: 1,
+        objectiveVersion: 1, capturedAt: fixture.capturedAt, commit: "fixture", sha256: "fixture", freshness: "unknown" };
+    parallel.streams = [
+        { id: "delivery", label: "Delivery / current slice", kind: "delivery",
+            outcome: "Visible product outcome still unverified.", sourceRef: { ...sourceRef } },
+        { id: "exploration", label: "Alternate approach feasibility", kind: "exploratory",
+            outcome: "Scoped findings inform a decision, not product shipped.", sourceRef: { ...sourceRef } },
+    ];
+    parallel.relations = [{ fromStep: "scope", toStep: "hold", type: "informs",
+        reason: "Feasibility findings inform funding, not an execution prerequisite.", provenance: "display-only annotation" }];
+    first.validate(parallel); assertions++;
+    const invalidParallel = structuredClone(parallel);
+    invalidParallel.steps[0].state = "verified";
+    assert.throws(() => first.validate(invalidParallel), error => error.code === "ribbon_input_invalid"); assertions++;
+    const falseBlock = structuredClone(parallel);
+    falseBlock.relations[0].type = "blocks"; falseBlock.relations[0].provenance = "canonical dependency";
+    assert.throws(() => first.validate(falseBlock), error => error.code === "ribbon_input_invalid"); assertions++;
     const mutate = action => { const value = structuredClone(fixture); action(value); return value; };
     for (const action of [
         value => value.extra = "arbitrary",
