@@ -271,6 +271,17 @@ try {
     const afterCrash = structuredClone(currentShared.snapshot); afterCrash.revision = 3;
     await action(third.canvas, "update_snapshot", "shared", { snapshot: afterCrash, expectedDigest: currentShared.digest });
     ok((await action(third.canvas, "get_snapshot", "shared")).snapshot.revision === 3);
+    await writeFile(lockPath, "{orphan");
+    const orphanUpdate = structuredClone(afterCrash); orphanUpdate.revision = 4;
+    const orphanSaved = await action(third.canvas, "get_snapshot", "shared");
+    await rejects(() => action(third.canvas, "update_snapshot", "shared",
+        { snapshot: orphanUpdate, expectedDigest: orphanSaved.digest }), "ribbon_lock_recovery_required");
+    ok((await readFile(lockPath, "utf8")) === "{orphan");
+    await rm(lockPath);
+    await writeFile(lockPath, "");
+    await rejects(() => action(third.canvas, "update_snapshot", "shared",
+        { snapshot: orphanUpdate, expectedDigest: orphanSaved.digest }), "ribbon_lock_recovery_required");
+    await rm(lockPath);
     await third.canvas.onClose({ instanceId: "shared" });
     console.log(`PASS Route Ribbon: ${assertions} assertions (SDK fixture, not native host proof)`);
 } finally {

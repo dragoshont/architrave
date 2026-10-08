@@ -338,6 +338,11 @@ if node --experimental-vm-modules scripts/test-ribbon.mjs; then
 else
   err "Route Ribbon renderer fixtures failed"
 fi
+if node --experimental-vm-modules scripts/test-session-companion.mjs; then
+  ok "passive session companion lifecycle and provider coexistence"
+else
+  err "session companion fixtures failed"
+fi
 runtime_test_output="$(mktemp)"
 for test_script in \
   scripts/test-runtime-v2.py \

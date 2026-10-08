@@ -12,6 +12,29 @@ prove the requested product outcome actually occurred.
 
 ![Architrave — ground in the repo, route to specialists, gate with a judge plus real checks, then ship](assets/overview.png)
 
+## Prepared for publication: Session instrument
+
+The portable ribbon renderer also provides the lightweight **Session instrument**,
+independent of the named Architrave agent, repository config and canonical Runs.
+Its Apple-like operating surface puts a compact telemetry rail above a quiet
+activity ribbon, with expandable child role, assigned-slice, status and model
+rows. It follows the host theme and reduced-motion setting; no preview numbers,
+synthetic phases or example children are included in the production renderer.
+The Copilot legacy plugin manifest contributes its dedicated extension root;
+standalone user-extension adoption remains an alternative. It attempts one
+provider-qualified automatic open in new supported sessions, preserving opt-out,
+dismissal and existing panels. Host-reported model, reasoning-effort setting and context
+usage stay distinct from observed model-call identity; missing telemetry stays
+unavailable. Activity is indeterminate, never invented completion.
+Close-this-session and durable user opt-out do not change work or permissions.
+No tools, prompt injections, workers or recurring model calls are added.
+Owned SDK subagents show names, roles, lifecycle and assigned slices with
+model details on demand; app-native child-session visibility remains explicitly
+unavailable through the current extension API.
+See [companion adoption and supported boundaries](docs/route-ribbon.md#session-companion-unreleased-follow-up).
+Prepared for the next publication under the release owner's integration;
+no candidate global adoption or default-on host acceptance is implied.
+
 ## Latest news: v0.14.1 candidate
 
 The optional **Route Ribbon** turns a compact Run snapshot into a segmented,

@@ -101,13 +101,32 @@ class RibbonTests(unittest.TestCase):
                     path=path.relative_to(self.store.repository).as_posix(), evidence_refs=["task:delivery"])
                 self.store.record_gate(run_id, gate_id="positive", task_id="delivery", gate_type="reality",
                     status="PASS", evidence_refs=["artifact:observed"], criteria=["PRODUCT"], surface="web")
+                self.store.advance_milestone(run_id, "delivery", criterion_id="PRODUCT",
+                    milestone="Intermediate observation", gate_ref="gate:positive")
+                self.assertIsNotNone(ribbon_snapshot(self.store, run_id)["milestone"])
+                self.assertEqual("UNTESTED", self.store.load(run_id)["acceptanceCriteria"][0]["status"])
                 self.store.set_criterion(run_id, "PRODUCT", "PASS", ["gate:positive"])
                 self.store.complete_task(run_id, "delivery", evidence_refs=["gate:positive"])
-                self.store.advance_milestone(run_id, "delivery", criterion_id="PRODUCT",
-                    milestone="Fixture observation", gate_ref="gate:positive")
                 positive = ribbon_snapshot(self.store, run_id)
                 self.assertEqual("verified", positive["steps"][0]["state"])
                 self.assertIsNotNone(positive["milestone"])
+                for status in ("UNTESTED", "FAIL"):
+                    self.store.set_criterion(run_id, "PRODUCT", status, [])
+                    withdrawn = ribbon_snapshot(self.store, run_id)
+                    self.assertIsNone(withdrawn["milestone"])
+                    self.assertNotEqual("verified", withdrawn["steps"][0]["state"])
+                    fresh_id = "after-" + status.lower()
+                    fresh_path = path.with_name(fresh_id + ".json")
+                    fresh = json.loads(path.read_text())
+                    fresh["results"][0]["observation"] = fresh_id
+                    fresh_path.write_text(json.dumps(fresh))
+                    self.store._record_legibility_result(run_id, kind="web-legibility", artifact_id=fresh_id,
+                        path=fresh_path.relative_to(self.store.repository).as_posix(), evidence_refs=["task:delivery"])
+                    self.store.record_gate(run_id, gate_id=fresh_id, task_id="delivery", gate_type="reality",
+                        status="PASS", evidence_refs=["artifact:" + fresh_id], criteria=["PRODUCT"], surface="web")
+                    self.store.set_criterion(run_id, "PRODUCT", "PASS", ["gate:" + fresh_id])
+                    self.store.advance_milestone(run_id, "delivery", criterion_id="PRODUCT",
+                        milestone="New verified observation", gate_ref="gate:" + fresh_id)
                 self.store.record_gate(run_id, gate_id="negative", task_id=owner, gate_type="reality",
                     status="FAIL", evidence_refs=[], criteria=["PRODUCT"], surface="web")
                 negative = ribbon_snapshot(self.store, run_id)
@@ -212,6 +231,10 @@ class RibbonTests(unittest.TestCase):
         self.assertEqual("exploratory", result["streams"][0]["kind"])
 
     def test_installer_opt_in_exact_bytes_and_refresh(self):
+        manifest = json.loads((ROOT / "plugin.json").read_text())
+        self.assertEqual(".github/extensions/architrave-ribbon", manifest["extensions"])
+        self.assertEqual(["architrave-ribbon"],
+                         sorted(path.name for path in (ROOT / ".github" / "extensions").iterdir() if path.is_dir()))
         target = Path(self.temp.name) / "consumer"
         target.mkdir()
         (target / "product.txt").write_text("preserve", encoding="utf-8")
@@ -232,6 +255,37 @@ class RibbonTests(unittest.TestCase):
         with self.assertRaises(installer.InstallerError):
             installer.install_canvas(ROOT, target)
         self.assertEqual("not a directory", (target / ".github").read_text(encoding="utf-8"))
+
+    def test_companion_install_is_one_file_and_preserves_durable_opt_out(self):
+        home = Path(self.temp.name) / "copilot-home"
+        artifacts = home / "extensions" / "architrave-ribbon" / "artifacts"
+        artifacts.mkdir(parents=True)
+        preferences = artifacts / "preferences.json"
+        preferences.write_text('{"enabled":false}', encoding="utf-8")
+        installer.install_companion(ROOT, home)
+        entry = artifacts.parent / "extension.mjs"
+        source = ROOT / ".github" / "extensions" / "architrave-ribbon" / "extension.mjs"
+        self.assertEqual(source.read_bytes(), entry.read_bytes())
+        self.assertEqual('{"enabled":false}', preferences.read_text(encoding="utf-8"))
+        self.assertEqual({"extensions/architrave-ribbon/extension.mjs",
+                          "extensions/architrave-ribbon/artifacts/preferences.json"},
+                         {path.relative_to(home).as_posix() for path in home.rglob("*") if path.is_file()})
+        entry.write_text("old renderer", encoding="utf-8")
+        installer.install_companion(ROOT, home)
+        self.assertEqual(source.read_bytes(), entry.read_bytes())
+        self.assertEqual('{"enabled":false}', preferences.read_text(encoding="utf-8"))
+
+    def test_companion_install_requires_explicit_existing_home_and_safe_paths(self):
+        missing = Path(self.temp.name) / "missing"
+        with self.assertRaises(installer.InstallerError):
+            installer.install_companion(ROOT, missing)
+        self.assertFalse(missing.exists())
+        home = Path(self.temp.name) / "copilot-home"
+        home.mkdir()
+        (home / "extensions").write_text("preserve", encoding="utf-8")
+        with self.assertRaises(installer.InstallerError):
+            installer.install_companion(ROOT, home)
+        self.assertEqual("preserve", (home / "extensions").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

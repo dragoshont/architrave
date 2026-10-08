@@ -32,6 +32,10 @@ Releases at or before **v0.8.12** are on the
   owner/challenge-bound authenticated producer receipts.
 - Optional stacked workstream lanes with independent slice/source/owner states,
   canonical cross-stream BLOCKS and non-authoritative INFORMS annotations.
+- Passive Session instrument with the approved restrained visual grammar,
+  host-reported model/effort/context and expandable owned-child lanes. The
+  documented Copilot extension contribution preserves standalone preferences
+  and provider-qualified one-shot startup without automatic workers or prompts.
 
 ### Changed
 - Automatic PostToolUse quality registration is retired. The same deterministic

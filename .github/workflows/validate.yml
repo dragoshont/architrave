@@ -62,6 +62,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node --experimental-vm-modules scripts/test-ribbon.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --experimental-vm-modules scripts/test-session-companion.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-config-profiles.ps1
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-validate-run.ps1
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-validate-learning.ps1

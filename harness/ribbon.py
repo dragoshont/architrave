@@ -153,18 +153,24 @@ def ribbon_snapshot(store: RunStore, run_id: str | None = None) -> dict[str, Any
             "finishedAt": (owner or {}).get("finishedAt"),
         })
     milestone = None
+    milestone_criterion = None
     for event in events:
         if event["type"] == "objective.replaced":
             milestone = None
         payload = event["payload"]
+        if (event["type"] == "acceptance.updated" and payload.get("criterionId") == milestone_criterion
+                and payload.get("status") != "PASS"):
+            milestone = None
         if (event["type"] == "product.milestone" and payload.get("taskId") in tasks
                 and tasks[payload["taskId"]]["objectiveVersion"] == state["objective"]["version"]
                 and tasks[payload["taskId"]].get("workKind") == "product"
                 and payload["taskId"] not in failed_tasks
+                and criteria[payload["criterionId"]]["status"] != "FAIL"
                 and payload.get("source") == {"commit": source["observedCommit"], "sha256": source["sha256"]}):
             milestone = compact(f"{payload['milestone']} / criterion:{payload['criterionId']} / "
                                 f"task:{payload['taskId']} / event:{event['sequence']} / "
                                 f"source:{source['sha256']}")
+            milestone_criterion = payload["criterionId"]
     domain = hashlib.sha256(str(store.repository.resolve()).encode("utf-8")).hexdigest()[:24]
     result = {
         "schema": "architrave.ribbon.v1", "domainKey": f"{domain}:{state['runId']}", "runId": state["runId"],

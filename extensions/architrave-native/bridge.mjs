@@ -371,9 +371,10 @@ tools.push({
         const info = lstatSync(file);
         if (suffix.startsWith("..") || isAbsolute(suffix) ||
             suffix.split(/[\\/]/).some(part => [".git", ".architrave"].includes(part.toLowerCase())) ||
-            !info.isFile() || info.isSymbolicLink() || realpathSync(file) !== file) return null;
+            !info.isFile() || info.isSymbolicLink() || realpathSync(file) !== file)
+          throw new Error("SEMANTIC_SOURCE_UNSUPPORTED: full advertised source inventory contains a private, aliased or non-regular entry");
         return file;
-      }).filter(Boolean);
+      });
       observer = observeTask(prepared.maxTurns, true);
       const admitted = await session.rpc.tasks.startAgent({
         agentType: prepared.agentType, prompt: prepared.prompt +

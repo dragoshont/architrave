@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, writeFile, copyFile, rm, rename, symlink } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, copyFile, rm, rename, symlink, rmdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -153,6 +153,22 @@ s.add_task('review',{'id':'source','objective':'Review source','acceptanceCriter
     ok(state.artifacts.every(artifact => artifact.producer === "semantic-judge" && artifact.consumedByTask === "source"));
     ok(state.gateResults.filter(gate => gate.status === "PASS").length === 2);
     ok(state.acceptanceCriteria[0].status === "UNTESTED");
+    await writeFile(join(repo, ".architrave", "advertised-source.md"), "Synthetic private source fixture");
+    const advertise = spawnSync(python, ["-c", `
+import sys,subprocess
+sys.path.insert(0,sys.argv[1]+'/harness')
+from architrave_runtime import RunStore
+r=sys.argv[2]
+for args in [('add','-f','.architrave/advertised-source.md'),('commit','-qm','unsupported tracked fixture')]:
+ subprocess.run(['git',*args],cwd=r,check=True,capture_output=True)
+RunStore(r).resume('review',accept_commit=True)
+`, ROOT, repo], { encoding: "utf8" });
+    assert.equal(advertise.status, 0, advertise.stderr);
+    const unsupported = JSON.parse((await definition.handler(args,
+        { ...invocation, toolCallId: "unsupported-inventory" })).textResultForLlm);
+    assert.ok(unsupported.status === "failed" && unsupported.error?.message.includes("SEMANTIC_SOURCE_UNSUPPORTED"),
+        JSON.stringify(unsupported)); assertions++;
+    ok(count === 2);
     console.log(`PASS native semantic SDK fixtures: ${assertions} assertions; not live host qualification`);
 } finally {
     await rm(root, { recursive: true });
