@@ -967,7 +967,7 @@ class InstallUpdateTests(unittest.TestCase):
             json.dumps(
                 {
                     "status": "prepared",
-                    "applied": 1,
+                    "applied": 0,
                     "operations": [
                         {
                             "kind": "write",

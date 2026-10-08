@@ -14,6 +14,18 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "harness"))
 from architrave_runtime import NativeSemanticTicket, RunStore, RuntimeFailure, missing_gate_requirements
+import native_host
+
+
+class InventoryTransportTests(unittest.TestCase):
+    def test_large_unicode_inventory_is_losslessly_byte_bounded(self):
+        paths = [f"source-{index}/" + "\u03bb" * 120 + ".py" for index in range(4096)]
+        frames = []
+        with mock.patch.object(native_host, "emit", side_effect=frames.append):
+            native_host.emit_source_inventory(paths)
+        self.assertGreater(len(frames), 1)
+        self.assertEqual(paths, [path for frame in frames for path in frame["files"]])
+        self.assertTrue(all(len(json.dumps(frame).encode("utf-8")) <= 48000 for frame in frames))
 
 
 class NativeReviewTests(unittest.TestCase):

@@ -354,7 +354,18 @@ tools.push({
     try {
       const prepared = await connection.next();
       if (prepared.status !== "prepared") return result(prepared);
-      semanticFiles = (prepared.sourceFiles || []).map(path => {
+      if (!Number.isInteger(prepared.sourceFileCount) || prepared.sourceFileCount < 0 || prepared.sourceFileCount > 4096)
+        throw new Error("Native source inventory count is invalid");
+      const inventory = [];
+      while (inventory.length < prepared.sourceFileCount) {
+        const chunk = await connection.next();
+        if (chunk.status !== "source-inventory" || !Array.isArray(chunk.files) || !chunk.files.length ||
+            chunk.files.some(path => typeof path !== "string") ||
+            inventory.length + chunk.files.length > prepared.sourceFileCount)
+          throw new Error("Native source inventory frame is invalid");
+        inventory.push(...chunk.files);
+      }
+      semanticFiles = inventory.map(path => {
         const file = resolve(input.repo, path);
         const suffix = relative(input.repo, file);
         const info = lstatSync(file);

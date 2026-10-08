@@ -48,6 +48,18 @@ Releases at or before **v0.8.12** are on the
   remain Unknown; relative segment weights are explicitly estimates.
 - Preparation does not authorize consumer installation, tagging or publication.
 
+### Fixed
+- Governing failed checks revoke current ribbon verification/milestones without
+  erasing earlier completion history. Failed product observations are retained
+  canonically and cannot be relabelled PASS; repeat observations keep immutable
+  logs and visual artifacts.
+- Display CAS is protected across provider processes, with dead-writer recovery.
+  Native source inventories use byte-bounded frames; semantic cleanup preserves
+  admitted results and separately retains owned recovery progress.
+- Hook retirement preserves post-backup custom edits, retains legacy crash
+  recovery, and reports manual action for custom-only/malformed definitions.
+  The canonical rubric uses the explicit executable quality-check cadence.
+
 ## [0.14.0] - 2026-10-07
 
 ### Added

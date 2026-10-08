@@ -53,11 +53,16 @@ Re-opening is focus, not an update. Supply a fresh projection through the action
 after a meaningful transition; do not generate HTML each turn.
 
 Equal canonical Run revisions intentionally allow fresh capture/source/freshness
-observations without mutating the Run. Updates are serialized per domain and
+observations without mutating the Run. Updates are serialized per domain across
+provider processes with an exclusive display-only lock and
 must match the entire saved display snapshot's digest. A competing or stale
 reader receives `ribbon_snapshot_conflict`, even if both updates have the same
 Run revision; reread the saved document and obtain a fresh canonical projection
 before retrying. Never simply resubmit stale evidence with a newer digest.
+An active writer produces an explicit busy response if its bounded lock wait
+expires. A dead writer's lock is recovered under an exclusive recovery guard.
+An orphan recovery guard or unidentifiable lock requires manual display-artifact
+inspection; it is never permission to alter canonical Run files.
 Lower revision, objective version or capture time remains
 `ribbon_stale_snapshot` even with a current digest. The digest survives provider
 reload because it is derived from the persisted display document. Identical
@@ -76,7 +81,7 @@ an arbitrary filesystem path, spawns a worker, or changes acceptance/policy/hold
 | State / signal | Meaning |
 |---|---|
 | Scoped done | Canonical task completion; prerequisite success is not product success. |
-| Product verified | Current task criteria have qualifying source-bound legibility PASS. Historical or unbound evidence cannot become current product verification. |
+| Product verified | Current task criteria have qualifying source-bound legibility PASS and no governing current failed check. Earlier completion/observations remain history after a failure; neither product verification nor its milestone remains current. |
 | Active | Canonical in-flight work, not proof that all other host sessions are idle. |
 | Blocked | Current human/resource/dependency blocker; superseded blockers are history. |
 | Deferred / bypassed | Not done; reason and dependencies remain inspectable. |
