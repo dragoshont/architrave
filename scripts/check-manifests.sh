@@ -328,11 +328,17 @@ else
 fi
 
 echo "== durable Run v2 control-plane fixtures =="
+if node --experimental-vm-modules scripts/test-ribbon.mjs; then
+  ok "optional single-file Route Ribbon renderer"
+else
+  err "Route Ribbon renderer fixtures failed"
+fi
 runtime_test_output="$(mktemp)"
 for test_script in \
   scripts/test-runtime-v2.py \
   scripts/test-worker-adapters.py \
   scripts/test-native-host.py \
+  scripts/test-ribbon.py \
   scripts/test-invariant-engine.py \
   scripts/test-legibility.py \
   scripts/test-workspaces.py \

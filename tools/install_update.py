@@ -1318,9 +1318,30 @@ def parser() -> argparse.ArgumentParser:
     executor.add_argument("--reconcile-outcome", choices=("applied-closed", "closed-unknown"))
     executor.add_argument("--reconcile-process-id", type=int)
     subcommands.add_parser("native-host-install", help="install the minimal joined Copilot host extension and pinned Python bridge")
+    canvas = subcommands.add_parser("canvas-install", help="opt-in install/refresh of the single-file Copilot Route Ribbon")
+    canvas.add_argument("target")
     adoption = subcommands.add_parser("adoption-status", help="read-only version/hash provenance, never session-loaded proof")
     adoption.add_argument("target", nargs="?", default=".")
     return result
+
+
+def install_canvas(kit: Path, target: Path) -> int:
+    relative = ".github/extensions/architrave-ribbon/extension.mjs"
+    source = kit / relative
+    require_source_file(source, "canvas-install")
+    managed = ManagedRoot(target, "canvas-install")
+    if managed.root == kit:
+        raise InstallerError("canvas-install: the kit already includes its project canvas")
+    managed.preflight_tree(".github/extensions/architrave-ribbon")
+    managed.preflight_file(relative)
+    transaction = ManagedTransaction(managed)
+    transaction.__enter__()
+    managed.ensure_dir(".github/extensions/architrave-ribbon")
+    managed.replace_file(source, relative)
+    transaction.__exit__(None, None, None)
+    print(f"Route Ribbon installed/refreshed: {managed.path(relative)}")
+    print("Reload supported Copilot extensions. Optional canvas only; no plugin settings or canonical Run state changed.")
+    return 0
 
 
 def adoption_status(kit: Path, target: Path) -> int:
@@ -1363,6 +1384,8 @@ def main(argv: list[str] | None = None) -> int:
             return update(args, kit)
         if args.command == "native-host-install":
             return install_native_host(kit)
+        if args.command == "canvas-install":
+            return install_canvas(kit, Path(args.target))
         if args.command == "adoption-status":
             return adoption_status(kit, Path(args.target))
         return install_exact_target_executor(args, kit)

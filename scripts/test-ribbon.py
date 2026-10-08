@@ -1,0 +1,145 @@
+from __future__ import annotations
+
+import importlib.util
+import json
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import unittest
+from unittest.mock import patch
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "harness"))
+from architrave_runtime import RunStore, RuntimeFailure
+from ribbon import ribbon_snapshot
+
+spec = importlib.util.spec_from_file_location("ribbon_installer", ROOT / "tools" / "install_update.py")
+installer = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = installer
+spec.loader.exec_module(installer)
+
+
+class RibbonTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.temp.name) / "repo"
+        self.repo.mkdir()
+        for args in [("init", "-q"), ("config", "user.email", "fixture@example.invalid"),
+                     ("config", "user.name", "Fixture")]:
+            self.git(*args)
+        (self.repo / "fixture.txt").write_text("generic fixture\n", encoding="utf-8")
+        self.git("add", ".")
+        self.git("commit", "-qm", "fixture")
+        self.store = RunStore(self.repo)
+        self.store.create(goal="Generic fixture", outcome="Observed outcome", run_id="run", criteria=[])
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def git(self, *args):
+        return subprocess.run(["git", *args], cwd=self.repo, capture_output=True, text=True, check=True).stdout.strip()
+
+    def task(self, identifier, dependencies=()):
+        self.store.add_task("run", {
+            "id": identifier, "title": identifier, "objective": "Observe fixture",
+            "acceptanceCriteria": ["OUTCOME-001"], "dependencies": list(dependencies),
+            "pushback": "KEEP:generic fixture", "maxAttempts": 3,
+        })
+
+    def test_projection_read_only_and_dependencies(self):
+        self.task("first")
+        self.task("next", ["first"])
+        run_dir = self.store.run_dir("run")
+        before = {name: (run_dir / name).read_bytes() for name in ["run.json", "events.jsonl"]}
+        result = ribbon_snapshot(self.store, "run")
+        self.assertEqual(["planned", "blocked"], [step["state"] for step in result["steps"]])
+        self.assertEqual("dependency", result["steps"][1]["blocker"])
+        self.assertEqual(["first"], result["steps"][1]["dependencies"])
+        self.assertIsNone(result["milestone"])
+        self.assertIsNone(result["deadline"])
+        self.assertEqual(before, {name: (run_dir / name).read_bytes() for name in before})
+        self.assertNotIn("tokens", result)
+        self.assertNotIn("policy", result)
+
+    def test_explicit_loop_stop_not_attempt_count(self):
+        self.task("retry")
+        self.store.start_task("run", "retry", worker_id="worker-one")
+        self.store.fail_task("run", "retry", "generic repeat")
+        first = ribbon_snapshot(self.store, "run")["steps"][0]
+        self.assertEqual("planned", first["state"])
+        self.assertEqual(1, first["retry"]["repeated"])
+        self.store.start_task("run", "retry", worker_id="worker-two", retry_hypothesis="Probe a distinct cause")
+        self.store.fail_task("run", "retry", "generic repeat")
+        second = ribbon_snapshot(self.store, "run")["steps"][0]
+        self.assertEqual("stopped", second["state"])
+        self.assertTrue(second["retry"]["stopped"])
+        self.assertEqual(first["retry"]["fingerprint"], second["retry"]["fingerprint"])
+
+    def test_source_drift_and_no_synthetic_product_pass(self):
+        self.task("scoped")
+        result = ribbon_snapshot(self.store, "run")
+        self.assertEqual("current", result["source"]["freshness"])
+        self.assertNotEqual("verified", result["steps"][0]["state"])
+        (self.repo / "fixture.txt").write_text("changed\n", encoding="utf-8")
+        self.git("add", ".")
+        self.git("commit", "-qm", "new source")
+        self.assertEqual("stale", ribbon_snapshot(self.store, "run")["source"]["freshness"])
+
+    def test_cli_projection_envelope(self):
+        self.task("scoped")
+        result = subprocess.run([sys.executable, str(ROOT / "harness" / "architrave_runtime.py"),
+                                 "--repo", str(self.repo), "ribbon-snapshot", "run"],
+                                capture_output=True, text=True)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("architrave.ribbon.v1", json.loads(result.stdout)["result"]["schema"])
+
+    def test_superseded_blocker_is_history_not_current(self):
+        self.task("prerequisite")
+        self.task("old-blocker", ["prerequisite"])
+        historical = self.store.load("run")
+        historical["objective"]["version"] = 2
+        with patch.object(self.store, "load", return_value=historical):
+            result = ribbon_snapshot(self.store, "run")
+        self.assertTrue(all(not step["current"] for step in result["steps"]))
+        self.assertEqual("deferred", result["steps"][1]["state"])
+        self.assertIsNone(result["steps"][1]["blocker"])
+        self.assertIn("not a current blocker", result["steps"][1]["reason"])
+
+    def test_human_hold_remains_visible_with_explicit_stop(self):
+        self.task("held")
+        self.store.wait_external("run", checkpoint_id="approval", task_id="held",
+                                 checkpoint_type="HUMAN_JUDGMENT_REQUIRED", principal="human",
+                                 provider="manual", reason="Fixture approval")
+        self.store.fail_task("run", "held", "same cause")
+        self.store.fail_task("run", "held", "same cause")
+        step = ribbon_snapshot(self.store, "run")["steps"][0]
+        self.assertEqual("stopped", step["state"])
+        self.assertEqual("human", step["blocker"])
+        self.assertIn("Pending human checkpoint", step["reason"])
+
+    def test_installer_opt_in_exact_bytes_and_refresh(self):
+        target = Path(self.temp.name) / "consumer"
+        target.mkdir()
+        (target / "product.txt").write_text("preserve", encoding="utf-8")
+        installer.install_canvas(ROOT, target)
+        installed = target / ".github" / "extensions" / "architrave-ribbon" / "extension.mjs"
+        source = ROOT / ".github" / "extensions" / "architrave-ribbon" / "extension.mjs"
+        self.assertEqual(source.read_bytes(), installed.read_bytes())
+        installed.write_text("old version", encoding="utf-8")
+        installer.install_canvas(ROOT, target)
+        self.assertEqual(source.read_bytes(), installed.read_bytes())
+        self.assertEqual("preserve", (target / "product.txt").read_text(encoding="utf-8"))
+        self.assertFalse((target / "architrave.config.json").exists())
+
+    def test_installer_refuses_unsafe_destination(self):
+        target = Path(self.temp.name) / "consumer"
+        target.mkdir()
+        (target / ".github").write_text("not a directory", encoding="utf-8")
+        with self.assertRaises(installer.InstallerError):
+            installer.install_canvas(ROOT, target)
+        self.assertEqual("not a directory", (target / ".github").read_text(encoding="utf-8"))
+
+
+if __name__ == "__main__":
+    unittest.main()

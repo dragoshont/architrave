@@ -11,6 +11,26 @@ Releases at or before **v0.8.12** are on the
 - Add a public Run cancel/supersede transition and make invalid unstarted-task
   intake terminal instead of retry-ready.
 
+## [0.14.1] - 2026-10-08 (candidate)
+
+### Added
+- Optional, single-file Copilot Route Ribbon canvas: segmented steps, evidence
+  inspector, visibly bypassed/deferred routes, human/resource/dependency holds,
+  explicit dead ends and fingerprint-backed retry stops. No private demo history.
+- Read-only `ribbon-snapshot` Python Run projection with capture/source/objective
+  provenance and current product milestone identity. Scoped done is not product
+  verified; superseded blockers remain historical.
+- Domain-keyed display snapshot persistence and supported canvas reload
+  rehydration, bounded input/request guards, loopback-only serving and cleanup.
+- Explicit `canvas-install TARGET` to install or refresh the portable renderer
+  through existing managed-path safety. Normal adoption remains unchanged.
+
+### Limitations
+- Copilot canvas capability required; no Codex/Claude canvas claim. Agent-fed
+  snapshots, not live telemetry. Active effort, wait duration, tokens and cost
+  remain Unknown; relative segment weights are explicitly estimates.
+- Preparation does not authorize consumer installation, tagging or publication.
+
 ## [0.14.0] - 2026-10-07
 
 ### Added

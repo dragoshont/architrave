@@ -1,5 +1,16 @@
 # Roadmap
 
+## Milestone 10.1 - Optional Route Ribbon (v0.14.1 candidate)
+
+- [x] One portable, optional Copilot canvas with a segmented route and evidence
+  inspector, responsive keyboard navigation and explicit snapshot freshness.
+- [x] Bounded Python projection of authenticated Run state/events; scoped done,
+  source-bound product observations, superseded history, stops and retry
+  fingerprints remain separate. No orchestration or canonical state writes.
+- [x] Domain-keyed durable display snapshots, extension-reload rehydration,
+  loopback-only serving and opt-in managed project installation/refresh.
+- [ ] Tag/publication and consumer adoption (not authorized by release preparation).
+
 ## Milestone 10 - Truthful adaptive supervision (v0.14.0)
 
 - [x] Agent-estimated finite on-demand feasibility reset, cumulative observed

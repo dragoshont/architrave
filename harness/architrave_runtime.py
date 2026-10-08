@@ -6092,7 +6092,7 @@ def build_parser() -> argparse.ArgumentParser:
     primary.add_argument("--path", action="append", required=True)
     primary.add_argument("--threshold", type=int, default=PRIMARY_STALL_THRESHOLD)
 
-    for command in ("status", "inspect", "events", "ready", "resume", "verify", "checkpoint"):
+    for command in ("status", "inspect", "events", "ready", "resume", "verify", "checkpoint", "ribbon-snapshot"):
         current = subparsers.add_parser(command)
         current.add_argument("run_id", nargs="?")
         if command == "resume":
@@ -6337,6 +6337,12 @@ def cli(argv: Sequence[str] | None = None) -> int:
             output = state_summary(state)
         elif command == "status":
             output = state_summary(store.load(args.run_id))
+        elif command == "ribbon-snapshot":
+            from ribbon import ribbon_snapshot, RuntimeFailure as ProjectionFailure
+            try:
+                output = ribbon_snapshot(store, args.run_id)
+            except ProjectionFailure as exc:
+                raise RuntimeFailure(exc.code, exc.message, details=exc.details) from exc
         elif command == "worker-recover":
             output = state_summary(store.recover_workers(args.run_id, task_id=args.task_id))
         elif command == "gate-execute":

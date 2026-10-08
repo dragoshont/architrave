@@ -12,7 +12,19 @@ prove the requested product outcome actually occurred.
 
 ![Architrave — ground in the repo, route to specialists, gate with a judge plus real checks, then ship](assets/overview.png)
 
-## Latest news: v0.14.0
+## Latest news: v0.14.1 candidate
+
+The optional **Route Ribbon** turns a compact Run snapshot into a segmented,
+keyboard-accessible canvas: scoped completion and observed product verification
+stay distinct, with visible bypasses, human/resource/dependency blockers,
+explicit stops and fingerprint-backed retry history. One portable
+`extension.mjs`, no npm runtime dependencies beyond the Copilot host SDK.
+Snapshots persist by repository/Run identity and rehydrate after extension reload.
+This is an **agent-fed snapshot, not a live telemetry feed**. Missing active
+effort, wait duration, tokens and cost stay Unknown.
+See [Route Ribbon installation and snapshot contract](docs/route-ribbon.md).
+
+### Previous release: v0.14.0
 
 This release adds adaptive on-demand feasibility windows, truthful runtime/
 adoption provenance, verified intermediate milestones and guarded owner path

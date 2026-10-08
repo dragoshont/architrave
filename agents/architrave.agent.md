@@ -71,6 +71,7 @@ Load only the matching skill/pack, and only when its behavior is needed:
 | Admin/operations UX | `knowledge/operations-ux.md` |
 | Product observation | Configured `harness/legibility.py` commands |
 | Independent review | `architrave-review`; `gates/rubric.md` |
+| Optional Copilot Route Ribbon | `docs/route-ribbon.md`; read-only `ribbon-snapshot` projection, never canonical authority |
 | Material competing options | `architrave-tournament` (includes do nothing and smallest viable) |
 | Durable learning | `knowledge/learning-loop.md` |
 
