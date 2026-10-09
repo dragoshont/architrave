@@ -36,6 +36,32 @@ jobs:
           fi
           echo "tag matches manifest version: $man"
 
+  session-browser:
+    name: Session browser accessibility and layout
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Install browser test tooling
+        run: |
+          python -m pip install playwright==1.56.0
+          python -m playwright install --with-deps chromium
+      - name: Validate actual browser accessibility and responsive layout
+        env:
+          PYTHON: python
+          COMPANION_VISUAL_OUTPUT: ${{ runner.temp }}/architrave-session-visual
+        run: node --experimental-vm-modules scripts/test-session-companion.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: session-browser-contract
+          path: ${{ runner.temp }}/architrave-session-visual
+
   powershell-harness:
     name: PowerShell harness and gate fixtures
     runs-on: windows-2025
@@ -86,7 +112,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   release:
-    needs: [validate, powershell-harness]
+    needs: [validate, powershell-harness, session-browser]
     runs-on: ubuntu-latest
     permissions:
       contents: write

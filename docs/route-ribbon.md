@@ -261,6 +261,12 @@ confirmation; measured muted-text contrast was at least 5.17:1 light and
 7.38:1 dark. This does not qualify pristine startup, host-global adoption or a
 48k context footprint.
 
+Validation and release workflows run this real-browser contract in a dedicated
+Ubuntu job with pinned Playwright and Chromium, retaining screenshots/receipts
+as CI artifacts. Release publication depends on that job as well as both
+existing cross-platform gates. Local browser execution remains explicitly
+opt-in; CI browser fixtures still do not prove native-host activation.
+
 ## Managed Route Ribbon install or refresh (explicit opt-in)
 
 ```text

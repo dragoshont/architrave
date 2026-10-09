@@ -73,12 +73,28 @@ class QualityCadenceTests(unittest.TestCase):
         for name in (".github/workflows/validate.yml", ".github/workflows/release.yml"):
             lines = (ROOT / name).read_text().splitlines()
             checked = 0
+            windows_job = False
             for index, line in enumerate(lines):
-                if line.strip().startswith(("python ", "node ", "powershell ")):
+                if line.startswith("  ") and not line.startswith("    ") and line.endswith(":"):
+                    windows_job = False
+                if line.strip() == "runs-on: windows-2025":
+                    windows_job = True
+                if windows_job and line.strip().startswith(("python ", "node ", "powershell ")):
                     self.assertEqual("if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }", lines[index + 1].strip())
                     checked += 1
             self.assertGreater(checked, 10)
 
+    def test_actual_browser_contract_is_required_in_validate_and_release(self):
+        for name in (".github/workflows/validate.yml", ".github/workflows/release.yml"):
+            text = (ROOT / name).read_text()
+            browser_job = text.split("  session-browser:\n", 1)[1].split("\n  powershell-harness:", 1)[0]
+            self.assertIn("playwright==1.56.0", browser_job)
+            self.assertIn("playwright install --with-deps chromium", browser_job)
+            self.assertIn("COMPANION_VISUAL_OUTPUT:", browser_job)
+            self.assertIn("scripts/test-session-companion.mjs", browser_job)
+            self.assertIn("actions/upload-artifact@v4", browser_job)
+        self.assertIn("needs: [validate, powershell-harness, session-browser]",
+                      (ROOT / ".github/workflows/release.yml").read_text())
     def test_public_hook_json_compatibility_remains(self):
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
