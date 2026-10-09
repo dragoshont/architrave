@@ -261,7 +261,7 @@ confirmation; measured muted-text contrast was at least 5.17:1 light and
 7.38:1 dark. This does not qualify pristine startup, host-global adoption or a
 48k context footprint.
 
-## Install or refresh (explicit opt-in)
+## Managed Route Ribbon install or refresh (explicit opt-in)
 
 ```text
 python <kit>\tools\install_update.py canvas-install <target-repository>
@@ -272,12 +272,14 @@ use the equivalent native path separators. It writes only the managed project
 extension file; existing managed-path/junction/symlink checks and atomic
 transactions apply. It does not install/update the user's plugin, change
 configuration, or touch product code, Run state or host settings.
-Normal `install` / `update` do **not** opt consumers into a canvas. Refresh it
+Normal per-repository `install` / `update` do **not** install this project canvas. Refresh it
 explicitly after kit updates. The kit repository already contains the project
 extension, so it does not need `canvas-install`; file presence alone does not
 prove host discovery, as the pristine-project qualification above demonstrates.
-In this unreleased follow-up the installed renderer also attempts the passive
-session companion by default; `canvas-install` still has repository-only reach.
+The v0.14.1 renderer includes the approved default-on passive Session companion,
+also contributed by the packaged plugin. This is distinct from the managed
+Route Ribbon opt-in above; `canvas-install` still has repository-only reach.
+Actual published-plugin activation in a fresh app remains **unqualified**.
 
 Reload extensions through the supported Copilot extension tooling, inspect
 `architrave-ribbon`, then discover canvas capabilities for `architrave-ribbon`.
