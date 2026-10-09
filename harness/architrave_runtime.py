@@ -3899,9 +3899,10 @@ class RunStore:
         if receipt.get("status") != "pass" or receipt.get("failed") != []:
             raise RuntimeFailure("LEGIBILITY_RECEIPT", "PASS requires a passing observed product receipt")
         binding = receipt.get("binding")
-        if binding is None:
-            return  # Historical receipts remain readable; milestone advancement rejects them.
-        source = receipt.get("source", {})
+        source = receipt.get("source")
+        if not isinstance(binding, dict) or not isinstance(source, dict):
+            raise RuntimeFailure("EVIDENCE_SOURCE_STALE",
+                                 "historical product receipt without source binding cannot provide current PASS evidence")
         bound_task = find_task(state, binding["taskId"]) if binding.get("taskId") else None
         if (binding.get("runId") != state["runId"]
                 or binding.get("objectiveVersion") != state["objective"]["version"]

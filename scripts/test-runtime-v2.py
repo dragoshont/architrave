@@ -12,6 +12,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +27,7 @@ from architrave_runtime import (
     state_summary,
     utc_now,
 )
+from worker_adapters import workspace_fingerprint
 
 _fixture_add_task = RunStore.add_task
 RunStore.add_task = lambda self, run_id, task, actor="coordinator": _fixture_add_task(
@@ -41,7 +43,8 @@ class RuntimeV2Tests(unittest.TestCase):
         self.git("config", "user.email", "architrave@example.invalid")
         self.git("config", "user.name", "Architrave Test")
         (self.repo / "README.md").write_text("# Fixture\n", encoding="utf-8")
-        self.git("add", "README.md")
+        (self.repo / ".gitignore").write_text(".architrave/\n", encoding="utf-8")
+        self.git("add", "README.md", ".gitignore")
         self.git("commit", "-qm", "fixture")
         self.store = RunStore(self.repo)
 
@@ -140,6 +143,7 @@ class RuntimeV2Tests(unittest.TestCase):
         task_id: str | None = None,
         producer: str = "deterministic",
         surface: str = "web",
+        legacy_product_receipt: bool = False,
     ) -> str:
         path = self.store.run_dir(run_id) / "evidence" / f"{artifact_id}.json"
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -159,6 +163,11 @@ class RuntimeV2Tests(unittest.TestCase):
                 "failed": [],
                 "results": [{"name": name, "status": "pass"} for name in required_results],
             }
+            if not legacy_product_receipt:
+                payload["binding"] = {"runId": run_id, "objectiveVersion": state["objective"]["version"],
+                                      "taskId": task_id, "criteria": criteria}
+                payload["source"] = {"commit": self.git("rev-parse", "HEAD"),
+                                     "sha256": workspace_fingerprint(self.repo, include_ignored=False)}
         elif producer == "mutation":
             payload = {
                 "taskId": task_id,
@@ -203,6 +212,42 @@ class RuntimeV2Tests(unittest.TestCase):
             evidence_refs=[f"task:{task_id}"] if task_id else [],
         )
         return f"artifact:{artifact_id}"
+
+    def test_legacy_product_receipt_cannot_admit_current_taskless_pass(self) -> None:
+        for gate_type in ("reality", "e2e"):
+            with self.subTest(gate_type=gate_type):
+                state = self.create(verification=gate_type)
+                run_id = str(state["runId"])
+                evidence = self.evidence(run_id, "legacy-product", producer="legibility", legacy_product_receipt=True)
+                self.assertEqual(1, len(self.store.load(run_id)["artifacts"]))
+                with self.assertRaisesRegex(RuntimeFailure, "historical product receipt"):
+                    self.store.record_gate(run_id, gate_id="current-product", task_id=None, gate_type=gate_type,
+                                           status="PASS", evidence_refs=[evidence], criteria=["OUTCOME-001"])
+                self.assertEqual([], self.store.load(run_id)["gateResults"])
+
+    def test_legacy_product_gate_remains_readable_but_cannot_verify_after_resume(self) -> None:
+        state = self.create(verification="reality")
+        run_id = str(state["runId"])
+        evidence = self.evidence(run_id, "legacy-product", producer="legibility", legacy_product_receipt=True)
+        # Model an authenticated old-version gate, not current admission.
+        with mock.patch.object(self.store, "_assert_product_binding", return_value=None):
+            self.store.record_gate(run_id, gate_id="historical-reality", task_id=None, gate_type="reality",
+                                   status="PASS", evidence_refs=[evidence], criteria=["OUTCOME-001"])
+            self.store.set_criterion(run_id, "OUTCOME-001", "PASS", ["gate:historical-reality"])
+        (self.repo / "README.md").write_text("# Changed source\n", encoding="utf-8")
+        self.git("add", "README.md")
+        self.git("commit", "-qm", "source changed after historical observation")
+        self.store.resume(run_id, accept_commit=True)
+        retained = self.store.load(run_id)
+        self.assertEqual(1, len(retained["artifacts"]))
+        self.assertEqual("historical-reality", retained["gateResults"][0]["id"])
+        with self.assertRaisesRegex(RuntimeFailure, "historical product receipt"):
+            self.store.record_gate(run_id, gate_id="current-reality", task_id=None, gate_type="reality",
+                                   status="PASS", evidence_refs=[evidence], criteria=["OUTCOME-001"])
+        with self.assertRaisesRegex(RuntimeFailure, "historical product receipt"):
+            self.store.set_criterion(run_id, "OUTCOME-001", "PASS", ["gate:historical-reality"])
+        with self.assertRaisesRegex(RuntimeFailure, "historical product receipt"):
+            self.store.verify(run_id)
 
     def finish_task(self, run_id: str, task_id: str, worker_id: str) -> None:
         self.store.start_task(run_id, task_id, worker_id=worker_id)

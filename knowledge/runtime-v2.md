@@ -162,6 +162,13 @@ last observed PASS or objective replacement; commits do not reset it. At the
 threshold (default 3) status reports `PRIMARY_STALLED` with the best attempt and
 caveats, and task-start refuses new work on that criterion.
 
+Current reality/e2e PASS credit from legibility requires an authenticated
+receipt bound to the current Run, objective, task (when present), criteria and
+source commit/hash at admission and consumption. Legacy unbound product
+receipts and gates remain readable as history, but cannot admit a new PASS,
+set a current criterion to PASS or satisfy verification, including after
+`resume --accept-commit`. Obtain a fresh bound observation; do not upgrade history.
+
 New Runs set `focus.pushbackRequired`: `task-start` refuses tasks without a
 push-back verdict (`PUSHBACK_MISSING`) and never dispatches CUT/DEFER; status
 lists them in `missingPushback`. Legacy Runs are flagged but not blocked. When
