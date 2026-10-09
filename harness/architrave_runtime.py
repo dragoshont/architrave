@@ -3589,18 +3589,36 @@ class RunStore:
                          "parseLine": getattr(exc, "lineno", None), "parseColumn": getattr(exc, "colno", None)}) from exc
         fields = {"verdict", "criteria", "sourceCommit", "sourceSha256", "challenge", "summary", "findings"}
         if (not isinstance(report, dict) or set(report) != fields
-                or report["verdict"] not in {"PASS", "REVISE", "FAIL"}
+                or not isinstance(report["verdict"], str) or report["verdict"] not in {"PASS", "REVISE", "FAIL"}
                 or report["criteria"] != binding["criteria"] or report["challenge"] != ticket.challenge
                 or report["sourceCommit"] != binding["source"]["commit"]
                 or report["sourceSha256"] != binding["source"]["sha256"]
                 or not isinstance(report["summary"], str) or not report["summary"].strip() or len(report["summary"]) > 1600
                 or not isinstance(report["findings"], list) or len(report["findings"]) > 12):
-            raise RuntimeFailure("SEMANTIC_RESULT_INVALID", "review scope/challenge/verdict shape is invalid")
-        for finding in report["findings"]:
+            names = set(report) if isinstance(report, dict) else set()
+            raise RuntimeFailure("SEMANTIC_RESULT_INVALID", "review scope/challenge/verdict shape is invalid",
+                details={"classification": "report-schema", "rootType": type(report).__name__,
+                         "missingFields": sorted(fields - names),
+                         "extraFields": sorted(names - fields),
+                         "fieldTypes": {key: type(report.get(key)).__name__ for key in fields} if isinstance(report, dict) else {},
+                         "bindingMatches": {key: report.get(key) == expected for key, expected in {
+                             "criteria": binding["criteria"], "sourceCommit": binding["source"]["commit"],
+                             "sourceSha256": binding["source"]["sha256"], "challenge": ticket.challenge}.items()}
+                             if isinstance(report, dict) else {},
+                         "summaryChars": len(report["summary"]) if isinstance(report, dict) and isinstance(report.get("summary"), str) else None,
+                         "findingCount": len(report["findings"]) if isinstance(report, dict) and isinstance(report.get("findings"), list) else None})
+        for index, finding in enumerate(report["findings"]):
             if (not isinstance(finding, dict) or set(finding) != {"severity", "path", "message"}
-                    or finding["severity"] not in {"blocker", "major", "minor"} or not isinstance(finding["path"], str)
+                    or not isinstance(finding["severity"], str) or finding["severity"] not in {"blocker", "major", "minor"}
+                    or not isinstance(finding["path"], str)
                     or not isinstance(finding["message"], str) or not finding["message"].strip() or len(finding["message"]) > 800):
-                raise RuntimeFailure("SEMANTIC_RESULT_INVALID", "review finding is malformed")
+                names = set(finding) if isinstance(finding, dict) else set()
+                expected = {"severity", "path", "message"}
+                raise RuntimeFailure("SEMANTIC_RESULT_INVALID", "review finding is malformed",
+                    details={"classification": "finding-schema", "findingIndex": index,
+                             "missingFields": sorted(expected - names), "extraFields": sorted(names - expected),
+                             "fieldTypes": {key: type(finding.get(key)).__name__ for key in expected} if isinstance(finding, dict) else {},
+                             "messageChars": len(finding["message"]) if isinstance(finding, dict) and isinstance(finding.get("message"), str) else None})
             path = safe_relative_path(finding["path"], "review finding path")
             if path not in ticket.source_files:
                 raise RuntimeFailure("SEMANTIC_RESULT_INVALID", "review finding must belong to the declared implementation inventory")

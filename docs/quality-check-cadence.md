@@ -31,11 +31,18 @@ python <published-kit>\tools\install_update.py retire-hooks --dry-run <adopted-r
 python <published-kit>\tools\install_update.py retire-hooks <adopted-repo>
 ```
 
-Preview lists each path/action and guarded recognized-content hash. Apply removes
+Preview lists each path/action and guarded recognized-content hash. Apply retires
 only complete definitions exactly matching packaged legacy POSIX/Windows
 Architrave commands. Product/source, config, authentication, other hooks and
 native guards are untouched. Changes after inspection cause transaction rollback,
 not removal of newer custom data; repeated calls are idempotent.
+
+Retirement atomically quarantines the actual hook inode before checking its
+bytes. A mismatch restores the actual inode only if the active target is absent;
+newer targets are never overwritten. Quarantined inodes remain under
+`.architrave/install-retired-hooks/` so writes through already-open handles are
+retained rather than deleted by transaction cleanup. Inspect reported retained
+paths at the owner boundary; a rename is not a claim of immutable content.
 
 Custom/mixed/unknown or malformed/duplicate-field JSON is preserved and reported
 `MANUAL_ACTION_REQUIRED` (exit 2); the owner must inspect it, not blindly delete.

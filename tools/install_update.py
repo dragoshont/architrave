@@ -44,6 +44,7 @@ GATE_FILES = (
 IGNORE_RULES = (
     ".architrave/runs/",
     ".architrave/worktrees/",
+    ".architrave/install-retired-hooks/",
     ".architrave/runtime.key",
     ".architrave/resources.lock",
 )
@@ -735,6 +736,13 @@ class ManagedRoot:
 class ManagedTransaction:
     active: list["ManagedTransaction"] = []
 
+    @staticmethod
+    def _native_path(path: Path) -> str:
+        value = str(path)
+        if os.name != "nt" or value.startswith("\\\\?\\"):
+            return value
+        return "\\\\?\\UNC\\" + value[2:] if value.startswith("\\\\") else "\\\\?\\" + value
+
     def __init__(self, managed: ManagedRoot) -> None:
         self.managed = managed
         self.root = managed.root
@@ -742,6 +750,7 @@ class ManagedTransaction:
         self.directory = self.root / ".architrave-install-transaction"
         self.operations: list[dict[str, object]] = []
         self.created_dirs: set[Path] = set()
+        self.manual_action = False
 
     def _write_manifest(self, value: dict[str, object]) -> None:
         path = self.directory / "manifest.json"
@@ -762,6 +771,16 @@ class ManagedTransaction:
         for _index, item in reversed(recoverable):
             destination = self.managed.path(str(item["relative"]))
             backup = self.directory / str(item["backup"]) if item.get("backup") else None
+            if item["kind"] == "remove" and item.get("quarantine"):
+                quarantine = self.managed.path(str(item["quarantine"]))
+                if _lstat(Path(self._native_path(quarantine))) is not None:
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    try:
+                        os.link(self._native_path(quarantine), self._native_path(destination), follow_symlinks=False)
+                    except FileExistsError:
+                        print(f"MANUAL_ACTION_REQUIRED: newer hook target preserved; original inode retained: {item['quarantine']}",
+                              file=sys.stderr)
+                continue
             if item["kind"] == "remove" and _lstat(destination) is not None:
                 continue
             if backup and backup.is_file():
@@ -826,7 +845,12 @@ class ManagedTransaction:
 
     def stage_remove(self, relative: str, *, expected_sha256: str | None = None) -> None:
         self.managed.preflight_file(relative)
-        self.operations.append({"kind": "remove", "relative": relative, "expectedSha256": expected_sha256})
+        operation = {"kind": "remove", "relative": relative, "expectedSha256": expected_sha256}
+        if expected_sha256 is not None:
+            quarantine = f".architrave/install-retired-hooks/{uuid.uuid4().hex}/{Path(relative).name}"
+            self.managed.preflight_file(quarantine)
+            operation["quarantine"] = quarantine
+        self.operations.append(operation)
 
     def commit(self) -> None:
         manifest_operations: list[dict[str, object]] = []
@@ -865,15 +889,29 @@ class ManagedTransaction:
                 destination = self.managed.path(relative)
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 expected = operation.get("expectedSha256")
-                if operation["kind"] == "remove" and expected and (
-                        not destination.is_file() or sha256_file(self.managed.require_file(relative)) != expected):
-                    raise InstallerError("retire-hooks: definition changed after inspection; preserved by transaction rollback")
                 manifest["inFlight"] = index
                 self._write_manifest(manifest)
                 if operation["kind"] == "write":
                     stage = self.directory / str(operation["stage"])
                     os.replace(stage, destination)
                     os.chmod(destination, stat.S_IMODE(int(operation["mode"])))
+                elif operation.get("quarantine"):
+                    quarantine_relative = str(operation["quarantine"])
+                    self.managed.preflight_file(quarantine_relative)
+                    quarantine = self.managed.path(quarantine_relative)
+                    quarantine.parent.mkdir(parents=True, exist_ok=True)
+                    os.replace(self._native_path(destination), self._native_path(quarantine))
+                    moved = Path(self._native_path(quarantine))
+                    info = _lstat(moved)
+                    if info is None or not _is_regular_file(info):
+                        raise InstallerError("retire-hooks: quarantined inode is not a regular file; retained for safe recovery")
+                    if expected and sha256_file(moved) != expected:
+                        raise InstallerError("retire-hooks: moved definition changed after inspection; actual inode retained for rollback")
+                    if _lstat(destination) is not None:
+                        self.manual_action = True
+                        print(f"MANUAL_ACTION_REQUIRED: concurrent hook target preserved; original inode retained: {quarantine_relative}",
+                              file=sys.stderr)
+                    print(f"  retired hook inode retained: {quarantine_relative}")
                 else:
                     destination.unlink(missing_ok=True)
                 manifest["applied"] = index + 1
@@ -1241,7 +1279,7 @@ def install(args: argparse.Namespace, kit: Path) -> int:
     transaction.__exit__(None, None, None)
     print(f"  ok stamped gates/.kit-version = {version}")
     print(f"\nDone. Edit architrave.config.json to match this repo (profile: {args.profile}).")
-    return 2 if manual_hooks else 0
+    return 2 if manual_hooks or transaction.manual_action else 0
 
 
 def update(args: argparse.Namespace, kit: Path) -> int:
@@ -1325,7 +1363,7 @@ def update(args: argparse.Namespace, kit: Path) -> int:
     transaction.__exit__(None, None, None)
     print(f"  ok stamped gates/.kit-version = {version}")
     print("Done. (architrave.config.json left untouched.)")
-    return 2 if manual_hooks else 0
+    return 2 if manual_hooks or transaction.manual_action else 0
 
 
 def parser() -> argparse.ArgumentParser:
@@ -1449,7 +1487,7 @@ def retire_quality_hooks(kit: Path, target: Path, *, dry_run: bool = False) -> i
     transaction.__enter__()
     manual = apply_quality_hook_plan(managed, plan)
     transaction.__exit__(None, None, None)
-    return 2 if manual else 0
+    return 2 if manual or transaction.manual_action else 0
 
 
 def adoption_status(kit: Path, target: Path) -> int:

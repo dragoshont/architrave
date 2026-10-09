@@ -235,6 +235,37 @@ class NativeReviewTests(unittest.TestCase):
         self.assertNotIn(ticket.challenge, json.dumps(error.exception.details))
         self.assertEqual([], self.store.load("review")["gateResults"])
 
+    def test_schema_failures_report_only_names_types_and_lengths(self):
+        ticket = self.prepared()
+        report = self.report(ticket)
+        report.pop("challenge")
+        with self.assertRaises(RuntimeFailure) as error:
+            self.accept(ticket, report)
+        self.assertEqual("report-schema", error.exception.details["classification"])
+        self.assertEqual(["challenge"], error.exception.details["missingFields"])
+        self.assertNotIn(ticket.challenge, json.dumps(error.exception.details))
+        ticket = self.prepared()
+        report = self.report(ticket, "REVISE")
+        report["findings"] = [{"severity": "major", "path": "README.md", "message": "x" * 801}]
+        with self.assertRaises(RuntimeFailure) as error:
+            self.accept(ticket, report)
+        self.assertEqual("finding-schema", error.exception.details["classification"])
+        self.assertEqual(801, error.exception.details["messageChars"])
+        self.assertNotIn("x" * 801, json.dumps(error.exception.details))
+        ticket = self.prepared()
+        report = self.report(ticket)
+        report["verdict"] = ["PASS"]
+        with self.assertRaises(RuntimeFailure) as error:
+            self.accept(ticket, report)
+        self.assertEqual("list", error.exception.details["fieldTypes"]["verdict"])
+        ticket = self.prepared()
+        report = self.report(ticket, "REVISE")
+        report["findings"] = [{"severity": ["major"], "path": "README.md", "message": "Invalid severity type"}]
+        with self.assertRaises(RuntimeFailure) as error:
+            self.accept(ticket, report)
+        self.assertEqual("list", error.exception.details["fieldTypes"]["severity"])
+        self.assertEqual([], self.store.load("review")["gateResults"])
+
     def test_finding_paths_must_be_declared_implementation_entries(self):
         (self.repo / ".git" / "info" / "exclude").write_text("untracked.md\n")
         (self.repo / "untracked.md").write_text("Ignored, untracked and outside the declared inventory")

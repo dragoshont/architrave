@@ -49,6 +49,7 @@ def digest(path: Path) -> str:
 
 
 def snapshot(root: Path) -> tuple[str, ...]:
+    root = Path(load_cli_module().ManagedTransaction._native_path(root))
     entries: list[str] = []
     for current, directories, files in os.walk(root, followlinks=False):
         directories.sort()
@@ -80,7 +81,7 @@ class InstallUpdateTests(unittest.TestCase):
         self.workspace.mkdir()
 
     def tearDown(self) -> None:
-        shutil.rmtree(self.workspace, ignore_errors=True)
+        shutil.rmtree(self.module.ManagedTransaction._native_path(self.workspace), ignore_errors=True)
 
     def run_cli(
         self,
@@ -883,6 +884,118 @@ class InstallUpdateTests(unittest.TestCase):
                     self.module.apply_quality_hook_plan(managed, plan)
         self.assertEqual(custom, active.read_bytes())
         self.assertEqual(b"before", product.read_bytes())
+        self.assertFalse((target / ".architrave-install-transaction").exists())
+
+    def test_quality_retirement_post_journal_edit_preserves_actual_inode(self) -> None:
+        target = self.workspace / "post journal race"
+        target.mkdir()
+        active = target / ".github/hooks/design-guard.json"
+        active.parent.mkdir(parents=True)
+        active.write_bytes((ROOT / "gates/hooks/design-guard.json").read_bytes())
+        managed = self.module.ManagedRoot(target, "fixture")
+        plan = self.module.quality_hook_plan(managed, ROOT)
+        custom = b'{"hooks":{"PostToolUse":[{"type":"command","command":"custom-after-journal"}]}}'
+        original = self.module.ManagedTransaction._write_manifest
+        edited = False
+        def after_journal(transaction, value):
+            nonlocal edited
+            original(transaction, value)
+            if not edited and value.get("inFlight") == 0:
+                active.write_bytes(custom)
+                edited = True
+        with mock.patch.object(self.module.ManagedTransaction, "_write_manifest", after_journal):
+            with self.assertRaises(self.module.InstallerError):
+                with self.module.ManagedTransaction(managed):
+                    self.module.apply_quality_hook_plan(managed, plan)
+        self.assertEqual(custom, active.read_bytes())
+        retained = list((target / ".architrave/install-retired-hooks").glob("*/*"))
+        self.assertEqual(1, len(retained))
+        self.assertEqual(custom, retained[0].read_bytes())
+        self.assertFalse((target / ".architrave-install-transaction").exists())
+
+    def test_quality_retirement_preserves_late_open_handle_write_and_new_target(self) -> None:
+        for late_hash in (False, True):
+            target = self.workspace / ("open handle late hash" if late_hash else "open handle mismatch")
+            target.mkdir()
+            active = target / ".github/hooks/design-guard.json"
+            active.parent.mkdir(parents=True)
+            active.write_bytes((ROOT / "gates/hooks/design-guard.json").read_bytes())
+            managed = self.module.ManagedRoot(target, "fixture")
+            plan = self.module.quality_hook_plan(managed, ROOT)
+            custom = b'{"hooks":{"PostToolUse":[{"type":"command","command":"open-handle-custom"}]}}'
+            replacement = b'{"hooks":{"PostToolUse":[{"type":"command","command":"new-target-custom"}]}}'
+            if os.name == "nt":
+                import ctypes
+                import msvcrt
+                create = ctypes.windll.kernel32.CreateFileW
+                create.restype = ctypes.c_void_p
+                create.argtypes = [ctypes.c_wchar_p, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p,
+                                   ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p]
+                handle = create(str(active), 0xC0000000, 7, None, 3, 0, None)
+                if handle == ctypes.c_void_p(-1).value:
+                    raise OSError("shared-delete fixture handle could not be opened")
+                writer = os.fdopen(msvcrt.open_osfhandle(handle, os.O_RDWR), "r+b")
+            else:
+                writer = active.open("r+b")
+            original_replace = self.module.os.replace
+            original_hash = self.module.sha256_file
+            wrote = False
+            def write_open_handle():
+                nonlocal wrote
+                writer.seek(0); writer.write(custom); writer.truncate(); writer.flush()
+                wrote = True
+            def quarantine_then_edit(source, destination):
+                original_replace(source, destination)
+                if Path(str(source).removeprefix("\\\\?\\")) == active:
+                    if not late_hash:
+                        write_open_handle()
+                        active.write_bytes(replacement)
+            def hash_then_late_write(path):
+                value = original_hash(path)
+                if late_hash and "install-retired-hooks" in Path(path).parts and not wrote:
+                    write_open_handle()
+                return value
+            try:
+                with mock.patch.object(self.module.os, "replace", quarantine_then_edit), \
+                        mock.patch.object(self.module, "sha256_file", hash_then_late_write):
+                    if late_hash:
+                        with self.module.ManagedTransaction(managed):
+                            self.module.apply_quality_hook_plan(managed, plan)
+                        self.assertFalse(active.exists())
+                    else:
+                        with self.assertRaises(self.module.InstallerError):
+                            with self.module.ManagedTransaction(managed):
+                                self.module.apply_quality_hook_plan(managed, plan)
+                        self.assertEqual(replacement, active.read_bytes())
+            finally:
+                writer.close()
+            retained = list((target / ".architrave/install-retired-hooks").glob("*/*"))
+            self.assertTrue(wrote)
+            self.assertEqual(1, len(retained))
+            self.assertEqual(custom, retained[0].read_bytes())
+            self.assertFalse((target / ".architrave-install-transaction").exists())
+
+    def test_quality_retirement_crash_after_quarantine_restores_actual_inode(self) -> None:
+        target = self.workspace / "quarantine journal crash"
+        target.mkdir()
+        active = target / ".github/hooks/design-guard.json"
+        active.parent.mkdir(parents=True)
+        active.write_bytes((ROOT / "gates/hooks/design-guard.json").read_bytes())
+        original_bytes = active.read_bytes()
+        managed = self.module.ManagedRoot(target, "fixture")
+        plan = self.module.quality_hook_plan(managed, ROOT)
+        original = self.module.ManagedTransaction._write_manifest
+        def after_move(transaction, value):
+            if value["applied"] == 1:
+                raise OSError("injected post-quarantine journal failure")
+            original(transaction, value)
+        with mock.patch.object(self.module.ManagedTransaction, "_write_manifest", after_move):
+            with self.assertRaises(OSError):
+                with self.module.ManagedTransaction(managed):
+                    self.module.apply_quality_hook_plan(managed, plan)
+        self.assertEqual(original_bytes, active.read_bytes())
+        retained = list((target / ".architrave/install-retired-hooks").glob("*/*"))
+        self.assertEqual(original_bytes, retained[0].read_bytes())
         self.assertFalse((target / ".architrave-install-transaction").exists())
 
     def test_public_entrypoints_are_python_only_launch_shims(self) -> None:

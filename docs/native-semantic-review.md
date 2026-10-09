@@ -12,6 +12,13 @@ Structured JSON or one exact JSON code fence is accepted from the observed
 reviewer only. The explicit Adversarial Judge's Markdown rubric report remains
 separate requested coverage, not relabelled machine-producer evidence.
 
+Invalid output fails without admission. Parse diagnostics retain only structural
+classification, byte count and parse location; schema diagnostics retain field
+names/types, binding-match booleans and counts/lengths, never report text or the
+challenge. These diagnostics do not recover discarded earlier reports or grant
+review credit. A `NOT_A_REVIEW` format probe is transport evidence only, not a
+source verdict or a substitute for frozen implementation coverage.
+
 ## Boundary and scope
 
 The installed extension and pinned Python executor live outside the target.
