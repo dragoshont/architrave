@@ -4011,12 +4011,14 @@ class RunStore:
                     "DUPLICATE_REVIEW_FAMILY",
                     f"R3/R4 review family {family} already passed in {duplicate}; the second review needs a different family",
                 )
-            if status == "PASS":
-                require_evidence_refs(state, evidence_refs, allowed={"artifact", "external"})
-                artifact_ids = [reference.split(":", 1)[1] for reference in evidence_refs if reference.startswith("artifact:")]
+            artifact_ids = [reference.split(":", 1)[1] for reference in evidence_refs if reference.startswith("artifact:")]
+            if status in {"PASS", "FAIL"}:
                 for artifact in state["artifacts"]:
                     if artifact["id"] in artifact_ids and artifact["producer"] == "legibility":
-                        self._assert_product_binding(state, artifact, task_id=task_id, criteria=bound_criteria)
+                        self._assert_product_binding(state, artifact, task_id=task_id, criteria=bound_criteria,
+                                                     require_pass=status == "PASS")
+            if status == "PASS":
+                require_evidence_refs(state, evidence_refs, allowed={"artifact", "external"})
                 if task_id is not None and any(
                     f"task:{task_id}" not in artifact["evidenceRefs"]
                     for artifact in state["artifacts"]
@@ -6319,7 +6321,7 @@ def runtime_identity() -> dict[str, Any]:
 
 
 def state_summary(state: dict[str, Any]) -> dict[str, Any]:
-    from worker_adapters import workspace_fingerprint
+    from worker_adapters import git_status, workspace_fingerprint
 
     now = dt.datetime.now(dt.timezone.utc)
     active_worker_ids = {task["lease"]["owner"] for task in state["tasks"]
@@ -6328,6 +6330,8 @@ def state_summary(state: dict[str, Any]) -> dict[str, Any]:
     repository = Path(state["baseline"]["repository"])
     current_commit = run_command(["git", "rev-parse", "HEAD"], repository)
     source_sha = workspace_fingerprint(repository, include_ignored=False)
+    source_drift = [path for path in git_status(repository)
+                    if path.split("/", 1)[0].casefold() not in {".git", ".architrave"}]
     evidence = []
     for artifact in state["artifacts"]:
         item = {"id": artifact["id"], "producer": artifact["producer"],
@@ -6364,7 +6368,7 @@ def state_summary(state: dict[str, Any]) -> dict[str, Any]:
         "observedAt": utc_now(),
         "source": {"commit": state["baseline"]["commit"], "branch": state["baseline"]["branch"],
                    "observedCommit": current_commit, "sha256": source_sha,
-                   "baselineFresh": state["baseline"]["commit"] == current_commit},
+                   "baselineFresh": state["baseline"]["commit"] == current_commit and not source_drift},
         "activeWorkers": [worker["id"] for worker in state["workers"]
                           if worker["status"] == "RUNNING" and worker["id"] in active_worker_ids],
         "historicalWorkers": {worker["id"]: worker["status"] for worker in state["workers"]

@@ -35,6 +35,31 @@ def ribbon_snapshot(store: RunStore, run_id: str | None = None) -> dict[str, Any
                and event["type"] in {"task.failed", "task.skipped", "task.deferred"}}
     completions = {event["taskId"]: event["evidenceRefs"] for event in events
                    if event.get("taskId") and event["type"] == "task.completed"}
+    failure_freshness = {}
+    for gate in state["gateResults"]:
+        if (gate["status"] != "FAIL" or gate["objectiveVersion"] != state["objective"]["version"]
+                or gate["type"] not in {"deterministic", "reality", "e2e", "policy", "security"}):
+            continue
+        if not gate["evidenceRefs"]:
+            failure_freshness[gate["id"]] = "unbound source"
+            continue
+        try:
+            store.assert_gate_sources_current(state, [f"gate:{gate['id']}"])
+        except RuntimeFailure as exc:
+            if exc.code != "EVIDENCE_SOURCE_STALE":
+                raise
+            failure_freshness[gate["id"]] = "stale source"
+        else:
+            source_bound = False
+            for ref in gate["evidenceRefs"]:
+                artifact = artifacts.get(ref)
+                if not artifact or artifact["producer"] not in {"legibility", "deterministic"}:
+                    continue
+                receipt = store._read_json_receipt(artifact["path"], "governing failure")
+                if (artifact["producer"] == "legibility" or
+                        receipt.get("schema") == "architrave.deterministic-observation.v1"):
+                    source_bound = True
+            failure_freshness[gate["id"]] = None if source_bound else "unbound source"
     failed_tasks = set()
     for task in tasks.values():
         work_kind = task.get("workKind") or "unassigned"
@@ -79,6 +104,8 @@ def ribbon_snapshot(store: RunStore, run_id: str | None = None) -> dict[str, Any
                     and gate["type"] in {"deterministic", "reality", "e2e", "policy", "security"}
                     and (gate["taskId"] == task["id"]
                          or set(gate["criteria"]).intersection(task["acceptanceCriteria"]))]
+        historical_failures = [gate for gate in failures if failure_freshness.get(gate["id"])]
+        failures = [gate for gate in failures if not failure_freshness.get(gate["id"])]
         if failures:
             failed_tasks.add(task["id"])
             display = "stopped"
@@ -119,6 +146,11 @@ def ribbon_snapshot(store: RunStore, run_id: str | None = None) -> dict[str, Any
                 if product:
                     display, evidence = "verified", product
                     reason = "Current task criteria have source-bound observed product PASS; not universal product acceptance."
+        if historical_failures:
+            reason += ". Historical verification failures (not current blockers): " + ", ".join(
+                f"{gate['id']} ({failure_freshness[gate['id']]})" for gate in historical_failures)
+            evidence.extend(f"gate:{gate['id']} (historical: {failure_freshness[gate['id']]})"
+                            for gate in historical_failures)
         loop = task.get("loop")
         retry = None
         if loop:

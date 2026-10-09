@@ -342,6 +342,13 @@ an arbitrary filesystem path, spawns a worker, or changes acceptance/policy/hold
 |---|---|
 | Scoped done | Canonical task completion; prerequisite success is not product success. |
 | Product verified | Current task criteria have qualifying source-bound legibility PASS and no governing current failed check. Earlier completion/observations remain history after a failure; neither product verification nor its milestone remains current. |
+
+Only authenticated, current source-bound failures govern the route. Failures
+from an older source remain visible as history after baseline reconciliation;
+malformed or tampered evidence raises an error, not an ordinary stale label.
+Capture-time baseline freshness requires both matching HEAD and no Git-visible
+public workspace drift. Canonical private/control metadata uses the existing
+private-root exclusion, not an arbitrary implementation allowlist.
 | Active | Canonical in-flight work, not proof that all other host sessions are idle. |
 | Blocked | Current human/resource/dependency blocker; superseded blockers are history. |
 | Deferred / bypassed | Not done; reason and dependencies remain inspectable. |

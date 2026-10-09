@@ -242,6 +242,22 @@ class LegibilityTests(unittest.TestCase):
                 self.assertEqual(observed, retained.read_bytes())
                 self.assertNotEqual(observed, screenshot.read_bytes())
 
+    def test_failed_gate_admission_rechecks_source_after_preliminary_observation_check(self) -> None:
+        runner, run_id = self.create_runner({"health": self.pass_command(), "web": {"url": "http://fixture.invalid"}})
+        original = runner.store.record_gate
+
+        def change_before_admission(*args, **kwargs):
+            (self.repo / "late-source-edit.md").write_text("Changed after observation checks\n", encoding="utf-8")
+            return original(*args, **kwargs)
+
+        with mock.patch.object(runner.store, "record_gate", side_effect=change_before_admission):
+            with self.assertRaises(RuntimeFailure) as rejected:
+                runner.verify_surface("web")
+        self.assertEqual("EVIDENCE_SOURCE_STALE", rejected.exception.code)
+        state = self.store.load(run_id)
+        self.assertEqual([], state["gateResults"])
+        self.assertNotEqual("FAILED", state["status"])
+
     def test_web_e2e_is_recorded_as_reality_gate(self) -> None:
         (self.repo / "dom.json").write_text("{}\n", encoding="utf-8")
         (self.repo / "a11y.json").write_text("{}\n", encoding="utf-8")

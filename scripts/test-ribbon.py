@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
+import shlex
 import sys
 import tempfile
 import unittest
@@ -127,8 +129,17 @@ class RibbonTests(unittest.TestCase):
                     self.store.set_criterion(run_id, "PRODUCT", "PASS", ["gate:" + fresh_id])
                     self.store.advance_milestone(run_id, "delivery", criterion_id="PRODUCT",
                         milestone="New verified observation", gate_ref="gate:" + fresh_id)
+                failed_path = path.with_name("negative.json")
+                failed_receipt = json.loads(path.read_text())
+                failed_receipt.update({"status": "fail", "failed": ["runtime.health"]})
+                failed_receipt["binding"]["taskId"] = owner
+                failed_receipt["results"][0]["status"] = "fail"
+                failed_path.write_text(json.dumps(failed_receipt), encoding="utf-8")
+                self.store._record_legibility_result(run_id, kind="web-legibility", artifact_id="negative",
+                    path=failed_path.relative_to(self.store.repository).as_posix(),
+                    evidence_refs=["task:delivery"] if owner else [])
                 self.store.record_gate(run_id, gate_id="negative", task_id=owner, gate_type="reality",
-                    status="FAIL", evidence_refs=[], criteria=["PRODUCT"], surface="web")
+                    status="FAIL", evidence_refs=["artifact:negative"], criteria=["PRODUCT"], surface="web")
                 negative = ribbon_snapshot(self.store, run_id)
                 self.assertEqual("stopped", negative["steps"][0]["state"])
                 self.assertIn("negative", negative["steps"][0]["reason"])
@@ -143,9 +154,73 @@ class RibbonTests(unittest.TestCase):
         self.assertEqual("current", result["source"]["freshness"])
         self.assertNotEqual("verified", result["steps"][0]["state"])
         (self.repo / "fixture.txt").write_text("changed\n", encoding="utf-8")
+        self.assertEqual("stale", ribbon_snapshot(self.store, "run")["source"]["freshness"])
         self.git("add", ".")
         self.git("commit", "-qm", "new source")
         self.assertEqual("stale", ribbon_snapshot(self.store, "run")["source"]["freshness"])
+
+    def test_old_source_failures_remain_history_after_resume_not_governing(self):
+        self.task("delivery")
+        path = self.store.run_dir("run") / "old-failure.json"
+        path.write_text(json.dumps({"surface": "web", "status": "fail", "failed": ["runtime.health"],
+            "binding": {"runId": "run", "taskId": "delivery", "objectiveVersion": 1,
+                        "criteria": ["OUTCOME-001"]},
+            "source": {"commit": self.git("rev-parse", "HEAD"),
+                       "sha256": workspace_fingerprint(self.repo, include_ignored=False)},
+            "results": [{"name": "runtime.health", "status": "fail"},
+                        {"name": "web.e2e", "status": "pass"}]}), encoding="utf-8")
+        self.store._record_legibility_result("run", kind="web-legibility", artifact_id="old-failure",
+            path=path.relative_to(self.store.repository).as_posix(), evidence_refs=["task:delivery"])
+        self.store.record_gate("run", gate_id="negative", task_id="delivery", gate_type="reality",
+            status="FAIL", evidence_refs=["artifact:old-failure"], criteria=["OUTCOME-001"], surface="web")
+        self.assertEqual("stopped", ribbon_snapshot(self.store, "run")["steps"][0]["state"])
+        authenticated = path.read_bytes()
+        path.write_bytes(b"tampered retained failure")
+        with self.assertRaises(RuntimeFailure):
+            ribbon_snapshot(self.store, "run")
+        path.write_bytes(authenticated)
+        (self.repo / "fixture.txt").write_text("New source after failure\n", encoding="utf-8")
+        self.git("add", ".")
+        self.git("commit", "-qm", "new source")
+        self.store.resume("run", accept_commit=True)
+        step = ribbon_snapshot(self.store, "run")["steps"][0]
+        self.assertNotEqual("stopped", step["state"])
+        self.assertIn("historical", step["reason"].lower())
+        self.assertTrue(any("gate:negative" in ref for ref in step["evidence"]))
+        retained = self.store.load("run")["gateResults"][0]
+        self.assertEqual("FAIL", retained["status"])
+
+    def test_private_control_metadata_drift_is_not_public_source_drift(self):
+        private = self.repo / ".architrave" / "private-history.txt"
+        private.write_text("Private fixture history\n", encoding="utf-8")
+        self.git("add", "-f", ".architrave/private-history.txt")
+        self.git("commit", "-qm", "private metadata fixture")
+        self.store.resume("run", accept_commit=True)
+        private.write_text("Private metadata update\n", encoding="utf-8")
+        self.assertEqual("current", ribbon_snapshot(self.store, "run")["source"]["freshness"])
+
+    def test_old_deterministic_failure_is_historical_after_source_resume(self):
+        command = ("& '" + sys.executable.replace("'", "''") + "' -c \"raise SystemExit(1)\""
+                   if os.name == "nt" else shlex.join([sys.executable, "-c", "raise SystemExit(1)"]))
+        (self.repo / "architrave.config.json").write_text(json.dumps({
+            "kind": "knowledge", "build": command, "test": command}), encoding="utf-8")
+        self.git("add", ".")
+        self.git("commit", "-qm", "configured observed failure")
+        self.store.resume("run", accept_commit=True)
+        self.task("delivery")
+        self.store.start_task("run", "delivery", worker_id="deterministic-fixture")
+        self.store.finish_worker("run", "delivery", worker_id="deterministic-fixture", status="FINISHED")
+        result = self.store.execute_gate("run", "delivery")
+        self.assertEqual("FAIL", result["status"])
+        self.assertEqual("stopped", ribbon_snapshot(self.store, "run")["steps"][0]["state"])
+        (self.repo / "fixture.txt").write_text("Source correction\n", encoding="utf-8")
+        self.git("add", ".")
+        self.git("commit", "-qm", "source correction")
+        self.store.resume("run", accept_commit=True)
+        step = ribbon_snapshot(self.store, "run")["steps"][0]
+        self.assertNotEqual("stopped", step["state"])
+        self.assertIn("historical", step["reason"].lower())
+        self.assertTrue(any(result["gateRef"] in ref for ref in step["evidence"]))
 
     def test_cli_projection_envelope(self):
         self.task("scoped")
