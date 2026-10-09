@@ -1266,8 +1266,14 @@ def _hook_definition(content: bytes) -> object:
 
 
 def quality_hook_plan(managed: ManagedRoot, kit: Path) -> dict[str, dict[str, object]]:
-    known = [_hook_definition((kit / "gates" / "hooks" / name).read_bytes())
-             for name in ("design-guard.json", "design-guard.windows.json")]
+    # Exact legacy recognition only; no hook templates are packaged or installed.
+    known = [
+        {"hooks": {"PostToolUse": [{"type": "command", "command": command, "timeout": 20}]}}
+        for command in (
+            "./gates/quality-gate.sh --hook-json",
+            "pwsh -NoProfile -File ./gates/quality-gate.ps1 -HookJson",
+        )
+    ]
     plan = {}
     for relative in LEGACY_QUALITY_HOOKS:
         managed.preflight_file(relative)
@@ -1364,8 +1370,6 @@ def install(args: argparse.Namespace, kit: Path) -> int:
         "templates/AGENTS.stanza.md",
         "templates/copilot-setup-steps.yml",
         "plugin.json",
-        "gates/hooks/design-guard.json",
-        "gates/hooks/design-guard.windows.json",
     )
     if args.profile == "knowledge":
         source_files += ("kit/examples/knowledge.architrave.json",)
@@ -1489,8 +1493,6 @@ def update(args: argparse.Namespace, kit: Path) -> int:
         source_files=(
             "templates/AGENTS.stanza.md",
             "plugin.json",
-            "gates/hooks/design-guard.json",
-            "gates/hooks/design-guard.windows.json",
         ),
     )
     for source in constitutions:
@@ -1641,7 +1643,7 @@ def install_companion(kit: Path, copilot_home: Path) -> int:
 def retire_quality_hooks(kit: Path, target: Path, *, dry_run: bool = False) -> int:
     managed = ManagedRoot(target, "retire-hooks")
     if managed.root == kit:
-        raise InstallerError("retire-hooks: target an adopted repository, not the kit's recognition templates")
+        raise InstallerError("retire-hooks: target an adopted repository, not the kit itself")
     plan = quality_hook_plan(managed, kit)
     print(json.dumps({"target": str(managed.root), "dryRun": dry_run, "qualityHooks": plan,
                       "nativePermissionGuards": "unchanged", "otherHooks": "untouched"}, indent=2))

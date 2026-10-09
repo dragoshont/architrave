@@ -411,7 +411,7 @@ installed quick gate. `status` is a fresh projection; worker done is never PASS.
 `architrave_native_review` executes and admits a fresh independent source review
 through the same trusted joined producer; see
 [native semantic execution](docs/native-semantic-review.md).
-For quality-hook cadence and exact hooks-only post-release retirement, see
+For explicit quality-check cadence and safe legacy-hook retirement, see
 [quality checks without automatic turn hooks](docs/quality-check-cadence.md).
 The copied kit/bridge supports Python 3.9+ (including macOS system 3.9.6);
 optional `--codex` role adoption still requires Python 3.11+.
@@ -766,7 +766,7 @@ knowledge/
 agents/                       ← Architrave · CTO · Product Research · Operations UX · UX Architect · UI Visual · Platform Design · Tournament Analyst · Adversarial Judge
                                  + backend lane: Service Architect · Backend Planner · Backend Implementer · Infra Engineer
                                  + runtime lane: Runtime Observer
-gates/                        ← rubric.md · checks.{sh,ps1} · reconcile.{sh,ps1} · quality-gate.{sh,ps1} · backend-checks.{sh,ps1} · hooks/
+gates/                        ← rubric.md · checks.{sh,ps1} · reconcile.{sh,ps1} · quality-gate.{sh,ps1} · backend-checks.{sh,ps1}
 harness/                      ← Run v2 runtime · workers/workspaces · invariants · legibility · v1/v2 validators · schemas
 benchmarks/                   ← short/feature/multi-surface/LongBuild scenarios + frozen fixture
 docs/                         ← runtime, legibility, LongBuild, and v1→v2 migration guides

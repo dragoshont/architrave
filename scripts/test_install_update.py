@@ -26,6 +26,17 @@ ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "install_update.py"
 
 
+def legacy_hook_bytes(name: str = "design-guard.json") -> bytes:
+    command = (
+        "pwsh -NoProfile -File ./gates/quality-gate.ps1 -HookJson"
+        if name == "design-guard.windows.json"
+        else "./gates/quality-gate.sh --hook-json"
+    )
+    return json.dumps({
+        "hooks": {"PostToolUse": [{"type": "command", "command": command, "timeout": 20}]}
+    }).encode("utf-8")
+
+
 def load_cli_module():
     spec = importlib.util.spec_from_file_location("architrave_install_update", CLI)
     if spec is None or spec.loader is None:
@@ -168,7 +179,7 @@ class InstallUpdateTests(unittest.TestCase):
             self.run_cli("install", "--profile", "knowledge", str(target))
             active = target / ".github/hooks/design-guard.json"
             active.parent.mkdir(parents=True)
-            content = json.loads((ROOT / "gates/hooks" / source).read_text())
+            content = json.loads(legacy_hook_bytes(source))
             active.write_text(json.dumps(content))
             copied = target / "gates/hooks" / source
             copied.parent.mkdir(parents=True)
@@ -197,7 +208,7 @@ class InstallUpdateTests(unittest.TestCase):
         self.run_cli("install", "--profile", "knowledge", str(target))
         active = target / ".github/hooks/design-guard.json"
         active.parent.mkdir(parents=True)
-        owned = json.loads((ROOT / "gates/hooks/design-guard.windows.json").read_text())
+        owned = json.loads(legacy_hook_bytes("design-guard.windows.json"))
         owned["hooks"]["PostToolUse"].append({"type": "command", "command": "user-check"})
         active.write_text(json.dumps(owned))
         original = active.read_bytes()
@@ -225,7 +236,7 @@ class InstallUpdateTests(unittest.TestCase):
         target.mkdir()
         active = target / ".github/hooks/design-guard.json"
         active.parent.mkdir(parents=True)
-        active.write_bytes((ROOT / "gates/hooks/design-guard.json").read_bytes())
+        active.write_bytes(legacy_hook_bytes())
         managed = self.module.ManagedRoot(target, "fixture")
         plan = self.module.quality_hook_plan(managed, ROOT)
         custom = b'{"hooks":{"PostToolUse":[{"type":"command","command":"custom-changed"}]}}'
@@ -916,7 +927,7 @@ class InstallUpdateTests(unittest.TestCase):
         target.mkdir()
         active = target / ".github/hooks/design-guard.json"
         active.parent.mkdir(parents=True)
-        active.write_bytes((ROOT / "gates/hooks/design-guard.json").read_bytes())
+        active.write_bytes(legacy_hook_bytes())
         product = target / "managed.txt"
         product.write_bytes(b"before")
         managed = self.module.ManagedRoot(target, "fixture")
@@ -944,7 +955,7 @@ class InstallUpdateTests(unittest.TestCase):
         target.mkdir()
         active = target / ".github/hooks/design-guard.json"
         active.parent.mkdir(parents=True)
-        active.write_bytes((ROOT / "gates/hooks/design-guard.json").read_bytes())
+        active.write_bytes(legacy_hook_bytes())
         managed = self.module.ManagedRoot(target, "fixture")
         plan = self.module.quality_hook_plan(managed, ROOT)
         custom = b'{"hooks":{"PostToolUse":[{"type":"command","command":"custom-after-journal"}]}}'
@@ -972,7 +983,7 @@ class InstallUpdateTests(unittest.TestCase):
             target.mkdir()
             active = target / ".github/hooks/design-guard.json"
             active.parent.mkdir(parents=True)
-            active.write_bytes((ROOT / "gates/hooks/design-guard.json").read_bytes())
+            active.write_bytes(legacy_hook_bytes())
             managed = self.module.ManagedRoot(target, "fixture")
             plan = self.module.quality_hook_plan(managed, ROOT)
             custom = b'{"hooks":{"PostToolUse":[{"type":"command","command":"open-handle-custom"}]}}'
@@ -1033,7 +1044,7 @@ class InstallUpdateTests(unittest.TestCase):
         target.mkdir()
         active = target / ".github/hooks/design-guard.json"
         active.parent.mkdir(parents=True)
-        active.write_bytes((ROOT / "gates/hooks/design-guard.json").read_bytes())
+        active.write_bytes(legacy_hook_bytes())
         original_bytes = active.read_bytes()
         managed = self.module.ManagedRoot(target, "fixture")
         plan = self.module.quality_hook_plan(managed, ROOT)
@@ -1061,7 +1072,7 @@ class InstallUpdateTests(unittest.TestCase):
                 ignore.write_bytes(b"original-custom-rule\n")
                 active = target / ".github/hooks/design-guard.json"
                 active.parent.mkdir(parents=True)
-                active.write_bytes((ROOT / "gates/hooks/design-guard.json").read_bytes())
+                active.write_bytes(legacy_hook_bytes())
                 changed_ignore = b"concurrent-custom-rule\n!.architrave/\n!.architrave/**\n"
                 custom_hook = b'{"custom":"retained private contents"}'
                 original_manifest = self.module.ManagedTransaction._write_manifest
@@ -1118,7 +1129,7 @@ class InstallUpdateTests(unittest.TestCase):
         target.mkdir()
         active = target / ".github/hooks/design-guard.json"
         active.parent.mkdir(parents=True)
-        original = (ROOT / "gates/hooks/design-guard.json").read_bytes()
+        original = legacy_hook_bytes()
         active.write_bytes(original)
         identifier = uuid.UUID("a" * 32)
         directory = target / ".architrave/install-retired-hooks" / identifier.hex
@@ -1184,7 +1195,7 @@ class InstallUpdateTests(unittest.TestCase):
                 target.mkdir()
                 active = target / ".github/hooks/design-guard.json"
                 active.parent.mkdir(parents=True)
-                active.write_bytes((ROOT / "gates/hooks/design-guard.json").read_bytes())
+                active.write_bytes(legacy_hook_bytes())
                 custom = b'{"custom":"replacement after concurrent removal"}'
                 original = self.module.os.replace
 

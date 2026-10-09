@@ -32,7 +32,7 @@ python <published-kit>\tools\install_update.py retire-hooks <adopted-repo>
 ```
 
 Preview lists each path/action and guarded recognized-content hash. Apply retires
-only complete definitions exactly matching packaged legacy POSIX/Windows
+only complete definitions exactly matching recognized legacy POSIX/Windows
 Architrave commands. Product/source, config, authentication, other hooks and
 native guards are untouched. Edits to inspected definitions cause transaction
 rollback, not removal of newer custom data; repeated calls are idempotent.
@@ -71,8 +71,8 @@ by Git, not an immutable or same-user security boundary.
 
 Custom/mixed/unknown or malformed/duplicate-field JSON is preserved and reported
 `MANUAL_ACTION_REQUIRED` (exit 2); the owner must inspect it, not blindly delete.
-Full install/update uses the same retirement safety. Legacy templates remain
-packaged for recognition, not automatic adoption.
+Full install/update uses the same retirement safety. Exact legacy definitions
+are recognized in installer code only; no hook templates are packaged.
 
 Verify registration absence, executable quick-check PASS, and host-loaded
 instructions/hooks through supported reload/new-turn observation. File removal
