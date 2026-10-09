@@ -38,21 +38,11 @@ stale or differently correlated metadata fails closed. No configured-model or
 caller-labelled-family fallback.
 
 Execution runs alone in its joined foreground session at a clean committed
-boundary. The pre-tool guard permits only scoped standard view and source-inventory-bounded rg,
-including the observed joined-host `grep` tool name with the same argument
-allowlist and tracked-regular-file rewrite,
-tool discovery and read-only review-skill loading. Shell/execution, mutation,
-private `.git`/`.architrave` reads, control-plane and descendants are denied.
-Recursive glob/directory views and hidden/ignore/follow overrides are denied.
-Search roots are expanded to validated tracked regular files, never delegated
-as unconstrained recursive roots. Paths are normalized inside the target. This does not replace host permissions
-or claim an OS sandbox. Source, policy, holds and objective are rechecked.
-File views allow only the supported path/range arguments, never full-large-file
-overrides; explicit ranges must be finite and at most 400 lines. Sequential
-bounded views remain available for complete inspection.
-Tracked-file `rg` and observed host `grep` searches default to 50 results,
-permit at most 100, and limit each before/after/combined context setting to
-five lines. Invalid or oversized limits are denied before host forwarding.
+boundary. The reviewer receives a validated tracked regular implementation-source
+inventory and read-only instructions. Host permissions and the selected role
+govern its tools; Architrave does not intercept, rewrite or block ordinary host
+tool calls. Instructions are not an enforced sandbox. Source, policy, holds and
+objective are rechecked before evidence admission.
 
 ## Receipts and gates
 
@@ -88,10 +78,9 @@ the actual owned recovery handle when removal fails.
 Semantic execution requires `tasks.startAgent`, `list`, `cancel` and `remove`
 before opening its producer pipe or admitting a reviewer. Partial hosts fail
 before AI rather than entering an unrecoverable cleanup hold.
-The implementation-only reader guard remains active until its owned reviewer
-task is confirmed removed, including running-task cleanup failures. Only the
-exact owned recovery-cancel path is permitted alongside confined reads; ordinary
-execute/control-plane tools stay denied. Report finding paths are normalized and
+Cleanup failures retain the owned recovery handle but do not block ordinary host
+tools. Architrave's own dispatch admission remains exclusive while the owned
+reviewer needs cleanup. Report finding paths are normalized and
 must belong to the ticket's declared implementation inventory.
 Tracked-source inventory uses count-bound, byte-bounded transport frames rather
 than embedding all paths in the prepared response. Permission-checked public

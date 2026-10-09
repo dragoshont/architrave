@@ -47,9 +47,10 @@ Parallel workstream data adds labelled stacked lanes while preserving the
 segmented overview. Delivery, exploration and reference work remain distinct;
 display-only INFORMS annotations never become scheduling dependencies.
 The joined native bridge can now execute and admit a fresh source-bound semantic
-review from actual host completion/model evidence. Automatic PostToolUse quality
-commands are retired; explicit focused quick checks and required CI preserve
-the executable validators without pretending prose is automatic enforcement.
+review from actual host completion/model evidence. Automatic hook registrations,
+packaged definitions and native tool interception are removed; explicit focused
+quick checks and required CI preserve the executable validators without pretending
+prose is automatic enforcement.
 This is an **agent-fed snapshot, not a live telemetry feed**. Missing active
 effort, wait duration, tokens and cost stay Unknown.
 See [Route Ribbon installation and snapshot contract](docs/route-ribbon.md).
@@ -210,7 +211,7 @@ claude plugin marketplace update architrave
 claude plugin update architrave@architrave
 ```
 
-After updating the plugin, users **must also refresh each adopted repo's copied kit assets** at a safe owner boundary. A plugin update does not change copied gates, harness, knowledge, profile-appropriate constitutions, or the managed `AGENTS.md` stanza. The updater retires only exact recognized legacy Architrave quality-hook definitions; custom/mixed/unknown definitions are preserved with `MANUAL_ACTION_REQUIRED` (exit 2). It never registers a new automatic PostToolUse quality hook. Configuration and copied agents remain untouched unless `--agents` is requested:
+After updating the plugin, users **must also refresh each adopted repo's copied kit assets** at a safe owner boundary. A plugin update does not change copied gates, harness, knowledge, profile-appropriate constitutions, or the managed `AGENTS.md` stanza. The updater retires only exact recognized legacy Architrave quality-hook definitions; custom/mixed/unknown definitions are preserved with `MANUAL_ACTION_REQUIRED` (exit 2). No active hook definitions or native tool-blocking hooks are shipped. Configuration and copied agents remain untouched unless `--agents` is requested:
 
 ```bash
 python /path/to/architrave/tools/install_update.py update .
@@ -411,7 +412,7 @@ installed quick gate. `status` is a fresh projection; worker done is never PASS.
 `architrave_native_review` executes and admits a fresh independent source review
 through the same trusted joined producer; see
 [native semantic execution](docs/native-semantic-review.md).
-For quality-hook cadence and exact hooks-only post-release retirement, see
+For explicit quality-check cadence and safe legacy registration retirement, see
 [quality checks without automatic turn hooks](docs/quality-check-cadence.md).
 The copied kit/bridge supports Python 3.9+ (including macOS system 3.9.6);
 optional `--codex` role adoption still requires Python 3.11+.
@@ -766,7 +767,7 @@ knowledge/
 agents/                       ← Architrave · CTO · Product Research · Operations UX · UX Architect · UI Visual · Platform Design · Tournament Analyst · Adversarial Judge
                                  + backend lane: Service Architect · Backend Planner · Backend Implementer · Infra Engineer
                                  + runtime lane: Runtime Observer
-gates/                        ← rubric.md · checks.{sh,ps1} · reconcile.{sh,ps1} · quality-gate.{sh,ps1} · backend-checks.{sh,ps1} · hooks/
+gates/                        ← rubric.md · checks.{sh,ps1} · reconcile.{sh,ps1} · quality-gate.{sh,ps1} · backend-checks.{sh,ps1}
 harness/                      ← Run v2 runtime · workers/workspaces · invariants · legibility · v1/v2 validators · schemas
 benchmarks/                   ← short/feature/multi-surface/LongBuild scenarios + frozen fixture
 docs/                         ← runtime, legibility, LongBuild, and v1→v2 migration guides

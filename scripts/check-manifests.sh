@@ -79,8 +79,6 @@ json_files=(
   kit/examples/tessera.architrave.json
   kit/examples/design-map.stub.json
   kit/examples/tokens.web-shadcn.tokens.json
-  gates/hooks/design-guard.json
-  gates/hooks/design-guard.windows.json
   harness/schemas/run-summary.schema.json
   harness/schemas/run-v2.schema.json
   harness/schemas/event-v2.schema.json

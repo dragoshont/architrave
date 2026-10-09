@@ -112,9 +112,9 @@ An old evidence reference alone is not new evidence. Primary-criterion controls,
 global budgets, human holds and uncertain-side-effect reconciliation still apply.
 
 The Copilot bridge consumes native lifecycle invalidations, with one bounded
-deadline (not a polling loop), and checks the real admitted owner. Its child
-pre-tool hook denies descendant session/task launches while a mission dispatch
-is active. Native turn events enforce the packet's turn bound; hosts lacking
+deadline (not a polling loop), and checks the real admitted owner. The host owns
+tool permissions and descendant-launch controls; Architrave does not intercept
+ordinary host tools. Native turn events enforce the packet's turn bound; hosts lacking
 those signals still have the time/output bounds and must not claim turn
 telemetry. Direct host use outside this bridge must honor the same core
 contract and the host's own depth/concurrency settings.

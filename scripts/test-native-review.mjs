@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, writeFile, copyFile, rm, rename, symlink, rmdir } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, copyFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,7 +16,7 @@ const command = process.env.PYTHON || (process.platform === "win32" ? "python" :
 const executable = spawnSync(command, ["-c", "import sys;from pathlib import Path;print(Path(sys.executable).resolve())"], { encoding: "utf8" });
 assert.equal(executable.status, 0, executable.stderr);
 const python = executable.stdout.trim();
-let definition, cancelDefinition, hooks, current, taskRpc, count = 0, failCleanup = true;
+let definition, cancelDefinition, current, taskRpc, count = 0, failCleanup = true;
 let conflictCompletion = false;
 const listeners = new Set();
 const tasks = new Map();
@@ -65,7 +65,7 @@ s.add_task('review',{'id':'source','objective':'Review source','acceptanceCriter
     const emit = event => { for (const listener of listeners) listener(event); };
     const sdk = {
         joinSession: async config => {
-            hooks = config.hooks;
+            ok(!Object.hasOwn(config, "hooks"));
             definition = config.tools.find(tool => tool.name === "architrave_native_review");
             cancelDefinition = config.tools.find(tool => tool.name === "architrave_native_cancel");
             return {
@@ -82,51 +82,6 @@ s.add_task('review',{'id':'source','objective':'Review source','acceptanceCriter
                             challenge: subject.challenge, summary: "SDK fixture, not live evidence.", findings: [] };
                         current = { id, type: "agent", status: "running", prompt: args.prompt };
                         tasks.set(id, current);
-                        ok(hooks.onPreToolUse({ toolName: "functions.powershell", toolArgs: {}, sessionId: "child" }, { sessionId: "owner-one" }).permissionDecision === "deny");
-                        ok(hooks.onPreToolUse({ toolName: "evil.view", toolArgs: { path: join(repo, "README.md") }, sessionId: "child" }, { sessionId: "owner-one" }).permissionDecision === "deny");
-                        ok(hooks.onPreToolUse({ toolName: "functions.view", toolArgs: { path: join(repo, ".architrave", "runtime.key") }, sessionId: "child" }, { sessionId: "owner-one" }).permissionDecision === "deny");
-                        ok(hooks.onPreToolUse({ toolName: "functions.view", toolArgs: { path: join(repo, "README.md") }, sessionId: "child" }, { sessionId: "owner-one" }).modifiedArgs.path.endsWith("README.md"));
-                        for (const override of [{ forceReadLargeFiles: true }, { view_range: [1, -1] },
-                            { view_range: [1, 401] }, { view_range: [0, 2] }, { hidden: true }])
-                            ok(hooks.onPreToolUse({ toolName: "functions.view",
-                                toolArgs: { path: join(repo, "README.md"), ...override }, sessionId: "child" },
-                                { sessionId: "owner-one" }).permissionDecision === "deny");
-                        ok(hooks.onPreToolUse({ toolName: "functions.view",
-                            toolArgs: { path: join(repo, "README.md"), view_range: [1, 400] }, sessionId: "child" },
-                            { sessionId: "owner-one" }).modifiedArgs.view_range[1] === 400);
-                        const search = hooks.onPreToolUse({ toolName: "functions.rg", toolArgs: { pattern: "fixture", paths: [repo] }, sessionId: "child" }, { sessionId: "owner-one" });
-                        ok(search.modifiedArgs.paths.every(path => !path.includes(".architrave") && (!path.includes(".git") || path.endsWith(".gitignore"))));
-                        ok(search.modifiedArgs.paths.every(path => path !== repo));
-                        ok(search.modifiedArgs.paths.includes(join(repo, "src", "sk-abcdefgh.py")));
-                        ok(search.modifiedArgs.head_limit === 50);
-                        for (const limits of [{ head_limit: 101 }, { head_limit: 0 },
-                            { head_limit: -1 }, { head_limit: "50" }, { "-A": 6 },
-                            { "-B": -1 }, { "-C": 99999 }])
-                            ok(hooks.onPreToolUse({ toolName: "grep",
-                                toolArgs: { pattern: "fixture", paths: [repo], ...limits }, sessionId: "child" },
-                                { sessionId: "owner-one" }).permissionDecision === "deny");
-                        const boundedSearch = hooks.onPreToolUse({ toolName: "functions.rg",
-                            toolArgs: { pattern: "fixture", paths: [repo], head_limit: 100, "-C": 5 }, sessionId: "child" },
-                            { sessionId: "owner-one" });
-                        ok(boundedSearch.modifiedArgs.head_limit === 100 && boundedSearch.modifiedArgs["-C"] === 5);
-                        const hostSearch = hooks.onPreToolUse({ toolName: "grep",
-                            toolArgs: { pattern: "fixture", paths: [repo], output_mode: "content", head_limit: 10 },
-                            sessionId: "child" }, { sessionId: "owner-one" });
-                        ok(JSON.stringify(hostSearch.modifiedArgs.paths) === JSON.stringify(search.modifiedArgs.paths));
-                        ok(hooks.onPreToolUse({ toolName: "evil.grep", toolArgs: { pattern: "x", paths: [repo] },
-                            sessionId: "child" }, { sessionId: "owner-one" }).permissionDecision === "deny");
-                        ok(hooks.onPreToolUse({ toolName: "grep", toolArgs: { pattern: "x", paths: [repo], hidden: true },
-                            sessionId: "child" }, { sessionId: "owner-one" }).permissionDecision === "deny");
-                        ok(hooks.onPreToolUse({ toolName: "functions.rg", toolArgs: { pattern: "x", paths: [repo], hidden: true, follow: true }, sessionId: "child" }, { sessionId: "owner-one" }).permissionDecision === "deny");
-                        ok(hooks.onPreToolUse({ toolName: "functions.glob", toolArgs: { pattern: "**/*", paths: [repo] }, sessionId: "child" }, { sessionId: "owner-one" }).permissionDecision === "deny");
-                        await symlink(join(repo, ".architrave"), join(repo, "private-alias"), process.platform === "win32" ? "junction" : "dir");
-                        ok(hooks.onPreToolUse({ toolName: "functions.view", toolArgs: { path: join(repo, "private-alias", "runtime.key") }, sessionId: "child" }, { sessionId: "owner-one" }).permissionDecision === "deny");
-                        await rm(join(repo, "private-alias"));
-                        await rename(join(repo, "public"), join(repo, "public-saved"));
-                        await symlink(join(repo, ".architrave"), join(repo, "public"), process.platform === "win32" ? "junction" : "dir");
-                        ok(hooks.onPreToolUse({ toolName: "functions.rg", toolArgs: { pattern: "x", paths: [repo] }, sessionId: "child" }, { sessionId: "owner-one" }).permissionDecision === "deny");
-                        await rm(join(repo, "public"));
-                        await rename(join(repo, "public-saved"), join(repo, "public"));
                         setTimeout(() => {
                             current.status = "idle"; current.latestResponse = JSON.stringify(report);
                             if (conflictCompletion) {
@@ -178,8 +133,6 @@ s.add_task('review',{'id':'source','objective':'Review source','acceptanceCriter
     await assert.rejects(() => definition.handler(args, invocation),
         error => error.message.includes("tasks.remove")); assertions++;
     ok(count === 0 && tasks.size === 0 && listeners.size === 0);
-    ok(hooks.onPreToolUse({ toolName: "functions.powershell", toolArgs: {}, sessionId: "owner-one" },
-        { sessionId: "owner-one" }) === undefined);
     taskRpc.remove = remove;
     await assert.rejects(() => definition.handler({ ...args, firstDispatchedModel: "caller-claimed" }, invocation)); assertions++;
     ok(count === 0);
@@ -187,16 +140,8 @@ s.add_task('review',{'id':'source','objective':'Review source','acceptanceCriter
     ok(first.status === "ok" && first.result.verdict === "PASS" && first.result.family === "anthropic");
     ok(first.cleanup.confirmed === false && first.recoveryOwner === "agent-1");
     ok(tasks.get("agent-1").status === "running");
-    ok(hooks.onPreToolUse({ toolName: "functions.powershell", toolArgs: {}, sessionId: "child" },
-        { sessionId: "owner-one" }).permissionDecision === "deny");
-    ok(hooks.onPreToolUse({ toolName: "architrave_native_cancel", toolArgs: args, sessionId: "owner-one" },
-        { sessionId: "owner-one" }) === undefined);
-    ok(hooks.onPreToolUse({ toolName: "architrave_native_cancel", toolArgs: { ...args, task_id: "other" },
-        sessionId: "child" }, { sessionId: "owner-one" }).permissionDecision === "deny");
     const recovered = JSON.parse((await cancelDefinition.handler(args, invocation)).textResultForLlm);
     ok(recovered.cancelled === true);
-    ok(hooks.onPreToolUse({ toolName: "functions.powershell", toolArgs: {}, sessionId: "owner-one" },
-        { sessionId: "owner-one" }) === undefined);
     ok(tasks.size === 0 && listeners.size === 0);
     const second = JSON.parse((await definition.handler({ ...args, reviewer: "code-review" }, { ...invocation, toolCallId: "call-two" })).textResultForLlm);
     ok(second.status === "ok" && second.result.family === "openai");
@@ -222,8 +167,6 @@ RunStore(r).resume('review',accept_commit=True)
         { ...invocation, toolCallId: "exceptional-cleanup" })).textResultForLlm);
     ok(exceptional.error.code === "NATIVE_SEMANTIC_FAILED" && exceptional.cleanup.confirmed === false);
     ok(exceptional.recoveryOwner === "agent-3");
-    ok(hooks.onPreToolUse({ toolName: "functions.powershell", toolArgs: {}, sessionId: "owner-one" },
-        { sessionId: "owner-one" }).permissionDecision === "deny");
     const exceptionRecovery = JSON.parse((await cancelDefinition.handler(args, invocation)).textResultForLlm);
     ok(exceptionRecovery.cancelled === true && tasks.size === 0);
     conflictCompletion = false;

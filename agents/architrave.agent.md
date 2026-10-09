@@ -47,13 +47,13 @@ Use its supported primitives; never launch an agent CLI or provider SDK worker.
   R0/R1 mechanically decidable changes use the focused check; semantic R2 adds
   one independent review; R3 adds real product evidence; R4 adds security/policy.
   Two families only when `review.crossFamily` explicitly requires it.
-- No automatic PostToolUse quality command is installed. MUST execute
+- Checks are explicitly invoked. MUST execute
   `python gates/gate_runner.py quality-gate` after relevant config, referenced
   design JSON or configured product-copy changes, and at final integration.
   Retain the actual exit/output proof; mandatory failure blocks completion.
   This is the same deterministic quick validator, not an LLM substitute.
   Targeted build/test and risk-scaled CI remain required; never run full suites
-  on every turn. Native permission/scope/depth guards are unchanged.
+  on every turn. Host permissions and canonical policy/scope admission remain.
 - Consult architrave:cto at start and on stall **inline** through its checklist,
   not an extra agent by default. Push back KEEP/CUT/DEFER with one reason before
   new scope. Do not let supporting harness work displace the product.

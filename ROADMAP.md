@@ -43,8 +43,9 @@
   independent slices/source/owner and explicit BLOCKS vs display-only INFORMS.
 - [x] Fresh joined native semantic producer with source/policy/holds/owner/
   challenge binding, actual host family and one-use evidence.
-- [x] Retired automatic quality registrations; exact recognized transactional
-  retirement, custom-hook preservation and explicit executable check cadence.
+- [x] Removed automatic registrations, packaged hook definitions and native
+  tool-blocking hooks; migration-only recognized transactional retirement,
+  custom-hook preservation and explicit executable check cadence.
 - [ ] Approved publication after final requested reviews and CI; consumer
   installation/adoption remains separate owner authorization.
 
@@ -84,9 +85,9 @@
 ## Milestone 3 — Gates (DONE)
 - [x] `gates/rubric.md` — cross‑platform evaluation rubric (spec / design‑language / platform / adversarial / security / a11y / reconcile / tests / verification).
 - [x] `gates/reconcile.sh` + `gates/reconcile.ps1` — design↔code drift checker (regenerate from tokens via `config.tokenBuild`, diff against committed code).
-- [x] `gates/checks.sh` + `gates/checks.ps1` — deterministic gate runner driven by `architrave.config.json` (generate/build/test + designMap/tokens JSON valid; `--quick` / `-Quick` for hooks).
+- [x] `gates/checks.sh` + `gates/checks.ps1` — deterministic gate runner driven by `architrave.config.json` (generate/build/test + designMap/tokens JSON valid; explicitly invoked `--quick` / `-Quick`).
 - [x] `gates/quality-gate.sh` + `gates/quality-gate.ps1` — lightweight quick gate (fast JSON guard + reconcile/judge reminder).
-- [x] `gates/hooks/design-guard.json` (POSIX) + `design-guard.windows.json` (pwsh) — legacy recognition definitions only in 0.14.1; automatic registration retired.
+- [x] Legacy registration retirement uses migration-only Python recognition; no hook definitions are packaged.
 - [x] `harness/init-run.*` + `validate-run.*` + `semantic-review.*` — durable run artifacts, learning notes, and optional judge prompt helper.
 
 > **Cross-platform:** every gate ships thin POSIX `.sh` and PowerShell `.ps1`
@@ -97,7 +98,7 @@
 ## Milestone 4 — Distribution
 - [x] **Plugin packaging** — `plugin.json` + `.github/plugin/marketplace.json`. Verified end‑to‑end with the real Copilot CLI (v1.0.64): both `copilot plugin install <path>` and the future‑proof `copilot plugin marketplace add dragoshont/architrave` + `copilot plugin install architrave@architrave` load the agent crew. The shared `~/.copilot` runtime ⇒ also reaches the Copilot app + VS Code.
 - [x] **Codex / ChatGPT packaging** — `.codex-plugin/plugin.json`, three plugin-only Agent Skills, two generated project roles, opt-in role installation/update, bounded dual-family launchers, and disposable plugin/role/MCP runtime smokes. Normal roles inherit parent MCP/skills/permissions and are documented as advisory contexts, not mandatory security gates.
-- [x] `tools/install.sh` (+ `install.ps1`) — per‑repo grounding: copies agents → `.github/agents/`, gates → `gates/`, scaffolds `architrave.config.json`, injects the `AGENTS.md` stanza (idempotent), wires the per‑OS PostToolUse hook, drops `copilot-setup-steps.yml`. Both variants tested on throwaway repos.
+- [x] `tools/install.sh` (+ `install.ps1`) — per‑repo grounding: copies agents → `.github/agents/`, gates → `gates/`, scaffolds `architrave.config.json`, injects the `AGENTS.md` stanza (idempotent), retires recognized legacy registrations, drops `copilot-setup-steps.yml`. Both variants tested on throwaway repos.
 - [x] `AGENTS.md` (kit) + a per‑repo `AGENTS.md` stanza template (`templates/AGENTS.stanza.md`) — the cloud‑agent reach.
 - [x] Prove on Sideport (web) — adopted on an isolated worktree (branch `architrave-adoption`, based on the UI branch's committed HEAD). The installer wired the gates to Sideport's real `tsc -b && vite build` + `eslint`; baseline gate green; ran the Feature‑Builder harness for a grounded a11y change (`aria-current` on the primary nav + the onboarding step‑tabs — WCAG 2.2 / web pack), with a consistency sweep; post‑change gate green. The config was corrected to the repo's real scripts (`test`→`lint`, `screenshot`→`test:screens`).
 

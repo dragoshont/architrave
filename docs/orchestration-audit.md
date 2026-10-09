@@ -30,9 +30,9 @@ summaries or old cross-host assumptions:
   `tasks.startAgent` accepts a user model pin, not per-task reasoning/cwd/tool
   permissions. `TaskAgentInfo.resolvedModel` and native lifecycle events can
   report effective selection, turns and usage; absence is unavailable, not zero.
-  SDK pre-tool hooks identify child session origins. The bridge consumes those
-  signals, forbids child-originated session/task spawning, counts active host
-  children (including outside the current dispatch), and keeps finite bounds.
+  The bridge observes native lifecycle events, counts active host children
+  (including outside the current dispatch), and keeps finite bounds. Tool
+  permissions and descendant-launch controls belong to the host.
   Worktrees are isolation, not an invented security sandbox.
 - [Codex subagents](https://developers.openai.com/codex/multi-agent/):
   current app/CLI clients expose native child threads, activity, steering/close

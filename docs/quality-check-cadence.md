@@ -1,10 +1,10 @@
 # Quality checks without automatic turn hooks
 
-0.14.1 no longer installs or refreshes an automatic PostToolUse quality command.
+Architrave ships no automatic hook registrations or native tool-blocking hooks.
 **Executable logic remains:** profile/config validity, existing configured
 design-source/map/token JSON validity and configured product-copy rules.
-Optional/missing-reference behavior and public shell/PowerShell/`--hook-json`
-quality-gate compatibility are unchanged.
+Optional/missing-reference behavior and explicitly invoked Python/shell/PowerShell
+quality gates remain. The legacy hook-specific JSON output mode is removed.
 
 Agents and the lead skill MUST explicitly run:
 
@@ -19,7 +19,8 @@ Targeted build/test and risk-scaled CI remain required, not full suites each tur
 
 Prose alone **does not guarantee identical automatic scheduling**. Assurance is
 executable validators, explicit checkpoint evidence, focused coverage and
-required CI. Native permission/scope/depth and human approvals remain intact.
+required CI. Host permissions, canonical policy/scope admission and human
+approvals remain intact. Ribbon and companion event observation stays passive.
 
 ## Post-release hooks-only owner update
 
@@ -32,9 +33,9 @@ python <published-kit>\tools\install_update.py retire-hooks <adopted-repo>
 ```
 
 Preview lists each path/action and guarded recognized-content hash. Apply retires
-only complete definitions exactly matching packaged legacy POSIX/Windows
+only complete definitions exactly matching migration-only legacy POSIX/Windows
 Architrave commands. Product/source, config, authentication, other hooks and
-native guards are untouched. Edits to inspected definitions cause transaction
+unrelated consumer registrations are untouched. Edits to inspected definitions cause transaction
 rollback, not removal of newer custom data; repeated calls are idempotent.
 Hooks absent during planning are checked after the transaction's asset writes.
 A newly created hook is preserved and reported `MANUAL_ACTION_REQUIRED` (exit 2)
@@ -71,8 +72,8 @@ by Git, not an immutable or same-user security boundary.
 
 Custom/mixed/unknown or malformed/duplicate-field JSON is preserved and reported
 `MANUAL_ACTION_REQUIRED` (exit 2); the owner must inspect it, not blindly delete.
-Full install/update uses the same retirement safety. Legacy templates remain
-packaged for recognition, not automatic adoption.
+Full install/update uses the same retirement safety. Recognition lives only in
+the Python installer; no active hook definition files are packaged.
 
 Verify registration absence, executable quick-check PASS, and host-loaded
 instructions/hooks through supported reload/new-turn observation. File removal

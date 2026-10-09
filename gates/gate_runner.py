@@ -4,8 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import contextlib
-import io
 import json
 from pathlib import Path
 import re
@@ -216,31 +214,16 @@ def backend(root: Path) -> int:
     return 0 if success else 1
 
 
-def quality(root: Path, hook_json: bool) -> int:
-    if hook_json:
-        captured = io.StringIO()
-        with contextlib.redirect_stdout(captured):
-            result = checks(root, True)
-    else:
-        captured = None
-        result = checks(root, True)
+def quality(root: Path) -> int:
+    result = checks(root, True)
     if result == 0:
-        if hook_json:
-            sys.stdout.write('{"continue":true}')
-            return 0
         config = load_config(root)
         if config.get("kind") == "knowledge":
             print("quality-gate: knowledge profile config valid.")
         else:
             print("quality-gate: design JSON valid.")
         return 0
-    if hook_json:
-        detail = captured.getvalue().strip() if captured else ""
-        if detail:
-            print(detail, file=sys.stderr)
-        print("quality-gate: BLOCKING - configured JSON validation failed.", file=sys.stderr)
-    else:
-        print("quality-gate: BLOCKING - configured JSON validation failed.")
+    print("quality-gate: BLOCKING - configured JSON validation failed.")
     return 2
 
 
@@ -248,7 +231,6 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("gate", choices=["checks", "reconcile", "quality-gate", "backend-checks", "message-lint"])
     parser.add_argument("--quick", action="store_true")
-    parser.add_argument("--hook-json", action="store_true")
     parser.add_argument("--repo", default=".")
     parser.add_argument("--file", help="message-lint: text file to check (default stdin)")
     args = parser.parse_args()
@@ -272,7 +254,7 @@ def main() -> int:
         return reconcile(root)
     if args.gate == "backend-checks":
         return backend(root)
-    return quality(root, args.hook_json)
+    return quality(root)
 
 
 if __name__ == "__main__":

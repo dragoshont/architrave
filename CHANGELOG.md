@@ -44,7 +44,11 @@ Releases at or before **v0.8.12** are on the
 - Install/update retires only exact recognized legacy definitions transactionally;
   custom/mixed/unknown hooks are preserved with manual action. A hooks-only
   `retire-hooks --dry-run TARGET` preview supports post-release owner cleanup;
-  public quality-gate CLI compatibility and native permission guards remain.
+  recognition is migration-only, without packaged active definitions.
+- Native tool-blocking hooks are removed, including semantic reader interception
+  and child pre-tool blocking. Host permissions and canonical admission remain;
+  ribbon/companion passive event observation is unchanged.
+- Quality gates remain explicitly invoked; legacy hook-specific JSON output is removed.
 
 ### Limitations
 - Copilot canvas capability required; no Codex/Claude canvas claim. Agent-fed

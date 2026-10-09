@@ -38,9 +38,9 @@ class QualityCadenceTests(unittest.TestCase):
     def write_config(self):
         (self.repo / "architrave.config.json").write_text(json.dumps(self.config))
 
-    def quiet_quality(self, hook=False):
+    def quiet_quality(self):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            return gate.quality(self.repo, hook)
+            return gate.quality(self.repo)
 
     def test_quick_does_not_execute_full_build_test_recipes(self):
         with mock.patch.object(gate, "run_recipe", side_effect=AssertionError("expensive recipe")), contextlib.redirect_stdout(io.StringIO()):
@@ -95,11 +95,20 @@ class QualityCadenceTests(unittest.TestCase):
             self.assertIn("actions/upload-artifact@v4", browser_job)
         self.assertIn("needs: [validate, powershell-harness, session-browser]",
                       (ROOT / ".github/workflows/release.yml").read_text())
-    def test_public_hook_json_compatibility_remains(self):
+    def test_explicit_quality_output_remains(self):
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
-            self.assertEqual(0, gate.quality(self.repo, True))
-        self.assertEqual({"continue": True}, json.loads(output.getvalue()))
+            self.assertEqual(0, gate.quality(self.repo))
+        self.assertIn("quality-gate: design JSON valid.", output.getvalue())
+
+    def test_no_active_hook_definitions_or_registrations_are_packaged(self):
+        self.assertFalse((ROOT / "gates/hooks").is_dir() and any((ROOT / "gates/hooks").iterdir()))
+        for name in ("extensions/architrave-native/bridge.mjs",
+                     ".github/extensions/architrave-ribbon/extension.mjs"):
+            text = (ROOT / name).read_text()
+            self.assertNotIn("onPreToolUse", text)
+            self.assertNotIn("onPostToolUse", text)
+        self.assertNotIn("--hook-json", (ROOT / "gates/gate_runner.py").read_text())
 
     def test_agent_skill_cadence_and_ci_coverage_are_explicit(self):
         for name in ("agents/architrave.agent.md", "skills/architrave/SKILL.md", "templates/AGENTS.stanza.md"):

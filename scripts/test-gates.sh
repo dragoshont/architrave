@@ -26,22 +26,13 @@ grep -q 'UI design reconciliation not applicable for knowledge profile' <<<"$rec
 quality="$(cd "$repo" && ./gates/quality-gate.sh)"
 grep -q 'profile knowledge: UI design JSON validation not applicable' <<<"$quality"
 grep -q 'knowledge profile config valid' <<<"$quality"
-(
-  cd "$repo"
-  ./gates/quality-gate.sh --hook-json >"$tmp/hook-success.out" 2>"$tmp/hook-success.err"
-)
-[ "$(cat "$tmp/hook-success.out")" = '{"continue":true}' ]
-[ "$(wc -c < "$tmp/hook-success.out" | tr -d ' ')" = "17" ]
-[ ! -s "$tmp/hook-success.err" ]
-
 printf '{' > "$repo/architrave.config.json"
 set +e
-(cd "$repo" && ./gates/quality-gate.sh --hook-json) >"$tmp/hook-fail.out" 2>"$tmp/hook-fail.err"
-hook_status=$?
+(cd "$repo" && ./gates/quality-gate.sh) >"$tmp/quality-fail.out" 2>"$tmp/quality-fail.err"
+quality_status=$?
 set -e
-[ "$hook_status" -eq 2 ]
-[ ! -s "$tmp/hook-fail.out" ]
-grep -q 'quality-gate: BLOCKING' "$tmp/hook-fail.err"
+[ "$quality_status" -eq 2 ]
+grep -q 'quality-gate: BLOCKING' "$tmp/quality-fail.out"
 
 mkdir -p "$repo/strings"
 printf '{"signIn": "Sign in with Microsoft"}\n' > "$repo/strings/en.json"
