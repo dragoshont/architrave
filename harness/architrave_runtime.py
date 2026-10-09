@@ -309,18 +309,18 @@ def safe_relative_path(value: str, label: str = "path") -> str:
     return normalized
 
 
-def run_command(args: Sequence[str], cwd: Path) -> str:
+def run_command(args: Sequence[str], cwd: Path, *, strip_output: bool = True) -> str:
     try:
         completed = subprocess.run(
             list(args),
             cwd=cwd,
             check=True,
             capture_output=True,
-            text=True,
+            text=strip_output,
         )
     except (OSError, subprocess.CalledProcessError) as exc:
         raise RuntimeFailure("REPOSITORY_IDENTITY", f"failed to inspect repository: {' '.join(args)}") from exc
-    return completed.stdout.strip()
+    return completed.stdout.strip() if strip_output else os.fsdecode(completed.stdout)
 
 
 class FileLock:
@@ -418,7 +418,7 @@ def native_review_family(model: str) -> str:
     raise RuntimeFailure("SEMANTIC_FAMILY_UNCONFIRMED", "host first-dispatched model has no supported family mapping")
 
 def native_source_inventory(repository: Path) -> tuple[list[str], dict[str, Any]]:
-    tracked = [path for path in run_command(["git", "ls-files", "-z"], repository).split("\0") if path]
+    tracked = [path for path in run_command(["git", "ls-files", "-z"], repository, strip_output=False).split("\0") if path]
     private = [path for path in tracked if path.split("/", 1)[0].casefold() in {".git", ".architrave"}]
     private_paths = set(private)
     implementation = [path for path in tracked if path not in private_paths]

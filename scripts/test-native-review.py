@@ -13,11 +13,20 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "harness"))
-from architrave_runtime import NativeSemanticTicket, RunStore, RuntimeFailure, missing_gate_requirements
+from architrave_runtime import NativeSemanticTicket, RunStore, RuntimeFailure, missing_gate_requirements, native_source_inventory
 import native_host
 
 
 class InventoryTransportTests(unittest.TestCase):
+    def test_nul_inventory_preserves_whitespace_and_literal_line_endings(self):
+        raw = b" leading\r\nfilename.md\0README.md\0"
+        with mock.patch("architrave_runtime.subprocess.run",
+                        return_value=subprocess.CompletedProcess([], 0, stdout=raw)) as command:
+            files, scope = native_source_inventory(ROOT)
+        self.assertEqual([" leading\r\nfilename.md", "README.md"], files)
+        self.assertFalse(command.call_args.kwargs["text"])
+        self.assertEqual(2, scope["inventoryCount"])
+
     def test_large_unicode_inventory_is_losslessly_byte_bounded(self):
         paths = [f"source-{index}/" + "\u03bb" * 120 + ".py" for index in range(4096)]
         frames = []
@@ -68,6 +77,19 @@ class NativeReviewTests(unittest.TestCase):
         self.assertIn(ticket.challenge, prompt)
         self.store.bind_native_semantic_owner(ticket, agent)
         return ticket
+
+    def test_inventory_preserves_first_leading_whitespace_filename(self):
+        name = " leading.md"
+        (self.repo / name).write_text("Public leading-whitespace fixture\n", encoding="utf-8")
+        self.git("add", "--", name)
+        self.git("commit", "-qm", "valid leading-whitespace filename")
+        self.store.resume("review", accept_commit=True)
+        files, scope = native_source_inventory(self.repo)
+        self.assertEqual(name, files[0])
+        self.assertNotIn("leading.md", files)
+        self.assertEqual(len(files), scope["inventoryCount"])
+        ticket = self.prepared()
+        self.assertIn(name, ticket.source_files)
 
     def report(self, ticket, verdict="PASS"):
         return {

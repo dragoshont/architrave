@@ -908,7 +908,7 @@ class InstallUpdateTests(unittest.TestCase):
                 with self.module.ManagedTransaction(managed):
                     self.module.apply_quality_hook_plan(managed, plan)
         self.assertEqual(custom, active.read_bytes())
-        retained = list((target / ".architrave/install-retired-hooks").glob("*/*"))
+        retained = list((target / ".architrave/install-retired-hooks").glob("*/design-guard.json"))
         self.assertEqual(1, len(retained))
         self.assertEqual(custom, retained[0].read_bytes())
         self.assertFalse((target / ".architrave-install-transaction").exists())
@@ -969,7 +969,7 @@ class InstallUpdateTests(unittest.TestCase):
                         self.assertEqual(replacement, active.read_bytes())
             finally:
                 writer.close()
-            retained = list((target / ".architrave/install-retired-hooks").glob("*/*"))
+            retained = list((target / ".architrave/install-retired-hooks").glob("*/design-guard.json"))
             self.assertTrue(wrote)
             self.assertEqual(1, len(retained))
             self.assertEqual(custom, retained[0].read_bytes())
@@ -994,9 +994,91 @@ class InstallUpdateTests(unittest.TestCase):
                 with self.module.ManagedTransaction(managed):
                     self.module.apply_quality_hook_plan(managed, plan)
         self.assertEqual(original_bytes, active.read_bytes())
-        retained = list((target / ".architrave/install-retired-hooks").glob("*/*"))
+        retained = list((target / ".architrave/install-retired-hooks").glob("*/design-guard.json"))
         self.assertEqual(original_bytes, retained[0].read_bytes())
         self.assertFalse((target / ".architrave-install-transaction").exists())
+
+    def test_quality_retirement_private_guard_survives_rollback_and_custom_ignore_edits(self) -> None:
+        for mode in ("success", "mismatch", "crash"):
+            with self.subTest(mode=mode):
+                target = self.workspace / mode
+                target.mkdir()
+                subprocess.run(["git", "init", "-q"], cwd=target, check=True, capture_output=True)
+                ignore = target / ".gitignore"
+                ignore.write_bytes(b"original-custom-rule\n")
+                active = target / ".github/hooks/design-guard.json"
+                active.parent.mkdir(parents=True)
+                active.write_bytes((ROOT / "gates/hooks/design-guard.json").read_bytes())
+                changed_ignore = b"concurrent-custom-rule\n!.architrave/\n!.architrave/**\n"
+                custom_hook = b'{"custom":"retained private contents"}'
+                original_manifest = self.module.ManagedTransaction._write_manifest
+                original_replace = self.module.os.replace
+                edited = False
+                witnessed_private = False
+
+                def journal_then_edit(transaction, value):
+                    nonlocal edited
+                    if mode == "crash" and value.get("applied") == 1:
+                        raise OSError("injected crash after private quarantine")
+                    original_manifest(transaction, value)
+                    if not edited and value.get("inFlight") == 0:
+                        edited = True
+                        ignore.write_bytes(changed_ignore)
+                        if mode == "mismatch":
+                            active.write_bytes(custom_hook)
+
+                def assert_private_before_move(source, destination):
+                    nonlocal witnessed_private
+                    if Path(str(source).removeprefix("\\\\?\\")) == active:
+                        relative = Path(str(destination).removeprefix("\\\\?\\")).relative_to(target).as_posix()
+                        checked = subprocess.run(["git", "check-ignore", "--no-index", "--", relative],
+                                                 cwd=target, capture_output=True)
+                        self.assertEqual(0, checked.returncode)
+                        witnessed_private = True
+                    original_replace(source, destination)
+
+                with mock.patch.object(self.module.ManagedTransaction, "_write_manifest", journal_then_edit), \
+                        mock.patch.object(self.module.os, "replace", assert_private_before_move):
+                    if mode == "success":
+                        self.assertEqual(0, self.module.retire_quality_hooks(ROOT, target))
+                    else:
+                        error = OSError if mode == "crash" else self.module.InstallerError
+                        with self.assertRaises(error):
+                            self.module.retire_quality_hooks(ROOT, target)
+                self.assertTrue(witnessed_private)
+                self.assertEqual(changed_ignore, ignore.read_bytes())
+                retained = list((target / ".architrave/install-retired-hooks").glob("*/design-guard.json"))
+                self.assertEqual(1, len(retained))
+                relative = retained[0].relative_to(target).as_posix()
+                self.assertEqual(0, subprocess.run(["git", "check-ignore", "--no-index", "--", relative],
+                                                 cwd=target, capture_output=True).returncode)
+                self.assertEqual(b"*\n", (retained[0].parent / ".gitignore").read_bytes())
+                status = subprocess.run(["git", "status", "--porcelain", "--untracked-files=all"],
+                                        cwd=target, capture_output=True, text=True, check=True).stdout
+                self.assertNotIn("install-retired-hooks", status)
+                if mode == "mismatch":
+                    self.assertEqual(custom_hook, active.read_bytes())
+                    self.assertEqual(custom_hook, retained[0].read_bytes())
+
+    def test_quality_retirement_preserves_conflicting_archive_ignore_before_retention(self) -> None:
+        target = self.workspace / "c"
+        target.mkdir()
+        active = target / ".github/hooks/design-guard.json"
+        active.parent.mkdir(parents=True)
+        original = (ROOT / "gates/hooks/design-guard.json").read_bytes()
+        active.write_bytes(original)
+        identifier = uuid.UUID("a" * 32)
+        directory = target / ".architrave/install-retired-hooks" / identifier.hex
+        guard = Path(self.module.ManagedTransaction._native_path(directory / ".gitignore"))
+        guard.parent.mkdir(parents=True)
+        custom = b"!design-guard.json\n"
+        guard.write_bytes(custom)
+        with mock.patch.object(self.module.uuid, "uuid4", return_value=identifier):
+            with self.assertRaisesRegex(self.module.InstallerError, "custom quarantine ignore rules preserved"):
+                self.module.retire_quality_hooks(ROOT, target)
+        self.assertEqual(original, active.read_bytes())
+        self.assertEqual(custom, guard.read_bytes())
+        self.assertFalse((directory / active.name).exists())
 
     def test_public_entrypoints_are_python_only_launch_shims(self) -> None:
         install_sh = (ROOT / "tools/install.sh").read_text(encoding="utf-8")

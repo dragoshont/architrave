@@ -758,6 +758,24 @@ class ManagedTransaction:
         with path.open("r+b") as stream:
             os.fsync(stream.fileno())
 
+    def _protect_quarantine(self, relative: str) -> Path:
+        self.managed.preflight_file(relative)
+        guard_relative = (Path(relative).parent / ".gitignore").as_posix()
+        self.managed.preflight_file(guard_relative)
+        guard = Path(self._native_path(self.managed.path(guard_relative)))
+        guard.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with guard.open("xb") as stream:
+                stream.write(b"*\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+        except FileExistsError:
+            self.managed.preflight_file(guard_relative)
+            info = _lstat(guard)
+            if info is None or not _is_regular_file(info) or guard.read_bytes() != b"*\n":
+                raise InstallerError("retire-hooks: custom quarantine ignore rules preserved; safe retention requires owner recovery")
+        return self.managed.path(relative)
+
     def _recover(self) -> None:
         manifest_path = self.directory / "manifest.json"
         if not manifest_path.is_file():
@@ -774,6 +792,7 @@ class ManagedTransaction:
             if item["kind"] == "remove" and item.get("quarantine"):
                 quarantine = self.managed.path(str(item["quarantine"]))
                 if _lstat(Path(self._native_path(quarantine))) is not None:
+                    self._protect_quarantine(str(item["quarantine"]))
                     destination.parent.mkdir(parents=True, exist_ok=True)
                     try:
                         os.link(self._native_path(quarantine), self._native_path(destination), follow_symlinks=False)
@@ -897,9 +916,7 @@ class ManagedTransaction:
                     os.chmod(destination, stat.S_IMODE(int(operation["mode"])))
                 elif operation.get("quarantine"):
                     quarantine_relative = str(operation["quarantine"])
-                    self.managed.preflight_file(quarantine_relative)
-                    quarantine = self.managed.path(quarantine_relative)
-                    quarantine.parent.mkdir(parents=True, exist_ok=True)
+                    quarantine = self._protect_quarantine(quarantine_relative)
                     os.replace(self._native_path(destination), self._native_path(quarantine))
                     moved = Path(self._native_path(quarantine))
                     info = _lstat(moved)

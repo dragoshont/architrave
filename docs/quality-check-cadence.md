@@ -43,6 +43,12 @@ newer targets are never overwritten. Quarantined inodes remain under
 `.architrave/install-retired-hooks/` so writes through already-open handles are
 retained rather than deleted by transaction cleanup. Inspect reported retained
 paths at the owner boundary; a rename is not a claim of immutable content.
+Each archive gets a create-only, flushed local ignore guard before the inode is
+moved. That guard remains through rollback/recovery, including hooks-only use in
+older repositories without the root ignore rule. Root ignore files and
+concurrent custom edits are untouched; conflicting archive-local ignore rules
+stop retention/recovery rather than being overwritten. Retained data is ignored
+by Git, not an immutable or same-user security boundary.
 
 Custom/mixed/unknown or malformed/duplicate-field JSON is preserved and reported
 `MANUAL_ACTION_REQUIRED` (exit 2); the owner must inspect it, not blindly delete.
