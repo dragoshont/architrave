@@ -165,8 +165,15 @@ class LegibilityRunner:
             timeout_seconds=timeout_seconds,
             max_output_bytes=1024 * 1024,
         )
-        stdout = str(redact(execution["stdout"]))
-        stderr = str(redact(execution["stderr"]))
+        logs = {}
+        for stream in ("stdout", "stderr"):
+            try:
+                structured = json.loads(execution[stream])
+            except json.JSONDecodeError:
+                logs[stream] = str(redact(execution[stream]))
+            else:
+                logs[stream] = json.dumps(redact(structured), sort_keys=True)
+        stdout, stderr = logs["stdout"], logs["stderr"]
         stdout_path.write_text(stdout, encoding="utf-8")
         stderr_path.write_text(stderr, encoding="utf-8")
         return {
@@ -340,7 +347,7 @@ class LegibilityRunner:
                     "name": result["name"],
                     "status": result["status"],
                     "exitCode": result.get("exitCode"),
-                    "reason": str(redact(result.get("stdout", "")))[:2000]
+                    "reason": ("required check missing" if result["status"] == "missing" else "required check failed")
                               if result["status"] in {"fail", "missing"} else None,
                     "stdoutSha256": result.get("stdoutSha256"),
                     "artifacts": [

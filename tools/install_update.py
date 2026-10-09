@@ -931,18 +931,25 @@ class ManagedTransaction:
                 elif operation.get("quarantine"):
                     quarantine_relative = str(operation["quarantine"])
                     quarantine = self._protect_quarantine(quarantine_relative)
-                    os.replace(self._native_path(destination), self._native_path(quarantine))
-                    moved = Path(self._native_path(quarantine))
-                    info = _lstat(moved)
-                    if info is None or not _is_regular_file(info):
-                        raise InstallerError("retire-hooks: quarantined inode is not a regular file; retained for safe recovery")
-                    if expected and sha256_file(moved) != expected:
-                        raise InstallerError("retire-hooks: moved definition changed after inspection; actual inode retained for rollback")
-                    if _lstat(destination) is not None:
-                        self.manual_action = True
-                        print(f"MANUAL_ACTION_REQUIRED: concurrent hook target preserved; original inode retained: {quarantine_relative}",
-                              file=sys.stderr)
-                    print(f"  retired hook inode retained: {quarantine_relative}")
+                    try:
+                        os.replace(self._native_path(destination), self._native_path(quarantine))
+                    except FileNotFoundError:
+                        if (_lstat(Path(self._native_path(destination))) is not None
+                                or _lstat(Path(self._native_path(quarantine))) is not None):
+                            raise
+                        print(f"  recognized hook already absent at retirement: {relative}")
+                    else:
+                        moved = Path(self._native_path(quarantine))
+                        info = _lstat(moved)
+                        if info is None or not _is_regular_file(info):
+                            raise InstallerError("retire-hooks: quarantined inode is not a regular file; retained for safe recovery")
+                        if expected and sha256_file(moved) != expected:
+                            raise InstallerError("retire-hooks: moved definition changed after inspection; actual inode retained for rollback")
+                        if _lstat(destination) is not None:
+                            self.manual_action = True
+                            print(f"MANUAL_ACTION_REQUIRED: concurrent hook target preserved; original inode retained: {quarantine_relative}",
+                                  file=sys.stderr)
+                        print(f"  retired hook inode retained: {quarantine_relative}")
                 else:
                     destination.unlink(missing_ok=True)
                 manifest["applied"] = index + 1

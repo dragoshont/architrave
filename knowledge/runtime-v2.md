@@ -184,6 +184,9 @@ bindings never imply safety clearance.
 Supplied safety-evidence identity fields must have valid types/formats before
 source comparison. Null, malformed or fabricated digest/Run/version values
 raise an evidence error; they cannot clear a FAIL by looking different.
+Failed legibility receipts retain generic check classifications, never raw
+command/browser diagnostics. Diagnostic logs stay separately retained and
+hashed; structured JSON logs apply key-based redaction before persistence.
 Visual artifacts are retained once before freshness/pixel validation, and the
 receipt references those exact validated bytes. Retention preserves the observed
 source modification time; copying an old screenshot does not refresh its proof.

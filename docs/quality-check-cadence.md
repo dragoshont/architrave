@@ -40,6 +40,10 @@ Hooks absent during planning are checked after the transaction's asset writes.
 A newly created hook is preserved and reported `MANUAL_ACTION_REQUIRED` (exit 2)
 by install, update and hooks-only retirement. Absence assertions never write,
 back up or remove that hook, including during recovery.
+If a recognized hook is concurrently removed before quarantine, retirement
+accepts the already-achieved absence only after rechecking both original and
+quarantine paths. A newly present replacement or quarantine entry is not
+silently treated as success.
 
 Retirement atomically quarantines the actual hook inode before checking its
 bytes. A mismatch restores the actual inode only if the active target is absent;

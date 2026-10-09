@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -262,6 +263,39 @@ class LegibilityTests(unittest.TestCase):
         state = self.store.load(run_id)
         self.assertEqual([], state["gateResults"])
         self.assertNotEqual("FAILED", state["status"])
+
+    def test_failed_receipt_excludes_raw_diagnostics_and_structured_secret_values(self) -> None:
+        (self.repo / "dom.json").write_text("{}\n", encoding="utf-8")
+        (self.repo / "a11y.json").write_text("{}\n", encoding="utf-8")
+        self.write_png(self.repo / "web.png", [(0, 0, 0), (255, 255, 255)])
+        private_diagnostic = "FIXTURE_PRIVATE_BROWSER_DIAGNOSTIC"
+        secret = "FIXTURE_NONCREDENTIAL_PASSWORD_VALUE"
+        evidence = self.json_command({
+            "url": "http://fixture.invalid/release", "domSnapshot": "dom.json",
+            "accessibilityTree": "a11y.json", "screenshot": "web.png",
+            "workflowPassed": False, "consoleErrors": [private_diagnostic],
+            "networkFailures": ["http://fixture.invalid/private?profile=" + private_diagnostic],
+            "credentials": {"password": secret},
+        }, ["dom.json", "a11y.json", "web.png"])
+        runner, run_id = self.create_runner({
+            "health": self.pass_command(), "web": {"url": "http://fixture.invalid/release", "e2e": evidence}})
+        result = runner.verify_surface("web")
+        self.assertEqual("fail", result["status"])
+        state = self.store.load(run_id)
+        artifact = next(item for item in state["artifacts"] if item["producer"] == "legibility")
+        text = (self.repo / artifact["path"]).read_text(encoding="utf-8")
+        self.assertNotIn(private_diagnostic, text)
+        self.assertNotIn(secret, text)
+        receipt = json.loads(text)
+        failed = next(item for item in receipt["results"] if item["name"] == "web.e2e")
+        self.assertEqual("required check failed", failed["reason"])
+        for retained in failed["artifacts"]:
+            path = self.repo / retained["path"]
+            self.assertEqual(retained["sha256"], hashlib.sha256(path.read_bytes()).hexdigest())
+            if path.name.endswith(".stdout.log"):
+                log = path.read_text(encoding="utf-8")
+                self.assertNotIn(secret, log)
+                self.assertIn(private_diagnostic, log)
 
     def test_web_e2e_is_recorded_as_reality_gate(self) -> None:
         (self.repo / "dom.json").write_text("{}\n", encoding="utf-8")

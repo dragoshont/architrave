@@ -1177,6 +1177,40 @@ class InstallUpdateTests(unittest.TestCase):
                 self.assertEqual(custom, active.read_bytes())
                 self.assertFalse((target / ".architrave-install-transaction").exists())
 
+    def test_quality_retirement_concurrent_removal_is_idempotent_but_replacement_is_preserved(self) -> None:
+        for replacement in (False, True):
+            with self.subTest(replacement=replacement):
+                target = self.workspace / ("replaced" if replacement else "removed")
+                target.mkdir()
+                active = target / ".github/hooks/design-guard.json"
+                active.parent.mkdir(parents=True)
+                active.write_bytes((ROOT / "gates/hooks/design-guard.json").read_bytes())
+                custom = b'{"custom":"replacement after concurrent removal"}'
+                original = self.module.os.replace
+
+                def remove_before_move(source, destination):
+                    if Path(str(source).removeprefix("\\\\?\\")) == active:
+                        active.unlink()
+                        if replacement:
+                            active.write_bytes(custom)
+                        raise FileNotFoundError("fixture concurrent removal before quarantine")
+                    original(source, destination)
+
+                output = io.StringIO()
+                with mock.patch.object(self.module.os, "replace", remove_before_move), contextlib.redirect_stdout(output):
+                    if replacement:
+                        with self.assertRaises(FileNotFoundError):
+                            self.module.retire_quality_hooks(ROOT, target)
+                    else:
+                        self.assertEqual(0, self.module.retire_quality_hooks(ROOT, target))
+                if replacement:
+                    self.assertEqual(custom, active.read_bytes())
+                else:
+                    self.assertFalse(active.exists())
+                    self.assertIn("already absent at retirement", output.getvalue())
+                    self.assertNotIn("retired hook inode retained", output.getvalue())
+                self.assertFalse((target / ".architrave-install-transaction").exists())
+
     def test_quality_retirement_absence_assertion_recovery_preserves_new_hook(self) -> None:
         target = self.workspace / "absence recovery"
         target.mkdir()
