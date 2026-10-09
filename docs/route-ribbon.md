@@ -368,6 +368,9 @@ Current criterion-owned taskless product observations can verify an already
 completed delivery, as can observations bound to that delivery itself. Proof
 bound to another task or surface, or an older source, cannot verify it. This
 does not let taskless observations substitute for task-bound completion gates.
+Initial snapshot and stream objective versions start at 1, matching Run v2;
+revision 0 remains valid. A valid older objective is rejected as stale, while
+objective version 0 is invalid even before any display snapshot is saved.
 
 The Session companion retains at most 32 pending request IDs. Overflow is
 explicitly unreconciled and conservatively Waiting; idle, turn-end, errors,

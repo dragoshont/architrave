@@ -319,6 +319,10 @@ class LegibilityTests(unittest.TestCase):
         result = runner.verify_surface("web")
         self.assertEqual("pass", result["status"])
         gate = self.store.load(run_id)["gateResults"][-1]
+        with self.assertRaisesRegex(RuntimeFailure, "failed observed product"):
+            self.store.record_gate(run_id, gate_id="passing-proof-cannot-fail", task_id=None, gate_type="reality",
+                                  status="FAIL", criteria=["REALITY-001"], surface="web",
+                                  evidence_refs=gate["evidenceRefs"])
         self.assertEqual("reality", gate["type"])
         self.assertEqual("PASS", gate["status"])
 

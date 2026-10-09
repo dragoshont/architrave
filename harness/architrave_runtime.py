@@ -3920,6 +3920,11 @@ class RunStore:
         receipt = self._read_json_receipt(artifact["path"], "product")
         if require_pass and (receipt.get("status") != "pass" or receipt.get("failed") != []):
             raise RuntimeFailure("LEGIBILITY_RECEIPT", "PASS requires a passing observed product receipt")
+        if not require_pass:
+            failed = [item.get("name") for item in receipt.get("results", [])
+                      if isinstance(item, dict) and item.get("status") in {"fail", "missing"}]
+            if receipt.get("status") != "fail" or not failed or receipt.get("failed") != failed:
+                raise RuntimeFailure("LEGIBILITY_RECEIPT", "FAIL requires a failed observed product receipt")
         binding = receipt.get("binding")
         source = receipt.get("source")
         if not isinstance(binding, dict) or not isinstance(source, dict):

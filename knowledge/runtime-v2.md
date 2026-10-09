@@ -171,6 +171,9 @@ set a current criterion to PASS or satisfy verification, including after
 Binding/source validation also applies to current failed observations so
 verification can report a failed Run. Failed receipts never provide PASS
 admission or consumption credit.
+A failed gate likewise requires a failed observed receipt with its matching
+nonempty failed-check list; a genuine passing observation cannot be relabelled
+as a failure.
 Failed legibility admission rechecks those bindings inside the Run transaction;
 an earlier observation check cannot authorize evidence after source drift.
 Canonical verification and the ribbon use the same source-current failure

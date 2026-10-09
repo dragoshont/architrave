@@ -105,6 +105,12 @@ async function bounded(value) {
 }
 try {
     const first = await load(); providers.push(first.canvas);
+    const invalidInitialVersion = structuredClone(fixture);
+    invalidInitialVersion.objectiveVersion = 0;
+    assert.throws(() => first.validate(invalidInitialVersion), error => error.code === "ribbon_input_invalid"); assertions++;
+    const initialRevision = structuredClone(fixture);
+    initialRevision.revision = 0;
+    first.validate(initialRevision); assertions++;
     first.validate(fixture);
     const maximum = structuredClone(fixture);
     maximum.runId = "r".repeat(128);
@@ -135,6 +141,9 @@ try {
         { fromStep: "scope", toStep: "bypass", type: "blocks",
             reason: "Canonical cross-stream prerequisite.", provenance: "canonical dependency" }];
     first.validate(parallel); assertions++;
+    const invalidStreamVersion = structuredClone(parallel);
+    invalidStreamVersion.streams[0].sourceRef.objectiveVersion = 0;
+    assert.throws(() => first.validate(invalidStreamVersion), error => error.code === "ribbon_input_invalid"); assertions++;
     const colonIds = structuredClone(parallel);
     colonIds.steps = [
         { ...parallel.steps[0], id: "a:b" }, { ...parallel.steps[0], id: "a" },
@@ -237,12 +246,19 @@ try {
     await rejects(() => action(first.canvas, "update_snapshot", "one", { snapshot: olderCapture, expectedDigest: winner.digest }), "ribbon_stale_snapshot");
     const olderObjective = structuredClone(winner.snapshot);
     olderObjective.objectiveVersion = 0;
-    await rejects(() => action(first.canvas, "update_snapshot", "one", { snapshot: olderObjective, expectedDigest: winner.digest }), "ribbon_stale_snapshot");
+    await rejects(() => action(first.canvas, "update_snapshot", "one", { snapshot: olderObjective, expectedDigest: winner.digest }), "ribbon_input_invalid");
     const update = structuredClone(winner.snapshot); update.revision = 2;
+    update.objectiveVersion = 2;
     update.capturedAt = "2026-10-08T05:03:00Z";
     await rejects(() => action(first.canvas, "update_snapshot", "one", { snapshot: update, expectedDigest: null }), "ribbon_snapshot_conflict");
     const result = await action(first.canvas, "update_snapshot", "one", { snapshot: update, expectedDigest: winner.digest });
     ok(result.revision === 2);
+    const olderValidObjective = structuredClone(update);
+    olderValidObjective.objectiveVersion = 1;
+    olderValidObjective.revision = 3;
+    olderValidObjective.capturedAt = "2026-10-08T05:04:00Z";
+    await rejects(() => action(first.canvas, "update_snapshot", "one",
+        { snapshot: olderValidObjective, expectedDigest: result.digest }), "ribbon_stale_snapshot");
     await rejects(() => action(first.canvas, "update_snapshot", "one", { snapshot: fixture, expectedDigest: result.digest }), "ribbon_stale_snapshot");
     const peer = await first.canvas.open({ instanceId: "two", input: { domainKey: fixture.domainKey } });
     ok((await fetch(new URL("snapshot", peer.url)).then(response => response.json())).revision === 2);

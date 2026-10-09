@@ -19,11 +19,12 @@ const id = { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" };
 const domain = { type: "string", minLength: 1, maxLength: 256, pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$" };
 const nullableText = { anyOf: [text, { type: "null" }] };
 const count = { type: "integer", minimum: 0, maximum: 1000000000 };
+const objectiveVersion = { ...count, minimum: 1 };
 const object = (properties, required = Object.keys(properties)) =>
     ({ type: "object", additionalProperties: false, properties, required });
 export const snapshotSchema = object({
     schema: { const: "architrave.ribbon.v1" }, domainKey: domain, runId: id,
-    revision: count, objectiveVersion: count, title: text, objective: text,
+    revision: count, objectiveVersion, title: text, objective: text,
     capturedAt: text, startedAt: text, deadline: nullableText,
     source: object({ commit: text, sha256: text, freshness: { enum: ["current", "stale", "unknown"] }, provenance: text }),
     next: nullableText, milestone: nullableText,
@@ -43,7 +44,7 @@ export const snapshotSchema = object({
     streams: { type: "array", maxItems: 80, items: object({
         id, label: text, kind: { enum: ["delivery", "exploratory", "reference", "review", "operations", "unassigned"] },
         outcome: text, sourceRef: object({
-            domainKey: domain, runId: id, revision: count, objectiveVersion: count, capturedAt: text, commit: text, sha256: text,
+            domainKey: domain, runId: id, revision: count, objectiveVersion, capturedAt: text, commit: text, sha256: text,
             freshness: { enum: ["current", "stale", "unknown"] },
         }),
     }) },
