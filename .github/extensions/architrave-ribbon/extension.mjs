@@ -528,8 +528,8 @@ export function validateSnapshot(value) {
     for (const stream of streams.values()) timestamp(stream.sourceRef.capturedAt, "stream capture");
     for (const step of value.steps) {
         if (step.streamId && !streams.has(step.streamId)) fail("steps: missing workstream");
-        if (step.state === "verified" && step.streamId && streams.get(step.streamId).kind !== "delivery")
-            fail("steps: investigation/reference completion is not product verified");
+        if (step.state === "verified" && (!step.streamId || streams.get(step.streamId)?.kind !== "delivery"))
+            fail("steps: product verification requires an existing delivery workstream");
         for (const key of ["startedAt", "finishedAt"]) if (step[key]) timestamp(step[key], "owner span");
         if (step.finishedAt && (!step.startedAt || Date.parse(step.finishedAt) < Date.parse(step.startedAt)))
             fail("steps: invalid owner span order");

@@ -139,6 +139,10 @@ s.add_task('review',{'id':'source','objective':'Review source','acceptanceCriter
         }, { context });
     });
     await module.evaluate();
+    assert.throws(() => module.namespace.semanticReviewPrompt("Bound subject", Array.from({ length: 4096 },
+        (_, index) => join(repo, "source-" + index + "-" + "x".repeat(120) + ".py"))),
+        error => error.message.includes("SEMANTIC_PROMPT_TOO_LARGE")); assertions++;
+    ok(module.namespace.semanticReviewPrompt("Bound subject", [join(repo, "README.md")]).includes("README.md"));
     const args = { repo, run_id: "review", task_id: "source", reviewer: "rubber-duck" };
     const invocation = { sessionId: "owner-one", toolCallId: "call-one" };
     await assert.rejects(() => definition.handler({ ...args, firstDispatchedModel: "caller-claimed" }, invocation)); assertions++;

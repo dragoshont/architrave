@@ -315,10 +315,8 @@ class LegibilityRunner:
         bound_criteria = (find_task(state, task_id)["acceptanceCriteria"] if task_id else [
             item["id"] for item in state["acceptanceCriteria"] if item["blocking"]
             and item.get("surface") == surface])
-        if not task_id and not bound_criteria and not failed:
+        if not task_id and not bound_criteria:
             raise RuntimeFailure("GATE_BINDING_REQUIRED", "taskless observation needs explicit criterion surface ownership")
-        if not bound_criteria and failed:
-            bound_criteria = [item["id"] for item in state["acceptanceCriteria"] if item["blocking"]]
         receipt_path = self.evidence_dir / f"{surface}-{uuid.uuid4().hex}.receipt.json"
         receipt = {
             "binding": {

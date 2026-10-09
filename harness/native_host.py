@@ -167,6 +167,7 @@ def main():
         emit({"status": "failed", "error": {
             "code": exc.code if isinstance(exc, RuntimeFailure) else "NATIVE_TRANSPORT_INVALID",
             "message": str(exc), "cleanupError": cleanup_error,
+            **({"details": exc.details} if isinstance(exc, RuntimeFailure) and exc.details else {}),
         }})
         return exc.exit_code if isinstance(exc, RuntimeFailure) else 1
 

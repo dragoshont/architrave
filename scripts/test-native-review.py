@@ -225,6 +225,16 @@ class NativeReviewTests(unittest.TestCase):
         text = "```json\r\n" + json.dumps(self.report(ticket), indent=2).replace("\n", "\r\n") + "\r\n```"
         self.assertEqual("PASS", self.accept(ticket, text=text)["verdict"])
 
+    def test_malformed_result_has_redacted_structural_diagnostic_not_a_verdict(self):
+        ticket = self.prepared()
+        with self.assertRaises(RuntimeFailure) as error:
+            self.accept(ticket, text="Unstructured output " + ticket.challenge)
+        self.assertEqual("SEMANTIC_RESULT_INVALID", error.exception.code)
+        self.assertEqual("json-parse", error.exception.details["classification"])
+        self.assertFalse(error.exception.details["startsObject"])
+        self.assertNotIn(ticket.challenge, json.dumps(error.exception.details))
+        self.assertEqual([], self.store.load("review")["gateResults"])
+
     def test_finding_paths_must_be_declared_implementation_entries(self):
         (self.repo / ".git" / "info" / "exclude").write_text("untracked.md\n")
         (self.repo / "untracked.md").write_text("Ignored, untracked and outside the declared inventory")

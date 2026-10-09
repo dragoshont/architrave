@@ -293,9 +293,12 @@ class LegibilityTests(unittest.TestCase):
                 "electron": {"launch": self.fail_command(), "health": self.pass_command(), "screenshot": self.pass_command()},
             }
         )
-        result = runner.verify_surface("electron")
-        self.assertEqual("fail", result["status"])
-        self.assertIn("electron.launch", result["failed"])
+        before = self.store.load(runner.run_id)
+        with self.assertRaisesRegex(RuntimeFailure, "explicit criterion surface ownership"):
+            runner.verify_surface("electron")
+        after = self.store.load(runner.run_id)
+        self.assertEqual(before["gateResults"], after["gateResults"])
+        self.assertNotEqual("FAILED", after["status"])
 
     def test_electron_structured_window_evidence_passes(self) -> None:
         self.write_png(self.repo / "electron.png", [(0, 0, 0), (255, 255, 255)])
@@ -326,7 +329,7 @@ class LegibilityTests(unittest.TestCase):
                     "launch": self.pass_command(),
                     "screenshot": self.pass_command()
                 }
-            }
+            }, surface="ios"
         )
         result = runner.verify_surface("ios")
         self.assertEqual("fail", result["status"])
@@ -407,7 +410,7 @@ class LegibilityTests(unittest.TestCase):
                     "screenshot": self.pass_command(),
                     "screenshotPath": "ios-flat.png"
                 }
-            }
+            }, surface="ios"
         )
         result = runner.verify_surface("ios")
         self.assertEqual("fail", result["status"])
@@ -457,7 +460,7 @@ class LegibilityTests(unittest.TestCase):
                     "screenshot": self.pass_command(),
                     "screenshotPath": "ios-stale.png"
                 }
-            }
+            }, surface="ios"
         )
         result = runner.verify_surface("ios")
         self.assertEqual("fail", result["status"])

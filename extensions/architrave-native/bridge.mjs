@@ -25,6 +25,15 @@ let semanticScope;
 let semanticFiles;
 let session;
 
+export function semanticReviewPrompt(prompt, files) {
+  const value = prompt +
+    "\nTracked regular source inventory (no recursive glob or directory view; search only these files):\n" +
+    JSON.stringify(files);
+  if (Buffer.byteLength(value, "utf8") > 65536)
+    throw new Error("SEMANTIC_PROMPT_TOO_LARGE: declared implementation inventory exceeds the bounded host prompt");
+  return value;
+}
+
 function pipe(request) {
   for (const [path, digest] of Object.entries(installed.files)) verifyFile(path, digest);
   verifyFile(installed.python, installed.pythonSha256);
@@ -378,9 +387,7 @@ tools.push({
       });
       observer = observeTask(prepared.maxTurns, true);
       const admitted = await session.rpc.tasks.startAgent({
-        agentType: prepared.agentType, prompt: prepared.prompt +
-          "\nTracked regular source inventory (no recursive glob or directory view; search only these files):\n" +
-          JSON.stringify(semanticFiles),
+        agentType: prepared.agentType, prompt: semanticReviewPrompt(prepared.prompt, semanticFiles),
         name: `Architrave semantic ${args.task_id}`, description: "Independent frozen-source gate",
       });
       hostTaskId = admitted.agentId;

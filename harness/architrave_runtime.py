@@ -3582,7 +3582,11 @@ class RunStore:
         try:
             report = json.loads(structured, object_pairs_hook=_reject_duplicate_json_keys)
         except (ValueError, json.JSONDecodeError) as exc:
-            raise RuntimeFailure("SEMANTIC_RESULT_INVALID", "reviewer must return the requested structured JSON") from exc
+            raise RuntimeFailure("SEMANTIC_RESULT_INVALID", "reviewer must return the requested structured JSON",
+                details={"classification": "json-parse", "responseBytes": len(text.encode("utf-8")),
+                         "empty": not bool(structured), "startsObject": structured.startswith("{"),
+                         "exactJsonFence": len(lines) >= 3 and lines[0] == "```json" and lines[-1] == "```",
+                         "parseLine": getattr(exc, "lineno", None), "parseColumn": getattr(exc, "colno", None)}) from exc
         fields = {"verdict", "criteria", "sourceCommit", "sourceSha256", "challenge", "summary", "findings"}
         if (not isinstance(report, dict) or set(report) != fields
                 or report["verdict"] not in {"PASS", "REVISE", "FAIL"}
