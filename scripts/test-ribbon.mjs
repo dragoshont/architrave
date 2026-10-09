@@ -131,8 +131,20 @@ try {
             outcome: "Scoped findings inform a decision, not product shipped.", sourceRef: { ...sourceRef } },
     ];
     parallel.relations = [{ fromStep: "scope", toStep: "hold", type: "informs",
-        reason: "Feasibility findings inform funding, not an execution prerequisite.", provenance: "display-only annotation" }];
+        reason: "Feasibility findings inform funding, not an execution prerequisite.", provenance: "display-only annotation" },
+        { fromStep: "scope", toStep: "bypass", type: "blocks",
+            reason: "Canonical cross-stream prerequisite.", provenance: "canonical dependency" }];
     first.validate(parallel); assertions++;
+    const missingBlocks = structuredClone(parallel);
+    delete missingBlocks.relations;
+    assert.throws(() => first.validate(missingBlocks), error => error.code === "ribbon_input_invalid"); assertions++;
+    missingBlocks.relations = [parallel.relations[0]];
+    assert.throws(() => first.validate(missingBlocks), error => error.code === "ribbon_input_invalid"); assertions++;
+    const sameStreamBlock = structuredClone(parallel);
+    sameStreamBlock.steps[2].dependencies = ["bypass"];
+    sameStreamBlock.relations.push({ fromStep: "bypass", toStep: "hold", type: "blocks",
+        reason: "Same-stream prerequisite is not a cross-stream relation.", provenance: "canonical dependency" });
+    assert.throws(() => first.validate(sameStreamBlock), error => error.code === "ribbon_input_invalid"); assertions++;
     const invalidParallel = structuredClone(parallel);
     invalidParallel.steps[0].state = "verified";
     assert.throws(() => first.validate(invalidParallel), error => error.code === "ribbon_input_invalid"); assertions++;

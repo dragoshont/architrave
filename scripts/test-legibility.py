@@ -167,11 +167,21 @@ class LegibilityTests(unittest.TestCase):
         self.assertEqual("FAIL", gate["status"])
         self.assertTrue(gate["evidenceRefs"])
         self.assertEqual("gate.failed", self.store.events(run_id)[-1]["type"])
-        self.assertFalse(self.store.verify(run_id)[1])
+        self.store.set_criterion(run_id, "REALITY-001", "FAIL", [f"gate:{gate['id']}"])
+        verified, completed = self.store.verify(run_id)
+        self.assertFalse(completed)
+        self.assertEqual("FAILED", verified["status"])
+        self.assertEqual("FAIL", verified["acceptanceCriteria"][0]["status"])
         with self.assertRaisesRegex(RuntimeFailure, "passing observed product"):
             self.store.record_gate(run_id, gate_id="cannot-relabel", task_id=None, gate_type="reality",
                                   status="PASS", criteria=["REALITY-001"], surface="web",
                                   evidence_refs=gate["evidenceRefs"])
+        (self.repo / "changed-source.md").write_text("Changed after the failed observation\n", encoding="utf-8")
+        self.git("add", "changed-source.md")
+        self.git("commit", "-qm", "source changed after failure")
+        with self.assertRaises(RuntimeFailure) as stale:
+            self.store.assert_gate_sources_current(verified, [f"gate:{gate['id']}"])
+        self.assertEqual("EVIDENCE_SOURCE_STALE", stale.exception.code)
 
     def test_repeated_and_independent_observations_keep_prior_authenticated_bytes(self) -> None:
         runner, run_id = self.create_runner({"health": self.pass_command(), "web": {"url": "http://fixture.invalid"}})

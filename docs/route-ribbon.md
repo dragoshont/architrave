@@ -377,7 +377,8 @@ Run deferred is displayed deferred, while an approved independent feasibility
 probe keeps its actual active state.
 
 Canonical cross-stream prerequisites project as **BLOCKS** and must match the
-step dependency graph. An agent may add explicit **INFORMS** relationships as
+step dependency graph: every cross-stream pair is required, and omitted or
+extra same-stream BLOCKS pairs are rejected. An agent may add explicit **INFORMS** relationships as
 `display-only annotation`: they describe how findings support a decision,
 never create prerequisites or modify acceptance/policy. Completed investigation
 is scoped work, not a shipped/product-verified milestone; rejected routes stay

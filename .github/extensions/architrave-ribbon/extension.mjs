@@ -534,6 +534,12 @@ export function validateSnapshot(value) {
         if (step.finishedAt && (!step.startedAt || Date.parse(step.finishedAt) < Date.parse(step.startedAt)))
             fail("steps: invalid owner span order");
     }
+    const requiredBlocks = new Set();
+    for (const step of value.steps) for (const dependency of step.dependencies) {
+        const parent = byId.get(dependency);
+        if (step.streamId && parent.streamId && step.streamId !== parent.streamId)
+            requiredBlocks.add(JSON.stringify([dependency, step.id]));
+    }
     const relationships = new Set();
     for (const relation of value.relations || []) {
         if (!byId.has(relation.fromStep) || !byId.has(relation.toStep) || relation.fromStep === relation.toStep)
@@ -545,9 +551,12 @@ export function validateSnapshot(value) {
             (relation.provenance !== "canonical dependency" ||
              !byId.get(relation.toStep).dependencies.includes(relation.fromStep)))
             fail("relations: canonical BLOCKS must match a real prerequisite");
+        if (relation.type === "blocks" && !requiredBlocks.delete(JSON.stringify([relation.fromStep, relation.toStep])))
+            fail("relations: BLOCKS must be exactly the canonical cross-stream prerequisites");
         if (relation.type === "informs" && relation.provenance !== "display-only annotation")
             fail("relations: INFORMS is display-only, not scheduling authority");
     }
+    if (requiredBlocks.size) fail("relations: missing canonical cross-stream BLOCKS");
     return value;
 }
 

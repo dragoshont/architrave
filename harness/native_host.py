@@ -37,20 +37,21 @@ def emit(value):
     print(json.dumps(redact(value), separators=(",", ":")), flush=True)
 
 def emit_source_inventory(paths):
+    """Only permission-checked public filenames, never report or file contents."""
     chunk = []
     for path in paths:
         candidate = {"status": "source-inventory", "files": [*chunk, path]}
         if len(json.dumps(candidate).encode("utf-8")) > 48000:
             if not chunk:
                 raise RuntimeFailure("SEMANTIC_SOURCE_TOO_LARGE", "one tracked path exceeds its transport bound")
-            emit({"status": "source-inventory", "files": chunk})
+            print(json.dumps({"status": "source-inventory", "files": chunk}, separators=(",", ":")), flush=True)
             chunk = [path]
             if len(json.dumps({"status": "source-inventory", "files": chunk}).encode("utf-8")) > 48000:
                 raise RuntimeFailure("SEMANTIC_SOURCE_TOO_LARGE", "one tracked path exceeds its transport bound")
         else:
             chunk.append(path)
     if chunk:
-        emit({"status": "source-inventory", "files": chunk})
+        print(json.dumps({"status": "source-inventory", "files": chunk}, separators=(",", ":")), flush=True)
 
 
 def routing_observation(requested, effective, reused_owner=False):

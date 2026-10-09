@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import datetime as dt
+import contextlib
+import io
 import json
 from pathlib import Path
 import subprocess
@@ -29,12 +31,24 @@ class InventoryTransportTests(unittest.TestCase):
 
     def test_large_unicode_inventory_is_losslessly_byte_bounded(self):
         paths = [f"source-{index}/" + "\u03bb" * 120 + ".py" for index in range(4096)]
-        frames = []
-        with mock.patch.object(native_host, "emit", side_effect=frames.append):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
             native_host.emit_source_inventory(paths)
+        frames = [json.loads(line) for line in output.getvalue().splitlines()]
         self.assertGreater(len(frames), 1)
         self.assertEqual(paths, [path for frame in frames for path in frame["files"]])
         self.assertTrue(all(len(json.dumps(frame).encode("utf-8")) <= 48000 for frame in frames))
+
+    def test_inventory_keeps_credential_shaped_names_without_disabling_result_redaction(self):
+        paths = ["src/sk-abcdefgh.py", "README.md"]
+        inventory = io.StringIO()
+        with contextlib.redirect_stdout(inventory):
+            native_host.emit_source_inventory(paths)
+        self.assertEqual(paths, json.loads(inventory.getvalue())["files"])
+        result = io.StringIO()
+        with contextlib.redirect_stdout(result):
+            native_host.emit({"result": "src/sk-abcdefgh.py"})
+        self.assertNotIn("sk-abcdefgh", result.getvalue())
 
 
 class NativeReviewTests(unittest.TestCase):

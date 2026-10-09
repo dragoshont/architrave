@@ -168,6 +168,9 @@ source commit/hash at admission and consumption. Legacy unbound product
 receipts and gates remain readable as history, but cannot admit a new PASS,
 set a current criterion to PASS or satisfy verification, including after
 `resume --accept-commit`. Obtain a fresh bound observation; do not upgrade history.
+Binding/source validation also applies to current failed observations so
+verification can report a failed Run. Failed receipts never provide PASS
+admission or consumption credit.
 
 New Runs set `focus.pushbackRequired`: `task-start` refuses tasks without a
 push-back verdict (`PUSHBACK_MISSING`) and never dispatches CUT/DEFER; status

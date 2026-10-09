@@ -3872,7 +3872,10 @@ class RunStore:
                                 state, artifact, receipt, gate["taskId"], gate["criteria"], gate["family"], allow_consumed=True,
                             )
             if f"artifact:{artifact['id']}" in refs and artifact["producer"] == "legibility":
-                self._assert_product_binding(state, artifact, task_id=None, criteria=None)
+                require_pass = any(gate["id"] in gate_ids and gate["status"] == "PASS"
+                                   and f"artifact:{artifact['id']}" in gate["evidenceRefs"]
+                                   for gate in state["gateResults"])
+                self._assert_product_binding(state, artifact, task_id=None, criteria=None, require_pass=require_pass)
             if f"artifact:{artifact['id']}" not in refs or artifact["producer"] != "deterministic":
                 continue
             receipt = self._read_json_receipt(artifact["path"], "deterministic")
@@ -3893,10 +3896,10 @@ class RunStore:
                 raise RuntimeFailure("EVIDENCE_SOURCE_STALE", "deterministic evidence no longer matches current source/objective/task/risk")
 
     def _assert_product_binding(self, state: dict[str, Any], artifact: dict[str, Any],
-                                *, task_id: str | None, criteria: Sequence[str] | None) -> None:
+                                *, task_id: str | None, criteria: Sequence[str] | None, require_pass: bool = True) -> None:
         from worker_adapters import workspace_fingerprint
         receipt = self._read_json_receipt(artifact["path"], "product")
-        if receipt.get("status") != "pass" or receipt.get("failed") != []:
+        if require_pass and (receipt.get("status") != "pass" or receipt.get("failed") != []):
             raise RuntimeFailure("LEGIBILITY_RECEIPT", "PASS requires a passing observed product receipt")
         binding = receipt.get("binding")
         source = receipt.get("source")

@@ -77,13 +77,18 @@ registration leaves no committed producer artifact or role-retry blocker.
 Cleanup warnings are reported separately from a durably admitted result;
 unclosed owned jobs retain a recovery handle for the existing native cancel
 surface. Cleanup failure is never reinterpreted as a missing source verdict.
+Semantic execution requires `tasks.startAgent`, `list`, `cancel` and `remove`
+before opening its producer pipe or admitting a reviewer. Partial hosts fail
+before AI rather than entering an unrecoverable cleanup hold.
 The implementation-only reader guard remains active until its owned reviewer
 task is confirmed removed, including running-task cleanup failures. Only the
 exact owned recovery-cancel path is permitted alongside confined reads; ordinary
 execute/control-plane tools stay denied. Report finding paths are normalized and
 must belong to the ticket's declared implementation inventory.
 Tracked-source inventory uses count-bound, byte-bounded transport frames rather
-than embedding all paths in the prepared response. Required but uninspected
+than embedding all paths in the prepared response. Permission-checked public
+filenames serialize losslessly, including credential-shaped filenames; this
+does not bypass redaction for reports, errors or file contents. Required but uninspected
 implementation is a REVISE coverage gap, not a full-source PASS.
 The trusted producer declares **full implementation-source** coverage before
 advertising paths. Root `.architrave` canonical state/history and `.git` trust

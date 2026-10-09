@@ -352,6 +352,9 @@ tools.push({
       throw new Error("Semantic execution accepts no claimed verdict, producer, event or model");
     }
     const tasks = await hostTasks();
+    if (typeof session.rpc.tasks.remove !== "function") {
+      throw new Error("NATIVE_HOST_REQUIRED: semantic review requires tasks.remove before reviewer admission");
+    }
     if (semanticScope || pendingDispatches !== 1 || tasks.some(task => task.type === "agent" && task.status === "running")) {
       throw new Error("SEMANTIC_REVIEW_BUSY: frozen-source reviews run alone in this joined session");
     }

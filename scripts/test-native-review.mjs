@@ -16,7 +16,7 @@ const command = process.env.PYTHON || (process.platform === "win32" ? "python" :
 const executable = spawnSync(command, ["-c", "import sys;from pathlib import Path;print(Path(sys.executable).resolve())"], { encoding: "utf8" });
 assert.equal(executable.status, 0, executable.stderr);
 const python = executable.stdout.trim();
-let definition, cancelDefinition, hooks, current, count = 0, failCleanup = true;
+let definition, cancelDefinition, hooks, current, taskRpc, count = 0, failCleanup = true;
 const listeners = new Set();
 const tasks = new Map();
 let assertions = 0;
@@ -34,6 +34,7 @@ git('init','-q');git('config','user.name','Fixture');git('config','user.email','
 (r/'.gitignore').write_text('.architrave/\\n')
 (r/'README.md').write_text('Public synthetic source\\n')
 (r/'public').mkdir();(r/'public'/'example.md').write_text('Public tracked nested source\\n')
+(r/'src').mkdir();(r/'src'/'sk-abcdefgh.py').write_text('Public filename fixture, not a credential\\n')
 (r/'architrave.config.json').write_text(json.dumps({'kind':'knowledge','build':'git diff --check','test':'git diff --check','review':{'crossFamily':True}}))
 git('add','.');git('commit','-qm','fixture')
 s=RunStore(r)
@@ -68,7 +69,7 @@ s.add_task('review',{'id':'source','objective':'Review source','acceptanceCriter
             cancelDefinition = config.tools.find(tool => tool.name === "architrave_native_cancel");
             return {
                 sessionId: "owner-one", on: callback => { listeners.add(callback); return () => listeners.delete(callback); },
-                rpc: { tasks: {
+                rpc: { tasks: taskRpc = {
                     list: async () => ({ tasks: [...tasks.values()] }),
                     startAgent: async args => {
                         ok(!Object.hasOwn(args, "model"));
@@ -87,6 +88,7 @@ s.add_task('review',{'id':'source','objective':'Review source','acceptanceCriter
                         const search = hooks.onPreToolUse({ toolName: "functions.rg", toolArgs: { pattern: "fixture", paths: [repo] }, sessionId: "child" }, { sessionId: "owner-one" });
                         ok(search.modifiedArgs.paths.every(path => !path.includes(".architrave") && (!path.includes(".git") || path.endsWith(".gitignore"))));
                         ok(search.modifiedArgs.paths.every(path => path !== repo));
+                        ok(search.modifiedArgs.paths.includes(join(repo, "src", "sk-abcdefgh.py")));
                         const hostSearch = hooks.onPreToolUse({ toolName: "grep",
                             toolArgs: { pattern: "fixture", paths: [repo], output_mode: "content", head_limit: 10 },
                             sessionId: "child" }, { sessionId: "owner-one" });
@@ -145,6 +147,14 @@ s.add_task('review',{'id':'source','objective':'Review source','acceptanceCriter
     ok(module.namespace.semanticReviewPrompt("Bound subject", [join(repo, "README.md")]).includes("README.md"));
     const args = { repo, run_id: "review", task_id: "source", reviewer: "rubber-duck" };
     const invocation = { sessionId: "owner-one", toolCallId: "call-one" };
+    const remove = taskRpc.remove;
+    delete taskRpc.remove;
+    await assert.rejects(() => definition.handler(args, invocation),
+        error => error.message.includes("tasks.remove")); assertions++;
+    ok(count === 0 && tasks.size === 0 && listeners.size === 0);
+    ok(hooks.onPreToolUse({ toolName: "functions.powershell", toolArgs: {}, sessionId: "owner-one" },
+        { sessionId: "owner-one" }) === undefined);
+    taskRpc.remove = remove;
     await assert.rejects(() => definition.handler({ ...args, firstDispatchedModel: "caller-claimed" }, invocation)); assertions++;
     ok(count === 0);
     const first = JSON.parse((await definition.handler(args, invocation)).textResultForLlm);
