@@ -1211,6 +1211,23 @@ class InstallUpdateTests(unittest.TestCase):
                     self.assertNotIn("retired hook inode retained", output.getvalue())
                 self.assertFalse((target / ".architrave-install-transaction").exists())
 
+    def test_create_only_commit_never_clobbers_or_rolls_back_late_custom_file(self) -> None:
+        for name in ("architrave.config.json", ".github/workflows/copilot-setup-steps.yml"):
+            with self.subTest(name=name):
+                target = self.workspace / uuid.uuid4().hex
+                target.mkdir()
+                destination = target / name
+                custom = b"late custom contents"
+                managed = self.module.ManagedRoot(target, "fixture")
+                with self.assertRaises(FileExistsError):
+                    with self.module.ManagedTransaction(managed):
+                        managed.create_bytes(name, b"scaffold")
+                        destination.parent.mkdir(parents=True, exist_ok=True)
+                        destination.write_bytes(custom)
+                self.assertEqual(custom, destination.read_bytes())
+                self.assertFalse((target / ".architrave-install-transaction").exists())
+
+
     def test_quality_retirement_absence_assertion_recovery_preserves_new_hook(self) -> None:
         target = self.workspace / "absence recovery"
         target.mkdir()

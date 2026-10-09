@@ -194,6 +194,12 @@ retains a new bound receipt after a fresh engine evaluation with stable source.
 Task completion and side-effect-free recovery use the same current-failure
 classification as verification; obsolete source failures are not permanent
 vetoes, while current/unknown safety failures still block.
+Bounded Windows commands are created suspended and assigned to an owned,
+kill-on-close Job Object before their primary thread resumes. Timeout, normal
+root exit and coordinator lifetime all bound descendants; active-process
+cleanup must be confirmed before source/scope checks. Missing ownership
+capability fails before command execution, and unconfirmed cleanup is an error,
+never a successful result or a blind PID/name-based tree kill.
 Failed legibility receipts retain generic check classifications, never raw
 command/browser diagnostics. Diagnostic logs stay separately retained and
 hashed; structured JSON logs apply key-based redaction before persistence.

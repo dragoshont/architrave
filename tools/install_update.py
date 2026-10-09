@@ -875,6 +875,18 @@ class ManagedTransaction:
                 continue
             destination = self.managed.path(str(item["relative"]))
             backup = self.directory / str(item["backup"]) if item.get("backup") else None
+            if item["kind"] == "write" and item.get("createOnly"):
+                stage = self.directory / str(item["stage"])
+                info = _lstat(destination)
+                if (info is not None and _is_regular_file(info) and stage.is_file()
+                        and os.path.samefile(stage, destination)
+                        and sha256_file(destination) == item["expectedSha256"]):
+                    destination.unlink()
+                elif info is not None:
+                    self.manual_action = True
+                    print(f"MANUAL_ACTION_REQUIRED: late/custom create-only destination preserved: {item['relative']}",
+                          file=sys.stderr)
+                continue
             if item["kind"] == "remove" and item.get("quarantine"):
                 quarantine = self.managed.path(str(item["quarantine"]))
                 if _lstat(Path(self._native_path(quarantine))) is not None:
@@ -968,7 +980,8 @@ class ManagedTransaction:
         stage.write_bytes(data)
         os.chmod(stage, stat.S_IMODE(mode))
         self.operations.append(
-            {"kind": "write", "relative": relative, "stage": f"stage/{index}", "mode": mode}
+            {"kind": "write", "relative": relative, "stage": f"stage/{index}", "mode": mode,
+             "createOnly": create_only, "expectedSha256": hashlib.sha256(data).hexdigest()}
         )
         parent = destination.parent
         while parent != self.root and _lstat(parent) is None:
@@ -1039,8 +1052,11 @@ class ManagedTransaction:
                               file=sys.stderr)
                 elif operation["kind"] == "write":
                     stage = self.directory / str(operation["stage"])
-                    os.replace(stage, destination)
-                    os.chmod(destination, stat.S_IMODE(int(operation["mode"])))
+                    if operation.get("createOnly"):
+                        os.link(stage, destination, follow_symlinks=False)
+                    else:
+                        os.replace(stage, destination)
+                        os.chmod(destination, stat.S_IMODE(int(operation["mode"])))
                 elif operation.get("quarantine"):
                     quarantine_relative = str(operation["quarantine"])
                     quarantine = self._protect_quarantine(quarantine_relative)

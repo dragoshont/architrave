@@ -154,6 +154,106 @@ def _pump(stream: Any, chunks: list[str], limit: int, truncated: list[bool]) -> 
     stream.close()
 
 
+class _WindowsOwnedJob:
+    def __init__(self) -> None:
+        import ctypes
+        self.ctypes = ctypes
+        self.kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        class Limits(ctypes.Structure):
+            _fields_ = [("process_time", ctypes.c_int64), ("job_time", ctypes.c_int64),
+                        ("flags", ctypes.c_uint32), ("minimum", ctypes.c_size_t), ("maximum", ctypes.c_size_t),
+                        ("processes", ctypes.c_uint32), ("affinity", ctypes.c_size_t),
+                        ("priority", ctypes.c_uint32), ("scheduling", ctypes.c_uint32)]
+        class Extended(ctypes.Structure):
+            _fields_ = [("basic", Limits), ("io", ctypes.c_uint64 * 6),
+                        ("process_memory", ctypes.c_size_t), ("job_memory", ctypes.c_size_t),
+                        ("peak_process", ctypes.c_size_t), ("peak_job", ctypes.c_size_t)]
+        class Accounting(ctypes.Structure):
+            _fields_ = [("times", ctypes.c_int64 * 4), ("faults", ctypes.c_uint32),
+                        ("total", ctypes.c_uint32), ("active", ctypes.c_uint32), ("terminated", ctypes.c_uint32)]
+        self.Accounting = Accounting
+        signatures = {
+            "CreateJobObjectW": ([ctypes.c_void_p, ctypes.c_wchar_p], ctypes.c_void_p),
+            "SetInformationJobObject": ([ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32], ctypes.c_int),
+            "AssignProcessToJobObject": ([ctypes.c_void_p, ctypes.c_void_p], ctypes.c_int),
+            "TerminateJobObject": ([ctypes.c_void_p, ctypes.c_uint32], ctypes.c_int),
+            "QueryInformationJobObject": ([ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32, ctypes.c_void_p], ctypes.c_int),
+            "CreateToolhelp32Snapshot": ([ctypes.c_uint32, ctypes.c_uint32], ctypes.c_void_p),
+            "Thread32First": ([ctypes.c_void_p, ctypes.c_void_p], ctypes.c_int),
+            "Thread32Next": ([ctypes.c_void_p, ctypes.c_void_p], ctypes.c_int),
+            "OpenThread": ([ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32], ctypes.c_void_p),
+            "ResumeThread": ([ctypes.c_void_p], ctypes.c_uint32),
+            "CloseHandle": ([ctypes.c_void_p], ctypes.c_int),
+        }
+        for name, (args, result) in signatures.items():
+            function = getattr(self.kernel, name)
+            function.argtypes, function.restype = args, result
+        self.handle = self.kernel.CreateJobObjectW(None, None)
+        if not self.handle:
+            raise OSError("Windows owned process job is unavailable")
+        limits = Extended()
+        limits.basic.flags = 0x2000  # Kill descendants if their owning coordinator exits.
+        if not self.kernel.SetInformationJobObject(self.handle, 9, ctypes.byref(limits), ctypes.sizeof(limits)):
+            self.kernel.CloseHandle(self.handle)
+            raise OSError("Windows owned process job limits are unavailable")
+
+    def attach_and_resume(self, process: subprocess.Popen) -> None:
+        c, kernel = self.ctypes, self.kernel
+        if not kernel.AssignProcessToJobObject(self.handle, int(process._handle)):
+            raise OSError("Windows command cannot enter its owned process job")
+        class ThreadEntry(c.Structure):
+            _fields_ = [("size", c.c_uint32), ("usage", c.c_uint32), ("thread", c.c_uint32),
+                        ("owner", c.c_uint32), ("base", c.c_int32), ("delta", c.c_int32), ("flags", c.c_uint32)]
+        snapshot = kernel.CreateToolhelp32Snapshot(4, 0)
+        if snapshot == c.c_void_p(-1).value:
+            raise OSError("Owned suspended thread cannot be observed")
+        threads = []
+        try:
+            entry = ThreadEntry()
+            entry.size = c.sizeof(entry)
+            present = kernel.Thread32First(snapshot, c.byref(entry))
+            while present:
+                if entry.owner == process.pid:
+                    threads.append(entry.thread)
+                present = kernel.Thread32Next(snapshot, c.byref(entry))
+        finally:
+            if not kernel.CloseHandle(snapshot):
+                raise OSError("Owned thread observation handle could not be closed")
+        if len(threads) != 1:
+            raise OSError("Owned suspended primary thread is not uniquely identified")
+        thread = kernel.OpenThread(2, False, threads[0])
+        if not thread:
+            raise OSError("Owned suspended primary thread cannot be resumed")
+        try:
+            if kernel.ResumeThread(thread) == 0xFFFFFFFF:
+                raise OSError("Owned suspended primary thread could not be resumed")
+        finally:
+            if not kernel.CloseHandle(thread):
+                raise OSError("Owned primary thread handle could not be closed")
+
+    def terminate_and_close(self) -> None:
+        if self.handle is None:
+            return
+        c = self.ctypes
+        try:
+            if not self.kernel.TerminateJobObject(self.handle, 1):
+                raise RuntimeFailure("PROCESS_CLEANUP_UNCONFIRMED", "owned Windows process tree termination failed")
+            deadline = time.monotonic() + 5
+            while True:
+                info = self.Accounting()
+                if not self.kernel.QueryInformationJobObject(self.handle, 1, c.byref(info), c.sizeof(info), None):
+                    raise RuntimeFailure("PROCESS_CLEANUP_UNCONFIRMED", "owned Windows process tree cannot be observed")
+                if info.active == 0:
+                    break
+                if time.monotonic() >= deadline:
+                    raise RuntimeFailure("PROCESS_CLEANUP_UNCONFIRMED", "owned Windows descendants remain active")
+                time.sleep(.02)
+        finally:
+            handle, self.handle = self.handle, None
+            if not self.kernel.CloseHandle(handle):
+                raise RuntimeFailure("PROCESS_CLEANUP_UNCONFIRMED", "owned Windows job handle could not be closed")
+
+
 def run_bounded(
     command: Sequence[str],
     *,
@@ -163,7 +263,11 @@ def run_bounded(
     max_output_bytes: int,
 ) -> dict[str, Any]:
     started = time.monotonic()
+    job = None
+    process = None
     try:
+        if os.name == "nt":
+            job = _WindowsOwnedJob()
         process = subprocess.Popen(
             list(command),
             cwd=cwd,
@@ -172,8 +276,18 @@ def run_bounded(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             start_new_session=os.name != "nt",
+            creationflags=0x4 | subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
         )
+        if job is not None:
+            job.attach_and_resume(process)
     except OSError as exc:
+        if process is not None:
+            process.kill()
+            process.wait(timeout=5)
+            process.stdout.close()
+            process.stderr.close()
+        if job is not None:
+            job.terminate_and_close()
         return {
             "exitCode": 127,
             "timedOut": False,
@@ -182,73 +296,73 @@ def run_bounded(
             "stderr": str(exc),
             "outputTruncated": False,
         }
-    stdout_chunks: list[str] = []
-    stderr_chunks: list[str] = []
-    stdout_truncated = [False]
-    stderr_truncated = [False]
-    stdout_thread = threading.Thread(
-        target=_pump,
-        args=(process.stdout, stdout_chunks, max_output_bytes, stdout_truncated),
-        daemon=True,
-    )
-    stderr_thread = threading.Thread(
-        target=_pump,
-        args=(process.stderr, stderr_chunks, max_output_bytes, stderr_truncated),
-        daemon=True,
-    )
-    stdout_thread.start()
-    stderr_thread.start()
-    timed_out = False
     try:
-        exit_code = process.wait(timeout=timeout_seconds)
-    except subprocess.TimeoutExpired:
-        timed_out = True
-        if os.name != "nt":
-            os.killpg(process.pid, signal.SIGTERM)
-        else:
-            process.terminate()
-        try:
-            exit_code = process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            if os.name != "nt":
-                os.killpg(process.pid, signal.SIGKILL)
-            else:
-                process.kill()
-            exit_code = process.wait()
-    if os.name != "nt":
-        try:
-            os.killpg(process.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
-        else:
-            deadline = time.monotonic() + 1
-            while time.monotonic() < deadline:
-                try:
-                    os.killpg(process.pid, 0)
-                except ProcessLookupError:
-                    break
-                time.sleep(0.02)
-            else:
-                try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-    else:
-        subprocess.run(
-            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-            capture_output=True,
-            check=False,
+        stdout_chunks: list[str] = []
+        stderr_chunks: list[str] = []
+        stdout_truncated = [False]
+        stderr_truncated = [False]
+        stdout_thread = threading.Thread(
+            target=_pump,
+            args=(process.stdout, stdout_chunks, max_output_bytes, stdout_truncated),
+            daemon=True,
         )
-    stdout_thread.join(timeout=5)
-    stderr_thread.join(timeout=5)
-    return {
-        "exitCode": exit_code,
-        "timedOut": timed_out,
-        "durationMs": int((time.monotonic() - started) * 1000),
-        "stdout": "".join(stdout_chunks),
-        "stderr": "".join(stderr_chunks),
-        "outputTruncated": stdout_truncated[0] or stderr_truncated[0],
-    }
+        stderr_thread = threading.Thread(
+            target=_pump,
+            args=(process.stderr, stderr_chunks, max_output_bytes, stderr_truncated),
+            daemon=True,
+        )
+        stdout_thread.start()
+        stderr_thread.start()
+        timed_out = False
+        try:
+            exit_code = process.wait(timeout=timeout_seconds)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            if os.name != "nt":
+                os.killpg(process.pid, signal.SIGTERM)
+            else:
+                job.terminate_and_close()
+            try:
+                exit_code = process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                if os.name != "nt":
+                    os.killpg(process.pid, signal.SIGKILL)
+                else:
+                    raise RuntimeFailure("PROCESS_CLEANUP_UNCONFIRMED", "owned Windows root did not terminate")
+                exit_code = process.wait()
+        if os.name != "nt":
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            else:
+                deadline = time.monotonic() + 1
+                while time.monotonic() < deadline:
+                    try:
+                        os.killpg(process.pid, 0)
+                    except ProcessLookupError:
+                        break
+                    time.sleep(0.02)
+                else:
+                    try:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+        else:
+            job.terminate_and_close()
+        stdout_thread.join(timeout=5)
+        stderr_thread.join(timeout=5)
+        return {
+            "exitCode": exit_code,
+            "timedOut": timed_out,
+            "durationMs": int((time.monotonic() - started) * 1000),
+            "stdout": "".join(stdout_chunks),
+            "stderr": "".join(stderr_chunks),
+            "outputTruncated": stdout_truncated[0] or stderr_truncated[0],
+        }
+    finally:
+        if job is not None:
+            job.terminate_and_close()
 
 
 def _normalize_status_path(raw: str) -> str:

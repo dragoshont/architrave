@@ -51,6 +51,10 @@ recovery, never a guessed dead PID. Known dead ownership is reclaimed in place
 only while locked and after file-identity/content checks; each owner publishes a
 nonce. Changed ownership is preserved, not blindly unlinked or used to roll back
 another transaction.
+Create-only scaffolds keep that intent through commit and rollback. Publication
+uses atomic no-clobber linking; a late-created config/setup file is preserved
+and fails the transaction explicitly. Rollback removes only the unchanged
+transaction-owned creation, not a competing destination.
 
 Retirement atomically quarantines the actual hook inode before checking its
 bytes. A mismatch restores the actual inode only if the active target is absent;
