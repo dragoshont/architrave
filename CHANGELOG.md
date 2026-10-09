@@ -43,10 +43,13 @@ Releases at or before **v0.8.12** are on the
   changes and final integration, with mandatory checkpoint/CI evidence.
 - Removed packaged quality-hook definitions and obsolete packaging/documentation
   references. Exact legacy recognition remains in installer code for safe cleanup.
+- Removed native tool-blocking hooks. Host permissions remain host-owned;
+  explicit native tool admission/source/evidence checks and passive Route
+  Ribbon/Session companion event observation remain.
 - Install/update retires only exact recognized legacy definitions transactionally;
   custom/mixed/unknown hooks are preserved with manual action. A hooks-only
   `retire-hooks --dry-run TARGET` preview supports post-release owner cleanup;
-  public quality-gate CLI compatibility and native permission guards remain.
+  public quality-gate CLI compatibility and explicit native tool checks remain.
 
 ### Limitations
 - Copilot canvas capability required; no Codex/Claude canvas claim. Agent-fed

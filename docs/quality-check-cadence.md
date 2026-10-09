@@ -19,7 +19,9 @@ Targeted build/test and risk-scaled CI remain required, not full suites each tur
 
 Prose alone **does not guarantee identical automatic scheduling**. Assurance is
 executable validators, explicit checkpoint evidence, focused coverage and
-required CI. Native permission/scope/depth and human approvals remain intact.
+required CI. Architrave also registers no native tool-blocking hooks. Host
+permissions and human approvals remain host-owned; explicitly invoked native
+tools retain their admission, source and evidence checks.
 
 ## Post-release hooks-only owner update
 
@@ -34,7 +36,7 @@ python <published-kit>\tools\install_update.py retire-hooks <adopted-repo>
 Preview lists each path/action and guarded recognized-content hash. Apply retires
 only complete definitions exactly matching recognized legacy POSIX/Windows
 Architrave commands. Product/source, config, authentication, other hooks and
-native guards are untouched. Edits to inspected definitions cause transaction
+host permissions are untouched. Edits to inspected definitions cause transaction
 rollback, not removal of newer custom data; repeated calls are idempotent.
 Hooks absent during planning are checked after the transaction's asset writes.
 A newly created hook is preserved and reported `MANUAL_ACTION_REQUIRED` (exit 2)

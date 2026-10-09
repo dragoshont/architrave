@@ -87,6 +87,7 @@
 - [x] `gates/checks.sh` + `gates/checks.ps1` — deterministic gate runner driven by `architrave.config.json` (generate/build/test + designMap/tokens JSON valid; `--quick` / `-Quick` for focused validation).
 - [x] `gates/quality-gate.sh` + `gates/quality-gate.ps1` — lightweight quick gate (fast JSON guard + reconcile/judge reminder).
 - [x] Automatic quality-hook registrations and packaged definitions removed; exact legacy recognition remains in the installer for safe consumer cleanup.
+- [x] Native tool-blocking hooks removed; explicit tool admission/source/evidence checks and passive Ribbon/companion event observation retained.
 - [x] `harness/init-run.*` + `validate-run.*` + `semantic-review.*` — durable run artifacts, learning notes, and optional judge prompt helper.
 
 > **Cross-platform:** every gate ships thin POSIX `.sh` and PowerShell `.ps1`

@@ -22,7 +22,6 @@ const bridgePath = join(installed.root, "harness", "native_host.py");
 const active = new Map();
 let pendingDispatches = 0;
 let semanticScope;
-let semanticFiles;
 let session;
 
 export function semanticReviewPrompt(prompt, files) {
@@ -305,7 +304,7 @@ const tools = [
         if (errors.length) return result({ status: "failed", cancelled: false,
           recoveryOwner: entry.hostTaskId, cleanup: { confirmed: false, errors } });
         active.delete(entry.key);
-        if (semanticScope === entry.repo) { semanticScope = undefined; semanticFiles = undefined; }
+        if (semanticScope === entry.repo) semanticScope = undefined;
         return result({ status: "ok", cancelled: true, hostTaskId: entry.hostTaskId });
       }
       const outcome = await session.rpc.tasks.cancel({ id: entry.hostTaskId });
@@ -378,7 +377,7 @@ tools.push({
           throw new Error("Native source inventory frame is invalid");
         inventory.push(...chunk.files);
       }
-      semanticFiles = inventory.map(path => {
+      const semanticFiles = inventory.map(path => {
         const file = resolve(input.repo, path);
         const suffix = relative(input.repo, file);
         const info = lstatSync(file);
@@ -442,7 +441,7 @@ tools.push({
         } else if (key) active.delete(key);
       }
       const pending = active.get(key);
-      if (!pending || pending.hostRemoved) { semanticScope = undefined; semanticFiles = undefined; }
+      if (!pending || pending.hostRemoved) semanticScope = undefined;
     }
   }),
 });
@@ -483,77 +482,4 @@ tools.push({
   },
 });
 
-session = await joinSession({ tools, hooks: {
-  onPreToolUse: (input, invocation) => {
-    if (semanticScope) {
-      if (input.toolName === "architrave_native_cancel" && invocation.sessionId === session.sessionId) {
-        const args = input.toolArgs || {};
-        const recovery = [...active.values()].find(entry => entry.recoveryPending &&
-          entry.key.startsWith(`review:${args.run_id}:${args.task_id}:`) &&
-          typeof args.repo === "string" && resolve(args.repo) === entry.repo);
-        if (recovery) return;
-      }
-      if (["tool_search_tool", "functions.tool_search_tool"].includes(input.toolName)) return;
-      if (["skill", "functions.skill"].includes(input.toolName) && input.toolArgs?.skill === "architrave-review") return;
-      if (!["view", "rg", "grep", "functions.view", "functions.rg"].includes(input.toolName)) {
-        return { permissionDecision: "deny", permissionDecisionReason: "SEMANTIC_READ_ONLY: only tracked file view/bounded rg; no execute, mutation, control-plane or child tools" };
-      }
-      const name = input.toolName === "grep" ? "rg" : input.toolName.replace(/^functions\./, "");
-      const args = input.toolArgs;
-      if (!args || typeof args !== "object" || Array.isArray(args)) {
-        return { permissionDecision: "deny", permissionDecisionReason: "SEMANTIC_READ_ONLY: malformed read arguments" };
-      }
-      try {
-        const paths = name === "view" ? [args.path] :
-          Array.isArray(args.paths) ? args.paths : [args.paths || semanticScope];
-        if (!paths.length) throw new Error("no source paths");
-        const regularSource = file => {
-          const info = lstatSync(file);
-          return info.isFile() && !info.isSymbolicLink() && realpathSync(file) === file;
-        };
-        const roots = paths.map(path => {
-          if (typeof path !== "string") throw new Error("invalid source path");
-          const absolute = realpathSync(resolve(semanticScope, path));
-          const suffix = relative(semanticScope, absolute);
-          if (suffix.startsWith("..") || isAbsolute(suffix) ||
-              suffix.split(/[\\/]/).some(part => [".git", ".architrave"].includes(part.toLowerCase()))) {
-            throw new Error("private or out-of-scope source");
-          }
-          return absolute;
-        });
-        if (name === "view") {
-          const allowed = ["path", "view_range", "forceReadLargeFiles"];
-          if (Object.keys(args).some(key => !allowed.includes(key)) ||
-              args.forceReadLargeFiles !== undefined && args.forceReadLargeFiles !== false)
-            throw new Error("unsupported or unbounded view override");
-          if (args.view_range !== undefined &&
-              (!Array.isArray(args.view_range) || args.view_range.length !== 2 ||
-               !args.view_range.every(Number.isInteger) || args.view_range[0] < 1 ||
-               args.view_range[1] < args.view_range[0] || args.view_range[1] - args.view_range[0] >= 400))
-            throw new Error("view range must contain at most 400 finite source lines");
-          if (!semanticFiles?.includes(roots[0]) || !regularSource(roots[0])) throw new Error("view requires a tracked regular source file");
-          return { modifiedArgs: { ...args, path: roots[0] } };
-        }
-        const allowed = ["pattern", "paths", "output_mode", "glob", "type", "-i", "-A", "-B", "-C", "-n", "head_limit", "multiline"];
-        if (Object.keys(args).some(key => !allowed.includes(key))) throw new Error("unsupported recursive search override");
-        const headLimit = args.head_limit ?? 50;
-        if (!Number.isInteger(headLimit) || headLimit < 1 || headLimit > 100)
-          throw new Error("search result limit must be an integer from 1 to 100");
-        for (const key of ["-A", "-B", "-C"]) if (args[key] !== undefined &&
-            (!Number.isInteger(args[key]) || args[key] < 0 || args[key] > 5))
-          throw new Error("search context must be an integer from 0 to 5");
-        const files = (semanticFiles || []).filter(file => roots.some(root => file === root ||
-          (!relative(root, file).startsWith("..") && !isAbsolute(relative(root, file)))));
-        if (!files.length) throw new Error("no tracked regular source files in requested search");
-        if (!files.every(regularSource)) throw new Error("tracked source path changed or aliases private data");
-        return { modifiedArgs: { ...args, paths: files, head_limit: headLimit } };
-      } catch (error) {
-        return { permissionDecision: "deny", permissionDecisionReason: `SEMANTIC_READ_ONLY: ${error.code || error.message}` };
-      }
-    }
-    if ((active.size || pendingDispatches) && input.sessionId !== invocation.sessionId &&
-        /(?:^|[./-])(?:task|create_session|open_pr_session|open_issue_session|fork_session|run_workflow|run_dynamic_workflow|architrave_native_dispatch|architrave_native_batch|architrave_native_review)$/.test(input.toolName)) {
-      return { permissionDecision: "deny", permissionDecisionReason: "CHILD_DEPTH: a bounded Architrave child may not spawn descendants (max depth one)" };
-    }
-  },
-} });
+session = await joinSession({ tools });

@@ -19,4 +19,6 @@ integration, MUST run `python gates/gate_runner.py quality-gate` and retain its
 actual exit/output proof. A mandatory failure blocks completion. The same
 deterministic validator remains executable; agent prose is not automatic
 enforcement. Use targeted build/test checks and required risk-scaled CI, not
-full suites each turn. Native permission/scope/depth guards remain intact.
+full suites each turn. Architrave registers no tool-blocking hooks. Host
+permissions remain host-owned; explicit native tool admission/source/evidence
+checks remain.

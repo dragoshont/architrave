@@ -831,7 +831,7 @@ class NativeHostTests(unittest.TestCase):
         self.assertEqual("PARALLELISM_EXCEEDED", error.exception.code)
 
     @unittest.skipUnless(shutil.which("node"), "Node required only for the SDK transport contract fixture")
-    def test_sdk_fixture_event_wait_depth_and_concurrent_admission(self):
+    def test_sdk_fixture_event_wait_hookless_and_concurrent_admission(self):
         """Mock SDK contract test, deliberately NOT native-host execution evidence."""
         root = Path(self.temp.name) / "transport"
         root.mkdir()
@@ -856,6 +856,7 @@ const host={sessionId:"root",on(fn){callback=fn;return ()=>{unsubscribed=true;}}
     list:async()=>{reads++;return {tasks};},cancel:async()=>({cancelled:true})}}};
 globalThis.joinSession=async value=>{options=value;return host;};
 const module=await import(pathToFileURL(process.argv[1]));
+assert.equal(Object.hasOwn(options,"hooks"),false);
 const observer=module.observeTask(12);
 const waiting=observer.wait("test",Date.now()+1000,()=>true);
 await new Promise(resolve=>setImmediate(resolve));
@@ -884,14 +885,9 @@ for(const owner of ["early-admission","retained-delivery"]) {
 host.rpc.tasks.list=()=>new Promise(()=>{});
 const dispatch=options.tools.find(tool=>tool.name==="architrave_native_dispatch");
 for(let i=0;i<3;i++) void dispatch.handler({repo:"unused",run_id:"r",task_id:String(i)},{sessionId:"root"});
-const denied=await options.hooks.onPreToolUse(
-  {sessionId:"child",toolName:"functions.task"},{sessionId:"root"});
-assert.equal(denied.permissionDecision,"deny");
-assert.match(denied.permissionDecisionReason,/CHILD_DEPTH/);
-assert.equal(await options.hooks.onPreToolUse(
-  {sessionId:"root",toolName:"functions.task"},{sessionId:"root"}),undefined);
+assert.equal(Object.hasOwn(options,"hooks"),false);
 await assert.rejects(dispatch.handler({},{sessionId:"root"}),/CHILD_LIMIT/);
-console.log("SDK event/depth/admission fixture: PASS (not native evidence)");
+console.log("SDK event/hookless/admission fixture: PASS (not native evidence)");
 '''
         result = subprocess.run(["node", "--input-type=module", "-e", script, str(entry)],
                                 capture_output=True, text=True, timeout=10)

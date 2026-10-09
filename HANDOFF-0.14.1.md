@@ -37,10 +37,12 @@ criterion-owned product proof, accessible presentation and display persistence.
 Unknown usage/effort is not fabricated. Ordinary and overflow pending holds
 survive non-authoritative activity resets; host close failures remain visible.
 
-Trusted native review uses bounded public-source inventory/reads/searches,
+Trusted native review uses bounded public-source inventory and read-only instructions,
 strict observed JSON and owner/model/source/nonce admission, atomic receipt/gate
 registration and owned cleanup/recovery guards. Automatic quality hooks retire
-without removing executable gates or native permission guards. Installer races
+without removing executable gates. Native tool-blocking hooks are removed;
+host permissions and explicit tool admission/source/evidence checks remain.
+Passive Route Ribbon/Session companion event observation is unchanged. Installer races
 preserve actual hook inodes, late open-handle edits, newer custom targets,
 private archive ignore guards and late-created hooks. Product observations
 retain the exact validated visual bytes and source-bind both PASS and FAIL.

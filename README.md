@@ -413,6 +413,9 @@ through the same trusted joined producer; see
 [native semantic execution](docs/native-semantic-review.md).
 For explicit quality-check cadence and safe legacy-hook retirement, see
 [quality checks without automatic turn hooks](docs/quality-check-cadence.md).
+Architrave registers no native tool-blocking hooks. Host permissions remain
+host-owned; explicit native tool admission/source/evidence checks and passive
+Route Ribbon/Session companion event observation remain.
 The copied kit/bridge supports Python 3.9+ (including macOS system 3.9.6);
 optional `--codex` role adoption still requires Python 3.11+.
 

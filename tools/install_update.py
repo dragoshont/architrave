@@ -1519,7 +1519,7 @@ def update(args: argparse.Namespace, kit: Path) -> int:
         print("  - agents left unchanged (use --agents to refresh .github/agents/)")
     copy_shared_assets(managed, kit)
     manual_hooks = apply_quality_hook_plan(managed, hook_plan)
-    print("  automatic quality hook retirement/absence checks scheduled; native permission guards unchanged")
+    print("  automatic quality hook retirement/absence checks scheduled; host permissions untouched")
     if profile == "knowledge":
         for name in ("constitution-apple.md", "constitution-windows.md"):
             managed.remove_file(name)
@@ -1646,7 +1646,7 @@ def retire_quality_hooks(kit: Path, target: Path, *, dry_run: bool = False) -> i
         raise InstallerError("retire-hooks: target an adopted repository, not the kit itself")
     plan = quality_hook_plan(managed, kit)
     print(json.dumps({"target": str(managed.root), "dryRun": dry_run, "qualityHooks": plan,
-                      "nativePermissionGuards": "unchanged", "otherHooks": "untouched"}, indent=2))
+                      "hostPermissions": "untouched", "otherHooks": "untouched"}, indent=2))
     if dry_run:
         for relative, item in plan.items():
             if item["action"] == "preserve-manual-action":
