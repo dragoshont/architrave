@@ -536,11 +536,17 @@ session = await joinSession({ tools, hooks: {
         }
         const allowed = ["pattern", "paths", "output_mode", "glob", "type", "-i", "-A", "-B", "-C", "-n", "head_limit", "multiline"];
         if (Object.keys(args).some(key => !allowed.includes(key))) throw new Error("unsupported recursive search override");
+        const headLimit = args.head_limit ?? 50;
+        if (!Number.isInteger(headLimit) || headLimit < 1 || headLimit > 100)
+          throw new Error("search result limit must be an integer from 1 to 100");
+        for (const key of ["-A", "-B", "-C"]) if (args[key] !== undefined &&
+            (!Number.isInteger(args[key]) || args[key] < 0 || args[key] > 5))
+          throw new Error("search context must be an integer from 0 to 5");
         const files = (semanticFiles || []).filter(file => roots.some(root => file === root ||
           (!relative(root, file).startsWith("..") && !isAbsolute(relative(root, file)))));
         if (!files.length) throw new Error("no tracked regular source files in requested search");
         if (!files.every(regularSource)) throw new Error("tracked source path changed or aliases private data");
-        return { modifiedArgs: { ...args, paths: files } };
+        return { modifiedArgs: { ...args, paths: files, head_limit: headLimit } };
       } catch (error) {
         return { permissionDecision: "deny", permissionDecisionReason: `SEMANTIC_READ_ONLY: ${error.code || error.message}` };
       }

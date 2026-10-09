@@ -98,6 +98,17 @@ s.add_task('review',{'id':'source','objective':'Review source','acceptanceCriter
                         ok(search.modifiedArgs.paths.every(path => !path.includes(".architrave") && (!path.includes(".git") || path.endsWith(".gitignore"))));
                         ok(search.modifiedArgs.paths.every(path => path !== repo));
                         ok(search.modifiedArgs.paths.includes(join(repo, "src", "sk-abcdefgh.py")));
+                        ok(search.modifiedArgs.head_limit === 50);
+                        for (const limits of [{ head_limit: 101 }, { head_limit: 0 },
+                            { head_limit: -1 }, { head_limit: "50" }, { "-A": 6 },
+                            { "-B": -1 }, { "-C": 99999 }])
+                            ok(hooks.onPreToolUse({ toolName: "grep",
+                                toolArgs: { pattern: "fixture", paths: [repo], ...limits }, sessionId: "child" },
+                                { sessionId: "owner-one" }).permissionDecision === "deny");
+                        const boundedSearch = hooks.onPreToolUse({ toolName: "functions.rg",
+                            toolArgs: { pattern: "fixture", paths: [repo], head_limit: 100, "-C": 5 }, sessionId: "child" },
+                            { sessionId: "owner-one" });
+                        ok(boundedSearch.modifiedArgs.head_limit === 100 && boundedSearch.modifiedArgs["-C"] === 5);
                         const hostSearch = hooks.onPreToolUse({ toolName: "grep",
                             toolArgs: { pattern: "fixture", paths: [repo], output_mode: "content", head_limit: 10 },
                             sessionId: "child" }, { sessionId: "owner-one" });

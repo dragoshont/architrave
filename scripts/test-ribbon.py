@@ -236,6 +236,57 @@ class RibbonTests(unittest.TestCase):
         private.write_text("Private metadata update\n", encoding="utf-8")
         self.assertEqual("current", ribbon_snapshot(self.store, "run")["source"]["freshness"])
 
+    def test_current_policy_and_security_failures_govern_even_without_code_binding(self):
+        for gate_type in ("policy", "security"):
+            with self.subTest(gate_type=gate_type):
+                run_id = gate_type
+                self.store.create(run_id=run_id, goal="Fail-closed fixture", outcome="Protected fixture", criteria=[])
+                self.store.add_task(run_id, {"id": "delivery", "objective": "Protected fixture",
+                    "acceptanceCriteria": ["OUTCOME-001"], "pushback": "KEEP:fixture"})
+                path = self.store.run_dir(run_id) / "negative.json"
+                path.write_text(json.dumps({"verdict": "FAIL", "reason": "Current authenticated decision"}))
+                record = (self.store._record_policy_decision if gate_type == "policy"
+                          else self.store._record_security_verdict)
+                record(run_id, artifact_id="negative", path=path.relative_to(self.store.repository).as_posix(),
+                       evidence_refs=["task:delivery"])
+                self.store.record_gate(run_id, gate_id="negative", task_id="delivery", gate_type=gate_type,
+                    status="FAIL", evidence_refs=["artifact:negative"], criteria=["OUTCOME-001"])
+                self.assertEqual("stopped", ribbon_snapshot(self.store, run_id)["steps"][0]["state"])
+                self.assertEqual("FAILED", self.store.verify(run_id)[0]["status"])
+                original = path.read_bytes()
+                path.write_bytes(b"tampered")
+                with self.assertRaises(RuntimeFailure):
+                    ribbon_snapshot(self.store, run_id)
+                path.write_bytes(original)
+
+    def test_source_bound_policy_and_security_failures_become_historical_only_with_real_drift(self):
+        for gate_type in ("policy", "security"):
+            with self.subTest(gate_type=gate_type):
+                run_id = gate_type + "-source"
+                self.store.create(run_id=run_id, goal="Protected source fixture", outcome="Safe source", criteria=[])
+                self.store.add_task(run_id, {"id": "delivery", "objective": "Protected fixture",
+                    "acceptanceCriteria": ["OUTCOME-001"], "pushback": "KEEP:fixture"})
+                path = self.store.run_dir(run_id) / "bound-negative.json"
+                path.write_text(json.dumps({"verdict": "FAIL",
+                    "binding": {"runId": run_id, "objectiveVersion": 1},
+                    "source": {"commit": self.git("rev-parse", "HEAD"),
+                               "sha256": workspace_fingerprint(self.repo, include_ignored=False)}}))
+                record = self.store._record_policy_decision if gate_type == "policy" else self.store._record_security_verdict
+                record(run_id, artifact_id="negative", path=path.relative_to(self.store.repository).as_posix(),
+                       evidence_refs=["task:delivery"])
+                self.store.record_gate(run_id, gate_id="negative", task_id="delivery", gate_type=gate_type,
+                    status="FAIL", evidence_refs=["artifact:negative"], criteria=["OUTCOME-001"])
+                self.assertEqual("stopped", ribbon_snapshot(self.store, run_id)["steps"][0]["state"])
+                self.assertEqual("FAILED", self.store.verify(run_id)[0]["status"])
+                (self.repo / "fixture.txt").write_text("Corrected " + gate_type + " source\n", encoding="utf-8")
+                self.git("add", ".")
+                self.git("commit", "-qm", "source correction")
+                self.store.resume(run_id, accept_commit=True)
+                step = ribbon_snapshot(self.store, run_id)["steps"][0]
+                self.assertNotEqual("stopped", step["state"])
+                self.assertIn("historical", step["reason"].lower())
+                self.assertNotEqual("FAILED", self.store.verify(run_id)[0]["status"])
+
     def test_old_deterministic_failure_is_historical_after_source_resume(self):
         command = ("& '" + sys.executable.replace("'", "''") + "' -c \"raise SystemExit(1)\""
                    if os.name == "nt" else shlex.join([sys.executable, "-c", "raise SystemExit(1)"]))

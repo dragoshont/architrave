@@ -50,6 +50,9 @@ or claim an OS sandbox. Source, policy, holds and objective are rechecked.
 File views allow only the supported path/range arguments, never full-large-file
 overrides; explicit ranges must be finite and at most 400 lines. Sequential
 bounded views remain available for complete inspection.
+Tracked-file `rg` and observed host `grep` searches default to 50 results,
+permit at most 100, and limit each before/after/combined context setting to
+five lines. Invalid or oversized limits are denied before host forwarding.
 
 ## Receipts and gates
 

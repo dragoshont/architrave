@@ -3917,6 +3917,34 @@ class RunStore:
             raise RuntimeFailure("EVIDENCE_SOURCE_STALE", "frozen product receipt no longer binds current task/objective/source")
 
     def failure_source_status(self, state: dict[str, Any], gate: dict[str, Any]) -> str | None:
+        if gate["type"] in {"policy", "security"}:
+            from worker_adapters import workspace_fingerprint
+            expected = "policy-engine" if gate["type"] == "policy" else "security-review"
+            stale_receipts = []
+            for artifact in state["artifacts"]:
+                if f"artifact:{artifact['id']}" not in gate["evidenceRefs"] or artifact["producer"] != expected:
+                    continue
+                receipt = self._read_json_receipt(artifact["path"], expected)
+                binding = receipt.get("binding")
+                source = receipt.get("source")
+                stale = False
+                if binding is not None:
+                    if not isinstance(binding, dict):
+                        raise RuntimeFailure("EVIDENCE_BINDING_INVALID", "policy/security binding must be an object")
+                    if (binding.get("runId", state["runId"]) != state["runId"]
+                            or binding.get("objectiveVersion", state["objective"]["version"]) != state["objective"]["version"]):
+                        stale = True
+                if source is not None:
+                    if not isinstance(source, dict):
+                        raise RuntimeFailure("EVIDENCE_BINDING_INVALID", "policy/security source must be an object")
+                    if source.get("commit") is not None and source["commit"] != run_command(["git", "rev-parse", "HEAD"], self.repository):
+                        stale = True
+                    if source.get("sha256") is not None and source["sha256"] != workspace_fingerprint(self.repository, include_ignored=False):
+                        stale = True
+                stale_receipts.append(stale)
+            # Unknown source coverage cannot clear an authenticated current safety failure.
+            return ("stale source" if stale_receipts and len(stale_receipts) == len(gate["evidenceRefs"])
+                    and all(stale_receipts) else None)
         if not gate["evidenceRefs"]:
             return "unbound source"
         try:

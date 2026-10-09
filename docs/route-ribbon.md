@@ -355,6 +355,8 @@ malformed or tampered evidence raises an error, not an ordinary stale label.
 Capture-time baseline freshness requires both matching HEAD and no Git-visible
 public workspace drift. Canonical private/control metadata uses the existing
 private-root exclusion, not an arbitrary implementation allowlist.
+Policy/security failures use their own producer freshness: unknown source
+coverage remains fail-closed and governing, not ordinary historical evidence.
 
 Current criterion-owned taskless product observations can verify an already
 completed delivery, as can observations bound to that delivery itself. Proof
