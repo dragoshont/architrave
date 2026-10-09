@@ -187,8 +187,10 @@ function companionSnapshot() {
         diagnostic: waitingOverflow ? "Pending request limit reached; waiting state is unreconciled until host shutdown." : companion.diagnostic,
         activeTools: [...activeTools.values()], subagents: [...subagents.values()] };
 }
-function resetActivity(state) {
-    activeTools.clear(); waiting.clear(); activity = state;
+function resetActivity(state, clearRequests = false) {
+    activeTools.clear();
+    if (clearRequests) { waiting.clear(); waitingOverflow = false; }
+    activity = state;
 }
 export function observeSession(event) {
     if (["session.canvas.opened", "session.canvas.closed"].includes(event.type)) { displayRevision++; return; }
@@ -263,7 +265,7 @@ export function observeSession(event) {
         activeTools.clear();
         if (activity !== "error") activity = "idle";
         break;
-    case "session.shutdown": waitingOverflow = false; resetActivity("stopped"); break;
+    case "session.shutdown": resetActivity("stopped", true); break;
     default: return;
     }
     notifyCompanion();

@@ -124,6 +124,21 @@ try {
     one.emit("session.idle");
     equal((await state(url)).activity, "waiting");
     one.emit("user_input.completed", { requestId: "input", answer: "DO_NOT_RETAIN" });
+    for (const kind of ["permission", "user_input", "elicitation"]) {
+        one.emit(kind + ".requested", { requestId: "ordinary-" + kind });
+        const expected = kind === "permission" ? "blocked" : "waiting";
+        one.emit("session.context_cleared");
+        equal((await state(url)).activity, expected);
+        one.emit("session.error");
+        equal((await state(url)).activity, expected);
+        one.emit("session.idle");
+        one.emit("assistant.turn_start");
+        equal((await state(url)).activity, expected);
+        one.emit(kind + ".completed", { requestId: "unrelated-completion" });
+        equal((await state(url)).activity, expected);
+        one.emit(kind + ".completed", { requestId: "ordinary-" + kind });
+        equal((await state(url)).activity, "working");
+    }
     for (let i = 0; i < 33; i++) one.emit("user_input.requested", { requestId: "overflow-" + i });
     for (let i = 0; i < 32; i++) one.emit("user_input.completed", { requestId: "overflow-" + i });
     equal((await state(url)).activity, "waiting");

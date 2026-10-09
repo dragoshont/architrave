@@ -342,6 +342,12 @@ an arbitrary filesystem path, spawns a worker, or changes acceptance/policy/hold
 |---|---|
 | Scoped done | Canonical task completion; prerequisite success is not product success. |
 | Product verified | Current task criteria have qualifying source-bound legibility PASS and no governing current failed check. Earlier completion/observations remain history after a failure; neither product verification nor its milestone remains current. |
+| Active | Canonical in-flight work, not proof that all other host sessions are idle. |
+| Blocked | Current human/resource/dependency blocker; superseded blockers are history. |
+| Deferred / bypassed | Not done; reason and dependencies remain inspectable. |
+| Dead end / stop | Explicit terminal state or authenticated repeated-failure stop; not inferred from silence. |
+| Retry | Known failure/evidence fingerprints and recorded hypothesis; new-evidence attempts are not automatically loops. |
+| Milestone | Current source/task/criterion-bound product observation, not path-touch activity. |
 
 Only authenticated, current source-bound failures govern the route. Failures
 from an older source remain visible as history after baseline reconciliation;
@@ -359,12 +365,8 @@ The Session companion retains at most 32 pending request IDs. Overflow is
 explicitly unreconciled and conservatively Waiting; idle, turn-end, errors,
 context clearing and unmatched completions cannot imply all holds resolved.
 Only authoritative host shutdown clears that overflow sentinel.
-| Active | Canonical in-flight work, not proof that all other host sessions are idle. |
-| Blocked | Current human/resource/dependency blocker; superseded blockers are history. |
-| Deferred / bypassed | Not done; reason and dependencies remain inspectable. |
-| Dead end / stop | Explicit terminal state or authenticated repeated-failure stop; not inferred from silence. |
-| Retry | Known failure/evidence fingerprints and recorded hypothesis; new-evidence attempts are not automatically loops. |
-| Milestone | Current source/task/criterion-bound product observation, not path-touch activity. |
+Ordinary tracked requests likewise survive errors and context clearing;
+only their matching completion or host shutdown removes them.
 
 The source hash/commit, objective version, revision and capture time are shown.
 Freshness is **at capture time**; the canvas cannot detect later repository
