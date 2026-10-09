@@ -259,6 +259,34 @@ class RibbonTests(unittest.TestCase):
                     ribbon_snapshot(self.store, run_id)
                 path.write_bytes(original)
 
+    def test_malformed_policy_and_security_identity_never_counts_as_staleness(self):
+        malformed = [
+            {"source": {"sha256": []}}, {"source": {"commit": []}},
+            {"source": {"sha256": None}}, {"source": {"commit": "not-a-commit"}},
+            {"binding": {"runId": None}}, {"binding": {"objectiveVersion": True}},
+            {"binding": {"objectiveVersion": -1}}, {"binding": None},
+            {"binding": {"taskId": []}}, {"binding": {"revision": True}},
+            {"binding": {"criteria": [None]}}, {"source": None},
+        ]
+        for gate_type in ("policy", "security"):
+            run_id = "malformed-" + gate_type
+            self.store.create(run_id=run_id, goal="Protected identity", outcome="Valid evidence", criteria=[])
+            record = self.store._record_policy_decision if gate_type == "policy" else self.store._record_security_verdict
+            for index, fields in enumerate(malformed):
+                with self.subTest(gate_type=gate_type, fields=fields):
+                    identifier = "negative-" + str(index)
+                    path = self.store.run_dir(run_id) / (identifier + ".json")
+                    path.write_text(json.dumps({"verdict": "FAIL", **fields}), encoding="utf-8")
+                    record(run_id, artifact_id=identifier, path=path.relative_to(self.store.repository).as_posix(),
+                           evidence_refs=[])
+                    self.store.record_gate(run_id, gate_id=identifier, task_id=None, gate_type=gate_type,
+                        status="FAIL", evidence_refs=["artifact:" + identifier], criteria=["OUTCOME-001"])
+                    state = self.store.load(run_id)
+                    gate = next(item for item in state["gateResults"] if item["id"] == identifier)
+                    with self.assertRaises(RuntimeFailure) as invalid:
+                        self.store.failure_source_status(state, gate)
+                    self.assertEqual("EVIDENCE_BINDING_INVALID", invalid.exception.code)
+
     def test_source_bound_policy_and_security_failures_become_historical_only_with_real_drift(self):
         for gate_type in ("policy", "security"):
             with self.subTest(gate_type=gate_type):

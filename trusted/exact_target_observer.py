@@ -277,6 +277,42 @@ def invoke_ssh(ssh: dict[str, Any], request: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def process_state(process_id: int) -> str:
+    if os.name == "nt":
+        import ctypes
+
+        # Windows signal zero is not a POSIX read-only probe.
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+        kernel.OpenProcess.restype = ctypes.c_void_p
+        kernel.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        kernel.WaitForSingleObject.restype = ctypes.c_uint32
+        kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+        kernel.CloseHandle.restype = ctypes.c_int
+        handle = kernel.OpenProcess(0x1000 | 0x100000, False, process_id)
+        if not handle:
+            if ctypes.get_last_error() == 87:
+                return "closed"
+            raise ValueError("reconciled process cannot be observed")
+        try:
+            observed = kernel.WaitForSingleObject(handle, 0)
+            if observed == 0:
+                return "closed"
+            if observed == 258:
+                return "running"
+            raise ValueError("reconciled process status query failed")
+        finally:
+            if not kernel.CloseHandle(handle):
+                raise ValueError("reconciled process query handle could not be closed")
+    try:
+        os.kill(process_id, 0)
+    except ProcessLookupError:
+        return "closed"
+    except PermissionError:
+        return "running"
+    return "running"
+
+
 def observe_local(request: dict[str, Any]) -> dict[str, Any]:
     binding = request["binding"]
     intended = request["intended"]
@@ -389,24 +425,13 @@ def observe_local(request: dict[str, Any]) -> dict[str, Any]:
     }
     if reconciliation is not None:
         process_id = reconciliation["processId"]
-        try:
-            os.kill(process_id, 0)
-        except ProcessLookupError:
-            process_state = "closed"
-        except PermissionError:
-            process_state = "running"
-        except OSError:
-            if os.name != "nt":
-                raise
-            process_state = "closed"
-        else:
-            process_state = "running"
-        if process_state != "closed":
+        observed_process_state = process_state(process_id)
+        if observed_process_state != "closed":
             raise ValueError("reconciled process is still running")
         result["observation"].update(
             {
                 "processId": process_id,
-                "processState": process_state,
+                "processState": observed_process_state,
                 "reconciliationOutcome": reconciliation["outcome"],
             }
         )

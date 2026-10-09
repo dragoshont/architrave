@@ -16,6 +16,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import time
 import unittest
 import uuid
 from unittest import mock
@@ -668,6 +669,58 @@ class InstallUpdateTests(unittest.TestCase):
         }
         with self.assertRaisesRegex(ValueError, "workspace path contains"):
             self.observer.observe_local(request)
+
+    def test_reconciliation_liveness_probe_never_terminates_owned_live_child(self) -> None:
+        artifact = self.workspace / "process-proof.bin"
+        artifact.write_bytes(b"owned liveness fixture")
+        child = subprocess.Popen(
+            [sys.executable, "-c", "import time; print('ready', flush=True); time.sleep(30)"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+        )
+        request = {
+            "binding": {"runId": "run-a", "objectiveVersion": 1, "revision": 1, "taskId": "task-a",
+                        "checkpointId": "checkpoint-a", "checkpointType": "SIDE_EFFECT_RECONCILIATION_REQUIRED",
+                        "provider": "provider-a", "principal": "operator", "challengeHash": "a" * 64},
+            "intended": {"provider": "provider-a", "artifact": "process-proof.bin", "version": "1",
+                         "sha256": digest(artifact), "environment": "test", "workspace": str(self.workspace.resolve()),
+                         "acceptanceTarget": "owned fixture"},
+            "target": {"transport": "local", "artifactPath": str(artifact.resolve()),
+                       "workspaceMode": "exact-directory", "ssh": None,
+                       "reconciliation": {"runId": "run-a", "taskId": "task-a", "operation": "input",
+                                          "target": "owned fixture", "outcome": "closed-unknown",
+                                          "processId": child.pid}},
+        }
+        try:
+            self.assertEqual("ready\n", child.stdout.readline())
+            with self.assertRaisesRegex(ValueError, "still running"):
+                self.observer.observe_local(request)
+            time.sleep(.1)
+            self.assertIsNone(child.poll(), "Read-only probe terminated its exact owned child")
+        finally:
+            if child.poll() is None:
+                child.terminate()
+            child.wait(timeout=5)
+            child.stdout.close()
+            child.stderr.close()
+        result = self.observer.observe_local(request)
+        self.assertEqual("closed", result["observation"]["processState"])
+
+    @unittest.skipUnless(os.name == "nt", "Windows non-mutating process query contract")
+    def test_reconciliation_process_query_errors_fail_closed_without_signals(self) -> None:
+        kernel = mock.Mock()
+        kernel.OpenProcess.return_value = None
+        with mock.patch("ctypes.WinDLL", return_value=kernel), \
+                mock.patch("ctypes.get_last_error", return_value=5), \
+                mock.patch.object(self.observer.os, "kill", side_effect=AssertionError("No Windows signals")):
+            with self.assertRaisesRegex(ValueError, "cannot be observed"):
+                self.observer.process_state(os.getpid())
+            kernel.OpenProcess.return_value = 123
+            kernel.WaitForSingleObject.return_value = 0xFFFFFFFF
+            kernel.CloseHandle.return_value = 1
+            with self.assertRaisesRegex(ValueError, "status query failed"):
+                self.observer.process_state(os.getpid())
+            kernel.CloseHandle.assert_called_once_with(123)
 
     def test_observer_self_installer_is_python39_compatible_and_pinned(self) -> None:
         state = self.workspace / "observer state" / ".architrave"

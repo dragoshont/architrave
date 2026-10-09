@@ -181,6 +181,9 @@ Current authenticated policy-engine and security-review failures remain
 governing when source coverage is unknown. Only explicit stale Run/objective
 or source bindings on all their evidence can move them to history; missing
 bindings never imply safety clearance.
+Supplied safety-evidence identity fields must have valid types/formats before
+source comparison. Null, malformed or fabricated digest/Run/version values
+raise an evidence error; they cannot clear a FAIL by looking different.
 Visual artifacts are retained once before freshness/pixel validation, and the
 receipt references those exact validated bytes. Retention preserves the observed
 source modification time; copying an old screenshot does not refresh its proof.

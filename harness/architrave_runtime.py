@@ -3928,15 +3928,30 @@ class RunStore:
                 binding = receipt.get("binding")
                 source = receipt.get("source")
                 stale = False
-                if binding is not None:
+                if "binding" in receipt:
                     if not isinstance(binding, dict):
                         raise RuntimeFailure("EVIDENCE_BINDING_INVALID", "policy/security binding must be an object")
+                    if ("runId" in binding and (not isinstance(binding["runId"], str) or not ID_RE.fullmatch(binding["runId"]))
+                            or "objectiveVersion" in binding and (not isinstance(binding["objectiveVersion"], int)
+                                or isinstance(binding["objectiveVersion"], bool) or binding["objectiveVersion"] < 1)):
+                        raise RuntimeFailure("EVIDENCE_BINDING_INVALID", "policy/security Run/objective identity is malformed")
+                    if ("taskId" in binding and binding["taskId"] is not None
+                            and (not isinstance(binding["taskId"], str) or not ID_RE.fullmatch(binding["taskId"]))
+                            or "revision" in binding and (not isinstance(binding["revision"], int)
+                                or isinstance(binding["revision"], bool) or binding["revision"] < 0)):
+                        raise RuntimeFailure("EVIDENCE_BINDING_INVALID", "policy/security task/revision identity is malformed")
+                    if "criteria" in binding and (not isinstance(binding["criteria"], list)
+                            or any(not isinstance(item, str) or not ID_RE.fullmatch(item) for item in binding["criteria"])):
+                        raise RuntimeFailure("EVIDENCE_BINDING_INVALID", "policy/security criterion identities are malformed")
                     if (binding.get("runId", state["runId"]) != state["runId"]
                             or binding.get("objectiveVersion", state["objective"]["version"]) != state["objective"]["version"]):
                         stale = True
-                if source is not None:
+                if "source" in receipt:
                     if not isinstance(source, dict):
                         raise RuntimeFailure("EVIDENCE_BINDING_INVALID", "policy/security source must be an object")
+                    for field, pattern in (("commit", r"(?:[0-9a-f]{40}|[0-9a-f]{64})"), ("sha256", r"[0-9a-f]{64}")):
+                        if field in source and (not isinstance(source[field], str) or not re.fullmatch(pattern, source[field])):
+                            raise RuntimeFailure("EVIDENCE_BINDING_INVALID", "policy/security source identity is malformed")
                     if source.get("commit") is not None and source["commit"] != run_command(["git", "rev-parse", "HEAD"], self.repository):
                         stale = True
                     if source.get("sha256") is not None and source["sha256"] != workspace_fingerprint(self.repository, include_ignored=False):
