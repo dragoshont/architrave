@@ -123,7 +123,7 @@ def ribbon_snapshot(store: RunStore, run_id: str | None = None) -> dict[str, Any
                 matches = []
                 for gate in state["gateResults"]:
                     if (gate["status"] != "PASS" or gate["type"] not in {"reality", "e2e"}
-                            or gate["taskId"] != task["id"] or gate["objectiveVersion"] != state["objective"]["version"]
+                            or gate["taskId"] not in {None, task["id"]} or gate["objectiveVersion"] != state["objective"]["version"]
                             or criterion_id not in gate["criteria"] or f"gate:{gate['id']}" not in criterion["evidenceRefs"]):
                         continue
                     for ref in gate["evidenceRefs"]:
@@ -133,9 +133,10 @@ def ribbon_snapshot(store: RunStore, run_id: str | None = None) -> dict[str, Any
                         receipt = json.loads((store.repository / artifact["path"]).read_text(encoding="utf-8"))
                         binding = receipt.get("binding") or {}
                         observed = receipt.get("source") or {}
-                        if (binding.get("runId") == state["runId"] and binding.get("taskId") == task["id"]
+                        if (binding.get("runId") == state["runId"] and binding.get("taskId") == gate["taskId"]
                                 and binding.get("objectiveVersion") == state["objective"]["version"]
                                 and criterion_id in binding.get("criteria", [])
+                                and receipt.get("surface") == criterion.get("surface")
                                 and observed.get("commit") == source["observedCommit"]
                                 and observed.get("sha256") == source["sha256"]):
                             matches.append(f"gate:{gate['id']} / {ref} / sha256:{artifact['sha256']}")

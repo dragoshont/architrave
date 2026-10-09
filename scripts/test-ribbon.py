@@ -67,6 +67,41 @@ class RibbonTests(unittest.TestCase):
         self.assertNotIn("tokens", result)
         self.assertNotIn("policy", result)
 
+    def test_taskless_current_product_observation_verifies_completed_delivery(self):
+        from legibility import LegibilityRunner
+        command = ("& '" + sys.executable.replace("'", "''") + "' -c \"print('observed')\""
+                   if os.name == "nt" else shlex.join([sys.executable, "-c", "print('observed')"]))
+        (self.repo / "architrave.config.json").write_text(json.dumps({
+            "kind": "knowledge", "build": command, "test": command}), encoding="utf-8")
+        self.git("add", ".")
+        self.git("commit", "-qm", "product observation fixture")
+        run_id = "taskless"
+        self.store.create(run_id=run_id, goal="Observed fixture", outcome="Observed web",
+            criteria=[{"id": "PRODUCT", "description": "Observed fixture", "scope": "fixture",
+                       "risk": "R1", "verificationType": "reality", "surface": "web", "blocking": True}])
+        for identifier in ("delivery", "foreign"):
+            self.store.add_task(run_id, {"id": identifier, "objective": "Observed fixture",
+                "acceptanceCriteria": ["PRODUCT"], "workerProfile": "shell", "risk": "R1",
+                "pushback": "KEEP:fixture"})
+            self.store.start_task(run_id, identifier, worker_id="worker-" + identifier)
+            self.store.finish_worker(run_id, identifier, worker_id="worker-" + identifier, status="FINISHED")
+        scoped = self.store.execute_gate(run_id, "delivery")
+        self.store.complete_task(run_id, "delivery", evidence_refs=[scoped["gateRef"]])
+        runner = LegibilityRunner(self.repo, run_id)
+        observed = runner._finalize_gate("web", [
+            runner.recipe("runtime.health", command), runner.recipe("web.e2e", command)], task_id=None)
+        ref = "gate:" + observed["gateId"]
+        self.store.set_criterion(run_id, "PRODUCT", "PASS", [ref])
+        self.assertEqual("verified", ribbon_snapshot(self.store, run_id)["steps"][0]["state"])
+        runner = LegibilityRunner(self.repo, run_id)
+        foreign = runner._finalize_gate("web", [
+            runner.recipe("runtime.health", command), runner.recipe("web.e2e", command)], task_id="foreign")
+        self.store.set_criterion(run_id, "PRODUCT", "PASS", ["gate:" + foreign["gateId"]])
+        self.assertEqual("done", ribbon_snapshot(self.store, run_id)["steps"][0]["state"])
+        self.store.set_criterion(run_id, "PRODUCT", "PASS", [ref])
+        (self.repo / "fixture.txt").write_text("Uncommitted source correction\n", encoding="utf-8")
+        self.assertEqual("done", ribbon_snapshot(self.store, run_id)["steps"][0]["state"])
+
     def test_explicit_loop_stop_not_attempt_count(self):
         self.task("retry")
         self.store.start_task("run", "retry", worker_id="worker-one")

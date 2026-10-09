@@ -124,6 +124,30 @@ try {
     one.emit("session.idle");
     equal((await state(url)).activity, "waiting");
     one.emit("user_input.completed", { requestId: "input", answer: "DO_NOT_RETAIN" });
+    for (let i = 0; i < 33; i++) one.emit("user_input.requested", { requestId: "overflow-" + i });
+    for (let i = 0; i < 32; i++) one.emit("user_input.completed", { requestId: "overflow-" + i });
+    equal((await state(url)).activity, "waiting");
+    equal((await state(url)).pendingRequestsStatus, "overflow-unreconciled");
+    one.emit("session.idle");
+    one.emit("assistant.turn_start");
+    equal((await state(url)).activity, "waiting");
+    one.emit("session.context_cleared");
+    equal((await state(url)).activity, "waiting");
+    one.emit("session.error");
+    equal((await state(url)).activity, "waiting");
+    one.emit("user_input.completed", { requestId: "overflow-32" });
+    equal((await state(url)).activity, "waiting");
+    one.emit("session.shutdown");
+    equal((await state(url)).activity, "stopped");
+    equal((await state(url)).pendingRequestsStatus, "observed");
+    for (const kind of ["permission", "elicitation"]) {
+        for (let i = 0; i < 33; i++) one.emit(kind + ".requested", { requestId: kind + "-" + i });
+        for (let i = 0; i < 32; i++) one.emit(kind + ".completed", { requestId: kind + "-" + i });
+        equal((await state(url)).activity, "waiting");
+        equal((await state(url)).pendingRequestsStatus, "overflow-unreconciled");
+        one.emit("session.shutdown");
+        equal((await state(url)).activity, "stopped");
+    }
     one.emit("assistant.usage", { model: "model-observed", reasoningEffort: "medium" });
     one.emit("session.usage_info", { currentTokens: 1234, tokenLimit: 32768, messagesLength: 3,
         systemTokens: 100, toolDefinitionsTokens: 222, conversationTokens: 912 });

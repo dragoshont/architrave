@@ -349,6 +349,16 @@ malformed or tampered evidence raises an error, not an ordinary stale label.
 Capture-time baseline freshness requires both matching HEAD and no Git-visible
 public workspace drift. Canonical private/control metadata uses the existing
 private-root exclusion, not an arbitrary implementation allowlist.
+
+Current criterion-owned taskless product observations can verify an already
+completed delivery, as can observations bound to that delivery itself. Proof
+bound to another task or surface, or an older source, cannot verify it. This
+does not let taskless observations substitute for task-bound completion gates.
+
+The Session companion retains at most 32 pending request IDs. Overflow is
+explicitly unreconciled and conservatively Waiting; idle, turn-end, errors,
+context clearing and unmatched completions cannot imply all holds resolved.
+Only authoritative host shutdown clears that overflow sentinel.
 | Active | Canonical in-flight work, not proof that all other host sessions are idle. |
 | Blocked | Current human/resource/dependency blocker; superseded blockers are history. |
 | Deferred / bypassed | Not done; reason and dependencies remain inspectable. |

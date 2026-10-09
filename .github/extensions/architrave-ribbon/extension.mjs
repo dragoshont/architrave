@@ -68,6 +68,7 @@ const companion = {
 };
 const activeTools = new Map();
 const waiting = new Map();
+let waitingOverflow = false;
 const subagents = new Map();
 const pendingSubagents = new Map();
 const childVersions = new Map();
@@ -174,7 +175,7 @@ function observeSubagent(event) {
     notifyCompanion();
 }
 function notifyCompanion() {
-    companion.activity = waiting.size ? [...waiting.values()][0] : activeTools.size ? "working" : activity;
+    companion.activity = waitingOverflow ? "waiting" : waiting.size ? [...waiting.values()][0] : activeTools.size ? "working" : activity;
     for (const entry of servers.values()) if (entry.domainKey === null)
         for (const response of entry.clients) {
             if (response.writableLength > 8192) response.destroy();
@@ -182,7 +183,9 @@ function notifyCompanion() {
         }
 }
 function companionSnapshot() {
-    return { ...companion, activeTools: [...activeTools.values()], subagents: [...subagents.values()] };
+    return { ...companion, pendingRequestsStatus: waitingOverflow ? "overflow-unreconciled" : "observed",
+        diagnostic: waitingOverflow ? "Pending request limit reached; waiting state is unreconciled until host shutdown." : companion.diagnostic,
+        activeTools: [...activeTools.values()], subagents: [...subagents.values()] };
 }
 function resetActivity(state) {
     activeTools.clear(); waiting.clear(); activity = state;
@@ -240,11 +243,15 @@ export function observeSession(event) {
         break;
     case "permission.requested":
         if (data.resolvedByHook) return;
-        if (compact(data.requestId) && waiting.size < 32) waiting.set(data.requestId, "blocked");
+        if (compact(data.requestId) && (waiting.has(data.requestId) || waiting.size < 32))
+            waiting.set(data.requestId, "blocked");
+        else waitingOverflow = true;
         break;
     case "user_input.requested":
     case "elicitation.requested":
-        if (compact(data.requestId) && waiting.size < 32) waiting.set(data.requestId, "waiting");
+        if (compact(data.requestId) && (waiting.has(data.requestId) || waiting.size < 32))
+            waiting.set(data.requestId, "waiting");
+        else waitingOverflow = true;
         break;
     case "permission.completed":
     case "user_input.completed":
@@ -256,7 +263,7 @@ export function observeSession(event) {
         activeTools.clear();
         if (activity !== "error") activity = "idle";
         break;
-    case "session.shutdown": resetActivity("stopped"); break;
+    case "session.shutdown": waitingOverflow = false; resetActivity("stopped"); break;
     default: return;
     }
     notifyCompanion();
