@@ -421,7 +421,14 @@ tools.push({
       return result({ ...outcome, cleanup: { confirmed: !cleanupErrors.length, errors: cleanupErrors },
         ...(cleanupErrors.length ? { recoveryOwner: hostTaskId } : {}) });
     } catch (error) {
-      return result({ status: "failed", error: { code: "NATIVE_SEMANTIC_FAILED", message: String(error) }, hostTaskId });
+      cleanupAttempted = true;
+      const entry = active.get(key);
+      const cleanupErrors = await cleanupSemanticOwner(hostTaskId, connection, entry);
+      if (cleanupErrors.length && entry) entry.recoveryPending = true;
+      else if (key) active.delete(key);
+      return result({ status: "failed", error: { code: "NATIVE_SEMANTIC_FAILED", message: String(error) }, hostTaskId,
+        cleanup: { confirmed: !cleanupErrors.length, errors: cleanupErrors },
+        ...(cleanupErrors.length && hostTaskId ? { recoveryOwner: hostTaskId } : {}) });
     } finally {
       invocation.signal?.removeEventListener("abort", abort);
       try { observer?.close(); }
@@ -515,6 +522,15 @@ session = await joinSession({ tools, hooks: {
           return absolute;
         });
         if (name === "view") {
+          const allowed = ["path", "view_range", "forceReadLargeFiles"];
+          if (Object.keys(args).some(key => !allowed.includes(key)) ||
+              args.forceReadLargeFiles !== undefined && args.forceReadLargeFiles !== false)
+            throw new Error("unsupported or unbounded view override");
+          if (args.view_range !== undefined &&
+              (!Array.isArray(args.view_range) || args.view_range.length !== 2 ||
+               !args.view_range.every(Number.isInteger) || args.view_range[0] < 1 ||
+               args.view_range[1] < args.view_range[0] || args.view_range[1] - args.view_range[0] >= 400))
+            throw new Error("view range must contain at most 400 finite source lines");
           if (!semanticFiles?.includes(roots[0]) || !regularSource(roots[0])) throw new Error("view requires a tracked regular source file");
           return { modifiedArgs: { ...args, path: roots[0] } };
         }

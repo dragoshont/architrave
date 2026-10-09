@@ -209,6 +209,7 @@ class RibbonTests(unittest.TestCase):
         self.store.record_gate("run", gate_id="negative", task_id="delivery", gate_type="reality",
             status="FAIL", evidence_refs=["artifact:old-failure"], criteria=["OUTCOME-001"], surface="web")
         self.assertEqual("stopped", ribbon_snapshot(self.store, "run")["steps"][0]["state"])
+        self.assertEqual("FAILED", self.store.verify("run")[0]["status"])
         authenticated = path.read_bytes()
         path.write_bytes(b"tampered retained failure")
         with self.assertRaises(RuntimeFailure):
@@ -224,6 +225,7 @@ class RibbonTests(unittest.TestCase):
         self.assertTrue(any("gate:negative" in ref for ref in step["evidence"]))
         retained = self.store.load("run")["gateResults"][0]
         self.assertEqual("FAIL", retained["status"])
+        self.assertNotEqual("FAILED", self.store.verify("run")[0]["status"])
 
     def test_private_control_metadata_drift_is_not_public_source_drift(self):
         private = self.repo / ".architrave" / "private-history.txt"
@@ -248,6 +250,7 @@ class RibbonTests(unittest.TestCase):
         result = self.store.execute_gate("run", "delivery")
         self.assertEqual("FAIL", result["status"])
         self.assertEqual("stopped", ribbon_snapshot(self.store, "run")["steps"][0]["state"])
+        self.assertEqual("FAILED", self.store.verify("run")[0]["status"])
         (self.repo / "fixture.txt").write_text("Source correction\n", encoding="utf-8")
         self.git("add", ".")
         self.git("commit", "-qm", "source correction")
@@ -256,6 +259,7 @@ class RibbonTests(unittest.TestCase):
         self.assertNotEqual("stopped", step["state"])
         self.assertIn("historical", step["reason"].lower())
         self.assertTrue(any(result["gateRef"] in ref for ref in step["evidence"]))
+        self.assertNotEqual("FAILED", self.store.verify("run")[0]["status"])
 
     def test_cli_projection_envelope(self):
         self.task("scoped")

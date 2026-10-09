@@ -183,6 +183,11 @@ class LegibilityTests(unittest.TestCase):
         with self.assertRaises(RuntimeFailure) as stale:
             self.store.assert_gate_sources_current(verified, [f"gate:{gate['id']}"])
         self.assertEqual("EVIDENCE_SOURCE_STALE", stale.exception.code)
+        self.store.resume(run_id, accept_commit=True)
+        state, completed = self.store.verify(run_id)
+        self.assertFalse(completed)
+        self.assertEqual("VERIFYING", state["status"])
+        self.assertEqual("FAIL", state["acceptanceCriteria"][0]["status"])
 
     def test_repeated_and_independent_observations_keep_prior_authenticated_bytes(self) -> None:
         runner, run_id = self.create_runner({"health": self.pass_command(), "web": {"url": "http://fixture.invalid"}})

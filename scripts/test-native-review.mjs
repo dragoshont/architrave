@@ -17,6 +17,7 @@ const executable = spawnSync(command, ["-c", "import sys;from pathlib import Pat
 assert.equal(executable.status, 0, executable.stderr);
 const python = executable.stdout.trim();
 let definition, cancelDefinition, hooks, current, taskRpc, count = 0, failCleanup = true;
+let conflictCompletion = false;
 const listeners = new Set();
 const tasks = new Map();
 let assertions = 0;
@@ -85,6 +86,14 @@ s.add_task('review',{'id':'source','objective':'Review source','acceptanceCriter
                         ok(hooks.onPreToolUse({ toolName: "evil.view", toolArgs: { path: join(repo, "README.md") }, sessionId: "child" }, { sessionId: "owner-one" }).permissionDecision === "deny");
                         ok(hooks.onPreToolUse({ toolName: "functions.view", toolArgs: { path: join(repo, ".architrave", "runtime.key") }, sessionId: "child" }, { sessionId: "owner-one" }).permissionDecision === "deny");
                         ok(hooks.onPreToolUse({ toolName: "functions.view", toolArgs: { path: join(repo, "README.md") }, sessionId: "child" }, { sessionId: "owner-one" }).modifiedArgs.path.endsWith("README.md"));
+                        for (const override of [{ forceReadLargeFiles: true }, { view_range: [1, -1] },
+                            { view_range: [1, 401] }, { view_range: [0, 2] }, { hidden: true }])
+                            ok(hooks.onPreToolUse({ toolName: "functions.view",
+                                toolArgs: { path: join(repo, "README.md"), ...override }, sessionId: "child" },
+                                { sessionId: "owner-one" }).permissionDecision === "deny");
+                        ok(hooks.onPreToolUse({ toolName: "functions.view",
+                            toolArgs: { path: join(repo, "README.md"), view_range: [1, 400] }, sessionId: "child" },
+                            { sessionId: "owner-one" }).modifiedArgs.view_range[1] === 400);
                         const search = hooks.onPreToolUse({ toolName: "functions.rg", toolArgs: { pattern: "fixture", paths: [repo] }, sessionId: "child" }, { sessionId: "owner-one" });
                         ok(search.modifiedArgs.paths.every(path => !path.includes(".architrave") && (!path.includes(".git") || path.endsWith(".gitignore"))));
                         ok(search.modifiedArgs.paths.every(path => path !== repo));
@@ -109,6 +118,12 @@ s.add_task('review',{'id':'source','objective':'Review source','acceptanceCriter
                         await rename(join(repo, "public-saved"), join(repo, "public"));
                         setTimeout(() => {
                             current.status = "idle"; current.latestResponse = JSON.stringify(report);
+                            if (conflictCompletion) {
+                                for (const suffix of ["one", "two"]) emit({ type: "subagent.completed",
+                                    id: "conflict-" + suffix, agentId: id, timestamp: new Date().toISOString(),
+                                    data: { toolCallId: id, agentName: args.agentType, firstDispatchedModel: "claude-fixture" } });
+                                return;
+                            }
                             emit({ type: "subagent.completed", id: `completion-${count}`, agentId: id,
                                 timestamp: new Date().toISOString(),
                                 data: { toolCallId: id, agentName: args.agentType, firstDispatchedModel: args.agentType === "rubber-duck" ? "claude-fixture" : "gpt-fixture",
@@ -180,6 +195,27 @@ s.add_task('review',{'id':'source','objective':'Review source','acceptanceCriter
     ok(state.artifacts.every(artifact => artifact.producer === "semantic-judge" && artifact.consumedByTask === "source"));
     ok(state.gateResults.filter(gate => gate.status === "PASS").length === 2);
     ok(state.acceptanceCriteria[0].status === "UNTESTED");
+    const correction = spawnSync(python, ["-c", `
+import sys,subprocess
+from pathlib import Path
+sys.path.insert(0,sys.argv[1]+'/harness')
+from architrave_runtime import RunStore
+r=Path(sys.argv[2]); (r/'README.md').write_text('New frozen candidate\\n')
+for args in [('add','README.md'),('commit','-qm','new candidate')]:
+ subprocess.run(['git',*args],cwd=r,check=True,capture_output=True)
+RunStore(r).resume('review',accept_commit=True)
+`, ROOT, repo], { encoding: "utf8" });
+    assert.equal(correction.status, 0, correction.stderr);
+    conflictCompletion = true; failCleanup = true;
+    const exceptional = JSON.parse((await definition.handler(args,
+        { ...invocation, toolCallId: "exceptional-cleanup" })).textResultForLlm);
+    ok(exceptional.error.code === "NATIVE_SEMANTIC_FAILED" && exceptional.cleanup.confirmed === false);
+    ok(exceptional.recoveryOwner === "agent-3");
+    ok(hooks.onPreToolUse({ toolName: "functions.powershell", toolArgs: {}, sessionId: "owner-one" },
+        { sessionId: "owner-one" }).permissionDecision === "deny");
+    const exceptionRecovery = JSON.parse((await cancelDefinition.handler(args, invocation)).textResultForLlm);
+    ok(exceptionRecovery.cancelled === true && tasks.size === 0);
+    conflictCompletion = false;
     await mkdir(join(repo, "public", ".architrave"));
     await writeFile(join(repo, "public", ".architrave", "advertised-source.md"), "Synthetic unsupported public source fixture");
     const advertise = spawnSync(python, ["-c", `
@@ -196,7 +232,7 @@ RunStore(r).resume('review',accept_commit=True)
         { ...invocation, toolCallId: "unsupported-inventory" })).textResultForLlm);
     assert.ok(unsupported.status === "failed" && unsupported.error?.message.includes("SEMANTIC_SOURCE_UNSUPPORTED"),
         JSON.stringify(unsupported)); assertions++;
-    ok(count === 2);
+    ok(count === 3);
     console.log(`PASS native semantic SDK fixtures: ${assertions} assertions; not live host qualification`);
 } finally {
     await rm(root, { recursive: true });

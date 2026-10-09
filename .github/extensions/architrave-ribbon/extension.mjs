@@ -68,6 +68,7 @@ const companion = {
 };
 const activeTools = new Map();
 const waiting = new Map();
+const dismissing = new Set();
 let waitingOverflow = false;
 const subagents = new Map();
 const pendingSubagents = new Map();
@@ -819,12 +820,21 @@ async function startServer(domainKey, instanceId) {
                     displayRevision++;
                     sessionPreferences = { ...(sessionPreferences || {}), dismissed: true };
                     await serial("companion-session", () => writePreferences(sessionPreferences));
-                    res.end("{}");
+                    dismissing.add(instanceId);
                     try {
                         if (typeof session.rpc?.canvas?.close !== "function")
                             throw new CanvasError("companion_close_unavailable", "Use the host panel close control");
                         await session.rpc.canvas.close({ instanceId });
-                    } catch (error) { diagnostic(`Session auto-open suppressed; host close unavailable (${compact(String(error.code)) || "unsupported"}).`); }
+                    } catch (error) {
+                        dismissing.delete(instanceId);
+                        diagnostic(`Session auto-open suppressed; host close unavailable (${compact(String(error.code)) || "unsupported"}).`);
+                        throw error;
+                    }
+                    res.setHeader("Content-Type", "application/json");
+                    res.end("{}", () => {
+                        dismissing.delete(instanceId);
+                        void close(instanceId).catch(error => diagnostic(`Panel cleanup failed (${compact(String(error.code)) || "unsupported"}).`));
+                    });
                     return;
                 }
                 res.setHeader("Content-Type", "application/json"); res.end("{}");
@@ -852,6 +862,7 @@ async function startServer(domainKey, instanceId) {
     return { server, clients, domainKey, url: `http://127.0.0.1:${server.address().port}/${token}/` };
 }
 async function close(instanceId) {
+    if (dismissing.has(instanceId)) return;
     const entry = servers.get(instanceId);
     if (!entry) return;
     servers.delete(instanceId);

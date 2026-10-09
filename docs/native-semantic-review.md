@@ -47,6 +47,9 @@ Recursive glob/directory views and hidden/ignore/follow overrides are denied.
 Search roots are expanded to validated tracked regular files, never delegated
 as unconstrained recursive roots. Paths are normalized inside the target. This does not replace host permissions
 or claim an OS sandbox. Source, policy, holds and objective are rechecked.
+File views allow only the supported path/range arguments, never full-large-file
+overrides; explicit ranges must be finite and at most 400 lines. Sequential
+bounded views remain available for complete inspection.
 
 ## Receipts and gates
 
@@ -77,6 +80,8 @@ registration leaves no committed producer artifact or role-retry blocker.
 Cleanup warnings are reported separately from a durably admitted result;
 unclosed owned jobs retain a recovery handle for the existing native cancel
 surface. Cleanup failure is never reinterpreted as a missing source verdict.
+Exceptional execution responses also include settled cleanup confirmation and
+the actual owned recovery handle when removal fails.
 Semantic execution requires `tasks.startAgent`, `list`, `cancel` and `remove`
 before opening its producer pipe or admitting a reviewer. Partial hosts fail
 before AI rather than entering an unrecoverable cleanup hold.

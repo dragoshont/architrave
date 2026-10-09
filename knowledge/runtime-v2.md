@@ -173,6 +173,10 @@ verification can report a failed Run. Failed receipts never provide PASS
 admission or consumption credit.
 Failed legibility admission rechecks those bindings inside the Run transaction;
 an earlier observation check cannot authorize evidence after source drift.
+Canonical verification and the ribbon use the same source-current failure
+classification. Stale failed receipts/gates remain historical, and their
+criteria need fresh observation rather than forcing a corrected Run to FAILED.
+Malformed or tampered evidence remains an error, not ordinary staleness.
 Visual artifacts are retained once before freshness/pixel validation, and the
 receipt references those exact validated bytes. Retention preserves the observed
 source modification time; copying an old screenshot does not refresh its proof.

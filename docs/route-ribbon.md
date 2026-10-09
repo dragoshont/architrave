@@ -367,6 +367,9 @@ context clearing and unmatched completions cannot imply all holds resolved.
 Only authoritative host shutdown clears that overflow sentinel.
 Ordinary tracked requests likewise survive errors and context clearing;
 only their matching completion or host shutdown removes them.
+The companion's close control acknowledges success only after the host accepts
+the close. Unsupported or failed host closing remains an explicit client error;
+auto-open suppression is preserved separately from actual panel closure.
 
 The source hash/commit, objective version, revision and capture time are shown.
 Freshness is **at capture time**; the canvas cannot detect later repository

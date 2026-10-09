@@ -3916,6 +3916,24 @@ class RunStore:
                 or source.get("sha256") != workspace_fingerprint(self.repository, include_ignored=False)):
             raise RuntimeFailure("EVIDENCE_SOURCE_STALE", "frozen product receipt no longer binds current task/objective/source")
 
+    def failure_source_status(self, state: dict[str, Any], gate: dict[str, Any]) -> str | None:
+        if not gate["evidenceRefs"]:
+            return "unbound source"
+        try:
+            self.assert_gate_sources_current(state, [f"gate:{gate['id']}"])
+        except RuntimeFailure as exc:
+            if exc.code != "EVIDENCE_SOURCE_STALE":
+                raise
+            return "stale source"
+        refs = set(gate["evidenceRefs"])
+        for artifact in state["artifacts"]:
+            if f"artifact:{artifact['id']}" not in refs or artifact["producer"] not in {"legibility", "deterministic"}:
+                continue
+            receipt = self._read_json_receipt(artifact["path"], "governing failure")
+            if artifact["producer"] == "legibility" or receipt.get("schema") == "architrave.deterministic-observation.v1":
+                return None
+        return "unbound source"
+
     def record_gate(
         self,
         run_id: str,
@@ -5052,14 +5070,25 @@ class RunStore:
 
         def mutate(state: dict[str, Any]) -> dict[str, Any]:
             required = [criterion for criterion in state["acceptanceCriteria"] if criterion["blocking"]]
-            self.assert_gate_sources_current(state, [ref for criterion in required for ref in criterion["evidenceRefs"]])
-            deterministic_failures = [
-                gate["id"]
-                for gate in state["gateResults"]
-                if gate["status"] == "FAIL" and gate["type"] in {"deterministic", "e2e", "reality", "policy", "security"}
-            ]
-            failed = [criterion["id"] for criterion in required if criterion["status"] == "FAIL"]
-            untested = [criterion["id"] for criterion in required if criterion["status"] == "UNTESTED"]
+            stale_failures = set()
+            for criterion in required:
+                try:
+                    self.assert_gate_sources_current(state, criterion["evidenceRefs"])
+                except RuntimeFailure as exc:
+                    if criterion["status"] != "FAIL" or exc.code != "EVIDENCE_SOURCE_STALE":
+                        raise
+                    stale_failures.add(criterion["id"])
+            deterministic_failures = []
+            for gate in state["gateResults"]:
+                if (gate["status"] != "FAIL" or gate["objectiveVersion"] != state["objective"]["version"]
+                        or gate["type"] not in {"deterministic", "e2e", "reality", "policy", "security"}):
+                    continue
+                if self.failure_source_status(state, gate) is None:
+                    deterministic_failures.append(gate["id"])
+            failed = [criterion["id"] for criterion in required
+                      if criterion["status"] == "FAIL" and criterion["id"] not in stale_failures]
+            untested = [criterion["id"] for criterion in required
+                        if criterion["status"] == "UNTESTED" or criterion["id"] in stale_failures]
             blocked = [criterion["id"] for criterion in required if criterion["status"] == "BLOCKED_EXTERNAL"]
             missing_evidence = [
                 criterion["id"]

@@ -40,26 +40,7 @@ def ribbon_snapshot(store: RunStore, run_id: str | None = None) -> dict[str, Any
         if (gate["status"] != "FAIL" or gate["objectiveVersion"] != state["objective"]["version"]
                 or gate["type"] not in {"deterministic", "reality", "e2e", "policy", "security"}):
             continue
-        if not gate["evidenceRefs"]:
-            failure_freshness[gate["id"]] = "unbound source"
-            continue
-        try:
-            store.assert_gate_sources_current(state, [f"gate:{gate['id']}"])
-        except RuntimeFailure as exc:
-            if exc.code != "EVIDENCE_SOURCE_STALE":
-                raise
-            failure_freshness[gate["id"]] = "stale source"
-        else:
-            source_bound = False
-            for ref in gate["evidenceRefs"]:
-                artifact = artifacts.get(ref)
-                if not artifact or artifact["producer"] not in {"legibility", "deterministic"}:
-                    continue
-                receipt = store._read_json_receipt(artifact["path"], "governing failure")
-                if (artifact["producer"] == "legibility" or
-                        receipt.get("schema") == "architrave.deterministic-observation.v1"):
-                    source_bound = True
-            failure_freshness[gate["id"]] = None if source_bound else "unbound source"
+        failure_freshness[gate["id"]] = store.failure_source_status(state, gate)
     failed_tasks = set()
     for task in tasks.values():
         work_kind = task.get("workKind") or "unassigned"

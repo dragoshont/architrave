@@ -47,6 +47,7 @@ async function load(name, options = {}) {
                 return confirmed;
             },
             close: async ({ instanceId }) => {
+                if (options.closeDenied) throw Object.assign(Error("denied"), { code: "forbidden" });
                 await canvas.onClose({ instanceId }); panels.delete(instanceId);
             },
         },
@@ -210,6 +211,14 @@ try {
     equal((await post(url, "preferences", { enabled: false, extra: true })).status, 400);
     equal((await post(url, "preferences", { enabled: false })).status, 200);
     equal((await state(url)).autoOpen, false);
+    for (const unsupported of [false, true]) {
+        const denied = await load("close-denied-" + unsupported, { closeDenied: !unsupported });
+        const deniedUrl = await denied.manual();
+        if (unsupported) delete denied.rpc.canvas.close;
+        equal((await post(deniedUrl, "dismiss", {})).status, 500);
+        equal(denied.panels.size, 1);
+        equal((await state(deniedUrl)).diagnostic.includes("host close unavailable"), true);
+    }
     const optedOut = await load("opted-out");
     equal(optedOut.opens.length, 0);
     const optUrl = await optedOut.manual();

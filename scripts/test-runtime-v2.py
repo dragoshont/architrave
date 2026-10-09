@@ -1275,6 +1275,12 @@ class RuntimeV2Tests(unittest.TestCase):
             self.store.start_task(run_id, "drifted", worker_id="worker")
 
     def test_deterministic_failure_overrides_semantic_pass(self) -> None:
+        command = ("& '" + sys.executable.replace("'", "''") + "' -c \"raise SystemExit(1)\""
+                   if os.name == "nt" else "'" + sys.executable + "' -c 'raise SystemExit(1)'")
+        (self.repo / "architrave.config.json").write_text(json.dumps({
+            "kind": "knowledge", "build": command, "test": command}), encoding="utf-8")
+        self.git("add", "architrave.config.json")
+        self.git("commit", "-qm", "configured failed command")
         state = self.create(verification="semantic")
         run_id = str(state["runId"])
         semantic_evidence = self.evidence(run_id, "semantic-evidence", producer="semantic-judge")
@@ -1288,15 +1294,11 @@ class RuntimeV2Tests(unittest.TestCase):
             family="gpt",
         )
         self.store.set_criterion(run_id, "OUTCOME-001", "PASS", ["gate:semantic"])
-        failed = self.store.record_gate(
-            run_id,
-            gate_id="build",
-            task_id=None,
-            gate_type="deterministic",
-            status="FAIL",
-            evidence_refs=["build:failed"],
-        )
-        self.assertEqual("FAILED", failed["status"])
+        self.add_task(run_id, "build")
+        self.store.start_task(run_id, "build", worker_id="build-worker")
+        self.store.finish_worker(run_id, "build", worker_id="build-worker", status="FINISHED")
+        failed = self.store.execute_gate(run_id, "build")
+        self.assertEqual("FAIL", failed["status"])
         verified, completed = self.store.verify(run_id)
         self.assertFalse(completed)
         self.assertEqual("FAILED", verified["status"])
