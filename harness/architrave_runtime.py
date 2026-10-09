@@ -3477,6 +3477,8 @@ class RunStore:
             "Read repository instructions, "
             "Cover every implementation area named in the task. Use bounded view_range sections for large files; "
             "a truncated first view is not full inspection. Uninspected required source must yield REVISE, not PASS. "
+            "Your summary must identify inspected implementation areas and required coverage gaps; "
+            "uninspected governing or load-bearing baseline is not a FULL implementation-source PASS. "
             "architrave.config.json, governing sources and gates/rubric.md. Grade source and observed deterministic "
             "evidence; publication/family receipt admission is the host qualifier's responsibility, not a circular "
             "condition for your source verdict. Use the configured profile; do not invent product acceptance. "
@@ -3574,8 +3576,9 @@ class RunStore:
         if not isinstance(text, str) or len(text.encode("utf-8")) > ticket.budget["maxOutputBytes"]:
             raise RuntimeFailure("SEMANTIC_RESULT_INVALID", "review output exceeds its canonical bound")
         structured = text.strip()
-        if structured.startswith("```json\n") and structured.endswith("\n```"):
-            structured = structured[len("```json\n"):-len("\n```")].strip()
+        lines = structured.splitlines()
+        if len(lines) >= 3 and lines[0] == "```json" and lines[-1] == "```":
+            structured = "\n".join(lines[1:-1]).strip()
         try:
             report = json.loads(structured, object_pairs_hook=_reject_duplicate_json_keys)
         except (ValueError, json.JSONDecodeError) as exc:
@@ -3594,7 +3597,10 @@ class RunStore:
                     or finding["severity"] not in {"blocker", "major", "minor"} or not isinstance(finding["path"], str)
                     or not isinstance(finding["message"], str) or not finding["message"].strip() or len(finding["message"]) > 800):
                 raise RuntimeFailure("SEMANTIC_RESULT_INVALID", "review finding is malformed")
-            safe_relative_path(finding["path"], "review finding path")
+            path = safe_relative_path(finding["path"], "review finding path")
+            if path not in ticket.source_files:
+                raise RuntimeFailure("SEMANTIC_RESULT_INVALID", "review finding must belong to the declared implementation inventory")
+            finding["path"] = path
             if report["verdict"] == "PASS" and finding["severity"] in {"blocker", "major"}:
                 raise RuntimeFailure("SEMANTIC_RESULT_INVALID", "PASS contradicts blocking findings")
         if (not isinstance(completion, dict) or not isinstance(completion.get("timestamp"), str)

@@ -220,6 +220,25 @@ class NativeReviewTests(unittest.TestCase):
         text = "```json\n" + json.dumps(self.report(ticket)) + "\n```"
         self.assertEqual("PASS", self.accept(ticket, text=text)["verdict"])
 
+    def test_exact_json_fence_accepts_crlf_without_searching_for_verdicts(self):
+        ticket = self.prepared()
+        text = "```json\r\n" + json.dumps(self.report(ticket), indent=2).replace("\n", "\r\n") + "\r\n```"
+        self.assertEqual("PASS", self.accept(ticket, text=text)["verdict"])
+
+    def test_finding_paths_must_be_declared_implementation_entries(self):
+        (self.repo / ".git" / "info" / "exclude").write_text("untracked.md\n")
+        (self.repo / "untracked.md").write_text("Ignored, untracked and outside the declared inventory")
+        for path in (".architrave/runtime.key", "untracked.md", "missing.md"):
+            ticket = self.prepared()
+            report = self.report(ticket, "REVISE")
+            report["findings"] = [{"severity": "major", "path": path, "message": "Invalid source membership fixture"}]
+            self.assert_code("SEMANTIC_RESULT_INVALID", lambda: self.accept(ticket, report))
+        ticket = self.prepared()
+        report = self.report(ticket, "REVISE")
+        report["findings"] = [{"severity": "major", "path": "./README.md", "message": "Declared source fixture"}]
+        result = self.accept(ticket, report)
+        self.assertEqual("REVISE", result["verdict"])
+
     def test_narrative_or_multiple_fences_cannot_import_a_pass_fragment(self):
         for prefix, suffix in [("Claimed PASS before report\n", ""), ("```json\n", "\n```\nextra output")]:
             ticket = self.prepared()

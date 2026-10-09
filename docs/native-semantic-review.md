@@ -70,6 +70,11 @@ registration leaves no committed producer artifact or role-retry blocker.
 Cleanup warnings are reported separately from a durably admitted result;
 unclosed owned jobs retain a recovery handle for the existing native cancel
 surface. Cleanup failure is never reinterpreted as a missing source verdict.
+The implementation-only reader guard remains active until its owned reviewer
+task is confirmed removed, including running-task cleanup failures. Only the
+exact owned recovery-cancel path is permitted alongside confined reads; ordinary
+execute/control-plane tools stay denied. Report finding paths are normalized and
+must belong to the ticket's declared implementation inventory.
 Tracked-source inventory uses count-bound, byte-bounded transport frames rather
 than embedding all paths in the prepared response. Required but uninspected
 implementation is a REVISE coverage gap, not a full-source PASS.

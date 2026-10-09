@@ -116,7 +116,11 @@ s.add_task('review',{'id':'source','objective':'Review source','acceptanceCriter
                         return { agentId: id };
                     },
                     cancel: async ({ id }) => {
-                        if (failCleanup) { failCleanup = false; throw new Error("fixture cleanup transport failure"); }
+                        if (failCleanup) {
+                            failCleanup = false;
+                            tasks.get(id).status = "running";
+                            throw new Error("fixture cleanup transport failure");
+                        }
                         if (tasks.has(id)) tasks.get(id).status = "cancelled"; return { cancelled: true };
                     },
                     remove: async ({ id }) => { tasks.delete(id); return { removed: true }; },
@@ -142,8 +146,17 @@ s.add_task('review',{'id':'source','objective':'Review source','acceptanceCriter
     const first = JSON.parse((await definition.handler(args, invocation)).textResultForLlm);
     ok(first.status === "ok" && first.result.verdict === "PASS" && first.result.family === "anthropic");
     ok(first.cleanup.confirmed === false && first.recoveryOwner === "agent-1");
+    ok(tasks.get("agent-1").status === "running");
+    ok(hooks.onPreToolUse({ toolName: "functions.powershell", toolArgs: {}, sessionId: "child" },
+        { sessionId: "owner-one" }).permissionDecision === "deny");
+    ok(hooks.onPreToolUse({ toolName: "architrave_native_cancel", toolArgs: args, sessionId: "owner-one" },
+        { sessionId: "owner-one" }) === undefined);
+    ok(hooks.onPreToolUse({ toolName: "architrave_native_cancel", toolArgs: { ...args, task_id: "other" },
+        sessionId: "child" }, { sessionId: "owner-one" }).permissionDecision === "deny");
     const recovered = JSON.parse((await cancelDefinition.handler(args, invocation)).textResultForLlm);
     ok(recovered.cancelled === true);
+    ok(hooks.onPreToolUse({ toolName: "functions.powershell", toolArgs: {}, sessionId: "owner-one" },
+        { sessionId: "owner-one" }) === undefined);
     ok(tasks.size === 0 && listeners.size === 0);
     const second = JSON.parse((await definition.handler({ ...args, reviewer: "code-review" }, { ...invocation, toolCallId: "call-two" })).textResultForLlm);
     ok(second.status === "ok" && second.result.family === "openai");

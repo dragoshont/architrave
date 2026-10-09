@@ -296,6 +296,7 @@ const tools = [
         if (errors.length) return result({ status: "failed", cancelled: false,
           recoveryOwner: entry.hostTaskId, cleanup: { confirmed: false, errors } });
         active.delete(entry.key);
+        if (semanticScope === entry.repo) { semanticScope = undefined; semanticFiles = undefined; }
         return result({ status: "ok", cancelled: true, hostTaskId: entry.hostTaskId });
       }
       const outcome = await session.rpc.tasks.cancel({ id: entry.hostTaskId });
@@ -423,7 +424,8 @@ tools.push({
           process.stderr.write(`Native semantic cleanup needs recovery: ${errors.join("; ")}\n`);
         } else if (key) active.delete(key);
       }
-      semanticScope = undefined; semanticFiles = undefined;
+      const pending = active.get(key);
+      if (!pending || pending.hostRemoved) { semanticScope = undefined; semanticFiles = undefined; }
     }
   }),
 });
@@ -437,7 +439,8 @@ async function cleanupSemanticOwner(owner, connection, progress = {}) {
         if (!outcome.cancelled) throw new Error("Host cancellation was not confirmed");
         progress.cancelled = true;
       }
-      await session.rpc.tasks.remove({ id: owner });
+      const removed = await session.rpc.tasks.remove({ id: owner });
+      if (!removed.removed) throw new Error("Host removal was not confirmed");
       progress.hostRemoved = true;
     } catch (error) { errors.push(`host cleanup: ${String(error)}`); }
   }
@@ -466,6 +469,13 @@ tools.push({
 session = await joinSession({ tools, hooks: {
   onPreToolUse: (input, invocation) => {
     if (semanticScope) {
+      if (input.toolName === "architrave_native_cancel" && invocation.sessionId === session.sessionId) {
+        const args = input.toolArgs || {};
+        const recovery = [...active.values()].find(entry => entry.recoveryPending &&
+          entry.key.startsWith(`review:${args.run_id}:${args.task_id}:`) &&
+          typeof args.repo === "string" && resolve(args.repo) === entry.repo);
+        if (recovery) return;
+      }
       if (["tool_search_tool", "functions.tool_search_tool"].includes(input.toolName)) return;
       if (["skill", "functions.skill"].includes(input.toolName) && input.toolArgs?.skill === "architrave-review") return;
       if (!["view", "rg", "grep", "functions.view", "functions.rg"].includes(input.toolName)) {

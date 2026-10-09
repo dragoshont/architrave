@@ -69,6 +69,16 @@ class QualityCadenceTests(unittest.TestCase):
         self.write_config()
         self.assertEqual(2, self.quiet_quality())
 
+    def test_all_windows_fixture_processes_propagate_failure_immediately(self):
+        for name in (".github/workflows/validate.yml", ".github/workflows/release.yml"):
+            lines = (ROOT / name).read_text().splitlines()
+            checked = 0
+            for index, line in enumerate(lines):
+                if line.strip().startswith(("python ", "node ", "powershell ")):
+                    self.assertEqual("if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }", lines[index + 1].strip())
+                    checked += 1
+            self.assertGreater(checked, 10)
+
     def test_public_hook_json_compatibility_remains(self):
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
