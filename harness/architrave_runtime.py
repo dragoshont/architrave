@@ -2533,10 +2533,25 @@ class RunStore:
         except (OSError, json.JSONDecodeError) as exc:
             raise RuntimeFailure("INVARIANT_RECEIPT", "invariant result is unreadable") from exc
         from invariant_engine import evaluate, load_config
+        from worker_adapters import workspace_fingerprint
 
+        state = self.load(run_id)
+        observed_source = workspace_fingerprint(self.repository, include_ignored=False)
         expected = evaluate(self.repository, load_config(self.repository))
         if payload != expected:
             raise RuntimeFailure("INVARIANT_RECEIPT", "invariant result does not match a fresh engine evaluation")
+        if observed_source != workspace_fingerprint(self.repository, include_ignored=False):
+            raise RuntimeFailure("EVIDENCE_SOURCE_STALE", "source changed during invariant observation")
+        bound = {**payload,
+                 "binding": {"runId": run_id, "objectiveVersion": state["objective"]["version"],
+                             "criteria": state["objective"]["acceptanceCriteria"]},
+                 "source": {"commit": run_command(["git", "rev-parse", "HEAD"], self.repository),
+                            "sha256": observed_source}}
+        retained = self.run_dir(run_id) / "evidence" / f"invariant-{uuid.uuid4().hex}.json"
+        retained.parent.mkdir(parents=True, exist_ok=True)
+        with retained.open("x", encoding="utf-8") as stream:
+            json.dump(bound, stream)
+        kwargs["path"] = retained.relative_to(self.repository).as_posix()
         return self._record_artifact(run_id, kind="invariant-result", actor="invariant-engine", producer="invariant", **kwargs)
 
     def _record_legibility_result(self, run_id: str, *, kind: str, **kwargs: Any) -> dict[str, Any]:
@@ -3101,7 +3116,9 @@ class RunStore:
                 raise RuntimeFailure("TASK_NOT_COMPLETABLE", f"task {task_id} is {task['status']}")
             if task["sideEffect"] is not None and task["sideEffect"]["state"] != "CONFIRMED":
                 raise RuntimeFailure("RECONCILIATION_REQUIRED", "task side effect must be confirmed before completion")
-            if any(result["taskId"] == task_id and result["status"] == "FAIL" for result in state["gateResults"]):
+            if any(result["taskId"] == task_id and result["status"] == "FAIL"
+                   and result["objectiveVersion"] == state["objective"]["version"]
+                   and self.failure_source_status(state, result) is None for result in state["gateResults"]):
                 raise RuntimeFailure("DETERMINISTIC_FAILURE", "a failed gate blocks task completion")
             referenced_gates = [
                 result
@@ -3706,7 +3723,9 @@ class RunStore:
                     raise RuntimeFailure("RECOVERY_UNSAFE", "explicit recovery requires a failed task with no side effect")
                 if task["objectiveVersion"] != state["objective"]["version"]:
                     raise RuntimeFailure("OBJECTIVE_SUPERSEDED", "cannot recover a historical task")
-                if any(gate["taskId"] == task_id and gate["status"] == "FAIL" for gate in state["gateResults"]):
+                if any(gate["taskId"] == task_id and gate["status"] == "FAIL"
+                       and gate["objectiveVersion"] == state["objective"]["version"]
+                       and self.failure_source_status(state, gate) is None for gate in state["gateResults"]):
                     raise RuntimeFailure("RECOVERY_GATE_FAILED", "a failed deterministic/product gate needs separate reconciliation")
                 task["retryPolicy"]["maxAttempts"] = max(task["retryPolicy"]["maxAttempts"], task["attempts"] + 1)
                 task["status"] = ("WAITING_EXTERNAL" if task_has_pending_checkpoint(state, task["id"])
@@ -3962,6 +3981,7 @@ class RunStore:
                     and all(stale_receipts) else None)
         if not gate["evidenceRefs"]:
             return "unbound source"
+
         try:
             self.assert_gate_sources_current(state, [f"gate:{gate['id']}"])
         except RuntimeFailure as exc:
@@ -3976,6 +3996,45 @@ class RunStore:
             if artifact["producer"] == "legibility" or receipt.get("schema") == "architrave.deterministic-observation.v1":
                 return None
         return "unbound source"
+
+    def pass_gate_source_is_current(self, state: dict[str, Any], gate: dict[str, Any]) -> bool:
+        if gate["type"] == "semantic":
+            return self._native_semantic_gate_is_current(state, gate)
+        from worker_adapters import workspace_fingerprint
+        references = set(gate["evidenceRefs"])
+        artifacts = [item for item in state["artifacts"] if f"artifact:{item['id']}" in references]
+        if not artifacts or len(artifacts) != len(references):
+            return False
+        try:
+            self.assert_gate_sources_current(state, [f"gate:{gate['id']}"])
+        except RuntimeFailure as exc:
+            if exc.code != "EVIDENCE_SOURCE_STALE":
+                raise
+            return False
+        current_commit = run_command(["git", "rev-parse", "HEAD"], self.repository)
+        current_sha = workspace_fingerprint(self.repository, include_ignored=False)
+        for artifact in artifacts:
+            receipt = self._read_json_receipt(artifact["path"], "risk-floor")
+            binding, source = receipt.get("binding"), receipt.get("source")
+            if "binding" not in receipt or "source" not in receipt:
+                return False
+            if not isinstance(binding, dict) or not isinstance(source, dict):
+                raise RuntimeFailure("EVIDENCE_BINDING_INVALID", "risk-floor source binding must be an object")
+            if ("objectiveVersion" in binding and (not isinstance(binding["objectiveVersion"], int)
+                    or isinstance(binding["objectiveVersion"], bool) or binding["objectiveVersion"] < 1)
+                    or "runId" in binding and (not isinstance(binding["runId"], str) or not ID_RE.fullmatch(binding["runId"]))):
+                raise RuntimeFailure("EVIDENCE_BINDING_INVALID", "risk-floor Run/objective identity is malformed")
+            for field, pattern in (("commit", r"(?:[0-9a-f]{40}|[0-9a-f]{64})"), ("sha256", r"[0-9a-f]{64}")):
+                if field in source and (not isinstance(source[field], str) or not re.fullmatch(pattern, source[field])):
+                    raise RuntimeFailure("EVIDENCE_BINDING_INVALID", "risk-floor source identity is malformed")
+            if (binding.get("runId") != state["runId"]
+                    or binding.get("objectiveVersion") != state["objective"]["version"]
+                    or not isinstance(binding.get("criteria"), list)
+                    or not all(isinstance(item, str) for item in binding["criteria"])
+                    or not set(gate["criteria"]).issubset(binding["criteria"])
+                    or source.get("commit") != current_commit or source.get("sha256") != current_sha):
+                return False
+        return True
 
     def record_gate(
         self,
@@ -5163,6 +5222,7 @@ class RunStore:
                 gate["type"]
                 for gate in state["gateResults"]
                 if gate["status"] == "PASS" and gate["type"] in {"e2e", "reality"}
+                and self.pass_gate_source_is_current(state, gate)
             }
             missing_reality = bool(high_risk and not passed_real_gates)
             missing_risk_gates = missing_gate_requirements(state, required)
@@ -5948,7 +6008,7 @@ def missing_gate_requirements(state: dict[str, Any], criteria: Sequence[dict[str
             if gate["status"] == "PASS"
             and gate.get("objectiveVersion", 1) == state["objective"]["version"]
             and criterion["id"] in gate["criteria"]
-            and (gate["type"] != "semantic" or store._native_semantic_gate_is_current(state, gate))
+            and store.pass_gate_source_is_current(state, gate)
         ]
         capabilities: set[str] = {gate["type"] for gate in passed}
         if any(gate["type"] == "semantic" for gate in passed):

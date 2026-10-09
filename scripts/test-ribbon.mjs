@@ -135,6 +135,17 @@ try {
         { fromStep: "scope", toStep: "bypass", type: "blocks",
             reason: "Canonical cross-stream prerequisite.", provenance: "canonical dependency" }];
     first.validate(parallel); assertions++;
+    const colonIds = structuredClone(parallel);
+    colonIds.steps = [
+        { ...parallel.steps[0], id: "a:b" }, { ...parallel.steps[0], id: "a" },
+        { ...parallel.steps[1], id: "c", dependencies: ["a:b"] },
+        { ...parallel.steps[1], id: "b:c", dependencies: ["a"] },
+    ];
+    colonIds.relations = [
+        { fromStep: "a:b", toStep: "c", type: "blocks", reason: "Canonical dependency", provenance: "canonical dependency" },
+        { fromStep: "a", toStep: "b:c", type: "blocks", reason: "Canonical dependency", provenance: "canonical dependency" },
+    ];
+    first.validate(colonIds); assertions++;
     const missingBlocks = structuredClone(parallel);
     delete missingBlocks.relations;
     assert.throws(() => first.validate(missingBlocks), error => error.code === "ribbon_input_invalid"); assertions++;

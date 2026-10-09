@@ -554,7 +554,7 @@ export function validateSnapshot(value) {
     for (const relation of value.relations || []) {
         if (!byId.has(relation.fromStep) || !byId.has(relation.toStep) || relation.fromStep === relation.toStep)
             fail("relations: invalid step reference");
-        const key = relation.fromStep + ":" + relation.toStep + ":" + relation.type;
+        const key = JSON.stringify([relation.fromStep, relation.toStep, relation.type]);
         if (relationships.has(key)) fail("relations: duplicate relationship");
         relationships.add(key);
         if (relation.type === "blocks" &&

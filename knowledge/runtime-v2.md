@@ -184,6 +184,13 @@ bindings never imply safety clearance.
 Supplied safety-evidence identity fields must have valid types/formats before
 source comparison. Null, malformed or fabricated digest/Run/version values
 raise an evidence error; they cannot clear a FAIL by looking different.
+Risk floors count source-bound nonsemantic PASS only when its authenticated
+Run/objective/criteria and commit/hash still match. Unreferenced old PASSs and
+unbound receipts remain history, not floor credit. Invariant registration
+retains a new bound receipt after a fresh engine evaluation with stable source.
+Task completion and side-effect-free recovery use the same current-failure
+classification as verification; obsolete source failures are not permanent
+vetoes, while current/unknown safety failures still block.
 Failed legibility receipts retain generic check classifications, never raw
 command/browser diagnostics. Diagnostic logs stay separately retained and
 hashed; structured JSON logs apply key-based redaction before persistence.

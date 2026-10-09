@@ -112,16 +112,33 @@ def _pid_alive(pid: int) -> bool:
     if os.name == "nt":
         import ctypes
 
-        handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+        kernel.OpenProcess.restype = ctypes.c_void_p
+        kernel.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        kernel.WaitForSingleObject.restype = ctypes.c_uint32
+        kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+        kernel.CloseHandle.restype = ctypes.c_int
+        handle = kernel.OpenProcess(0x1000 | 0x100000, False, pid)
         if not handle:
-            return False
-        ctypes.windll.kernel32.CloseHandle(handle)
-        return True
+            if ctypes.get_last_error() == 87:
+                return False
+            raise InstallerError("installer lock owner process cannot be observed; manual recovery required")
+        try:
+            state = kernel.WaitForSingleObject(handle, 0)
+            if state not in {0, 258}:
+                raise InstallerError("installer lock owner status is uncertain; manual recovery required")
+            return state == 258
+        finally:
+            if not kernel.CloseHandle(handle):
+                raise InstallerError("installer lock owner query handle could not be closed")
     try:
         os.kill(pid, 0)
         return True
-    except OSError:
+    except ProcessLookupError:
         return False
+    except PermissionError:
+        return True
 
 
 def sha256_file(path: Path) -> str:
@@ -751,6 +768,72 @@ class ManagedTransaction:
         self.operations: list[dict[str, object]] = []
         self.created_dirs: set[Path] = set()
         self.manual_action = False
+        self.lock_descriptor: int | None = None
+        self.lock_bytes: bytes | None = None
+
+    def _open_lock(self, create: bool) -> int:
+        if os.name != "nt":
+            return os.open(self.lock, os.O_RDWR | getattr(os, "O_NOFOLLOW", 0) |
+                           (os.O_CREAT | os.O_EXCL if create else 0), 0o600)
+        import ctypes
+        import msvcrt
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.CreateFileW.argtypes = [ctypes.c_wchar_p, ctypes.c_uint32, ctypes.c_uint32,
+                                      ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p]
+        kernel.CreateFileW.restype = ctypes.c_void_p
+        handle = kernel.CreateFileW(self._native_path(self.lock), 0xC0000000, 7, None,
+                                    1 if create else 3, 0x00200080, None)
+        if handle == ctypes.c_void_p(-1).value:
+            error = ctypes.get_last_error()
+            if error in {80, 183}:
+                raise FileExistsError(error, "installer lock exists")
+            raise OSError(error, "installer lock cannot be opened")
+        try:
+            return msvcrt.open_osfhandle(handle, os.O_RDWR | os.O_BINARY)
+        except OSError:
+            kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+            kernel.CloseHandle.restype = ctypes.c_int
+            kernel.CloseHandle(handle)
+            raise
+
+    def _lock_file(self, descriptor: int, unlock: bool = False) -> None:
+        if os.name == "nt":
+            import msvcrt
+            os.lseek(descriptor, 0, os.SEEK_SET)
+            msvcrt.locking(descriptor, msvcrt.LK_UNLCK if unlock else msvcrt.LK_NBLCK, 4096)
+        else:
+            import fcntl
+            fcntl.flock(descriptor, fcntl.LOCK_UN if unlock else fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    def _lock_matches(self, expected: bytes) -> bool:
+        if self.lock_descriptor is None:
+            return False
+        opened = os.fstat(self.lock_descriptor)
+        current = _lstat(self.lock)
+        os.lseek(self.lock_descriptor, 0, os.SEEK_SET)
+        return (current is not None and _is_regular_file(current) and
+                (opened.st_dev, opened.st_ino) == (current.st_dev, current.st_ino) and
+                os.read(self.lock_descriptor, 4097) == expected)
+
+    def _assert_lock_owned(self) -> None:
+        if self.lock_bytes is None or not self._lock_matches(self.lock_bytes):
+            raise InstallerError("install/update lock ownership changed; preserve transaction for manual recovery")
+
+    def _release_lock(self) -> None:
+        if self.lock_descriptor is None:
+            return
+        try:
+            if self.lock_bytes is not None and self._lock_matches(self.lock_bytes):
+                self.lock.unlink(missing_ok=True)
+            elif self.lock_bytes is not None:
+                self.manual_action = True
+                print("MANUAL_ACTION_REQUIRED: changed installer lock preserved", file=sys.stderr)
+        finally:
+            descriptor, self.lock_descriptor = self.lock_descriptor, None
+            try:
+                self._lock_file(descriptor, unlock=True)
+            finally:
+                os.close(descriptor)
 
     def _write_manifest(self, value: dict[str, object]) -> None:
         path = self.directory / "manifest.json"
@@ -777,6 +860,7 @@ class ManagedTransaction:
         return self.managed.path(relative)
 
     def _recover(self) -> None:
+        self._assert_lock_owned()
         manifest_path = self.directory / "manifest.json"
         if not manifest_path.is_file():
             raise InstallerError(f"{self.managed.label}: stale transaction has no recovery manifest")
@@ -821,28 +905,55 @@ class ManagedTransaction:
         shutil.rmtree(self.directory)
 
     def __enter__(self) -> "ManagedTransaction":
+        self.managed.preflight_file(".architrave-install.lock")
+        created = False
         try:
-            descriptor = os.open(self.lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            descriptor = self._open_lock(create=True)
+            created = True
         except FileExistsError:
-            try:
-                owner = json.loads(self.lock.read_text(encoding="utf-8"))
-                alive = _pid_alive(int(owner["pid"]))
-            except (OSError, ValueError, KeyError, json.JSONDecodeError):
-                alive = False
-            if not alive:
-                self.lock.unlink(missing_ok=True)
-                descriptor = os.open(self.lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            descriptor = self._open_lock(create=False)
+        self.lock_descriptor = descriptor
+        locked = False
+        try:
+            self._lock_file(descriptor)
+            locked = True
+            if not created:
+                os.lseek(descriptor, 0, os.SEEK_SET)
+                previous = os.read(descriptor, 4097)
+                try:
+                    owner = json.loads(previous)
+                    pid = owner["pid"]
+                    if not isinstance(pid, int) or isinstance(pid, bool) or not 0 < pid <= 0x7FFFFFFF:
+                        raise ValueError("invalid owner PID")
+                    if "nonce" in owner and (not isinstance(owner["nonce"], str) or
+                                            not re.fullmatch(r"[0-9a-f]{32}", owner["nonce"])):
+                        raise ValueError("invalid owner nonce")
+                except (ValueError, KeyError, TypeError):
+                    raise InstallerError("unreadable/in-progress installer lock ownership; manual recovery required")
+                if _pid_alive(pid):
+                    raise InstallerError(f"{self.managed.label}: target is locked by another install/update")
+                if not self._lock_matches(previous):
+                    raise InstallerError("installer lock identity changed during dead-owner recovery; preserved")
+            self.lock_bytes = (json.dumps({"pid": os.getpid(), "createdAt": time.time(),
+                                           "nonce": uuid.uuid4().hex}) + "\n").encode("utf-8")
+            os.lseek(descriptor, 0, os.SEEK_SET)
+            os.ftruncate(descriptor, 0)
+            if os.write(descriptor, self.lock_bytes) != len(self.lock_bytes):
+                raise InstallerError("installer ownership write was incomplete; manual recovery required")
+            os.fsync(descriptor)
+            self._assert_lock_owned()
+            if self.directory.exists():
+                self._recover()
+            self.directory.mkdir()
+            (self.directory / "stage").mkdir()
+            (self.directory / "backup").mkdir()
+        except Exception:
+            if locked:
+                self._release_lock()
             else:
-                raise InstallerError(f"{self.managed.label}: target is locked by another install/update")
-        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-            json.dump({"pid": os.getpid(), "createdAt": time.time()}, stream)
-            stream.flush()
-            os.fsync(stream.fileno())
-        if self.directory.exists():
-            self._recover()
-        self.directory.mkdir()
-        (self.directory / "stage").mkdir()
-        (self.directory / "backup").mkdir()
+                self.lock_descriptor = None
+                os.close(descriptor)
+            raise
         self.managed.transaction = self
         self.active.append(self)
         return self
@@ -878,6 +989,7 @@ class ManagedTransaction:
         self.operations.append({"kind": "assert-absent", "relative": relative})
 
     def commit(self) -> None:
+        self._assert_lock_owned()
         manifest_operations: list[dict[str, object]] = []
         ordered = ([operation for operation in self.operations if operation["kind"] != "assert-absent"]
                    + [operation for operation in self.operations if operation["kind"] == "assert-absent"])
@@ -910,6 +1022,7 @@ class ManagedTransaction:
         fail_after = os.environ.get("ARCHITRAVE_INSTALL_FAIL_AFTER")
         try:
             for index, operation in enumerate(manifest_operations):
+                self._assert_lock_owned()
                 if fail_after is not None and int(fail_after) == index:
                     raise OSError(f"injected install/update failure at replacement {index}")
                 relative = str(operation["relative"])
@@ -956,7 +1069,8 @@ class ManagedTransaction:
                 manifest["inFlight"] = None
                 self._write_manifest(manifest)
         except Exception:
-            self._recover()
+            if self.lock_bytes is not None and self._lock_matches(self.lock_bytes):
+                self._recover()
             raise
         shutil.rmtree(self.directory)
         if self in self.active:
@@ -967,18 +1081,18 @@ class ManagedTransaction:
         try:
             if exc_type is None:
                 self.commit()
-            elif self.directory.exists():
+            elif self.directory.exists() and self.lock_bytes is not None and self._lock_matches(self.lock_bytes):
                 shutil.rmtree(self.directory)
         finally:
-            self.lock.unlink(missing_ok=True)
+            self._release_lock()
             if self in self.active:
                 self.active.remove(self)
 
     def abort(self) -> None:
         self.managed.transaction = None
-        if self.directory.exists():
+        if self.directory.exists() and self.lock_bytes is not None and self._lock_matches(self.lock_bytes):
             shutil.rmtree(self.directory)
-        self.lock.unlink(missing_ok=True)
+        self._release_lock()
         if self in self.active:
             self.active.remove(self)
 

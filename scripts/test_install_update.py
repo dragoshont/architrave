@@ -1342,6 +1342,86 @@ class InstallUpdateTests(unittest.TestCase):
         self.assertFalse(transaction.exists())
         self.assertIn(".architrave/runs/", (target / ".gitignore").read_text(encoding="utf-8"))
 
+    def test_empty_and_malformed_installer_lock_never_imply_dead_owner(self) -> None:
+        for content in (b"", b"{partial", b'{"pid":null}', b'{"pid":true}'):
+            with self.subTest(content=content):
+                target = self.workspace / uuid.uuid4().hex
+                target.mkdir()
+                lock = target / ".architrave-install.lock"
+                lock.write_bytes(content)
+                with self.assertRaisesRegex(self.module.InstallerError, "ownership"):
+                    with self.module.ManagedTransaction(self.module.ManagedRoot(target, "fixture")):
+                        self.fail("Uncertain ownership was accepted")
+                self.assertEqual(content, lock.read_bytes())
+                self.assertFalse((target / ".architrave-install-transaction").exists())
+
+    def test_installer_peer_cannot_take_lock_before_owner_metadata_is_written(self) -> None:
+        target = self.workspace / "initializing lock"
+        target.mkdir()
+        managed = self.module.ManagedRoot(target, "fixture")
+        original = self.module.ManagedTransaction._lock_file
+        checked = False
+
+        def check_peer(transaction, descriptor, unlock=False):
+            nonlocal checked
+            original(transaction, descriptor, unlock)
+            if not unlock and not checked:
+                checked = True
+                with self.assertRaises((self.module.InstallerError, OSError)):
+                    with self.module.ManagedTransaction(self.module.ManagedRoot(target, "peer")):
+                        self.fail("Peer entered before ownership publication")
+
+        with mock.patch.object(self.module.ManagedTransaction, "_lock_file", check_peer):
+            with self.module.ManagedTransaction(managed):
+                self.assertTrue(checked)
+        self.assertFalse((target / ".architrave-install.lock").exists())
+
+    def test_stale_installer_lock_replacement_is_preserved_before_recovery(self) -> None:
+        target = self.workspace / "replaced stale lock"
+        target.mkdir()
+        lock = target / ".architrave-install.lock"
+        lock.write_text(json.dumps({"pid": 99999999}), encoding="utf-8")
+        replacement = json.dumps({"pid": os.getpid(), "nonce": "b" * 32}).encode()
+
+        def replace_before_recovery(_pid):
+            new = target / "new-lock"
+            new.write_bytes(replacement)
+            os.replace(new, lock)
+            return False
+
+        with mock.patch.object(self.module, "_pid_alive", side_effect=replace_before_recovery):
+            with self.assertRaises((self.module.InstallerError, PermissionError)):
+                with self.module.ManagedTransaction(self.module.ManagedRoot(target, "fixture")):
+                    self.fail("Replacement ownership was accepted")
+        if os.name == "nt":
+            self.assertEqual({"pid": 99999999}, json.loads(lock.read_text()))
+            self.assertEqual(replacement, (target / "new-lock").read_bytes())
+        else:
+            self.assertEqual(replacement, lock.read_bytes())
+        self.assertFalse((target / ".architrave-install-transaction").exists())
+
+    def test_changed_installer_lock_is_not_unlinked_or_committed_on_exit(self) -> None:
+        target = self.workspace / "changed owned lock"
+        target.mkdir()
+        lock = target / ".architrave-install.lock"
+        product = target / "product.txt"
+        product.write_bytes(b"before")
+        replacement = b'{"custom":"owner data must survive"}'
+        with self.assertRaises((self.module.InstallerError, PermissionError)):
+            managed = self.module.ManagedRoot(target, "fixture")
+            with self.module.ManagedTransaction(managed):
+                managed.replace_bytes("product.txt", b"after")
+                other = target / "replacement-lock"
+                other.write_bytes(replacement)
+                os.replace(other, lock)
+        self.assertEqual(b"before", product.read_bytes())
+        if os.name == "nt":
+            self.assertEqual(replacement, other.read_bytes())
+            self.assertFalse(lock.exists())
+        else:
+            self.assertEqual(replacement, lock.read_bytes())
+            self.assertTrue((target / ".architrave-install-transaction").exists())
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

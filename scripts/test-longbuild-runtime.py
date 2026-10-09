@@ -131,6 +131,11 @@ class LongBuildRuntimeTests(unittest.TestCase):
                 "principal": checkpoint["principal"],
                 "provider": checkpoint["provider"],
             }
+        if producer != "semantic-judge":
+            payload.setdefault("binding", {"runId": run_id, "objectiveVersion": state["objective"]["version"],
+                                           "taskId": task_id, "criteria": criteria})
+            payload.setdefault("source", {"commit": self.git("rev-parse", "HEAD"),
+                                          "sha256": workspace_fingerprint(self.repo, include_ignored=False)})
         path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
         method = {
             "deterministic": self.store._record_deterministic_result,

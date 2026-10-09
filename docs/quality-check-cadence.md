@@ -45,6 +45,13 @@ accepts the already-achieved absence only after rechecking both original and
 quarantine paths. A newly present replacement or quarantine entry is not
 silently treated as success.
 
+Installer ownership is held on an OS-locked descriptor through initialization,
+commit and recovery. Empty, partial or unreadable ownership requires manual
+recovery, never a guessed dead PID. Known dead ownership is reclaimed in place
+only while locked and after file-identity/content checks; each owner publishes a
+nonce. Changed ownership is preserved, not blindly unlinked or used to roll back
+another transaction.
+
 Retirement atomically quarantines the actual hook inode before checking its
 bytes. A mismatch restores the actual inode only if the active target is absent;
 newer targets are never overwritten. Quarantined inodes remain under

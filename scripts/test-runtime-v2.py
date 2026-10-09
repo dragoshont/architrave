@@ -25,6 +25,7 @@ from architrave_runtime import (
     _PolicyAuthorization,
     parse_iso,
     state_summary,
+    missing_gate_requirements,
     utc_now,
 )
 from worker_adapters import workspace_fingerprint
@@ -196,6 +197,11 @@ class RuntimeV2Tests(unittest.TestCase):
             }
         else:
             payload = {"note": artifact_id}
+        if producer != "semantic-judge" and not legacy_product_receipt:
+            payload.setdefault("binding", {"runId": run_id, "objectiveVersion": state["objective"]["version"],
+                                           "taskId": task_id, "criteria": criteria})
+            payload.setdefault("source", {"commit": self.git("rev-parse", "HEAD"),
+                                          "sha256": workspace_fingerprint(self.repo, include_ignored=False)})
         path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
         method = {
             "deterministic": self.store._record_deterministic_result,
@@ -1302,6 +1308,78 @@ class RuntimeV2Tests(unittest.TestCase):
         verified, completed = self.store.verify(run_id)
         self.assertFalse(completed)
         self.assertEqual("FAILED", verified["status"])
+
+    def test_unreferenced_old_source_pass_cannot_supply_risk_floor_credit(self) -> None:
+        (self.repo / "architrave.config.json").write_text(json.dumps({
+            "kind": "knowledge", "build": "git diff --check", "test": "git diff --check",
+            "review": {"crossFamily": False}}), encoding="utf-8")
+        self.git("add", "architrave.config.json")
+        self.git("commit", "-qm", "source-bound gate fixture")
+        for stale_type in ("deterministic", "reality"):
+            with self.subTest(stale_type=stale_type):
+                state = self.create(risk="R3", verification="reality")
+                run_id = str(state["runId"])
+                old = self.evidence(run_id, "old-floor", producer="legibility" if stale_type == "reality" else "deterministic")
+                self.store.record_gate(run_id, gate_id="old-floor", task_id=None, gate_type=stale_type,
+                    status="PASS", evidence_refs=[old], criteria=["OUTCOME-001"])
+                (self.repo / "README.md").write_text("# Corrected " + stale_type + "\n", encoding="utf-8")
+                self.git("add", "README.md")
+                self.git("commit", "-qm", "corrected source")
+                self.store.resume(run_id, accept_commit=True)
+                other = "reality" if stale_type == "deterministic" else "deterministic"
+                fresh = self.evidence(run_id, "fresh-other", producer="legibility" if other == "reality" else "deterministic")
+                self.store.record_gate(run_id, gate_id="fresh-other", task_id=None, gate_type=other,
+                    status="PASS", evidence_refs=[fresh], criteria=["OUTCOME-001"])
+                semantic = self.evidence(run_id, "fresh-semantic", producer="semantic-judge")
+                self.store.record_gate(run_id, gate_id="fresh-semantic", task_id=None, gate_type="semantic",
+                    status="PASS", evidence_refs=[semantic], criteria=["OUTCOME-001"], family="gpt")
+                current = self.store.load(run_id)
+                expected = "deterministic" if stale_type == "deterministic" else "e2e-or-reality"
+                self.assertIn("OUTCOME-001:" + expected,
+                              missing_gate_requirements(current, current["acceptanceCriteria"]))
+                replacement = self.evidence(run_id, "fresh-replacement",
+                    producer="legibility" if stale_type == "reality" else "deterministic")
+                self.store.record_gate(run_id, gate_id="fresh-replacement", task_id=None, gate_type=stale_type,
+                    status="PASS", evidence_refs=[replacement], criteria=["OUTCOME-001"])
+                current = self.store.load(run_id)
+                self.assertEqual([], missing_gate_requirements(current, current["acceptanceCriteria"]))
+
+    def test_corrected_source_pass_allows_completion_and_failed_task_recovery(self) -> None:
+        command_fail = ("& '" + sys.executable.replace("'", "''") + "' -c \"raise SystemExit(1)\""
+                        if os.name == "nt" else "'" + sys.executable + "' -c 'raise SystemExit(1)'")
+        for recovering in (False, True):
+            with self.subTest(recovering=recovering):
+                (self.repo / "architrave.config.json").write_text(json.dumps({
+                    "kind": "knowledge", "build": command_fail, "test": command_fail}), encoding="utf-8")
+                self.git("add", "architrave.config.json")
+                self.git("commit", "-qm", "failing source " + str(recovering))
+                state = self.create()
+                run_id = str(state["runId"])
+                self.store.add_task(run_id, {"id": "delivery", "objective": "Build fixture",
+                    "workerProfile": "shell", "acceptanceCriteria": ["OUTCOME-001"], "maxAttempts": 1})
+                self.store.start_task(run_id, "delivery", worker_id="worker-one")
+                self.store.finish_worker(run_id, "delivery", worker_id="worker-one", status="FINISHED")
+                negative = self.store.execute_gate(run_id, "delivery")
+                self.assertEqual("FAIL", negative["status"])
+                if recovering:
+                    self.store.fail_task(run_id, "delivery", "Known failed source")
+                    with self.assertRaisesRegex(RuntimeFailure, "failed deterministic/product gate"):
+                        self.store.recover_workers(run_id, task_id="delivery")
+                (self.repo / "architrave.config.json").write_text(json.dumps({
+                    "kind": "knowledge", "build": "git diff --check", "test": "git diff --check"}), encoding="utf-8")
+                self.git("add", "architrave.config.json")
+                self.git("commit", "-qm", "corrected source " + str(recovering))
+                self.store.resume(run_id, accept_commit=True)
+                if recovering:
+                    self.store.recover_workers(run_id, task_id="delivery")
+                    self.store.start_task(run_id, "delivery", worker_id="worker-two",
+                                          retry_hypothesis="Corrected test recipe on a new accepted source commit")
+                    self.store.finish_worker(run_id, "delivery", worker_id="worker-two", status="FINISHED")
+                positive = self.store.execute_gate(run_id, "delivery")
+                self.assertEqual("PASS", positive["status"])
+                self.store.complete_task(run_id, "delivery", evidence_refs=[positive["gateRef"]])
+                self.assertEqual("COMPLETED", self.store.load(run_id)["tasks"][0]["status"])
+                self.assertTrue(any(gate["status"] == "FAIL" for gate in self.store.load(run_id)["gateResults"]))
 
     def test_arbitrary_evidence_cannot_create_false_pass(self) -> None:
         state = self.create()

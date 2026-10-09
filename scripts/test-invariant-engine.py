@@ -111,6 +111,7 @@ class InvariantEngineTests(unittest.TestCase):
 
     def test_declared_invariants_block_run_until_recorded_pass(self) -> None:
         self.write_config()
+        (self.repo / ".gitignore").write_text(".architrave/\n", encoding="utf-8")
         subprocess.run(["git", "init", "-q"], cwd=self.repo, check=True)
         subprocess.run(["git", "config", "user.email", "architrave@example.invalid"], cwd=self.repo, check=True)
         subprocess.run(["git", "config", "user.name", "Architrave Test"], cwd=self.repo, check=True)
@@ -144,6 +145,7 @@ class InvariantEngineTests(unittest.TestCase):
 
     def test_invariant_gate_name_without_invariant_provenance_cannot_pass(self) -> None:
         self.write_config()
+        (self.repo / ".gitignore").write_text(".architrave/\n", encoding="utf-8")
         subprocess.run(["git", "init", "-q"], cwd=self.repo, check=True)
         subprocess.run(["git", "config", "user.email", "architrave@example.invalid"], cwd=self.repo, check=True)
         subprocess.run(["git", "config", "user.name", "Architrave Test"], cwd=self.repo, check=True)
