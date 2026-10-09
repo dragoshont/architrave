@@ -12,6 +12,7 @@ import struct
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import zlib
 
 
@@ -208,6 +209,38 @@ class LegibilityTests(unittest.TestCase):
         paths = [path for result in [*first["results"], *second["results"], *third["results"]]
                  for path in result["artifacts"]]
         self.assertEqual(len(paths), len(set(paths)))
+
+    def test_visual_retention_preserves_exact_validated_bytes_during_source_rewrite(self) -> None:
+        import legibility
+        with (self.repo / ".gitignore").open("a", encoding="utf-8") as stream:
+            stream.write("shot.png\ndom.json\na11y.json\n")
+        for structured in (True, False):
+            with self.subTest(structured=structured):
+                (self.repo / "dom.json").write_text("{}\n", encoding="utf-8")
+                (self.repo / "a11y.json").write_text("{}\n", encoding="utf-8")
+                screenshot = self.repo / "shot.png"
+                self.write_png(screenshot, [(0, 0, 0), (255, 255, 255)])
+                observed = screenshot.read_bytes()
+                payload = {"url": "http://fixture.invalid/release", "domSnapshot": "dom.json",
+                           "accessibilityTree": "a11y.json", "screenshot": "shot.png",
+                           "workflowPassed": True, "consoleErrors": [], "networkFailures": []}
+                runner, _ = self.create_runner({"health": self.pass_command(), "web": {
+                    "url": payload["url"], "e2e": self.json_command(payload, ["dom.json", "a11y.json", "shot.png"])}})
+                original = legibility.png_luminance_range
+
+                def validate_then_rewrite(path):
+                    result = original(path)
+                    self.write_png(screenshot, [(32, 32, 32), (32, 32, 32)])
+                    return result
+
+                with mock.patch("legibility.png_luminance_range", side_effect=validate_then_rewrite):
+                    result = runner.verify_surface("web") if structured else runner.analyze_ios_screenshot("shot.png")
+                self.assertEqual("pass", result["status"])
+                artifacts = ([path for entry in result["results"] for path in entry["artifacts"]]
+                             if structured else result["artifacts"])
+                retained = next(self.repo / path for path in artifacts if path.endswith("-shot.png"))
+                self.assertEqual(observed, retained.read_bytes())
+                self.assertNotEqual(observed, screenshot.read_bytes())
 
     def test_web_e2e_is_recorded_as_reality_gate(self) -> None:
         (self.repo / "dom.json").write_text("{}\n", encoding="utf-8")

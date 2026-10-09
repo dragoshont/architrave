@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import struct
 import sys
@@ -213,7 +214,8 @@ class LegibilityRunner:
             if path.is_absolute() or ".." in path.parts or not (self.repository / path).is_file():
                 errors.append(f"{field} must reference an existing repository-relative artifact")
             else:
-                absolute = self.repository / path
+                retained = self.retain_artifact(self.repository / path)
+                absolute = self.repository / retained
                 if absolute.stat().st_mtime_ns < evidence_started_ns:
                     errors.append(f"{field} was not created or refreshed during this verification")
                 if field == "screenshot":
@@ -224,7 +226,7 @@ class LegibilityRunner:
                     else:
                         if visible_pixels == 0 or maximum - minimum < 8:
                             errors.append("screenshot is blank or visually flat")
-                result["artifacts"].append(self.retain_artifact(absolute))
+                result["artifacts"].append(retained)
         if errors:
             result["status"] = "fail"
             result["exitCode"] = 1
@@ -240,8 +242,13 @@ class LegibilityRunner:
         except ValueError as exc:
             raise RuntimeFailure("PATH_ESCAPE", "observed artifact must remain inside the repository") from exc
         retained = self.evidence_dir / f"{uuid.uuid4().hex}-{path.name}"
+        with path.open("rb") as source:
+            observed = os.fstat(source.fileno())
+            data = source.read()
         with retained.open("xb") as handle:
-            handle.write(path.read_bytes())
+            handle.write(data)
+        # A new copy must not make preexisting evidence appear freshly observed.
+        os.utime(retained, ns=(observed.st_atime_ns, observed.st_mtime_ns))
         return retained.relative_to(self.repository).as_posix()
 
     @staticmethod
@@ -394,7 +401,8 @@ class LegibilityRunner:
                 "stdout": "configured screenshot artifact is missing",
                 "artifacts": [],
             }
-        minimum, maximum, visible_pixels = png_luminance_range(path)
+        retained = self.retain_artifact(path)
+        minimum, maximum, visible_pixels = png_luminance_range(self.repository / retained)
         luminance_range = maximum - minimum
         return {
             "name": "ios.blank-screen",
@@ -410,7 +418,7 @@ class LegibilityRunner:
                 },
                 sort_keys=True,
             ),
-            "artifacts": [self.retain_artifact(path)],
+            "artifacts": [retained],
         }
 
     def verify_surface(self, surface: str, *, task_id: str | None = None) -> dict[str, Any]:

@@ -34,8 +34,12 @@ python <published-kit>\tools\install_update.py retire-hooks <adopted-repo>
 Preview lists each path/action and guarded recognized-content hash. Apply retires
 only complete definitions exactly matching packaged legacy POSIX/Windows
 Architrave commands. Product/source, config, authentication, other hooks and
-native guards are untouched. Changes after inspection cause transaction rollback,
-not removal of newer custom data; repeated calls are idempotent.
+native guards are untouched. Edits to inspected definitions cause transaction
+rollback, not removal of newer custom data; repeated calls are idempotent.
+Hooks absent during planning are checked after the transaction's asset writes.
+A newly created hook is preserved and reported `MANUAL_ACTION_REQUIRED` (exit 2)
+by install, update and hooks-only retirement. Absence assertions never write,
+back up or remove that hook, including during recovery.
 
 Retirement atomically quarantines the actual hook inode before checking its
 bytes. A mismatch restores the actual inode only if the active target is absent;

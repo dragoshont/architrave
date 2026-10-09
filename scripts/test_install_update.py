@@ -1080,6 +1080,78 @@ class InstallUpdateTests(unittest.TestCase):
         self.assertEqual(custom, guard.read_bytes())
         self.assertFalse((directory / active.name).exists())
 
+    def test_quality_retirement_new_hook_after_absent_plan_requires_manual_action(self) -> None:
+        for operation in ("install", "update", "retire-hooks"):
+            with self.subTest(operation=operation):
+                target = self.workspace / operation
+                target.mkdir()
+                if operation == "update":
+                    self.run_cli("install", "--profile", "knowledge", str(target))
+                active = target / ".github/hooks/design-guard.json"
+                custom = b'{"hooks":{"PostToolUse":[{"type":"command","command":"new-custom-hook"}]}}'
+                original = self.module.ManagedTransaction._write_manifest
+                original_plan = self.module.quality_hook_plan
+                created = False
+
+                def journal_then_create(transaction, value):
+                    nonlocal created
+                    original(transaction, value)
+                    if not created and "inFlight" in value:
+                        created = True
+                        active.parent.mkdir(parents=True, exist_ok=True)
+                        active.write_bytes(custom)
+
+                def plan_then_create(managed, kit):
+                    nonlocal created
+                    plan = original_plan(managed, kit)
+                    if operation == "retire-hooks":
+                        created = True
+                        active.parent.mkdir(parents=True, exist_ok=True)
+                        active.write_bytes(custom)
+                    return plan
+
+                output, errors = io.StringIO(), io.StringIO()
+                with mock.patch.object(self.module.ManagedTransaction, "_write_manifest", journal_then_create), \
+                        mock.patch.object(self.module, "quality_hook_plan", plan_then_create), \
+                        contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+                    arguments = [operation, str(target)]
+                    if operation == "install":
+                        arguments[1:1] = ["--profile", "knowledge"]
+                    status = self.module.main(arguments)
+                self.assertTrue(created)
+                self.assertEqual(2, status)
+                self.assertIn("MANUAL_ACTION_REQUIRED", errors.getvalue())
+                self.assertEqual(custom, active.read_bytes())
+                self.assertFalse((target / ".architrave-install-transaction").exists())
+
+    def test_quality_retirement_absence_assertion_recovery_preserves_new_hook(self) -> None:
+        target = self.workspace / "absence recovery"
+        target.mkdir()
+        active = target / ".github/hooks/design-guard.json"
+        custom = b'{"custom":"new hook survives assertion recovery"}'
+        product = target / "product.txt"
+        product.write_bytes(b"before")
+        managed = self.module.ManagedRoot(target, "fixture")
+        plan = self.module.quality_hook_plan(managed, ROOT)
+        original = self.module.ManagedTransaction._write_manifest
+
+        def assertion_journal_failure(transaction, value):
+            if value.get("applied") == 2:
+                raise OSError("injected failure after absence assertion")
+            original(transaction, value)
+            if value.get("inFlight") == 1:
+                active.parent.mkdir(parents=True, exist_ok=True)
+                active.write_bytes(custom)
+
+        with mock.patch.object(self.module.ManagedTransaction, "_write_manifest", assertion_journal_failure):
+            with self.assertRaises(OSError):
+                with self.module.ManagedTransaction(managed):
+                    self.module.apply_quality_hook_plan(managed, plan)
+                    managed.replace_bytes("product.txt", b"after")
+        self.assertEqual(custom, active.read_bytes())
+        self.assertEqual(b"before", product.read_bytes())
+        self.assertFalse((target / ".architrave-install-transaction").exists())
+
     def test_public_entrypoints_are_python_only_launch_shims(self) -> None:
         install_sh = (ROOT / "tools/install.sh").read_text(encoding="utf-8")
         update_sh = (ROOT / "tools/update.sh").read_text(encoding="utf-8")

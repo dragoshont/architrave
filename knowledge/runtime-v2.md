@@ -171,6 +171,9 @@ set a current criterion to PASS or satisfy verification, including after
 Binding/source validation also applies to current failed observations so
 verification can report a failed Run. Failed receipts never provide PASS
 admission or consumption credit.
+Visual artifacts are retained once before freshness/pixel validation, and the
+receipt references those exact validated bytes. Retention preserves the observed
+source modification time; copying an old screenshot does not refresh its proof.
 
 New Runs set `focus.pushbackRequired`: `task-start` refuses tasks without a
 push-back verdict (`PUSHBACK_MISSING`) and never dispatches CUT/DEFER; status

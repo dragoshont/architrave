@@ -787,6 +787,8 @@ class ManagedTransaction:
         recoverable = [(index, item) for index, item in enumerate(operations)
                        if "inFlight" not in manifest or index < applied or index == in_flight]
         for _index, item in reversed(recoverable):
+            if item["kind"] == "assert-absent":
+                continue
             destination = self.managed.path(str(item["relative"]))
             backup = self.directory / str(item["backup"]) if item.get("backup") else None
             if item["kind"] == "remove" and item.get("quarantine"):
@@ -871,13 +873,19 @@ class ManagedTransaction:
             operation["quarantine"] = quarantine
         self.operations.append(operation)
 
+    def stage_assert_absent(self, relative: str) -> None:
+        self.managed.preflight_file(relative)
+        self.operations.append({"kind": "assert-absent", "relative": relative})
+
     def commit(self) -> None:
         manifest_operations: list[dict[str, object]] = []
-        for index, operation in enumerate(self.operations):
+        ordered = ([operation for operation in self.operations if operation["kind"] != "assert-absent"]
+                   + [operation for operation in self.operations if operation["kind"] == "assert-absent"])
+        for index, operation in enumerate(ordered):
             destination = self.managed.path(str(operation["relative"]))
             info = _lstat(destination)
             backup_name = None
-            if info is not None:
+            if info is not None and operation["kind"] != "assert-absent":
                 self.managed.require_file(str(operation["relative"]))
                 backup_name = f"backup/{index}"
                 shutil.copy2(destination, self.directory / backup_name, follow_symlinks=False)
@@ -906,11 +914,17 @@ class ManagedTransaction:
                     raise OSError(f"injected install/update failure at replacement {index}")
                 relative = str(operation["relative"])
                 destination = self.managed.path(relative)
-                destination.parent.mkdir(parents=True, exist_ok=True)
+                if operation["kind"] != "assert-absent":
+                    destination.parent.mkdir(parents=True, exist_ok=True)
                 expected = operation.get("expectedSha256")
                 manifest["inFlight"] = index
                 self._write_manifest(manifest)
-                if operation["kind"] == "write":
+                if operation["kind"] == "assert-absent":
+                    if _lstat(destination) is not None:
+                        self.manual_action = True
+                        print(f"MANUAL_ACTION_REQUIRED: new hook appeared during retirement; preserved: {relative}",
+                              file=sys.stderr)
+                elif operation["kind"] == "write":
                     stage = self.directory / str(operation["stage"])
                     os.replace(stage, destination)
                     os.chmod(destination, stat.S_IMODE(int(operation["mode"])))
@@ -1141,6 +1155,10 @@ def apply_quality_hook_plan(managed: ManagedRoot, plan: dict[str, dict[str, obje
         if action == "remove-recognized":
             managed.remove_file(relative, expected_sha256=str(item["sha256"]))
             print(f"  scheduled recognized automatic quality hook retirement: {relative}")
+        elif action == "absent":
+            if managed.transaction is None:
+                raise InstallerError("retire-hooks: expected absence must be checked in an owned transaction")
+            managed.transaction.stage_assert_absent(relative)
         elif action == "preserve-manual-action":
             manual = True
             print(f"  MANUAL_ACTION_REQUIRED: preserved custom/unknown hook definition: {relative}", file=sys.stderr)
@@ -1279,7 +1297,7 @@ def install(args: argparse.Namespace, kit: Path) -> int:
     update_gitignore(managed)
     update_agents_stanza(managed, kit)
     manual_hooks = apply_quality_hook_plan(managed, hook_plan)
-    print("  ok executable quality gate retained; no automatic PostToolUse hook registered")
+    print("  executable quality gate retained; automatic hook retirement/absence checks scheduled")
     setup = managed.path(".github/workflows/copilot-setup-steps.yml")
     if _lstat(setup) is None:
         managed.create_file(
@@ -1362,7 +1380,7 @@ def update(args: argparse.Namespace, kit: Path) -> int:
         print("  - agents left unchanged (use --agents to refresh .github/agents/)")
     copy_shared_assets(managed, kit)
     manual_hooks = apply_quality_hook_plan(managed, hook_plan)
-    print("  ok automatic quality hook retired where recognized; native permission guards unchanged")
+    print("  automatic quality hook retirement/absence checks scheduled; native permission guards unchanged")
     if profile == "knowledge":
         for name in ("constitution-apple.md", "constitution-windows.md"):
             managed.remove_file(name)
@@ -1491,11 +1509,6 @@ def retire_quality_hooks(kit: Path, target: Path, *, dry_run: bool = False) -> i
     print(json.dumps({"target": str(managed.root), "dryRun": dry_run, "qualityHooks": plan,
                       "nativePermissionGuards": "unchanged", "otherHooks": "untouched"}, indent=2))
     if dry_run:
-        for relative, item in plan.items():
-            if item["action"] == "preserve-manual-action":
-                print(f"MANUAL_ACTION_REQUIRED: preserved custom/unknown hook definition: {relative}", file=sys.stderr)
-        return 2 if any(item["action"] == "preserve-manual-action" for item in plan.values()) else 0
-    if not any(item["action"] == "remove-recognized" for item in plan.values()):
         for relative, item in plan.items():
             if item["action"] == "preserve-manual-action":
                 print(f"MANUAL_ACTION_REQUIRED: preserved custom/unknown hook definition: {relative}", file=sys.stderr)
