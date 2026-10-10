@@ -1,6 +1,6 @@
 # Architrave
 
-**A thin mission supervisor for GitHub Copilot and Codex, with optional full-stack specialists.**
+**A thin mission supervisor for Copilot, Claude Code, and Codex/ChatGPT plugin workflows.**
 
 Architrave helps you build a full-stack application, or any slice of one, without turning your codebase into an agent experiment. You ask for the feature; Architrave reads the repo, grounds in its Storybook/design map and backend architecture docs, runs the right specialist agents, and ships only the smallest proven change.
 
@@ -12,7 +12,26 @@ prove the requested product outcome actually occurred.
 
 ![Architrave — ground in the repo, route to specialists, gate with a judge plus real checks, then ship](assets/overview.png)
 
-## Latest news: v0.14.2
+## Executive Summary
+
+Architrave turns repository-grounded requests into durable Run v2 outcomes,
+with default-deny infrastructure/runtime mutation and bounded host-native
+workers using per-task git worktrees plus scope checks (not an OS security
+sandbox). Deterministic gates, real E2E/product-legibility evidence, and
+risk-scaled independent judges—including cross-family review only when
+configured—keep completion tied to observed outcomes. Its benchmark harness
+reports requested/effective controls and rejects PASS when requested
+model/reasoning controls are unhonored. A thin, YAGNI-first delivery model spans
+Copilot, Claude Code, and Codex/ChatGPT; eight plugin-only skills include
+explicit-only guidance for authoring agents, skills, and MCP integrations.
+
+## Latest news: v0.14.3
+
+Three new explicit-only, host-neutral skills cover agent-role authoring,
+skill-authoring, and least-privilege MCP integration design. Three pinned
+repository-fixture scenarios extend benchmark coverage for those authoring workflows. Benchmark
+scenario preflight is validation only; no provider-backed runs or performance
+gains are claimed.
 
 The lead agent inherits host tools instead of restricting them with an
 allowlist. Plugin-only work needs no repo initialization, resolves kit guidance
@@ -191,9 +210,11 @@ execution: start a new desktop thread and verify plugin discovery there.
 No private app files or provider credentials are edited. The audit contains one
 owner smoke prompt for desktop execution unavailable to the builder.
 
-The Codex plugin owns five skills: `architrave` (implicit lead workflow), plus
+The Codex plugin owns eight skills: `architrave` (implicit lead workflow), plus
 explicit-only `architrave-tournament`, `architrave-review`, the inline CTO
-checklist `architrave-cto`, and the bounded worker skill `architrave-work`.
+checklist `architrave-cto`, the bounded worker skill `architrave-work`, and the
+three explicit-only authoring skills `architrave-agent-authoring`,
+`architrave-skill-authoring`, and `architrave-mcp-integration`.
 Child kickoffs name relevant skills and verified guidance paths instead of
 assuming parent context is inherited. The work skill uses only the assigned
 development, evidence-backed research or writing/author-voice mode; it is not
@@ -255,6 +276,9 @@ copilot plugin update architrave
 claude plugin marketplace update architrave
 claude plugin update architrave@architrave
 ```
+
+These native plugin updates refresh all eight bundled skills, including the
+three authoring skills; plugin skills are not copied into adopted repositories.
 
 After updating the plugin, users **must also refresh each adopted repo's copied kit assets** at a safe owner boundary. A plugin update does not change copied gates, harness, knowledge, profile-appropriate constitutions, or the managed `AGENTS.md` stanza. The updater retires only exact recognized legacy Architrave quality-hook definitions; custom/mixed/unknown definitions are preserved with `MANUAL_ACTION_REQUIRED` (exit 2). It never registers a new automatic PostToolUse quality hook. Configuration and copied agents remain untouched unless `--agents` is requested:
 
@@ -430,7 +454,8 @@ Goal → Outcome → Acceptance Matrix → TaskGraph → WorkPackets
 - One host-native structured worker path and deterministic shell argv return
         bounded candidates. Agent CLI subprocess adapters are prohibited.
         Copilot's minimal installed extension joins its existing tasks RPC;
-        unsupported hosts fail early. WorkPackets use isolated git worktrees.
+        unsupported hosts fail early. WorkPackets use per-task git worktrees
+        with scope checks; these are not OS security sandboxes.
 - Repository-wide leases serialize overlapping mutable scopes across Runs;
         mutation receipts are task-bound, outcome-bound, and single-use.
 - Typed external checkpoints pause OAuth/MFA/consent/signing/human judgment
@@ -800,7 +825,7 @@ plugin.json                   ← agent-plugin manifest (Copilot CLI / app / VS 
 .claude-plugin/               ← Claude Code plugin + marketplace manifests
 .codex-plugin/plugin.json     ← Codex / ChatGPT plugin manifest
 .codex/                       ← project role registrations + two generated role configs
-skills/                       ← plugin-only Lead / CTO / Tournament / Review / bounded Work skills
+skills/                       ← eight plugin-only Lead / CTO / Tournament / Review / Work and authoring skills
 kit/
         MIGRATION.md                  ← how to replace bespoke repo agents with Architrave
   architrave.config.schema.json    ← per-repo config schema (the keystone)

@@ -120,6 +120,12 @@ nb=$fail
 [ "$(jq -r '.name' .codex-plugin/plugin.json)" = "architrave" ] || err ".codex-plugin/plugin.json name != architrave"
 [ "$(jq -r '.skills' .codex-plugin/plugin.json)" = "./skills/" ] || err ".codex-plugin/plugin.json skills != './skills/'"
 [ "$(jq -r 'has("agents")' .codex-plugin/plugin.json)" = "false" ] || err ".codex-plugin/plugin.json must not contain unsupported agents field"
+expected_skills=$(printf '%s\n' architrave architrave-agent-authoring architrave-cto architrave-mcp-integration architrave-review architrave-skill-authoring architrave-tournament architrave-work | LC_ALL=C sort)
+actual_skills=$(find skills -mindepth 2 -maxdepth 2 -name SKILL.md -print | sed 's#^skills/##; s#/SKILL.md$##' | LC_ALL=C sort)
+[ "$actual_skills" = "$expected_skills" ] || {
+  err "plugin skill inventory differs from the eight expected skills"
+  printf '      expected:\n%s\n      actual:\n%s\n' "$expected_skills" "$actual_skills" >&2
+}
 for mf in .github/plugin/marketplace.json .claude-plugin/marketplace.json; do
   [ "$(jq -r '.name' "$mf")" = "architrave" ] || err "$mf marketplace name != architrave"
   [ "$(jq -r '.plugins[0].name' "$mf")" = "architrave" ] || err "$mf plugin entry name != architrave"

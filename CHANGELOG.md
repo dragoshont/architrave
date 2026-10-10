@@ -11,6 +11,20 @@ Releases at or before **v0.8.12** are on the
 - Add a public Run cancel/supersede transition and make invalid unstarted-task
   intake terminal instead of retry-ready.
 
+## [0.14.3] - 2026-10-11
+
+### Added
+- Three explicit-only, host-neutral skills for authoring agent roles, skills,
+  and least-privilege MCP integration designs.
+- Three repository-fixture benchmark scenarios covering agent-role maintenance, skill
+  authoring, and MCP integration design; only scenario preflight was run.
+- A concise README Executive Summary of Architrave's supported delivery and
+  verification capabilities.
+
+### Changed
+- Clarified that worker worktrees and scope checks are not an OS security
+  sandbox.
+
 ## [0.14.2] - 2026-10-10
 
 ### Added
