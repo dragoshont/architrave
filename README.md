@@ -48,14 +48,14 @@ checks, or durable task records. Run the installer from an Architrave checkout
 or installed kit, with the target repository as the final argument:
 
 ```bash
-python /path/to/architrave/tools/install_update.py install /path/to/your/repo
+python3 /path/to/architrave/tools/install_update.py install /path/to/your/repo
 ```
 
 For documentation, automation, or other repositories without a product UI,
 use the knowledge profile:
 
 ```bash
-python /path/to/architrave/tools/install_update.py install --profile knowledge /path/to/your/repo
+python3 /path/to/architrave/tools/install_update.py install --profile knowledge /path/to/your/repo
 ```
 
 Review the generated `architrave.config.json` and set real repository sources
@@ -77,7 +77,7 @@ Plugin updates do not refresh kit files copied into adopted repositories. Run
 the updater from the updated kit to refresh those files:
 
 ```bash
-python /path/to/architrave/tools/install_update.py update /path/to/your/repo
+python3 /path/to/architrave/tools/install_update.py update /path/to/your/repo
 ```
 
 The updater leaves the repository's config and local agents alone by default.
