@@ -104,6 +104,10 @@ verification evidence.
 
 ## Proportional ceremony
 
+Use a tournament for material architecture/dependency decisions, migrations,
+data-loss, security, infrastructure/runtime risk, recurring failures, or genuinely
+ambiguous alternatives; it is not a prerequisite for routine bounded work.
+
 The existing `effort: low|default|high` signal is optional. It is not a model
 selector or a reason to spawn. Map it only through a user/host-supported control;
 otherwise record an inherited no-op. Copilot's joined tasks RPC supports a user
