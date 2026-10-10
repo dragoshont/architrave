@@ -162,6 +162,51 @@ last observed PASS or objective replacement; commits do not reset it. At the
 threshold (default 3) status reports `PRIMARY_STALLED` with the best attempt and
 caveats, and task-start refuses new work on that criterion.
 
+Current reality/e2e PASS credit from legibility requires an authenticated
+receipt bound to the current Run, objective, task (when present), criteria and
+source commit/hash at admission and consumption. Legacy unbound product
+receipts and gates remain readable as history, but cannot admit a new PASS,
+set a current criterion to PASS or satisfy verification, including after
+`resume --accept-commit`. Obtain a fresh bound observation; do not upgrade history.
+Binding/source validation also applies to current failed observations so
+verification can report a failed Run. Failed receipts never provide PASS
+admission or consumption credit.
+A failed gate likewise requires a failed observed receipt with its matching
+nonempty failed-check list; a genuine passing observation cannot be relabelled
+as a failure.
+Failed legibility admission rechecks those bindings inside the Run transaction;
+an earlier observation check cannot authorize evidence after source drift.
+Canonical verification and the ribbon use the same source-current failure
+classification. Stale failed receipts/gates remain historical, and their
+criteria need fresh observation rather than forcing a corrected Run to FAILED.
+Malformed or tampered evidence remains an error, not ordinary staleness.
+Current authenticated policy-engine and security-review failures remain
+governing when source coverage is unknown. Only explicit stale Run/objective
+or source bindings on all their evidence can move them to history; missing
+bindings never imply safety clearance.
+Supplied safety-evidence identity fields must have valid types/formats before
+source comparison. Null, malformed or fabricated digest/Run/version values
+raise an evidence error; they cannot clear a FAIL by looking different.
+Risk floors count source-bound nonsemantic PASS only when its authenticated
+Run/objective/criteria and commit/hash still match. Unreferenced old PASSs and
+unbound receipts remain history, not floor credit. Invariant registration
+retains a new bound receipt after a fresh engine evaluation with stable source.
+Task completion and side-effect-free recovery use the same current-failure
+classification as verification; obsolete source failures are not permanent
+vetoes, while current/unknown safety failures still block.
+Bounded Windows commands are created suspended and assigned to an owned,
+kill-on-close Job Object before their primary thread resumes. Timeout, normal
+root exit and coordinator lifetime all bound descendants; active-process
+cleanup must be confirmed before source/scope checks. Missing ownership
+capability fails before command execution, and unconfirmed cleanup is an error,
+never a successful result or a blind PID/name-based tree kill.
+Failed legibility receipts retain generic check classifications, never raw
+command/browser diagnostics. Diagnostic logs stay separately retained and
+hashed; structured JSON logs apply key-based redaction before persistence.
+Visual artifacts are retained once before freshness/pixel validation, and the
+receipt references those exact validated bytes. Retention preserves the observed
+source modification time; copying an old screenshot does not refresh its proof.
+
 New Runs set `focus.pushbackRequired`: `task-start` refuses tasks without a
 push-back verdict (`PUSHBACK_MISSING`) and never dispatches CUT/DEFER; status
 lists them in `missingPushback`. Legacy Runs are flagged but not blocked. When

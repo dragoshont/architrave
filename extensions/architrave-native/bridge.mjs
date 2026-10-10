@@ -21,7 +21,17 @@ for (const [path, digest] of Object.entries(installed.files)) verifyFile(path, d
 const bridgePath = join(installed.root, "harness", "native_host.py");
 const active = new Map();
 let pendingDispatches = 0;
+let semanticScope;
 let session;
+
+export function semanticReviewPrompt(prompt, files) {
+  const value = prompt +
+    "\nTracked regular source inventory (no recursive glob or directory view; search only these files):\n" +
+    JSON.stringify(files);
+  if (Buffer.byteLength(value, "utf8") > 65536)
+    throw new Error("SEMANTIC_PROMPT_TOO_LARGE: declared implementation inventory exceeds the bounded host prompt");
+  return value;
+}
 
 function pipe(request) {
   for (const [path, digest] of Object.entries(installed.files)) verifyFile(path, digest);
@@ -72,7 +82,7 @@ async function hostTasks() {
   return (await session.rpc.tasks.list()).tasks;
 }
 
-function observeTask(maxTurns) {
+function observeTask(maxTurns, requireCompletion = false) {
   const records = new Map();
   let id, fresh, resolve, reject, timer;
     let reading = false;
@@ -102,7 +112,9 @@ function observeTask(maxTurns) {
         const task = (await hostTasks()).find(task => task.id === id && task.type === "agent");
         if (!task) finish(new Error("Joined host lost the admitted task"));
         else if (["completed", "idle", "failed", "cancelled"].includes(task.status) &&
-                 (fresh(task) || cancellationRequested && task.status === "cancelled")) {
+                 (fresh(task) || cancellationRequested && task.status === "cancelled") &&
+                 (!requireCompletion || records.get(id)?.completionEvent ||
+                   ["failed", "cancelled"].includes(task.status))) {
           const record = records.get(id) || {};
           finish(null, { ...task, ...record, turnsObserved: record.turns || null,
             budgetStop: cancellationRequested ? "turns" : null });
@@ -122,10 +134,22 @@ function observeTask(maxTurns) {
         enforceTurns();
       }
       if (event.agentId && (!id || event.agentId === id) && ["subagent.completed", "subagent.failed"].includes(event.type)) {
+        const completionEvent = {
+          id: event.id, type: event.type, agentId: event.agentId, timestamp: event.timestamp,
+          ephemeral: Boolean(event.ephemeral), cancelled: Boolean(event.data.cancelled),
+          toolCallId: event.data.toolCallId, agentName: event.data.agentName,
+          firstDispatchedModel: event.data.firstDispatchedModel || null,
+          modelSelectionSource: event.data.modelSelectionSource || null,
+        };
+        const previous = records.get(event.agentId)?.completionEvent;
+        if (previous && JSON.stringify(previous) !== JSON.stringify(completionEvent)) {
+          finish(new Error("Conflicting host completion provenance"));
+          return;
+        }
         records.set(event.agentId, { ...records.get(event.agentId),
           usageTotal: event.data.totalTokens ?? null,
           totalToolCalls: event.data.totalToolCalls ?? null,
-          effectiveModel: event.data.firstDispatchedModel || event.data.model || null });
+          effectiveModel: event.data.firstDispatchedModel || event.data.model || null, completionEvent });
       }
       if (event.type === "session.background_tasks_changed" || event.type.startsWith("subagent.")) {
         void inspect();
@@ -189,6 +213,7 @@ const tools = [
     }, required: ["repo", "run_id", "task_id"], additionalProperties: false },
     handler: async (args, invocation) => withAdmission(async () => {
       const tasks = await hostTasks();
+      if (semanticScope) throw new Error("SEMANTIC_REVIEW_BUSY: frozen review owns this joined session");
       const owned = new Set([...active.values()].map(entry => entry.hostTaskId));
       const outside = tasks.filter(task => task.type === "agent" && task.status === "running" && !owned.has(task.id)).length;
       if (outside + pendingDispatches > 3) {
@@ -270,8 +295,18 @@ const tools = [
       required: ["repo", "run_id", "task_id"], additionalProperties: false },
     handler: async (args, invocation) => {
       request(args, "status", invocation);
-      const entry = active.get(`${args.run_id}:${args.task_id}`);
+      const recoveries = [...active.values()].filter(value => value.recoveryPending &&
+        value.key.startsWith(`review:${args.run_id}:${args.task_id}:`));
+      const entry = active.get(`${args.run_id}:${args.task_id}`) || (recoveries.length === 1 ? recoveries[0] : null);
       if (!entry || resolve(entry.repo) !== resolve(args.repo)) throw new Error("No live native bridge owns this WorkPacket");
+      if (entry.recoveryPending) {
+        const errors = await cleanupSemanticOwner(entry.hostTaskId, entry.connection, entry);
+        if (errors.length) return result({ status: "failed", cancelled: false,
+          recoveryOwner: entry.hostTaskId, cleanup: { confirmed: false, errors } });
+        active.delete(entry.key);
+        if (semanticScope === entry.repo) semanticScope = undefined;
+        return result({ status: "ok", cancelled: true, hostTaskId: entry.hostTaskId });
+      }
       const outcome = await session.rpc.tasks.cancel({ id: entry.hostTaskId });
       if (!outcome.cancelled) throw new Error("Host cancellation was not confirmed");
       return result({ status: "ok", cancelled: true, hostTaskId: entry.hostTaskId });
@@ -306,6 +341,133 @@ const tools = [
 ];
 
 tools.push({
+  name: "architrave_native_review",
+  description: "Execute one fresh source-bound semantic review through the joined host and admit only its observed result/model receipt. No verdict import or model pin.",
+  parameters: { type: "object", properties: { ...identitySchema,
+    reviewer: { type: "string", enum: ["code-review", "rubber-duck"] },
+  }, required: ["repo", "run_id", "task_id"], additionalProperties: false },
+  handler: async (args, invocation) => withAdmission(async () => {
+    if (Object.keys(args).some(key => !["repo", "run_id", "task_id", "reviewer"].includes(key))) {
+      throw new Error("Semantic execution accepts no claimed verdict, producer, event or model");
+    }
+    const tasks = await hostTasks();
+    if (typeof session.rpc.tasks.remove !== "function") {
+      throw new Error("NATIVE_HOST_REQUIRED: semantic review requires tasks.remove before reviewer admission");
+    }
+    if (semanticScope || pendingDispatches !== 1 || tasks.some(task => task.type === "agent" && task.status === "running")) {
+      throw new Error("SEMANTIC_REVIEW_BUSY: frozen-source reviews run alone in this joined session");
+    }
+    const input = { ...request(args, "semantic-review", invocation),
+      invocationId: invocation.toolCallId, reviewer: args.reviewer || "rubber-duck" };
+    const connection = pipe(input);
+    semanticScope = input.repo;
+    let hostTaskId, observer, key, cleanupAttempted = false;
+    let abort;
+    try {
+      const prepared = await connection.next();
+      if (prepared.status !== "prepared") return result(prepared);
+      if (!Number.isInteger(prepared.sourceFileCount) || prepared.sourceFileCount < 0 || prepared.sourceFileCount > 4096)
+        throw new Error("Native source inventory count is invalid");
+      const inventory = [];
+      while (inventory.length < prepared.sourceFileCount) {
+        const chunk = await connection.next();
+        if (chunk.status !== "source-inventory" || !Array.isArray(chunk.files) || !chunk.files.length ||
+            chunk.files.some(path => typeof path !== "string") ||
+            inventory.length + chunk.files.length > prepared.sourceFileCount)
+          throw new Error("Native source inventory frame is invalid");
+        inventory.push(...chunk.files);
+      }
+      const semanticFiles = inventory.map(path => {
+        const file = resolve(input.repo, path);
+        const suffix = relative(input.repo, file);
+        const info = lstatSync(file);
+        if (suffix.startsWith("..") || isAbsolute(suffix) ||
+            suffix.split(/[\\/]/).some(part => [".git", ".architrave"].includes(part.toLowerCase())) ||
+            !info.isFile() || info.isSymbolicLink() || realpathSync(file) !== file)
+          throw new Error("SEMANTIC_SOURCE_UNSUPPORTED: full advertised source inventory contains a private, aliased or non-regular entry");
+        return file;
+      });
+      observer = observeTask(prepared.maxTurns, true);
+      const admitted = await session.rpc.tasks.startAgent({
+        agentType: prepared.agentType, prompt: semanticReviewPrompt(prepared.prompt, semanticFiles),
+        name: `Architrave semantic ${args.task_id}`, description: "Independent frozen-source gate",
+      });
+      hostTaskId = admitted.agentId;
+      key = `review:${args.run_id}:${args.task_id}:${invocation.toolCallId}`;
+      active.set(key, { key, hostTaskId, connection, repo: input.repo });
+      abort = () => { void session.rpc.tasks.cancel({ id: hostTaskId }).catch(error => {
+        process.stderr.write(`Native semantic cancellation failed: ${String(error)}\n`);
+      }); };
+      invocation.signal?.addEventListener("abort", abort, { once: true });
+      const observation = observer.wait(hostTaskId, Date.parse(prepared.expiresAt), () => true);
+      observation.catch(() => {});
+      connection.send({ status: "admitted", hostTaskId });
+      const bound = await connection.next();
+      if (bound.status !== "bound") throw new Error(bound.error?.message || "Semantic host binding failed");
+      const observed = await observation;
+      if (!observed || !observed.completionEvent) throw new Error("SEMANTIC_HOST_PROVENANCE: completion metadata unavailable within bound");
+      connection.send({
+        hostTaskId, hostStatus: observed.status,
+        text: String(observed.result || observed.latestResponse || ""),
+        completion: observed.completionEvent,
+      });
+      const outcome = await connection.next();
+      cleanupAttempted = true;
+      const entry = active.get(key);
+      const cleanupErrors = await cleanupSemanticOwner(hostTaskId, connection, entry);
+      if (cleanupErrors.length && entry) entry.recoveryPending = true;
+      else if (key) active.delete(key);
+      return result({ ...outcome, cleanup: { confirmed: !cleanupErrors.length, errors: cleanupErrors },
+        ...(cleanupErrors.length ? { recoveryOwner: hostTaskId } : {}) });
+    } catch (error) {
+      cleanupAttempted = true;
+      const entry = active.get(key);
+      const cleanupErrors = await cleanupSemanticOwner(hostTaskId, connection, entry);
+      if (cleanupErrors.length && entry) entry.recoveryPending = true;
+      else if (key) active.delete(key);
+      return result({ status: "failed", error: { code: "NATIVE_SEMANTIC_FAILED", message: String(error) }, hostTaskId,
+        cleanup: { confirmed: !cleanupErrors.length, errors: cleanupErrors },
+        ...(cleanupErrors.length && hostTaskId ? { recoveryOwner: hostTaskId } : {}) });
+    } finally {
+      invocation.signal?.removeEventListener("abort", abort);
+      try { observer?.close(); }
+      catch (error) { process.stderr.write(`Native semantic observer cleanup failed: ${String(error)}\n`); }
+      if (!cleanupAttempted) {
+        const entry = active.get(key);
+        const errors = await cleanupSemanticOwner(hostTaskId, connection, entry);
+        if (errors.length) {
+          if (entry) entry.recoveryPending = true;
+          process.stderr.write(`Native semantic cleanup needs recovery: ${errors.join("; ")}\n`);
+        } else if (key) active.delete(key);
+      }
+      const pending = active.get(key);
+      if (!pending || pending.hostRemoved) semanticScope = undefined;
+    }
+  }),
+});
+
+async function cleanupSemanticOwner(owner, connection, progress = {}) {
+  const errors = [];
+  if (owner && !progress.hostRemoved) {
+    try {
+      if (!progress.cancelled) {
+        const outcome = await session.rpc.tasks.cancel({ id: owner });
+        if (!outcome.cancelled) throw new Error("Host cancellation was not confirmed");
+        progress.cancelled = true;
+      }
+      const removed = await session.rpc.tasks.remove({ id: owner });
+      if (!removed.removed) throw new Error("Host removal was not confirmed");
+      progress.hostRemoved = true;
+    } catch (error) { errors.push(`host cleanup: ${String(error)}`); }
+  }
+  try {
+    if (!progress.bridgeClosed) { await connection.close(); progress.bridgeClosed = true; }
+  }
+  catch (error) { errors.push(`bridge cleanup: ${String(error)}`); }
+  return errors;
+}
+
+tools.push({
   name: "architrave_native_batch",
   description: "Invoke two or three pre-decomposed independent canonical WorkPackets concurrently through the same native dispatch. No automatic decomposition or recursive spawning.",
   parameters: { type: "object", properties: {
@@ -320,11 +482,4 @@ tools.push({
   },
 });
 
-session = await joinSession({ tools, hooks: {
-  onPreToolUse: (input, invocation) => {
-    if ((active.size || pendingDispatches) && input.sessionId !== invocation.sessionId &&
-        /(?:^|[./-])(?:task|create_session|open_pr_session|open_issue_session|fork_session|run_workflow|run_dynamic_workflow|architrave_native_dispatch|architrave_native_batch)$/.test(input.toolName)) {
-      return { permissionDecision: "deny", permissionDecisionReason: "CHILD_DEPTH: a bounded Architrave child may not spawn descendants (max depth one)" };
-    }
-  },
-} });
+session = await joinSession({ tools });

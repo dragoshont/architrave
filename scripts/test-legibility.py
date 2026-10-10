@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -12,6 +13,7 @@ import struct
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import zlib
 
 
@@ -158,10 +160,142 @@ class LegibilityTests(unittest.TestCase):
         return LegibilityRunner(self.repo, state["runId"]), state["runId"]
 
     def test_web_requires_health_and_product_evidence(self) -> None:
-        runner, _ = self.create_runner({"health": self.pass_command(), "web": {"url": "http://fixture.invalid"}})
+        runner, run_id = self.create_runner({"health": self.pass_command(), "web": {"url": "http://fixture.invalid"}})
         result = runner.verify_surface("web")
         self.assertEqual("fail", result["status"])
         self.assertIn("web.e2e", result["failed"])
+        state = self.store.load(run_id)
+        gate = next(item for item in state["gateResults"] if item["id"] == result["gateId"])
+        self.assertEqual("FAIL", gate["status"])
+        self.assertTrue(gate["evidenceRefs"])
+        self.assertEqual("gate.failed", self.store.events(run_id)[-1]["type"])
+        self.store.set_criterion(run_id, "REALITY-001", "FAIL", [f"gate:{gate['id']}"])
+        verified, completed = self.store.verify(run_id)
+        self.assertFalse(completed)
+        self.assertEqual("FAILED", verified["status"])
+        self.assertEqual("FAIL", verified["acceptanceCriteria"][0]["status"])
+        with self.assertRaisesRegex(RuntimeFailure, "passing observed product"):
+            self.store.record_gate(run_id, gate_id="cannot-relabel", task_id=None, gate_type="reality",
+                                  status="PASS", criteria=["REALITY-001"], surface="web",
+                                  evidence_refs=gate["evidenceRefs"])
+        (self.repo / "changed-source.md").write_text("Changed after the failed observation\n", encoding="utf-8")
+        self.git("add", "changed-source.md")
+        self.git("commit", "-qm", "source changed after failure")
+        with self.assertRaises(RuntimeFailure) as stale:
+            self.store.assert_gate_sources_current(verified, [f"gate:{gate['id']}"])
+        self.assertEqual("EVIDENCE_SOURCE_STALE", stale.exception.code)
+        self.store.resume(run_id, accept_commit=True)
+        state, completed = self.store.verify(run_id)
+        self.assertFalse(completed)
+        self.assertEqual("VERIFYING", state["status"])
+        self.assertEqual("FAIL", state["acceptanceCriteria"][0]["status"])
+
+    def test_repeated_and_independent_observations_keep_prior_authenticated_bytes(self) -> None:
+        runner, run_id = self.create_runner({"health": self.pass_command(), "web": {"url": "http://fixture.invalid"}})
+        first = runner._finalize_gate("web", [
+            runner.recipe("runtime.health", self.pass_command("first")),
+            runner.recipe("web.e2e", self.pass_command("workflow-one")),
+        ], task_id=None)
+        retained = {path: (self.repo / path).read_bytes()
+                    for result in first["results"] for path in result["artifacts"]}
+        independent = LegibilityRunner(self.repo, run_id)
+        second = independent._finalize_gate("web", [
+            independent.recipe("runtime.health", self.pass_command("second")),
+            independent.recipe("web.e2e", self.pass_command("workflow-two")),
+        ], task_id=None)
+        third = runner._finalize_gate("web", [
+            runner.recipe("runtime.health", self.fail_command()),
+            runner.recipe("web.e2e", self.pass_command("workflow-three")),
+        ], task_id=None)
+        self.assertEqual(retained, {path: (self.repo / path).read_bytes() for path in retained})
+        state = self.store.load(run_id)
+        self.assertEqual(["PASS", "PASS", "FAIL"], [gate["status"] for gate in state["gateResults"]])
+        self.assertEqual({first["gateId"], second["gateId"], third["gateId"]},
+                         {gate["id"] for gate in state["gateResults"]})
+        paths = [path for result in [*first["results"], *second["results"], *third["results"]]
+                 for path in result["artifacts"]]
+        self.assertEqual(len(paths), len(set(paths)))
+
+    def test_visual_retention_preserves_exact_validated_bytes_during_source_rewrite(self) -> None:
+        import legibility
+        with (self.repo / ".gitignore").open("a", encoding="utf-8") as stream:
+            stream.write("shot.png\ndom.json\na11y.json\n")
+        for structured in (True, False):
+            with self.subTest(structured=structured):
+                (self.repo / "dom.json").write_text("{}\n", encoding="utf-8")
+                (self.repo / "a11y.json").write_text("{}\n", encoding="utf-8")
+                screenshot = self.repo / "shot.png"
+                self.write_png(screenshot, [(0, 0, 0), (255, 255, 255)])
+                observed = screenshot.read_bytes()
+                payload = {"url": "http://fixture.invalid/release", "domSnapshot": "dom.json",
+                           "accessibilityTree": "a11y.json", "screenshot": "shot.png",
+                           "workflowPassed": True, "consoleErrors": [], "networkFailures": []}
+                runner, _ = self.create_runner({"health": self.pass_command(), "web": {
+                    "url": payload["url"], "e2e": self.json_command(payload, ["dom.json", "a11y.json", "shot.png"])}})
+                original = legibility.png_luminance_range
+
+                def validate_then_rewrite(path):
+                    result = original(path)
+                    self.write_png(screenshot, [(32, 32, 32), (32, 32, 32)])
+                    return result
+
+                with mock.patch("legibility.png_luminance_range", side_effect=validate_then_rewrite):
+                    result = runner.verify_surface("web") if structured else runner.analyze_ios_screenshot("shot.png")
+                self.assertEqual("pass", result["status"])
+                artifacts = ([path for entry in result["results"] for path in entry["artifacts"]]
+                             if structured else result["artifacts"])
+                retained = next(self.repo / path for path in artifacts if path.endswith("-shot.png"))
+                self.assertEqual(observed, retained.read_bytes())
+                self.assertNotEqual(observed, screenshot.read_bytes())
+
+    def test_failed_gate_admission_rechecks_source_after_preliminary_observation_check(self) -> None:
+        runner, run_id = self.create_runner({"health": self.pass_command(), "web": {"url": "http://fixture.invalid"}})
+        original = runner.store.record_gate
+
+        def change_before_admission(*args, **kwargs):
+            (self.repo / "late-source-edit.md").write_text("Changed after observation checks\n", encoding="utf-8")
+            return original(*args, **kwargs)
+
+        with mock.patch.object(runner.store, "record_gate", side_effect=change_before_admission):
+            with self.assertRaises(RuntimeFailure) as rejected:
+                runner.verify_surface("web")
+        self.assertEqual("EVIDENCE_SOURCE_STALE", rejected.exception.code)
+        state = self.store.load(run_id)
+        self.assertEqual([], state["gateResults"])
+        self.assertNotEqual("FAILED", state["status"])
+
+    def test_failed_receipt_excludes_raw_diagnostics_and_structured_secret_values(self) -> None:
+        (self.repo / "dom.json").write_text("{}\n", encoding="utf-8")
+        (self.repo / "a11y.json").write_text("{}\n", encoding="utf-8")
+        self.write_png(self.repo / "web.png", [(0, 0, 0), (255, 255, 255)])
+        private_diagnostic = "FIXTURE_PRIVATE_BROWSER_DIAGNOSTIC"
+        secret = "FIXTURE_NONCREDENTIAL_PASSWORD_VALUE"
+        evidence = self.json_command({
+            "url": "http://fixture.invalid/release", "domSnapshot": "dom.json",
+            "accessibilityTree": "a11y.json", "screenshot": "web.png",
+            "workflowPassed": False, "consoleErrors": [private_diagnostic],
+            "networkFailures": ["http://fixture.invalid/private?profile=" + private_diagnostic],
+            "credentials": {"password": secret},
+        }, ["dom.json", "a11y.json", "web.png"])
+        runner, run_id = self.create_runner({
+            "health": self.pass_command(), "web": {"url": "http://fixture.invalid/release", "e2e": evidence}})
+        result = runner.verify_surface("web")
+        self.assertEqual("fail", result["status"])
+        state = self.store.load(run_id)
+        artifact = next(item for item in state["artifacts"] if item["producer"] == "legibility")
+        text = (self.repo / artifact["path"]).read_text(encoding="utf-8")
+        self.assertNotIn(private_diagnostic, text)
+        self.assertNotIn(secret, text)
+        receipt = json.loads(text)
+        failed = next(item for item in receipt["results"] if item["name"] == "web.e2e")
+        self.assertEqual("required check failed", failed["reason"])
+        for retained in failed["artifacts"]:
+            path = self.repo / retained["path"]
+            self.assertEqual(retained["sha256"], hashlib.sha256(path.read_bytes()).hexdigest())
+            if path.name.endswith(".stdout.log"):
+                log = path.read_text(encoding="utf-8")
+                self.assertNotIn(secret, log)
+                self.assertIn(private_diagnostic, log)
 
     def test_web_e2e_is_recorded_as_reality_gate(self) -> None:
         (self.repo / "dom.json").write_text("{}\n", encoding="utf-8")
@@ -185,8 +319,39 @@ class LegibilityTests(unittest.TestCase):
         result = runner.verify_surface("web")
         self.assertEqual("pass", result["status"])
         gate = self.store.load(run_id)["gateResults"][-1]
+        with self.assertRaisesRegex(RuntimeFailure, "failed observed product"):
+            self.store.record_gate(run_id, gate_id="passing-proof-cannot-fail", task_id=None, gate_type="reality",
+                                  status="FAIL", criteria=["REALITY-001"], surface="web",
+                                  evidence_refs=gate["evidenceRefs"])
         self.assertEqual("reality", gate["type"])
         self.assertEqual("PASS", gate["status"])
+
+    def test_refreshed_visual_artifacts_do_not_overwrite_prior_receipt_evidence(self) -> None:
+        runner, run_id = self.create_runner({"health": self.pass_command(), "web": {"url": "http://fixture.invalid"}})
+        input_dir = self.store.run_dir(run_id) / "observed-inputs"
+        input_dir.mkdir()
+        dom, a11y, image = input_dir / "dom.json", input_dir / "a11y.json", input_dir / "screen.png"
+        dom.write_text('{"observed":"first"}')
+        a11y.write_text("{}")
+        self.write_png(image, [(0, 0, 0), (255, 255, 255)])
+        paths = [path.relative_to(runner.repository).as_posix() for path in (dom, a11y, image)]
+        payload = {"url": "http://fixture.invalid", "domSnapshot": paths[0],
+                   "accessibilityTree": paths[1], "screenshot": paths[2],
+                   "workflowPassed": True, "consoleErrors": [], "networkFailures": []}
+        def observe():
+            structured = runner.structured_recipe("web.e2e", self.json_command(payload, paths),
+                lambda value: runner.validate_web_evidence(value, "http://fixture.invalid"))
+            return runner._finalize_gate("web", [
+                runner.recipe("runtime.health", self.pass_command()), structured], task_id=None)
+        first = observe()
+        prior = {path: (runner.repository / path).read_bytes()
+                 for result in first["results"] for path in result["artifacts"]}
+        dom.write_text('{"observed":"second"}')
+        self.write_png(image, [(255, 255, 255), (0, 0, 0)])
+        second = observe()
+        self.assertEqual("pass", second["status"])
+        self.assertEqual(prior, {path: (runner.repository / path).read_bytes() for path in prior})
+        self.assertEqual(2, len(self.store.load(run_id)["gateResults"]))
 
     def test_web_e2e_url_must_match_configured_origin_and_route(self) -> None:
         for url in ("http://other.invalid/release", "http://fixture.invalid/other"):
@@ -230,9 +395,12 @@ class LegibilityTests(unittest.TestCase):
                 "electron": {"launch": self.fail_command(), "health": self.pass_command(), "screenshot": self.pass_command()},
             }
         )
-        result = runner.verify_surface("electron")
-        self.assertEqual("fail", result["status"])
-        self.assertIn("electron.launch", result["failed"])
+        before = self.store.load(runner.run_id)
+        with self.assertRaisesRegex(RuntimeFailure, "explicit criterion surface ownership"):
+            runner.verify_surface("electron")
+        after = self.store.load(runner.run_id)
+        self.assertEqual(before["gateResults"], after["gateResults"])
+        self.assertNotEqual("FAILED", after["status"])
 
     def test_electron_structured_window_evidence_passes(self) -> None:
         self.write_png(self.repo / "electron.png", [(0, 0, 0), (255, 255, 255)])
@@ -263,7 +431,7 @@ class LegibilityTests(unittest.TestCase):
                     "launch": self.pass_command(),
                     "screenshot": self.pass_command()
                 }
-            }
+            }, surface="ios"
         )
         result = runner.verify_surface("ios")
         self.assertEqual("fail", result["status"])
@@ -344,7 +512,7 @@ class LegibilityTests(unittest.TestCase):
                     "screenshot": self.pass_command(),
                     "screenshotPath": "ios-flat.png"
                 }
-            }
+            }, surface="ios"
         )
         result = runner.verify_surface("ios")
         self.assertEqual("fail", result["status"])
@@ -394,7 +562,7 @@ class LegibilityTests(unittest.TestCase):
                     "screenshot": self.pass_command(),
                     "screenshotPath": "ios-stale.png"
                 }
-            }
+            }, surface="ios"
         )
         result = runner.verify_surface("ios")
         self.assertEqual("fail", result["status"])

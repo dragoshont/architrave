@@ -9,7 +9,9 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,10 +22,57 @@ from architrave_runtime import RunStore, RuntimeFailure
 _fixture_add_task = RunStore.add_task
 RunStore.add_task = lambda self, run_id, task, actor="coordinator": _fixture_add_task(
     self, run_id, {"pushback": "KEEP:test fixture", **task}, actor)
-from worker_adapters import command_for, execute_work_packet, git_status
+from worker_adapters import command_for, execute_work_packet, git_status, run_bounded
+import worker_adapters
 
 
 class WorkerAdapterTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == "nt", "Owned Windows process-tree lifetime")
+    def test_windows_owned_children_stop_on_timeout_and_parent_early_exit(self) -> None:
+        for early_exit in (False, True):
+            with self.subTest(early_exit=early_exit):
+                directory = self.repo / ("early-exit" if early_exit else "timeout-tree")
+                directory.mkdir()
+                writes, identity = directory / "writes.txt", directory / "child.pid"
+                child = ("from pathlib import Path; import time; "
+                         f"p=Path({str(writes)!r}); "
+                         "\nwhile True:\n p.open('a').write('owned\\n'); time.sleep(.02)")
+                parent = ("import subprocess,sys,time; from pathlib import Path; "
+                          f"p=subprocess.Popen([sys.executable,'-c',{child!r}],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL); "
+                          f"Path({str(identity)!r}).write_text(str(p.pid)); "
+                          f"\nwhile not Path({str(writes)!r}).exists(): time.sleep(.01)\n"
+                          + ("" if early_exit else "time.sleep(30)"))
+                result = run_bounded([sys.executable, "-c", parent], cwd=self.repo, environment=dict(os.environ),
+                                     timeout_seconds=1, max_output_bytes=2048)
+                self.assertEqual(not early_exit, result["timedOut"])
+                self.assertTrue(identity.is_file())
+                size = writes.stat().st_size
+                time.sleep(.15)
+                self.assertEqual(size, writes.stat().st_size, "Owned descendant continued writing after completion")
+
+    @unittest.skipUnless(os.name == "nt", "Owned Windows process-tree capability")
+    def test_windows_missing_tree_control_fails_before_command(self) -> None:
+        with mock.patch.object(worker_adapters, "_WindowsOwnedJob", side_effect=OSError("unsupported")), \
+                mock.patch.object(worker_adapters.subprocess, "Popen", side_effect=AssertionError("Must not spawn")):
+            result = run_bounded([sys.executable, "-c", "raise AssertionError('must not execute')"],
+                                 cwd=self.repo, environment={}, timeout_seconds=1, max_output_bytes=2048)
+        self.assertEqual(127, result["exitCode"])
+        self.assertIn("unsupported", result["stderr"])
+
+    @unittest.skipUnless(os.name == "nt", "Owned Windows process-tree cleanup confirmation")
+    def test_windows_cleanup_confirmation_error_is_not_success(self) -> None:
+        original = worker_adapters._WindowsOwnedJob.terminate_and_close
+        def cleaned_but_unconfirmed(job):
+            owned = job.handle is not None
+            original(job)
+            if owned:
+                raise RuntimeFailure("PROCESS_CLEANUP_UNCONFIRMED", "fixture cleanup confirmation failure")
+        with mock.patch.object(worker_adapters._WindowsOwnedJob, "terminate_and_close", cleaned_but_unconfirmed):
+            with self.assertRaises(RuntimeFailure) as error:
+                run_bounded([sys.executable, "-c", "pass"], cwd=self.repo, environment=dict(os.environ),
+                            timeout_seconds=5, max_output_bytes=2048)
+        self.assertEqual("PROCESS_CLEANUP_UNCONFIRMED", error.exception.code)
+
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         self.repo = Path(self.temp.name) / "repo"

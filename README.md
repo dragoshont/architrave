@@ -20,6 +20,48 @@ from the installed plugin, and uses host tracking when durable support is not
 adopted. Independent implementation tracks prefer coordinated sidebar sessions
 when exposed, with native subagents as the CLI fallback.
 
+## Prepared for publication: Session instrument
+
+The portable ribbon renderer also provides the lightweight **Session instrument**,
+independent of the named Architrave agent, repository config and canonical Runs.
+Its Apple-like operating surface puts a compact telemetry rail above a quiet
+activity ribbon, with expandable child role, assigned-slice, status and model
+rows. It follows the host theme and reduced-motion setting; no preview numbers,
+synthetic phases or example children are included in the production renderer.
+The Copilot legacy plugin manifest contributes its dedicated extension root;
+standalone user-extension adoption remains an alternative. It attempts one
+provider-qualified automatic open in new supported sessions, preserving opt-out,
+dismissal and existing panels. Host-reported model, effort setting and context
+usage stay distinct from observed model-call identity; missing telemetry stays
+unavailable. Activity is indeterminate, never invented completion.
+Close-this-session and durable user opt-out do not change work or permissions.
+No tools, prompt injections, workers or recurring model calls are added.
+Owned SDK subagents show names, roles, lifecycle and assigned slices with
+model details on demand; app-native child-session visibility remains explicitly
+unavailable through the current extension API.
+See [companion adoption and supported boundaries](docs/route-ribbon.md#session-companion-included-in-v0141).
+Included in the user-approved v0.14.1 publication scope;
+no candidate global adoption or default-on host acceptance is implied.
+
+## Latest news: v0.14.1 candidate
+
+The optional **Route Ribbon** turns a compact Run snapshot into a segmented,
+keyboard-accessible canvas: scoped completion and observed product verification
+stay distinct, with visible bypasses, human/resource/dependency blockers,
+explicit stops and fingerprint-backed retry history. One portable
+`extension.mjs`, no npm runtime dependencies beyond the Copilot host SDK.
+Snapshots persist by repository/Run identity and rehydrate after extension reload.
+Parallel workstream data adds labelled stacked lanes while preserving the
+segmented overview. Delivery, exploration and reference work remain distinct;
+display-only INFORMS annotations never become scheduling dependencies.
+The joined native bridge can now execute and admit a fresh source-bound semantic
+review from actual host completion/model evidence. Automatic PostToolUse quality
+commands are retired; explicit focused quick checks and required CI preserve
+the executable validators without pretending prose is automatic enforcement.
+This is an **agent-fed snapshot, not a live telemetry feed**. Missing active
+effort, wait duration, tokens and cost stay Unknown.
+See [Route Ribbon installation and snapshot contract](docs/route-ribbon.md).
+
 ### Previous release: v0.14.0
 
 This release adds adaptive on-demand feasibility windows, truthful runtime/
@@ -200,7 +242,7 @@ claude plugin marketplace update architrave
 claude plugin update architrave@architrave
 ```
 
-After updating the plugin, users **must also refresh each adopted repo's copied kit assets**. A plugin update refreshes the locally installed agent package only; it does not change copied gates, the active `.github/hooks/design-guard.json`, harness, knowledge, profile-appropriate constitutions, or the managed `AGENTS.md` stanza. Run the matching repo script in every adopted repo. This leaves `architrave.config.json` and copied `.github/agents` untouched by default:
+After updating the plugin, users **must also refresh each adopted repo's copied kit assets** at a safe owner boundary. A plugin update does not change copied gates, harness, knowledge, profile-appropriate constitutions, or the managed `AGENTS.md` stanza. The updater retires only exact recognized legacy Architrave quality-hook definitions; custom/mixed/unknown definitions are preserved with `MANUAL_ACTION_REQUIRED` (exit 2). It never registers a new automatic PostToolUse quality hook. Configuration and copied agents remain untouched unless `--agents` is requested:
 
 ```bash
 python /path/to/architrave/tools/install_update.py update .
@@ -398,6 +440,14 @@ from the installed kit once, then use the supported extensions reload. Invoke
 `architrave_native_dispatch` with the absolute adopted repo, Run and task IDs;
 `architrave_native_gate` independently observes the configured test/build or
 installed quick gate. `status` is a fresh projection; worker done is never PASS.
+`architrave_native_review` executes and admits a fresh independent source review
+through the same trusted joined producer; see
+[native semantic execution](docs/native-semantic-review.md).
+For explicit quality-check cadence and safe legacy-hook retirement, see
+[quality checks without automatic turn hooks](docs/quality-check-cadence.md).
+Architrave registers no native tool-blocking hooks. Host permissions remain
+host-owned; explicit native tool admission/source/evidence checks and passive
+Route Ribbon/Session companion event observation remain.
 The copied kit/bridge supports Python 3.9+ (including macOS system 3.9.6);
 optional `--codex` role adoption still requires Python 3.11+.
 
@@ -640,13 +690,13 @@ python /path/to/architrave/tools/install_update.py install .
 
 This copies agents, gates, the complete harness, and knowledge packs; scaffolds
 config; ignores private Runs and worktrees; injects the grounding stanza; wires
-the hook; and drops cloud setup. Existing configs remain valid. The application
+explicit quick-check instructions; and drops cloud setup. Existing configs remain valid. The application
 profile also copies native constitutions; the knowledge profile omits them.
 
 **Important update rule:** after every Architrave plugin update, run
 `python tools/install_update.py update <repo>` in each adopted repo.
 Plugin updates do not rewrite copied repo assets. The Python updater refreshes
-gates, the active platform-specific workspace hook, harness, knowledge,
+gates, recognized legacy quality-hook retirement, harness, knowledge,
 profile-appropriate constitutions, the run-artifact ignore, and the managed
 `AGENTS.md` stanza while leaving `architrave.config.json` and `.github/agents`
 alone by default; pass `--agents` only when deliberately refreshing copied
@@ -753,7 +803,7 @@ knowledge/
 agents/                       ← Architrave · CTO · Product Research · Operations UX · UX Architect · UI Visual · Platform Design · Tournament Analyst · Adversarial Judge
                                  + backend lane: Service Architect · Backend Planner · Backend Implementer · Infra Engineer
                                  + runtime lane: Runtime Observer
-gates/                        ← rubric.md · checks.{sh,ps1} · reconcile.{sh,ps1} · quality-gate.{sh,ps1} · backend-checks.{sh,ps1} · hooks/
+gates/                        ← rubric.md · checks.{sh,ps1} · reconcile.{sh,ps1} · quality-gate.{sh,ps1} · backend-checks.{sh,ps1}
 harness/                      ← Run v2 runtime · workers/workspaces · invariants · legibility · v1/v2 validators · schemas
 benchmarks/                   ← short/feature/multi-surface/LongBuild scenarios + frozen fixture
 docs/                         ← runtime, legibility, LongBuild, and v1→v2 migration guides

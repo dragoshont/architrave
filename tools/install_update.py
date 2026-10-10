@@ -44,6 +44,7 @@ GATE_FILES = (
 IGNORE_RULES = (
     ".architrave/runs/",
     ".architrave/worktrees/",
+    ".architrave/install-retired-hooks/",
     ".architrave/runtime.key",
     ".architrave/resources.lock",
 )
@@ -111,16 +112,33 @@ def _pid_alive(pid: int) -> bool:
     if os.name == "nt":
         import ctypes
 
-        handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+        kernel.OpenProcess.restype = ctypes.c_void_p
+        kernel.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        kernel.WaitForSingleObject.restype = ctypes.c_uint32
+        kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+        kernel.CloseHandle.restype = ctypes.c_int
+        handle = kernel.OpenProcess(0x1000 | 0x100000, False, pid)
         if not handle:
-            return False
-        ctypes.windll.kernel32.CloseHandle(handle)
-        return True
+            if ctypes.get_last_error() == 87:
+                return False
+            raise InstallerError("installer lock owner process cannot be observed; manual recovery required")
+        try:
+            state = kernel.WaitForSingleObject(handle, 0)
+            if state not in {0, 258}:
+                raise InstallerError("installer lock owner status is uncertain; manual recovery required")
+            return state == 258
+        finally:
+            if not kernel.CloseHandle(handle):
+                raise InstallerError("installer lock owner query handle could not be closed")
     try:
         os.kill(pid, 0)
         return True
-    except OSError:
+    except ProcessLookupError:
         return False
+    except PermissionError:
+        return True
 
 
 def sha256_file(path: Path) -> str:
@@ -701,15 +719,17 @@ class ManagedRoot:
         source_info = source.lstat()
         self.create_bytes(relative, source.read_bytes(), stat.S_IMODE(source_info.st_mode))
 
-    def remove_file(self, relative: str) -> None:
+    def remove_file(self, relative: str, *, expected_sha256: str | None = None) -> None:
         if self.transaction is not None:
-            self.transaction.stage_remove(relative)
+            self.transaction.stage_remove(relative, expected_sha256=expected_sha256)
             return
         self.preflight_file(relative)
         path = self.path(relative)
         if _lstat(path) is None:
             return
         self.require_file(relative)
+        if expected_sha256 and sha256_file(path) != expected_sha256:
+            raise InstallerError("retire-hooks: definition changed after inspection; preserved")
         path.unlink()
         if _lstat(path) is not None:
             raise InstallerError(f"{self.label}: managed file remains after removal: {relative}")
@@ -733,6 +753,13 @@ class ManagedRoot:
 class ManagedTransaction:
     active: list["ManagedTransaction"] = []
 
+    @staticmethod
+    def _native_path(path: Path) -> str:
+        value = str(path)
+        if os.name != "nt" or value.startswith("\\\\?\\"):
+            return value
+        return "\\\\?\\UNC\\" + value[2:] if value.startswith("\\\\") else "\\\\?\\" + value
+
     def __init__(self, managed: ManagedRoot) -> None:
         self.managed = managed
         self.root = managed.root
@@ -740,6 +767,73 @@ class ManagedTransaction:
         self.directory = self.root / ".architrave-install-transaction"
         self.operations: list[dict[str, object]] = []
         self.created_dirs: set[Path] = set()
+        self.manual_action = False
+        self.lock_descriptor: int | None = None
+        self.lock_bytes: bytes | None = None
+
+    def _open_lock(self, create: bool) -> int:
+        if os.name != "nt":
+            return os.open(self.lock, os.O_RDWR | getattr(os, "O_NOFOLLOW", 0) |
+                           (os.O_CREAT | os.O_EXCL if create else 0), 0o600)
+        import ctypes
+        import msvcrt
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.CreateFileW.argtypes = [ctypes.c_wchar_p, ctypes.c_uint32, ctypes.c_uint32,
+                                      ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p]
+        kernel.CreateFileW.restype = ctypes.c_void_p
+        handle = kernel.CreateFileW(self._native_path(self.lock), 0xC0000000, 7, None,
+                                    1 if create else 3, 0x00200080, None)
+        if handle == ctypes.c_void_p(-1).value:
+            error = ctypes.get_last_error()
+            if error in {80, 183}:
+                raise FileExistsError(error, "installer lock exists")
+            raise OSError(error, "installer lock cannot be opened")
+        try:
+            return msvcrt.open_osfhandle(handle, os.O_RDWR | os.O_BINARY)
+        except OSError:
+            kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+            kernel.CloseHandle.restype = ctypes.c_int
+            kernel.CloseHandle(handle)
+            raise
+
+    def _lock_file(self, descriptor: int, unlock: bool = False) -> None:
+        if os.name == "nt":
+            import msvcrt
+            os.lseek(descriptor, 0, os.SEEK_SET)
+            msvcrt.locking(descriptor, msvcrt.LK_UNLCK if unlock else msvcrt.LK_NBLCK, 4096)
+        else:
+            import fcntl
+            fcntl.flock(descriptor, fcntl.LOCK_UN if unlock else fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    def _lock_matches(self, expected: bytes) -> bool:
+        if self.lock_descriptor is None:
+            return False
+        opened = os.fstat(self.lock_descriptor)
+        current = _lstat(self.lock)
+        os.lseek(self.lock_descriptor, 0, os.SEEK_SET)
+        return (current is not None and _is_regular_file(current) and
+                (opened.st_dev, opened.st_ino) == (current.st_dev, current.st_ino) and
+                os.read(self.lock_descriptor, 4097) == expected)
+
+    def _assert_lock_owned(self) -> None:
+        if self.lock_bytes is None or not self._lock_matches(self.lock_bytes):
+            raise InstallerError("install/update lock ownership changed; preserve transaction for manual recovery")
+
+    def _release_lock(self) -> None:
+        if self.lock_descriptor is None:
+            return
+        try:
+            if self.lock_bytes is not None and self._lock_matches(self.lock_bytes):
+                self.lock.unlink(missing_ok=True)
+            elif self.lock_bytes is not None:
+                self.manual_action = True
+                print("MANUAL_ACTION_REQUIRED: changed installer lock preserved", file=sys.stderr)
+        finally:
+            descriptor, self.lock_descriptor = self.lock_descriptor, None
+            try:
+                self._lock_file(descriptor, unlock=True)
+            finally:
+                os.close(descriptor)
 
     def _write_manifest(self, value: dict[str, object]) -> None:
         path = self.directory / "manifest.json"
@@ -747,14 +841,65 @@ class ManagedTransaction:
         with path.open("r+b") as stream:
             os.fsync(stream.fileno())
 
+    def _protect_quarantine(self, relative: str) -> Path:
+        self.managed.preflight_file(relative)
+        guard_relative = (Path(relative).parent / ".gitignore").as_posix()
+        self.managed.preflight_file(guard_relative)
+        guard = Path(self._native_path(self.managed.path(guard_relative)))
+        guard.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with guard.open("xb") as stream:
+                stream.write(b"*\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+        except FileExistsError:
+            self.managed.preflight_file(guard_relative)
+            info = _lstat(guard)
+            if info is None or not _is_regular_file(info) or guard.read_bytes() != b"*\n":
+                raise InstallerError("retire-hooks: custom quarantine ignore rules preserved; safe retention requires owner recovery")
+        return self.managed.path(relative)
+
     def _recover(self) -> None:
+        self._assert_lock_owned()
         manifest_path = self.directory / "manifest.json"
         if not manifest_path.is_file():
             raise InstallerError(f"{self.managed.label}: stale transaction has no recovery manifest")
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        for item in reversed(manifest.get("operations", [])):
+        operations = manifest.get("operations", [])
+        applied = int(manifest.get("applied", 0))
+        in_flight = manifest.get("inFlight")
+        recoverable = [(index, item) for index, item in enumerate(operations)
+                       if "inFlight" not in manifest or index < applied or index == in_flight]
+        for _index, item in reversed(recoverable):
+            if item["kind"] == "assert-absent":
+                continue
             destination = self.managed.path(str(item["relative"]))
             backup = self.directory / str(item["backup"]) if item.get("backup") else None
+            if item["kind"] == "write" and item.get("createOnly"):
+                stage = self.directory / str(item["stage"])
+                info = _lstat(destination)
+                if (info is not None and _is_regular_file(info) and stage.is_file()
+                        and os.path.samefile(stage, destination)
+                        and sha256_file(destination) == item["expectedSha256"]):
+                    destination.unlink()
+                elif info is not None:
+                    self.manual_action = True
+                    print(f"MANUAL_ACTION_REQUIRED: late/custom create-only destination preserved: {item['relative']}",
+                          file=sys.stderr)
+                continue
+            if item["kind"] == "remove" and item.get("quarantine"):
+                quarantine = self.managed.path(str(item["quarantine"]))
+                if _lstat(Path(self._native_path(quarantine))) is not None:
+                    self._protect_quarantine(str(item["quarantine"]))
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    try:
+                        os.link(self._native_path(quarantine), self._native_path(destination), follow_symlinks=False)
+                    except FileExistsError:
+                        print(f"MANUAL_ACTION_REQUIRED: newer hook target preserved; original inode retained: {item['quarantine']}",
+                              file=sys.stderr)
+                continue
+            if item["kind"] == "remove" and _lstat(destination) is not None:
+                continue
             if backup and backup.is_file():
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 os.replace(backup, destination)
@@ -772,28 +917,55 @@ class ManagedTransaction:
         shutil.rmtree(self.directory)
 
     def __enter__(self) -> "ManagedTransaction":
+        self.managed.preflight_file(".architrave-install.lock")
+        created = False
         try:
-            descriptor = os.open(self.lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            descriptor = self._open_lock(create=True)
+            created = True
         except FileExistsError:
-            try:
-                owner = json.loads(self.lock.read_text(encoding="utf-8"))
-                alive = _pid_alive(int(owner["pid"]))
-            except (OSError, ValueError, KeyError, json.JSONDecodeError):
-                alive = False
-            if not alive:
-                self.lock.unlink(missing_ok=True)
-                descriptor = os.open(self.lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            descriptor = self._open_lock(create=False)
+        self.lock_descriptor = descriptor
+        locked = False
+        try:
+            self._lock_file(descriptor)
+            locked = True
+            if not created:
+                os.lseek(descriptor, 0, os.SEEK_SET)
+                previous = os.read(descriptor, 4097)
+                try:
+                    owner = json.loads(previous)
+                    pid = owner["pid"]
+                    if not isinstance(pid, int) or isinstance(pid, bool) or not 0 < pid <= 0x7FFFFFFF:
+                        raise ValueError("invalid owner PID")
+                    if "nonce" in owner and (not isinstance(owner["nonce"], str) or
+                                            not re.fullmatch(r"[0-9a-f]{32}", owner["nonce"])):
+                        raise ValueError("invalid owner nonce")
+                except (ValueError, KeyError, TypeError):
+                    raise InstallerError("unreadable/in-progress installer lock ownership; manual recovery required")
+                if _pid_alive(pid):
+                    raise InstallerError(f"{self.managed.label}: target is locked by another install/update")
+                if not self._lock_matches(previous):
+                    raise InstallerError("installer lock identity changed during dead-owner recovery; preserved")
+            self.lock_bytes = (json.dumps({"pid": os.getpid(), "createdAt": time.time(),
+                                           "nonce": uuid.uuid4().hex}) + "\n").encode("utf-8")
+            os.lseek(descriptor, 0, os.SEEK_SET)
+            os.ftruncate(descriptor, 0)
+            if os.write(descriptor, self.lock_bytes) != len(self.lock_bytes):
+                raise InstallerError("installer ownership write was incomplete; manual recovery required")
+            os.fsync(descriptor)
+            self._assert_lock_owned()
+            if self.directory.exists():
+                self._recover()
+            self.directory.mkdir()
+            (self.directory / "stage").mkdir()
+            (self.directory / "backup").mkdir()
+        except Exception:
+            if locked:
+                self._release_lock()
             else:
-                raise InstallerError(f"{self.managed.label}: target is locked by another install/update")
-        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-            json.dump({"pid": os.getpid(), "createdAt": time.time()}, stream)
-            stream.flush()
-            os.fsync(stream.fileno())
-        if self.directory.exists():
-            self._recover()
-        self.directory.mkdir()
-        (self.directory / "stage").mkdir()
-        (self.directory / "backup").mkdir()
+                self.lock_descriptor = None
+                os.close(descriptor)
+            raise
         self.managed.transaction = self
         self.active.append(self)
         return self
@@ -808,24 +980,37 @@ class ManagedTransaction:
         stage.write_bytes(data)
         os.chmod(stage, stat.S_IMODE(mode))
         self.operations.append(
-            {"kind": "write", "relative": relative, "stage": f"stage/{index}", "mode": mode}
+            {"kind": "write", "relative": relative, "stage": f"stage/{index}", "mode": mode,
+             "createOnly": create_only, "expectedSha256": hashlib.sha256(data).hexdigest()}
         )
         parent = destination.parent
         while parent != self.root and _lstat(parent) is None:
             self.created_dirs.add(parent)
             parent = parent.parent
 
-    def stage_remove(self, relative: str) -> None:
+    def stage_remove(self, relative: str, *, expected_sha256: str | None = None) -> None:
         self.managed.preflight_file(relative)
-        self.operations.append({"kind": "remove", "relative": relative})
+        operation = {"kind": "remove", "relative": relative, "expectedSha256": expected_sha256}
+        if expected_sha256 is not None:
+            quarantine = f".architrave/install-retired-hooks/{uuid.uuid4().hex}/{Path(relative).name}"
+            self.managed.preflight_file(quarantine)
+            operation["quarantine"] = quarantine
+        self.operations.append(operation)
+
+    def stage_assert_absent(self, relative: str) -> None:
+        self.managed.preflight_file(relative)
+        self.operations.append({"kind": "assert-absent", "relative": relative})
 
     def commit(self) -> None:
+        self._assert_lock_owned()
         manifest_operations: list[dict[str, object]] = []
-        for index, operation in enumerate(self.operations):
+        ordered = ([operation for operation in self.operations if operation["kind"] != "assert-absent"]
+                   + [operation for operation in self.operations if operation["kind"] == "assert-absent"])
+        for index, operation in enumerate(ordered):
             destination = self.managed.path(str(operation["relative"]))
             info = _lstat(destination)
             backup_name = None
-            if info is not None:
+            if info is not None and operation["kind"] != "assert-absent":
                 self.managed.require_file(str(operation["relative"]))
                 backup_name = f"backup/{index}"
                 shutil.copy2(destination, self.directory / backup_name, follow_symlinks=False)
@@ -839,6 +1024,7 @@ class ManagedTransaction:
         manifest = {
             "status": "prepared",
             "applied": 0,
+            "inFlight": None,
             "operations": manifest_operations,
             "createdDirectories": [
                 path.relative_to(self.root).as_posix()
@@ -849,21 +1035,58 @@ class ManagedTransaction:
         fail_after = os.environ.get("ARCHITRAVE_INSTALL_FAIL_AFTER")
         try:
             for index, operation in enumerate(manifest_operations):
+                self._assert_lock_owned()
                 if fail_after is not None and int(fail_after) == index:
                     raise OSError(f"injected install/update failure at replacement {index}")
                 relative = str(operation["relative"])
                 destination = self.managed.path(relative)
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                if operation["kind"] == "write":
+                if operation["kind"] != "assert-absent":
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                expected = operation.get("expectedSha256")
+                manifest["inFlight"] = index
+                self._write_manifest(manifest)
+                if operation["kind"] == "assert-absent":
+                    if _lstat(destination) is not None:
+                        self.manual_action = True
+                        print(f"MANUAL_ACTION_REQUIRED: new hook appeared during retirement; preserved: {relative}",
+                              file=sys.stderr)
+                elif operation["kind"] == "write":
                     stage = self.directory / str(operation["stage"])
-                    os.replace(stage, destination)
-                    os.chmod(destination, stat.S_IMODE(int(operation["mode"])))
+                    if operation.get("createOnly"):
+                        os.link(stage, destination, follow_symlinks=False)
+                    else:
+                        os.replace(stage, destination)
+                        os.chmod(destination, stat.S_IMODE(int(operation["mode"])))
+                elif operation.get("quarantine"):
+                    quarantine_relative = str(operation["quarantine"])
+                    quarantine = self._protect_quarantine(quarantine_relative)
+                    try:
+                        os.replace(self._native_path(destination), self._native_path(quarantine))
+                    except FileNotFoundError:
+                        if (_lstat(Path(self._native_path(destination))) is not None
+                                or _lstat(Path(self._native_path(quarantine))) is not None):
+                            raise
+                        print(f"  recognized hook already absent at retirement: {relative}")
+                    else:
+                        moved = Path(self._native_path(quarantine))
+                        info = _lstat(moved)
+                        if info is None or not _is_regular_file(info):
+                            raise InstallerError("retire-hooks: quarantined inode is not a regular file; retained for safe recovery")
+                        if expected and sha256_file(moved) != expected:
+                            raise InstallerError("retire-hooks: moved definition changed after inspection; actual inode retained for rollback")
+                        if _lstat(destination) is not None:
+                            self.manual_action = True
+                            print(f"MANUAL_ACTION_REQUIRED: concurrent hook target preserved; original inode retained: {quarantine_relative}",
+                                  file=sys.stderr)
+                        print(f"  retired hook inode retained: {quarantine_relative}")
                 else:
                     destination.unlink(missing_ok=True)
                 manifest["applied"] = index + 1
+                manifest["inFlight"] = None
                 self._write_manifest(manifest)
         except Exception:
-            self._recover()
+            if self.lock_bytes is not None and self._lock_matches(self.lock_bytes):
+                self._recover()
             raise
         shutil.rmtree(self.directory)
         if self in self.active:
@@ -874,18 +1097,18 @@ class ManagedTransaction:
         try:
             if exc_type is None:
                 self.commit()
-            elif self.directory.exists():
+            elif self.directory.exists() and self.lock_bytes is not None and self._lock_matches(self.lock_bytes):
                 shutil.rmtree(self.directory)
         finally:
-            self.lock.unlink(missing_ok=True)
+            self._release_lock()
             if self in self.active:
                 self.active.remove(self)
 
     def abort(self) -> None:
         self.managed.transaction = None
-        if self.directory.exists():
+        if self.directory.exists() and self.lock_bytes is not None and self._lock_matches(self.lock_bytes):
             shutil.rmtree(self.directory)
-        self.lock.unlink(missing_ok=True)
+        self._release_lock()
         if self in self.active:
             self.active.remove(self)
 
@@ -1011,10 +1234,9 @@ def update_agents(managed: ManagedRoot, kit: Path, profile: str) -> None:
 
 
 def copy_shared_assets(managed: ManagedRoot, kit: Path) -> None:
-    managed.ensure_dir("gates/hooks")
+    managed.ensure_dir("gates")
     for name in GATE_FILES:
         managed.replace_file(kit / "gates" / name, f"gates/{name}")
-    managed.copy_tree(kit / "gates" / "hooks", "gates/hooks")
     print("  ok gates")
     managed.ensure_dir("knowledge")
     managed.copy_tree(kit / "knowledge", "knowledge")
@@ -1025,9 +1247,65 @@ def copy_shared_assets(managed: ManagedRoot, kit: Path) -> None:
     print("  native agent workers require one user-scope setup: python <kit>/tools/install_update.py native-host-install")
 
 
-def active_hook(kit: Path, entrypoint: str) -> Path:
-    name = "design-guard.windows.json" if entrypoint == "windows" else "design-guard.json"
-    return kit / "gates" / "hooks" / name
+LEGACY_QUALITY_HOOKS = (
+    ".github/hooks/design-guard.json",
+    "gates/hooks/design-guard.json",
+    "gates/hooks/design-guard.windows.json",
+)
+
+
+def _hook_definition(content: bytes) -> object:
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate hook field")
+            result[key] = value
+        return result
+    return json.loads(content.decode("utf-8-sig"), object_pairs_hook=unique)
+
+
+def quality_hook_plan(managed: ManagedRoot, kit: Path) -> dict[str, dict[str, object]]:
+    # Exact legacy recognition only; no hook templates are packaged or installed.
+    known = [
+        {"hooks": {"PostToolUse": [{"type": "command", "command": command, "timeout": 20}]}}
+        for command in (
+            "./gates/quality-gate.sh --hook-json",
+            "pwsh -NoProfile -File ./gates/quality-gate.ps1 -HookJson",
+        )
+    ]
+    plan = {}
+    for relative in LEGACY_QUALITY_HOOKS:
+        managed.preflight_file(relative)
+        if _lstat(managed.path(relative)) is None:
+            plan[relative] = {"action": "absent", "sha256": None}
+            continue
+        content = managed.require_file(relative).read_bytes()
+        try:
+            definition = _hook_definition(content)
+        except (ValueError, UnicodeError):
+            action = "preserve-manual-action"
+        else:
+            action = "remove-recognized" if definition in known else "preserve-manual-action"
+        plan[relative] = {"action": action, "sha256": hashlib.sha256(content).hexdigest() if action == "remove-recognized" else None}
+    return plan
+
+
+def apply_quality_hook_plan(managed: ManagedRoot, plan: dict[str, dict[str, object]]) -> bool:
+    manual = False
+    for relative, item in plan.items():
+        action = item["action"]
+        if action == "remove-recognized":
+            managed.remove_file(relative, expected_sha256=str(item["sha256"]))
+            print(f"  scheduled recognized automatic quality hook retirement: {relative}")
+        elif action == "absent":
+            if managed.transaction is None:
+                raise InstallerError("retire-hooks: expected absence must be checked in an owned transaction")
+            managed.transaction.stage_assert_absent(relative)
+        elif action == "preserve-manual-action":
+            manual = True
+            print(f"  MANUAL_ACTION_REQUIRED: preserved custom/unknown hook definition: {relative}", file=sys.stderr)
+    return manual
 
 
 def update_gitignore(managed: ManagedRoot) -> None:
@@ -1075,7 +1353,6 @@ def assert_required_tree_staged(transaction: ManagedTransaction) -> None:
         "harness/native_host.py",
         "gates/gate_runner.py",
         "knowledge/execution-policy.md",
-        "gates/hooks/design-guard.json",
     }
     missing = sorted(required - staged)
     if missing:
@@ -1093,8 +1370,6 @@ def install(args: argparse.Namespace, kit: Path) -> int:
         "templates/AGENTS.stanza.md",
         "templates/copilot-setup-steps.yml",
         "plugin.json",
-        "gates/hooks/design-guard.json",
-        "gates/hooks/design-guard.windows.json",
     )
     if args.profile == "knowledge":
         source_files += ("kit/examples/knowledge.architrave.json",)
@@ -1106,10 +1381,8 @@ def install(args: argparse.Namespace, kit: Path) -> int:
         source_trees=("agents", "gates", "knowledge", "harness"),
         destination_trees=(
             ".github/agents",
-            ".github/hooks",
             ".github/workflows",
             "gates",
-            "gates/hooks",
             "knowledge",
             "harness",
         ),
@@ -1134,13 +1407,14 @@ def install(args: argparse.Namespace, kit: Path) -> int:
     except (OSError, UnicodeError) as exc:
         raise InstallerError("install: packaged AGENTS stanza is not readable UTF-8") from exc
     version = plugin_version(kit, "install")
+    hook_plan = quality_hook_plan(managed, kit)
     if args.codex:
         run_codex(kit, managed, preflight=True, label="install")
 
     transaction = ManagedTransaction(managed)
     transaction.__enter__()
     print(f"Architrave -> installing into: {managed.root}")
-    for directory in (".github/agents", ".github/hooks", ".github/workflows", "gates/hooks", "knowledge", "harness"):
+    for directory in (".github/agents", ".github/workflows", "gates", "knowledge", "harness"):
         managed.ensure_dir(directory)
     install_agents(managed, kit, args.profile)
     copy_shared_assets(managed, kit)
@@ -1163,8 +1437,8 @@ def install(args: argparse.Namespace, kit: Path) -> int:
 
     update_gitignore(managed)
     update_agents_stanza(managed, kit)
-    managed.replace_file(active_hook(kit, args.entrypoint), ".github/hooks/design-guard.json")
-    print("  ok .github/hooks/design-guard.json")
+    manual_hooks = apply_quality_hook_plan(managed, hook_plan)
+    print("  executable quality gate retained; automatic hook retirement/absence checks scheduled")
     setup = managed.path(".github/workflows/copilot-setup-steps.yml")
     if _lstat(setup) is None:
         managed.create_file(
@@ -1181,7 +1455,7 @@ def install(args: argparse.Namespace, kit: Path) -> int:
     transaction.__exit__(None, None, None)
     print(f"  ok stamped gates/.kit-version = {version}")
     print(f"\nDone. Edit architrave.config.json to match this repo (profile: {args.profile}).")
-    return 0
+    return 2 if manual_hooks or transaction.manual_action else 0
 
 
 def update(args: argparse.Namespace, kit: Path) -> int:
@@ -1199,7 +1473,7 @@ def update(args: argparse.Namespace, kit: Path) -> int:
     if profile == "application" and not constitutions:
         raise InstallerError("update: packaged constitutions are missing")
     source_trees = ("gates", "knowledge", "harness") + (("agents",) if args.agents else ())
-    destination_trees = (".github/hooks", "gates", "gates/hooks", "knowledge", "harness")
+    destination_trees = ("gates", "knowledge", "harness")
     if args.agents:
         destination_trees += (".github/agents",)
     preflight_common(
@@ -1219,8 +1493,6 @@ def update(args: argparse.Namespace, kit: Path) -> int:
         source_files=(
             "templates/AGENTS.stanza.md",
             "plugin.json",
-            "gates/hooks/design-guard.json",
-            "gates/hooks/design-guard.windows.json",
         ),
     )
     for source in constitutions:
@@ -1234,19 +1506,20 @@ def update(args: argparse.Namespace, kit: Path) -> int:
     if args.codex:
         run_codex(kit, managed, preflight=True, label="update")
     version = plugin_version(kit, "update")
+    hook_plan = quality_hook_plan(managed, kit)
 
     transaction = ManagedTransaction(managed)
     transaction.__enter__()
     print(f"Architrave -> refreshing assets in: {managed.root} (kit v{version})")
-    for directory in (".github/hooks", "gates/hooks", "knowledge", "harness"):
+    for directory in ("gates", "knowledge", "harness"):
         managed.ensure_dir(directory)
     if args.agents:
         update_agents(managed, kit, profile)
     else:
         print("  - agents left unchanged (use --agents to refresh .github/agents/)")
     copy_shared_assets(managed, kit)
-    managed.replace_file(active_hook(kit, args.entrypoint), ".github/hooks/design-guard.json")
-    print("  ok active workspace hook refreshed")
+    manual_hooks = apply_quality_hook_plan(managed, hook_plan)
+    print("  automatic quality hook retirement/absence checks scheduled; host permissions untouched")
     if profile == "knowledge":
         for name in ("constitution-apple.md", "constitution-windows.md"):
             managed.remove_file(name)
@@ -1264,7 +1537,7 @@ def update(args: argparse.Namespace, kit: Path) -> int:
     transaction.__exit__(None, None, None)
     print(f"  ok stamped gates/.kit-version = {version}")
     print("Done. (architrave.config.json left untouched.)")
-    return 0
+    return 2 if manual_hooks or transaction.manual_action else 0
 
 
 def parser() -> argparse.ArgumentParser:
@@ -1318,9 +1591,72 @@ def parser() -> argparse.ArgumentParser:
     executor.add_argument("--reconcile-outcome", choices=("applied-closed", "closed-unknown"))
     executor.add_argument("--reconcile-process-id", type=int)
     subcommands.add_parser("native-host-install", help="install the minimal joined Copilot host extension and pinned Python bridge")
+    canvas = subcommands.add_parser("canvas-install", help="opt-in install/refresh of the single-file Copilot Route Ribbon")
+    canvas.add_argument("target")
+    companion = subcommands.add_parser("companion-install", help="explicit one-file user companion adoption; default-on in future supported sessions")
+    companion.add_argument("copilot_home", help="existing Copilot home directory; no global path is guessed")
+    retire = subcommands.add_parser("retire-hooks", help="retire only recognized legacy automatic quality hooks")
+    retire.add_argument("--dry-run", action="store_true")
+    retire.add_argument("target")
     adoption = subcommands.add_parser("adoption-status", help="read-only version/hash provenance, never session-loaded proof")
     adoption.add_argument("target", nargs="?", default=".")
     return result
+
+
+def install_canvas(kit: Path, target: Path) -> int:
+    relative = ".github/extensions/architrave-ribbon/extension.mjs"
+    source = kit / relative
+    require_source_file(source, "canvas-install")
+    managed = ManagedRoot(target, "canvas-install")
+    if managed.root == kit:
+        raise InstallerError("canvas-install: the kit already includes its project canvas")
+    managed.preflight_tree(".github/extensions/architrave-ribbon")
+    managed.preflight_file(relative)
+    transaction = ManagedTransaction(managed)
+    transaction.__enter__()
+    managed.ensure_dir(".github/extensions/architrave-ribbon")
+    managed.replace_file(source, relative)
+    transaction.__exit__(None, None, None)
+    print(f"Route Ribbon installed/refreshed: {managed.path(relative)}")
+    print("Reload supported Copilot extensions. Optional canvas only; no plugin settings or canonical Run state changed.")
+    return 0
+
+
+def install_companion(kit: Path, copilot_home: Path) -> int:
+    """Adopt only the passive renderer, not the plugin's agent/skill catalogs."""
+    source = kit / ".github" / "extensions" / "architrave-ribbon" / "extension.mjs"
+    require_source_file(source, "companion-install")
+    managed = ManagedRoot(copilot_home, "companion-install")
+    relative = "extensions/architrave-ribbon/extension.mjs"
+    managed.preflight_tree("extensions/architrave-ribbon")
+    managed.preflight_file(relative)
+    transaction = ManagedTransaction(managed)
+    transaction.__enter__()
+    managed.ensure_dir("extensions/architrave-ribbon")
+    managed.replace_file(source, relative)
+    transaction.__exit__(None, None, None)
+    print(f"Session companion installed/refreshed: {managed.path(relative)}")
+    print("Future supported sessions auto-open once. Existing opt-out/preferences are preserved; no agents, skills, permissions or plugin settings changed.")
+    return 0
+
+
+def retire_quality_hooks(kit: Path, target: Path, *, dry_run: bool = False) -> int:
+    managed = ManagedRoot(target, "retire-hooks")
+    if managed.root == kit:
+        raise InstallerError("retire-hooks: target an adopted repository, not the kit itself")
+    plan = quality_hook_plan(managed, kit)
+    print(json.dumps({"target": str(managed.root), "dryRun": dry_run, "qualityHooks": plan,
+                      "hostPermissions": "untouched", "otherHooks": "untouched"}, indent=2))
+    if dry_run:
+        for relative, item in plan.items():
+            if item["action"] == "preserve-manual-action":
+                print(f"MANUAL_ACTION_REQUIRED: preserved custom/unknown hook definition: {relative}", file=sys.stderr)
+        return 2 if any(item["action"] == "preserve-manual-action" for item in plan.values()) else 0
+    transaction = ManagedTransaction(managed)
+    transaction.__enter__()
+    manual = apply_quality_hook_plan(managed, plan)
+    transaction.__exit__(None, None, None)
+    return 2 if manual or transaction.manual_action else 0
 
 
 def adoption_status(kit: Path, target: Path) -> int:
@@ -1363,6 +1699,12 @@ def main(argv: list[str] | None = None) -> int:
             return update(args, kit)
         if args.command == "native-host-install":
             return install_native_host(kit)
+        if args.command == "canvas-install":
+            return install_canvas(kit, Path(args.target))
+        if args.command == "companion-install":
+            return install_companion(kit, Path(args.copilot_home))
+        if args.command == "retire-hooks":
+            return retire_quality_hooks(kit, Path(args.target), dry_run=args.dry_run)
         if args.command == "adoption-status":
             return adoption_status(kit, Path(args.target))
         return install_exact_target_executor(args, kit)

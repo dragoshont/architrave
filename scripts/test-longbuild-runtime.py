@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "harness"))
 
 from architrave_runtime import RunStore, missing_gate_requirements
+from worker_adapters import workspace_fingerprint
 
 _fixture_add_task = RunStore.add_task
 RunStore.add_task = lambda self, run_id, task, actor="coordinator": _fixture_add_task(
@@ -29,6 +30,8 @@ class LongBuildRuntimeTests(unittest.TestCase):
         self.git("init", "-q")
         self.git("config", "user.email", "architrave@example.invalid")
         self.git("config", "user.name", "Architrave LongBuild")
+        with (self.repo / ".gitignore").open("a", encoding="utf-8") as stream:
+            stream.write("\n.architrave/\n")
         self.git("add", ".")
         self.git("commit", "-qm", "fixture")
         self.store = RunStore(self.repo)
@@ -93,6 +96,10 @@ class LongBuildRuntimeTests(unittest.TestCase):
                 "surface": "web",
                 "status": "pass",
                 "failed": [],
+                "binding": {"runId": run_id, "objectiveVersion": state["objective"]["version"],
+                            "taskId": task_id, "criteria": criteria},
+                "source": {"commit": self.git("rev-parse", "HEAD"),
+                           "sha256": workspace_fingerprint(self.repo, include_ignored=False)},
                 "results": [
                     {"name": "runtime.health", "status": "pass"},
                     {"name": "web.e2e", "status": "pass"},
@@ -124,6 +131,11 @@ class LongBuildRuntimeTests(unittest.TestCase):
                 "principal": checkpoint["principal"],
                 "provider": checkpoint["provider"],
             }
+        if producer != "semantic-judge":
+            payload.setdefault("binding", {"runId": run_id, "objectiveVersion": state["objective"]["version"],
+                                           "taskId": task_id, "criteria": criteria})
+            payload.setdefault("source", {"commit": self.git("rev-parse", "HEAD"),
+                                          "sha256": workspace_fingerprint(self.repo, include_ignored=False)})
         path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
         method = {
             "deterministic": self.store._record_deterministic_result,

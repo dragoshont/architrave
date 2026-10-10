@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import struct
 import sys
@@ -145,8 +146,9 @@ class LegibilityRunner:
         timeout_seconds: int = 300,
     ) -> dict[str, Any]:
         safe_name = name.replace("/", "-").replace(".", "-")
-        stdout_path = self.evidence_dir / f"{safe_name}.stdout.log"
-        stderr_path = self.evidence_dir / f"{safe_name}.stderr.log"
+        observation = uuid.uuid4().hex
+        stdout_path = self.evidence_dir / f"{safe_name}-{observation}.stdout.log"
+        stderr_path = self.evidence_dir / f"{safe_name}-{observation}.stderr.log"
         if not command:
             return {
                 "name": name,
@@ -163,8 +165,15 @@ class LegibilityRunner:
             timeout_seconds=timeout_seconds,
             max_output_bytes=1024 * 1024,
         )
-        stdout = str(redact(execution["stdout"]))
-        stderr = str(redact(execution["stderr"]))
+        logs = {}
+        for stream in ("stdout", "stderr"):
+            try:
+                structured = json.loads(execution[stream])
+            except json.JSONDecodeError:
+                logs[stream] = str(redact(execution[stream]))
+            else:
+                logs[stream] = json.dumps(redact(structured), sort_keys=True)
+        stdout, stderr = logs["stdout"], logs["stderr"]
         stdout_path.write_text(stdout, encoding="utf-8")
         stderr_path.write_text(stderr, encoding="utf-8")
         return {
@@ -212,7 +221,8 @@ class LegibilityRunner:
             if path.is_absolute() or ".." in path.parts or not (self.repository / path).is_file():
                 errors.append(f"{field} must reference an existing repository-relative artifact")
             else:
-                absolute = self.repository / path
+                retained = self.retain_artifact(self.repository / path)
+                absolute = self.repository / retained
                 if absolute.stat().st_mtime_ns < evidence_started_ns:
                     errors.append(f"{field} was not created or refreshed during this verification")
                 if field == "screenshot":
@@ -223,7 +233,7 @@ class LegibilityRunner:
                     else:
                         if visible_pixels == 0 or maximum - minimum < 8:
                             errors.append("screenshot is blank or visually flat")
-                result["artifacts"].append(path.as_posix())
+                result["artifacts"].append(retained)
         if errors:
             result["status"] = "fail"
             result["exitCode"] = 1
@@ -231,6 +241,22 @@ class LegibilityRunner:
         else:
             result["stdout"] = json.dumps(payload, sort_keys=True)
         return result
+
+    def retain_artifact(self, path: Path) -> str:
+        path = path.resolve()
+        try:
+            path.relative_to(self.repository)
+        except ValueError as exc:
+            raise RuntimeFailure("PATH_ESCAPE", "observed artifact must remain inside the repository") from exc
+        retained = self.evidence_dir / f"{uuid.uuid4().hex}-{path.name}"
+        with path.open("rb") as source:
+            observed = os.fstat(source.fileno())
+            data = source.read()
+        with retained.open("xb") as handle:
+            handle.write(data)
+        # A new copy must not make preexisting evidence appear freshly observed.
+        os.utime(retained, ns=(observed.st_atime_ns, observed.st_mtime_ns))
+        return retained.relative_to(self.repository).as_posix()
 
     @staticmethod
     def validate_web_evidence(payload: dict[str, Any], configured_url: str | None = None) -> list[str]:
@@ -303,10 +329,8 @@ class LegibilityRunner:
         bound_criteria = (find_task(state, task_id)["acceptanceCriteria"] if task_id else [
             item["id"] for item in state["acceptanceCriteria"] if item["blocking"]
             and item.get("surface") == surface])
-        if not task_id and not bound_criteria and not failed:
+        if not task_id and not bound_criteria:
             raise RuntimeFailure("GATE_BINDING_REQUIRED", "taskless observation needs explicit criterion surface ownership")
-        if not bound_criteria and failed:
-            bound_criteria = [item["id"] for item in state["acceptanceCriteria"] if item["blocking"]]
         receipt_path = self.evidence_dir / f"{surface}-{uuid.uuid4().hex}.receipt.json"
         receipt = {
             "binding": {
@@ -323,6 +347,8 @@ class LegibilityRunner:
                     "name": result["name"],
                     "status": result["status"],
                     "exitCode": result.get("exitCode"),
+                    "reason": ("required check missing" if result["status"] == "missing" else "required check failed")
+                              if result["status"] in {"fail", "missing"} else None,
                     "stdoutSha256": result.get("stdoutSha256"),
                     "artifacts": [
                         {
@@ -337,30 +363,27 @@ class LegibilityRunner:
             ],
         }
         receipt_path.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
-        evidence_refs: list[str] = []
-        if not failed:
-            artifact_id = f"{surface}-legibility-{uuid.uuid4().hex}"
-            self.store._record_legibility_result(
-                self.run_id,
-                artifact_id=artifact_id,
-                kind=f"{surface}-legibility",
-                path=receipt_path.relative_to(self.repository).as_posix(),
-                evidence_refs=[f"task:{task_id}"] if task_id else [],
-            )
-            evidence_refs = [f"artifact:{artifact_id}"]
+        artifact_id = f"{surface}-legibility-{uuid.uuid4().hex}"
+        self.store._record_legibility_result(
+            self.run_id,
+            artifact_id=artifact_id,
+            kind=f"{surface}-legibility",
+            path=receipt_path.relative_to(self.repository).as_posix(),
+            evidence_refs=[f"task:{task_id}"] if task_id else [],
+        )
+        evidence_refs = [f"artifact:{artifact_id}"]
         gate_id = f"reality-{surface}-{uuid.uuid4().hex[:10]}"
         status = "PASS" if not failed else "FAIL"
-        if status == "PASS":
-            self.store.record_gate(
-                self.run_id,
-                gate_id=gate_id,
-                task_id=task_id,
-                gate_type="reality",
-                status=status,
-                criteria=bound_criteria,
-                evidence_refs=evidence_refs,
-                surface=surface,
-            )
+        self.store.record_gate(
+            self.run_id,
+            gate_id=gate_id,
+            task_id=task_id,
+            gate_type="reality",
+            status=status,
+            criteria=bound_criteria,
+            evidence_refs=evidence_refs,
+            surface=surface,
+        )
         return {
             "surface": surface,
             "status": "pass" if not failed else "fail",
@@ -385,7 +408,8 @@ class LegibilityRunner:
                 "stdout": "configured screenshot artifact is missing",
                 "artifacts": [],
             }
-        minimum, maximum, visible_pixels = png_luminance_range(path)
+        retained = self.retain_artifact(path)
+        minimum, maximum, visible_pixels = png_luminance_range(self.repository / retained)
         luminance_range = maximum - minimum
         return {
             "name": "ios.blank-screen",
@@ -401,7 +425,7 @@ class LegibilityRunner:
                 },
                 sort_keys=True,
             ),
-            "artifacts": [relative.as_posix()],
+            "artifacts": [retained],
         }
 
     def verify_surface(self, surface: str, *, task_id: str | None = None) -> dict[str, Any]:

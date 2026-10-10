@@ -36,6 +36,23 @@ def receive():
 def emit(value):
     print(json.dumps(redact(value), separators=(",", ":")), flush=True)
 
+def emit_source_inventory(paths):
+    """Only permission-checked public filenames, never report or file contents."""
+    chunk = []
+    for path in paths:
+        candidate = {"status": "source-inventory", "files": [*chunk, path]}
+        if len(json.dumps(candidate).encode("utf-8")) > 48000:
+            if not chunk:
+                raise RuntimeFailure("SEMANTIC_SOURCE_TOO_LARGE", "one tracked path exceeds its transport bound")
+            print(json.dumps({"status": "source-inventory", "files": chunk}, separators=(",", ":")), flush=True)
+            chunk = [path]
+            if len(json.dumps({"status": "source-inventory", "files": chunk}).encode("utf-8")) > 48000:
+                raise RuntimeFailure("SEMANTIC_SOURCE_TOO_LARGE", "one tracked path exceeds its transport bound")
+        else:
+            chunk.append(path)
+    if chunk:
+        print(json.dumps({"status": "source-inventory", "files": chunk}, separators=(",", ":")), flush=True)
+
 
 def routing_observation(requested, effective, reused_owner=False):
     fallback = None
@@ -76,6 +93,31 @@ def main():
             emit({"status": "ok", "result": store.execute_gate(
                 run_id, request["taskId"], recipe=request.get("recipe", "test"), ci_run_id=request.get("ciRunId"))})
             return 0
+        if action == "semantic-review":
+            if set(request) - {"repo", "action", "runId", "taskId", "owner", "invocationId", "reviewer", "nativeInstallation"}:
+                raise RuntimeFailure("NATIVE_TRANSPORT_INVALID", "semantic execution does not accept result/model/producer claims")
+            review, prompt = store.prepare_native_semantic_review(
+                run_id, request["taskId"], host_owner=request["owner"],
+                invocation_id=request["invocationId"], reviewer=request["reviewer"],
+            )
+            emit({"status": "prepared", "prompt": prompt, "agentType": request["reviewer"],
+                  "maxTurns": review.budget.get("maxTurns", 12), "expiresAt": review.binding["expiresAt"],
+                  "sourceFileCount": len(review.source_files), "reviewScope": review.binding["reviewScope"]})
+            emit_source_inventory(review.source_files)
+            admitted = receive()
+            if set(admitted) != {"status", "hostTaskId"} or admitted["status"] != "admitted":
+                raise RuntimeFailure("NATIVE_ADMISSION_FAILED", "fresh independent reviewer was not admitted")
+            store.bind_native_semantic_owner(review, admitted["hostTaskId"])
+            emit({"status": "bound"})
+            observed = receive()
+            if set(observed) != {"hostTaskId", "hostStatus", "text", "completion"}:
+                raise RuntimeFailure("NATIVE_TRANSPORT_INVALID", "semantic completion must come from the joined observer")
+            reviewed = store.accept_native_semantic_review(review, **{
+                "host_task_id": observed["hostTaskId"], "host_status": observed["hostStatus"],
+                "text": observed["text"], "completion": observed["completion"],
+            })
+            emit({"status": "ok" if reviewed["verdict"] == "PASS" else "failed", "result": reviewed})
+            return 0 if reviewed["verdict"] == "PASS" else 1
         if action != "dispatch":
             raise RuntimeFailure("NATIVE_TRANSPORT_INVALID", "unknown native host action")
         task_id = request["taskId"]
@@ -126,6 +168,7 @@ def main():
         emit({"status": "failed", "error": {
             "code": exc.code if isinstance(exc, RuntimeFailure) else "NATIVE_TRANSPORT_INVALID",
             "message": str(exc), "cleanupError": cleanup_error,
+            **({"details": exc.details} if isinstance(exc, RuntimeFailure) and exc.details else {}),
         }})
         return exc.exit_code if isinstance(exc, RuntimeFailure) else 1
 

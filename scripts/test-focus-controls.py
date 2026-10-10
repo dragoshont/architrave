@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT / "harness"))
 
 import architrave_runtime as runtime_module
 from architrave_runtime import RunStore
+from worker_adapters import workspace_fingerprint
 
 _fixture_add_task = RunStore.add_task
 RunStore.add_task = lambda self, run_id, task, actor="coordinator": _fixture_add_task(
@@ -47,6 +48,7 @@ class FocusControlTests(unittest.TestCase):
         subprocess.run(["git", "config", "user.email", "architrave@example.invalid"], cwd=self.repo, check=True)
         subprocess.run(["git", "config", "user.name", "Architrave Test"], cwd=self.repo, check=True)
         (self.repo / "existing-login.txt").write_text("working\n", encoding="utf-8")
+        (self.repo / ".gitignore").write_text(".architrave/\n", encoding="utf-8")
         subprocess.run(["git", "add", "."], cwd=self.repo, check=True)
         subprocess.run(["git", "commit", "-qm", "fixture"], cwd=self.repo, check=True)
         self.store = RunStore(self.repo)
@@ -478,7 +480,12 @@ class FocusControlTests(unittest.TestCase):
             with self.assertRaises(runtime_module.RuntimeFailure) as raised:
                 self.store.set_criterion(run_id, "LOGIN-001", "PASS", refs)
             self.assertEqual("PRIMARY_EVIDENCE_NOT_OBSERVED", raised.exception.code, refs)
-        screenshot = self.proof(run_id, "login-web", {"surface": "web", "status": "pass", "failed": [], "results": [
+        state = self.store.load(run_id)
+        screenshot = self.proof(run_id, "login-web", {"surface": "web", "status": "pass", "failed": [],
+            "binding": {"runId": run_id, "objectiveVersion": state["objective"]["version"],
+                        "taskId": None, "criteria": ["LOGIN-001"]},
+            "source": {"commit": state["baseline"]["commit"],
+                       "sha256": workspace_fingerprint(self.repo, include_ignored=False)}, "results": [
             {"name": "runtime.health", "status": "pass"}, {"name": "web.e2e", "status": "pass"}]})
         self.store._record_legibility_result(run_id, kind="web-legibility", artifact_id="login-web",
                                              path=screenshot.relative_to(self.repo).as_posix(), evidence_refs=[])

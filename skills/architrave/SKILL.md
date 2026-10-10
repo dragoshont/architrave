@@ -44,3 +44,14 @@ within the same bounds or work directly. In Claude Code or Copilot CLI, use the
 client's native agent/subagent tool for a bounded independent packet when
 available; do not assume a CLI exposes sidebar-session controls. Never shell
 out to manage sessions.
+
+No automatic PostToolUse quality command is installed. In an adopted repo,
+after relevant config,
+referenced design JSON or configured product-copy changes, and at final
+integration, MUST run `python gates/gate_runner.py quality-gate` and retain its
+actual exit/output proof. A mandatory failure blocks completion. The same
+deterministic validator remains executable; agent prose is not automatic
+enforcement. Use targeted build/test checks and required risk-scaled CI, not
+full suites each turn. Architrave registers no tool-blocking hooks. Host
+permissions remain host-owned; explicit native tool admission/source/evidence
+checks remain.

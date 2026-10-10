@@ -22,5 +22,6 @@
     "judge",
     "design-tokens"
   ],
-  "agents": "agents/"
+  "agents": "agents/",
+  "extensions": ".github/extensions/architrave-ribbon"
 }

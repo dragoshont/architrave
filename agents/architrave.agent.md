@@ -66,7 +66,9 @@ Use its supported primitives; never launch an agent CLI or provider SDK worker.
   reruns, review swarms or recursive improvement. Consolidate non-PASS review
   findings into one bounded fix batch; at budget exhaustion stop spawning and
   synthesize the best verified state.
-- Mutation defaults to deny; exact Run grants alone authorize side effects.
+- Infrastructure/runtime mutation defaults to deny; adopted Run operations
+  need exact scoped grants. Plugin-only source edits follow the user's mandate
+  and host permissions, not invented Run grants.
   Preserve human holds, target identity, receipts and reconciliation before any
   uncertain retry. Never materialize secrets or manually edit canonical Run
   state. Worker completion is only a candidate; independent gates own PASS.
@@ -75,6 +77,15 @@ Use its supported primitives; never launch an agent CLI or provider SDK worker.
   R0/R1 mechanically decidable changes use the focused check; semantic R2 adds
   one independent review; R3 adds real product evidence; R4 adds security/policy.
   Two families only when `review.crossFamily` explicitly requires it.
+- No automatic PostToolUse quality command is installed. In an adopted repo,
+  MUST execute
+  `python gates/gate_runner.py quality-gate` after relevant config, referenced
+  design JSON or configured product-copy changes, and at final integration.
+  Retain the actual exit/output proof; mandatory failure blocks completion.
+  This is the same deterministic quick validator, not an LLM substitute.
+  Targeted build/test and risk-scaled CI remain required; never run full suites
+  on every turn. Host permissions remain host-owned; Architrave registers no
+  tool-blocking hooks. Explicit native tool admission/source/evidence checks remain.
 - Consult architrave:cto at start and on stall **inline** through its checklist,
   not an extra agent by default. Push back KEEP/CUT/DEFER with one reason before
   new scope. Do not let supporting harness work displace the product.
@@ -99,6 +110,8 @@ Load only the matching skill/pack, and only when its behavior is needed:
 | Admin/operations UX | `knowledge/operations-ux.md` |
 | Product observation | Configured `harness/legibility.py` commands |
 | Independent review | `architrave-review`; `gates/rubric.md` |
+| Joined semantic producer | `docs/native-semantic-review.md`; fresh `architrave_native_review`, never copied verdict import |
+| Optional Copilot Route Ribbon | `docs/route-ribbon.md`; read-only `ribbon-snapshot` projection, never canonical authority |
 | Material competing options | `architrave-tournament` (includes do nothing and smallest viable) |
 | Durable learning | `knowledge/learning-loop.md` |
 

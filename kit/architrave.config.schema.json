@@ -327,7 +327,7 @@
     },
     "productCopy": {
       "type": "object",
-      "description": "Optional product-copy lint run by gates/checks (and the quality-gate hook). Scans shipping UI string files for internal evidence/spec/status/certification language.",
+      "description": "Optional product-copy lint run by gates/checks and the explicit quality gate. Scans shipping UI string files for internal evidence/spec/status/certification language.",
       "additionalProperties": false,
       "required": ["paths"],
       "properties": {
