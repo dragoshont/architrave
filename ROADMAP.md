@@ -10,6 +10,9 @@
   five readable skills resolve to the stable local plugin root.
 - [x] Fresh Copilot CLI lead/skill smoke: name-based loading, plugin-relative
   contract access and a source edit in an unadopted repository.
+- [x] Fresh installed-lead native child smoke: one bounded writing worker
+  invoked `architrave-work`, read supplied facts/voice samples and returned a
+  grounded draft without edits, grandchildren or publication.
 - [ ] Existing desktop chat skill-path refresh remains unconfirmed; fresh CLI
   success does not prove old sessions reloaded their instructions.
 
