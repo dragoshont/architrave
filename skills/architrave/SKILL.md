@@ -45,6 +45,15 @@ client's native agent/subagent tool for a bounded independent packet when
 available; do not assume a CLI exposes sidebar-session controls. Never shell
 out to manage sessions.
 
+Child kickoffs explicitly name relevant skills/packs, verified absolute paths
+and repository instructions; do not assume parent skill context is inherited.
+Assign `architrave-work` with development, research or writing mode for bounded
+execution; use existing review/tournament skills for their respective tasks.
+Require loading through the child's host skill tool or a verified direct-read
+fallback before work, without claiming the latter repaired name resolution.
+Writing packets include audience, format and author-provided voice sample paths.
+Skills never grant permissions or turn a read-only role into an implementer.
+
 No automatic PostToolUse quality command is installed. In an adopted repo,
 after relevant config,
 referenced design JSON or configured product-copy changes, and at final

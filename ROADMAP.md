@@ -4,7 +4,14 @@
 
 - [x] Lead-agent tool inheritance, optional adoption and plugin-relative guidance.
 - [x] Visible independent tracks with capability-based native subagent fallback.
-- [ ] Mac installed-payload and fresh-context release verification.
+- [x] Explicit child skill handoffs and one bounded development/research/writing
+  skill, with evidence-backed author voice and no nested supervision.
+- [x] Mac local 0.14.2 payload enabled through the supported marketplace flow;
+  five readable skills resolve to the stable local plugin root.
+- [x] Fresh Copilot CLI lead/skill smoke: name-based loading, plugin-relative
+  contract access and a source edit in an unadopted repository.
+- [ ] Existing desktop chat skill-path refresh remains unconfirmed; fresh CLI
+  success does not prove old sessions reloaded their instructions.
 
 ## v0.14.1 publication scope - Session instrument
 

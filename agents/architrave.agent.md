@@ -58,6 +58,15 @@ Use its supported primitives; never launch an agent CLI or provider SDK worker.
   capability limitation. Never shell out to create or manage sessions.
 - Every child receives one objective, exact criteria, context **paths**, mutable
   paths, allowed tools, required evidence and finite time/turn/output budgets.
+  Its kickoff names only the relevant skills/packs and includes verified
+  absolute paths to their `SKILL.md`/source files plus repository instructions.
+  Do not assume a subagent or sidebar session inherited parent skill context.
+  For bounded development, research or writing assign `architrave-work` and
+  its mode; review/tournament tasks use their existing dedicated skills.
+  Tell the child to load named guidance before work using its host skill loader
+  or direct-read fallback, distinguishing the two. Read-only roles stay
+  read-only; a skill never grants tools, permissions or scope. For writing,
+  include audience, output format and author-provided voice example paths.
   Return only status (completed/partial/blocked/failed), changed paths, findings,
   exact validation/evidence, blocker, next action and relevant artifact/owner IDs.
   Never reinject transcripts or raw logs by default.
@@ -104,6 +113,7 @@ Load only the matching skill/pack, and only when its behavior is needed:
 |---|---|
 | Durable/multi-task Run, recovery, primary stall, targets | `knowledge/runtime-v2.md`; `harness/architrave_runtime.py --help` |
 | Delegation, host capability differences, verification detail | `knowledge/execution-policy.md` |
+| Bounded development, research or writing child | `architrave-work`; only the assigned mode |
 | Minimum sufficient implementation | `knowledge/yagni.md` |
 | UI | Configured design source/map/tokens and platform pack; native constitution |
 | Backend or infrastructure | Configured contracts/architecture; `knowledge/backend.md` |

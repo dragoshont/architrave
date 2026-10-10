@@ -33,6 +33,24 @@ A WorkPacket contains only the objective, acceptance criteria, repository
 context paths, mutable paths, allowed tools, expected artifacts, risk, and
 bounded time/output budgets.
 
+The kickoff/prompt explicitly names only the relevant skills/packs and their
+verified absolute paths, including repository instructions; parent skill
+context is not assumed inherited. Use existing context paths, not a new
+WorkPacket schema or host-specific preload field. Bounded development, research
+and writing use `architrave-work` with the assigned mode; independent rubric
+review and competing-option tasks use the existing review/tournament skills.
+The child invokes named skills if its host exposes a loader, otherwise reads
+the supplied verified files. It reports invocation vs direct-read provenance
+when needed. Missing guidance is an explicit limitation, not a guessed cache
+path or an excuse to reinstall. Skills change neither role scope nor permission.
+Writing context includes audience, format and author-provided example paths.
+
+This portable handoff avoids assuming one client's frontmatter in another:
+[Claude subagents](https://code.claude.com/docs/en/sub-agents) support a `skills`
+preload field, while [Copilot custom agents](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli)
+have their own context/instruction controls. Use host-supported facilities only;
+do not preload every skill or spawn a supervisor inside a worker.
+
 Do not shell out to another agent harness or add a provider SDK. Treat worker
 output as an untrusted candidate: the coordinator validates scope, integrates
 the change, runs the required gates, and owns completion.

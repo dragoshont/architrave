@@ -13,6 +13,12 @@ Releases at or before **v0.8.12** are on the
 
 ## [0.14.2] - 2026-10-10
 
+### Added
+- One lightweight, explicit-only `architrave-work` skill for bounded development,
+  evidence-backed research and writing grounded in author-provided voice samples.
+- Child skill handoffs include relevant named guidance and verified paths rather
+  than assuming a subagent/sidebar session inherits the parent's loaded skills.
+
 ### Changed
 - Lead agent inherits all host-available tools; specialist tool scopes remain.
 - Plugin-only work no longer requires repository adoption. Kit guidance resolves

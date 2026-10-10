@@ -16,6 +16,7 @@ cto_agent = (root / "agents/cto.agent.md").read_text(encoding="utf-8")
 cto_skill = (root / "skills/architrave-cto/SKILL.md").read_text(encoding="utf-8")
 tournament_skill = (root / "skills/architrave-tournament/SKILL.md").read_text(encoding="utf-8")
 review_skill = (root / "skills/architrave-review/SKILL.md").read_text(encoding="utf-8")
+work_skill = (root / "skills/architrave-work/SKILL.md").read_text(encoding="utf-8")
 tournament_agent = (root / "agents/tournament-analyst.agent.md").read_text(encoding="utf-8")
 generator = (root / "scripts/generate-codex-agents.py").read_text(encoding="utf-8")
 codex_roles = "\n".join(
@@ -23,6 +24,13 @@ codex_roles = "\n".join(
 )
 
 required = {
+    "child explicit skill handoff": (agent, "Do not assume a subagent or sidebar session inherited parent skill context"),
+    "portable worker guidance": (execution, "not a new\nWorkPacket schema or host-specific preload field"),
+    "worker no nested supervision": (work_skill, "No child spawning"),
+    "worker verified research": (work_skill, "verify relevant passages"),
+    "worker voice evidence": (work_skill, "author-voice fidelity\nunconfirmed"),
+    "worker no unauthorized sending": (work_skill, "sending/publishing is\nexplicitly authorized"),
+    "worker skill load provenance": (work_skill, "Do not claim invocation success from a file read"),
     "on-demand vertical slice": (execution, "smallest demonstrable user-visible vertical slice"),
     "on-demand support budget": (execution, "at most two consecutive tasks or one\nfull-gate cycle"),
     "on-demand task gate": (execution, "A supporting task does not\nindependently trigger a full gate"),

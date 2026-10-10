@@ -154,6 +154,14 @@ then read/load the current skill in a supported new turn/session. Direct host
 workers outside the canonical Run are not counted by `activeWorkers`; absence
 there never proves idle. Inactive or user-paused sessions need no forced restart.
 
+If an existing chat lists Architrave but reports a missing skill file, compare
+its reported identity with `copilot plugin list` and `copilot skill list --json`.
+Check the reported `SKILL.md` path, not a guessed cache location. A stale chat
+may need a fresh session to load the current plugin. A direct read from a
+verified installed skill path is a guidance fallback, not proof that the
+name resolver or old context was repaired. Do not manufacture cache paths or
+repeat reinstallations without new evidence.
+
 Install the plugin once in your agent client:
 
 With **GitHub Copilot** (CLI, desktop app, or VS Code):
@@ -183,9 +191,15 @@ execution: start a new desktop thread and verify plugin discovery there.
 No private app files or provider credentials are edited. The audit contains one
 owner smoke prompt for desktop execution unavailable to the builder.
 
-The Codex plugin owns four skills: `architrave` (implicit lead workflow), plus
-explicit-only `architrave-tournament`, `architrave-review`, and the inline CTO
-checklist `architrave-cto`. Do not copy those
+The Codex plugin owns five skills: `architrave` (implicit lead workflow), plus
+explicit-only `architrave-tournament`, `architrave-review`, the inline CTO
+checklist `architrave-cto`, and the bounded worker skill `architrave-work`.
+Child kickoffs name relevant skills and verified guidance paths instead of
+assuming parent context is inherited. The work skill uses only the assigned
+development, evidence-backed research or writing/author-voice mode; it is not
+another supervisor and adds no tools, dependencies or automatic worker creation.
+Voice matching uses author-provided samples, not invented first-person claims;
+drafting is not permission to send or publish. Do not copy those
 same names into `.agents/skills`; Codex does not merge duplicate skill names.
 
 Plugin installation is enough to use Architrave directly in a repository; no
@@ -786,7 +800,7 @@ plugin.json                   ← agent-plugin manifest (Copilot CLI / app / VS 
 .claude-plugin/               ← Claude Code plugin + marketplace manifests
 .codex-plugin/plugin.json     ← Codex / ChatGPT plugin manifest
 .codex/                       ← project role registrations + two generated role configs
-skills/                       ← plugin-only Architrave / Tournament / Review skills
+skills/                       ← plugin-only Lead / CTO / Tournament / Review / bounded Work skills
 kit/
         MIGRATION.md                  ← how to replace bespoke repo agents with Architrave
   architrave.config.schema.json    ← per-repo config schema (the keystone)

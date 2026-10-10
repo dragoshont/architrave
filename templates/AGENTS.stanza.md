@@ -13,6 +13,10 @@ sidebar sessions when the host exposes them; give each a disjoint owned scope
 and integrate/verify in the parent. If unavailable, use the client's native
 subagent tool for a bounded independent packet when available. Keep one-trace
 or shared-patch work direct.
+Child kickoffs name relevant skills and verified guidance paths, not assumed
+parent context. Use `architrave-work` for bounded development/research/writing,
+with its assigned mode; keep review/tournament guidance task-specific. Writing
+includes audience, format and author-provided voice examples.
 
 Ground in this repository; reproduce rather than reinvent. A knowledge profile
 uses docs/scripts/schemas/tests, never an invented UI lane. UI uses configured
