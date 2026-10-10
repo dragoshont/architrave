@@ -1,10 +1,18 @@
 <!-- Managed by Architrave's Python installer; edit the kit, not this block. -->
 ## Architrave
 
-Read `architrave.config.json`. Use the `architrave` skill/agent for non-trivial
-work; its small core is the canonical mission/worker/stop contract.
+Read `architrave.config.json` when present. The plugin works without repo
+initialization; if this stanza is copied without the rest of the kit, ground
+work directly in repository instructions and sources, and do not assume gates
+or durable Run support are installed. Use the `architrave` skill/agent for
+non-trivial work; its small core is the canonical mission/worker/stop contract.
 Work directly for cheap single-lane changes. Host sessions, context, worktrees,
 permissions, lifecycle and model settings remain host-owned.
+For independent implementation tracks on a non-trivial task, prefer coordinated
+sidebar sessions when the host exposes them; give each a disjoint owned scope
+and integrate/verify in the parent. If unavailable, use the client's native
+subagent tool for a bounded independent packet when available. Keep one-trace
+or shared-patch work direct.
 
 Ground in this repository; reproduce rather than reinvent. A knowledge profile
 uses docs/scripts/schemas/tests, never an invented UI lane. UI uses configured

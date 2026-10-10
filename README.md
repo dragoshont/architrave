@@ -12,7 +12,15 @@ prove the requested product outcome actually occurred.
 
 ![Architrave — ground in the repo, route to specialists, gate with a judge plus real checks, then ship](assets/overview.png)
 
-## Latest news: v0.14.0
+## Latest news: v0.14.2
+
+The lead agent inherits host tools instead of restricting them with an
+allowlist. Plugin-only work needs no repo initialization, resolves kit guidance
+from the installed plugin, and uses host tracking when durable support is not
+adopted. Independent implementation tracks prefer coordinated sidebar sessions
+when exposed, with native subagents as the CLI fallback.
+
+### Previous release: v0.14.0
 
 This release adds adaptive on-demand feasibility windows, truthful runtime/
 adoption provenance, verified intermediate milestones and guarded owner path
@@ -58,6 +66,24 @@ using the [update instructions](#install).
 
 **Architrave** is the front door. It stays in control of the plan, routes focused work to specialists, and refuses to call the job done until real checks pass.
 
+The lead agent intentionally omits a `tools` allowlist so Copilot retains the
+tools already available in the current host, including newly added host tools.
+This does not grant tools the host has not configured; Architrave's policy and
+the host's permissions still govern how available tools are used. Specialist
+agents may keep narrower tool lists for their bounded roles.
+
+For non-trivial work with independent implementation tracks, Architrave prefers
+coordinated sidebar sessions when the host supports them, giving each track
+disjoint ownership and integrating results in the parent. Single-trace or
+shared-patch work stays direct. In Claude Code or Copilot CLI, use the client's
+native agent/subagent tool as a fallback when sidebar-session controls are not
+exposed; Architrave never shells out to create sessions.
+
+Architrave establishes the mandate quickly, continues authorized work past
+intermediate status, and researches unknowns as they arise during development.
+It stops for completion evidence, explicit pauses, human holds or genuine
+blockers, not routine phase boundaries; urgency never bypasses consent or scope.
+
 | Agent | Invoke | What it owns |
 |---|---|---|
 | **Architrave** | directly | Leads the durable Run: Outcome, Acceptance Matrix, TaskGraph, policy, bounded workers, resume, gates, and final status. |
@@ -77,8 +103,9 @@ using the [update instructions](#install).
 
 ## Install
 
-After installation, verify copied-kit identities separately from the active
-chat: `python /path/to/architrave/tools/install_update.py adoption-status <repo>`.
+Repository adoption is optional for plugin use. For an adopted repo, verify
+copied-kit identities separately from the active chat:
+`python /path/to/architrave/tools/install_update.py adoption-status <repo>`.
 The result is filesystem provenance, **not** proof that an existing session
 loaded the new instructions. Update adopted kit assets at a safe owner boundary,
 then read/load the current skill in a supported new turn/session. Direct host
@@ -119,10 +146,15 @@ explicit-only `architrave-tournament`, `architrave-review`, and the inline CTO
 checklist `architrave-cto`. Do not copy those
 same names into `.agents/skills`; Codex does not merge duplicate skill names.
 
-Then **adopt/ground each repository** so local agents, cloud agents, and
-deterministic gates all see the same source of truth. Python is the canonical
-cross-platform implementation; the small `.sh`/`.ps1` files are compatibility
-launchers only.
+Plugin installation is enough to use Architrave directly in a repository; no
+repo setup command is required for plugin-only work. The plugin uses the
+current host's available tools and grounds in the checked-out repository.
+
+**Optional repo adoption** adds repo-local agents, configured deterministic
+gates, durable Run support, and managed grounding instructions. It is also
+required when you want Architrave available to the Copilot cloud agent. Python
+is the canonical cross-platform implementation; the small `.sh`/`.ps1` files
+are compatibility launchers only.
 
 ```bash
 python /path/to/architrave/tools/install_update.py install .
@@ -596,9 +628,11 @@ The kit is Markdown plus one canonical Python implementation.
 
 Your repo's own build/test toolchain (Node for web, Xcode for Apple, .NET for WinUI, …) is whatever your `architrave.config.json` `build`/`test` commands invoke — the gates just run those.
 
-## Set up a repo
+## Optional: adopt a repo
 
-After installing the plugin (above), **adopt/ground a repo** — this is also what reaches the Copilot **cloud** agent:
+Use repo adoption when you want repo-local agents, configured gates and durable
+Run support, or when you need Architrave in the Copilot **cloud** agent. Skip
+this step for plugin-only local work:
 
 ```bash
 python /path/to/architrave/tools/install_update.py install .

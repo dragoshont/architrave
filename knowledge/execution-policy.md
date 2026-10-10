@@ -8,11 +8,30 @@ truth. An absent/unsupported request inherits the parent and reports that fact.
 
 ## Delegation
 
-Use the host's native structured agent or subagent mechanism when independent
-context, isolation, parallelism, permissions, or specialist expertise materially
-improves the task. Otherwise work directly. A WorkPacket contains only the
-objective, acceptance criteria, repository context paths, mutable paths, allowed
-tools, expected artifacts, risk, and bounded time/output budgets.
+Before a non-trivial multi-part task, identify independent deliverables and
+whether they can advance concurrently without shared mutable files or a
+dependency between them. When the host exposes sidebar-session creation, prefer
+coordinated, visible sessions for independent implementation tracks or work
+needing its own persistent follow-up/worktree. Create one bounded session per
+deliverable, with exclusive mutable ownership, and integrate and verify the
+results in the parent. This makes useful parallel work visible instead of
+silently serializing it or hiding it in an ephemeral subagent.
+
+Work directly for one continuous trace, a shared patch, or when coordination
+costs more than the parallelism saves. Use a native subagent for short,
+isolated research/review when creating a persistent sidebar session would add
+needless lifecycle overhead. Never delegate solely to switch models or because
+a role exists. If sidebar-session creation is unavailable, use another
+supported host-native mechanism only when it preserves ownership, depth and
+budget bounds; otherwise continue directly and state the limitation. In
+Claude Code or Copilot CLI, when no sidebar-session API is exposed, use the
+client's native agent/subagent tool for a bounded independent packet if
+available. Do not assume a CLI exposes the app's sidebar-session controls, and
+never shell out to create or manage sessions.
+
+A WorkPacket contains only the objective, acceptance criteria, repository
+context paths, mutable paths, allowed tools, expected artifacts, risk, and
+bounded time/output budgets.
 
 Do not shell out to another agent harness or add a provider SDK. Treat worker
 output as an untrusted candidate: the coordinator validates scope, integrates
@@ -32,6 +51,15 @@ and does not need isolated context. Do not split one correction into separate
 planning, implementation, handoff, and review artifacts.
 
 ## Context
+
+Establish the mandate quickly: outcome, permitted scope, explicit holds and
+completion evidence. Continue authorized dependency-ready work after
+intermediate results; status reporting is not completion or a phase-approval
+gate. Feedback and unknowns during implementation justify focused research
+and bounded experiments in the existing scope. Revise the plan from the new
+evidence and continue. Before declaring a blocker, try reasonable supported
+alternatives; repeated-failure stops, human consent, ownership and safety still
+apply. "By any means" never authorizes bypassing these boundaries.
 
 Retrieve the smallest relevant slice: governing repository instructions,
 contracts or design sources, implementation files, and nearby tests. Load large

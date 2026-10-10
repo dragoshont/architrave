@@ -3,6 +3,7 @@ from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
 agent = (root / "agents/architrave.agent.md").read_text(encoding="utf-8")
+agent_frontmatter = agent.split("---", 2)[1]
 execution = (root / "knowledge/execution-policy.md").read_text(encoding="utf-8")
 rubric = (root / "gates/rubric.md").read_text(encoding="utf-8")
 learning = (root / "knowledge/learning-loop.md").read_text(encoding="utf-8")
@@ -54,10 +55,22 @@ required = {
     "review prefers host-native": (review_skill, "Prefer the host-native reviewer"),
     "review records reviewer": (review_skill, "--reviewer\nhost-native|architrave-judge --family"),
     "agent host-native review": (agent, "`architrave-review`; `gates/rubric.md`"),
-    "direct-work default": (agent, "Work directly by default"),
+    "direct-work threshold": (agent, "Use direct work for one continuous trace"),
+    "visible-session parallelism": (agent, "prefer coordinated, user-visible sessions"),
     "default child bounds": (agent, "three (lower host limits win); depth: one"),
     "repeat-failure stop": (agent, "twice without new evidence stops the lane"),
     "progressive disclosure": (lead_skill, "Do not preload every pack"),
+    "skill session parallelism": (lead_skill, "prefer coordinated visible sessions"),
+    "plugin-only use needs no repo initialization": (lead_skill, "Plugin-only use does not require\nrepo initialization"),
+    "unadopted repo fallback": (agent, "if the config or adopted kit\nfiles are absent"),
+    "adopted stanza fallback": (stanza, "if this stanza is copied without the rest of the kit"),
+    "optional repo adoption": (readme, "Optional repo adoption"),
+    "README CLI delegation fallback": (readme, "Claude Code or Copilot CLI"),
+    "mandate-driven continuation": (agent, "a status update is not a stopping"),
+    "mid-development research": (execution, "Feedback and unknowns during implementation"),
+    "mandate safety boundary": (lead_skill, "urgency never bypasses consent or scope"),
+    "execution CLI delegation fallback": (execution, "Claude Code or Copilot CLI"),
+    "stanza session parallelism": (stanza, "prefer coordinated\nsidebar sessions"),
     "on-demand feasibility": (cto_skill, "On-demand feasibility reset"),
     "adaptive window": (cto_skill, "Estimate a finite time/turn/output window"),
     "explicit owner ceiling": (cto_skill, "deadlines/ceilings win"),
@@ -113,6 +126,8 @@ for path in sorted((root / "agents").glob("*.agent.md")):
         missing.append(f"{path.relative_to(root)} still contains model-selection metadata")
 if '"CTO"' not in agent.split("---", 2)[1]:
     missing.append("conductor does not route to the CTO agent")
+if any(line.startswith("tools:") for line in agent_frontmatter.splitlines()):
+    missing.append("conductor restricts the host-provided default tool set")
 if not cto_agent.startswith('---\nname: "CTO"\n') or not cto_skill.startswith("---\nname: architrave-cto\n"):
     missing.append("CTO agent or skill frontmatter is not registered")
 if not (root / "skills/architrave-cto/agents/openai.yaml").is_file():

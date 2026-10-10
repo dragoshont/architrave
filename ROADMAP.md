@@ -1,5 +1,11 @@
 # Roadmap
 
+## v0.14.2 - Host capability inheritance
+
+- [x] Lead-agent tool inheritance, optional adoption and plugin-relative guidance.
+- [x] Visible independent tracks with capability-based native subagent fallback.
+- [ ] Mac installed-payload and fresh-context release verification.
+
 ## Milestone 10 - Truthful adaptive supervision (v0.14.0)
 
 - [x] Agent-estimated finite on-demand feasibility reset, cumulative observed

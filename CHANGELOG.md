@@ -11,6 +11,21 @@ Releases at or before **v0.8.12** are on the
 - Add a public Run cancel/supersede transition and make invalid unstarted-task
   intake terminal instead of retry-ready.
 
+## [0.14.2] - 2026-10-10
+
+### Changed
+- Lead agent inherits all host-available tools; specialist tool scopes remain.
+- Plugin-only work no longer requires repository adoption. Kit guidance resolves
+  from the reported plugin skill base, not guessed host cache paths.
+- Independent implementation tracks prefer supported coordinated sidebar
+  sessions, falling back to native subagents in CLI clients.
+- Mandate-driven continuation and focused mid-development research, without
+  routine status rituals or treating urgency as authorization.
+
+### Limitations
+- Existing host sessions may retain stale skill paths. A readable plugin payload
+  or successful fresh-session load does not prove an old session was refreshed.
+
 ## [0.14.0] - 2026-10-07
 
 ### Added
