@@ -6,9 +6,10 @@ build and test commands configured for that repository. It is useful when you
 want consistent, reviewable work across a codebase; for a small one-off change,
 you can use your agent as usual.
 
-The README's former generated diagrams and terminal image have been removed:
-they showed synthetic UI or output that could be mistaken for real product
-evidence.
+![Illustrative workflow: request, repository context, direct work or scoped specialist, checks, then result; deployment approval is conditional](assets/workflow.svg)
+
+The diagram is illustrative. Approval applies only when a deployment action is
+explicitly authorized for a particular target and operation.
 
 ## Install the plugin
 

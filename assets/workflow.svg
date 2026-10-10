@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1020 246" role="img" aria-labelledby="title description">
+  <title id="title">Illustrative Architrave workflow</title>
+  <desc id="description">A request is grounded in repository context, handled directly or by a scoped specialist, checked, and returned as a result. Only an explicitly authorized deployment action takes the conditional approval path.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0 0L8 4L0 8Z" fill="#526174"/>
+    </marker>
+    <marker id="conditional-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0 0L8 4L0 8Z" fill="#9a5a00"/>
+    </marker>
+    <style>
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .label { fill: #17283d; font-size: 16px; font-weight: 600; }
+      .sub { fill: #46566a; font-size: 13px; }
+      .line { fill: none; stroke: #526174; stroke-width: 2; marker-end: url(#arrow); }
+      .optional-line { fill: none; stroke: #9a5a00; stroke-width: 2; stroke-dasharray: 5 5; marker-end: url(#conditional-arrow); }
+    </style>
+  </defs>
+
+  <g fill="#f3f7fc" stroke="#9aadc2" stroke-width="1.5">
+    <rect x="24" y="46" width="136" height="68" rx="12"/>
+    <rect x="200" y="46" width="158" height="68" rx="12"/>
+    <rect x="398" y="46" width="194" height="68" rx="12"/>
+    <rect x="632" y="46" width="132" height="68" rx="12"/>
+    <rect x="804" y="46" width="160" height="68" rx="12"/>
+  </g>
+
+  <path class="line" d="M164 80H192"/>
+  <path class="line" d="M362 80H390"/>
+  <path class="line" d="M596 80H624"/>
+  <path class="line" d="M768 80H796"/>
+
+  <g class="label" text-anchor="middle">
+    <text x="92" y="86">Request</text>
+    <text x="279" y="74"><tspan x="279">Repository</tspan><tspan x="279" dy="20">context</tspan></text>
+    <text x="495" y="74"><tspan x="495">Direct work or</tspan><tspan x="495" dy="20">scoped specialist</tspan></text>
+    <text x="698" y="86">Checks</text>
+    <text x="884" y="86">Result</text>
+  </g>
+
+  <path class="optional-line" d="M495 116V151"/>
+  <rect x="350" y="158" width="290" height="64" rx="10" fill="#fff7e8" stroke="#c78a32" stroke-width="1.5"/>
+  <text class="label" x="495" y="184" text-anchor="middle" fill="#573600">Deployment only</text>
+  <text class="sub" x="495" y="204" text-anchor="middle">Explicit approval for target and operation</text>
+  <path class="optional-line" d="M640 190H698V122"/>
+</svg>
