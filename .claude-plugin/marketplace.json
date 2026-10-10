@@ -5,14 +5,14 @@
   },
   "metadata": {
     "description": "Architrave — delivery-first, Storybook-first, contract-first, and risk-gated.",
-    "version": "0.14.2"
+    "version": "0.14.3"
   },
   "plugins": [
     {
       "name": "architrave",
       "source": ".",
       "description": "Config-first, delivery-focused agent crew for knowledge repositories, UI, backend, full-stack features, plan-only infrastructure, optional runtime verification, and durable learning. Grounds work in repository sources, uses targeted checks during development, and scales independent review to risk.",
-      "version": "0.14.2",
+      "version": "0.14.3",
       "license": "MIT",
       "keywords": [
         "ui",

@@ -1,5 +1,17 @@
 # Roadmap
 
+## v0.14.3 - Authoring skills and benchmark coverage
+
+- [x] Add explicit-only, host-neutral agent-authoring, skill-authoring, and
+  MCP-integration skills; keep them plugin-only and permission-neutral.
+- [x] Pin three benchmark scenarios for agent-role changes, skill authoring,
+  and MCP integration design; make no provider-backed or comparative claims.
+- [x] Update README Executive Summary, release notes, skill inventory and
+  worker-boundary wording.
+- [ ] Clarify first-class partial/truncated and inferred-vs-observed status for
+  product/runtime legibility evidence; current `legibility.py` receipts expose
+  pass/fail/missing/skipped results.
+
 ## v0.14.2 - Host capability inheritance
 
 - [x] Lead-agent tool inheritance, optional adoption and plugin-relative guidance.

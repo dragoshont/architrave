@@ -22,7 +22,16 @@ def main() -> int:
         skills = installed / "skills"
         if installed.exists():
             shutil.rmtree(installed)
-        for name in ("architrave", "architrave-cto", "architrave-review", "architrave-tournament", "architrave-work"):
+        for name in (
+            "architrave",
+            "architrave-agent-authoring",
+            "architrave-cto",
+            "architrave-mcp-integration",
+            "architrave-review",
+            "architrave-skill-authoring",
+            "architrave-tournament",
+            "architrave-work",
+        ):
             target = skills / name
             target.mkdir(parents=True)
             source = root / "skills" / name / "SKILL.md"

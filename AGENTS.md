@@ -16,7 +16,7 @@ defaults to deny; explicit Run policy may authorize a bounded target and operati
 - `knowledge/` — platform packs (`apple.md`, `microsoft.md`, `web.md`) + `backend.md` + `operations-ux.md` + `design-tokens.md` + `execution-policy.md` + `learning-loop.md` + `yagni.md` + `runtime-v2.md` for durable control-plane semantics.
 - `kit/` — `architrave.config.schema.json` (the per-repo config keystone) + `examples/`.
 - `plugin.json` + `.github/plugin/marketplace.json` — Copilot agent-plugin + self-hosting marketplace.
-- `.codex-plugin/plugin.json` + `skills/` + `.codex/` — Codex/ChatGPT plugin skills and generated project roles. Skills stay plugin-only; adoption copies roles only with `--codex` / `-Codex`.
+- `.codex-plugin/plugin.json` + `skills/` + `.codex/` — eight plugin-only Codex/ChatGPT skills (including explicit-only agent, skill, and MCP authoring) plus generated project roles. Adoption copies roles only with `--codex` / `-Codex`.
 - `templates/` + `tools/install.{sh,ps1}` — the per-repo installer and what it injects.
 
 ## Conventions when changing the kit
