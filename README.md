@@ -29,7 +29,7 @@ explicit-only guidance for authoring agents, skills, and MCP integrations.
 
 Three new explicit-only, host-neutral skills cover agent-role authoring,
 skill-authoring, and least-privilege MCP integration design. Three pinned
-scenarios extend benchmark coverage for those authoring workflows. Benchmark
+repository-fixture scenarios extend benchmark coverage for those authoring workflows. Benchmark
 scenario preflight is validation only; no provider-backed runs or performance
 gains are claimed.
 

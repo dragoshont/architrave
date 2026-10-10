@@ -16,7 +16,7 @@ Releases at or before **v0.8.12** are on the
 ### Added
 - Three explicit-only, host-neutral skills for authoring agent roles, skills,
   and least-privilege MCP integration designs.
-- Three pinned benchmark scenarios covering agent-role maintenance, skill
+- Three repository-fixture benchmark scenarios covering agent-role maintenance, skill
   authoring, and MCP integration design; only scenario preflight was run.
 - A concise README Executive Summary of Architrave's supported delivery and
   verification capabilities.

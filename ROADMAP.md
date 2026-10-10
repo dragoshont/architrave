@@ -4,7 +4,7 @@
 
 - [x] Add explicit-only, host-neutral agent-authoring, skill-authoring, and
   MCP-integration skills; keep them plugin-only and permission-neutral.
-- [x] Pin three benchmark scenarios for agent-role changes, skill authoring,
+- [x] Add three repository-fixture benchmark scenarios for agent-role changes, skill authoring,
   and MCP integration design; make no provider-backed or comparative claims.
 - [x] Update README Executive Summary, release notes, skill inventory and
   worker-boundary wording.
