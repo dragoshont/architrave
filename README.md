@@ -11,7 +11,7 @@ skills, and automation. The plugin supplies the instructions and specialist
 roles; the optional repository kit adds configured checks, resumable task
 records, and reviewable learning.
 
-![Workflow diagram: a request and repository context lead to direct work or up to three scoped child sessions; their changes are integrated, checked, and returned as a result](assets/workflow.svg)
+![Workflow diagram: a request and repository context lead to direct work or up to three scoped child sessions, then integration, checks, and a result; a dashed deployment-only branch adds scoped approval and live verification](assets/workflow.svg)
 
 ## What you can use it for
 
@@ -81,14 +81,12 @@ extensions and canvases:
 
 | Panel | What it shows |
 |---|---|
-| **Session companion** | Session activity, host-reported model and effort, context usage, and expandable SDK subagent rows with names, roles, assigned work, and lifecycle status. |
-| **Route Ribbon** | A Run's route and workstreams, blockers, stops, retries, and evidence, with completed work kept separate from verified product results. |
+| **Session companion** | Session activity, host-reported model and effort, context usage, and expandable SDK subagent rows with names, roles, assigned work, and lifecycle status. App-native child-session rows are not yet exposed by the host integration. |
+| **Route Ribbon** | Run snapshots showing the route, workstreams, blockers, stops, retries, and evidence, with completed work kept separate from verified product results. |
 
 The session companion observes host events without recurring model calls.
 It follows the host theme, supports keyboard navigation and reduced motion,
-and can be dismissed or opted out of. Its SDK subagent rows do not currently
-include app-native child sessions. The Route Ribbon displays supplied Run
-snapshots, not a live feed of every activity.
+and can be dismissed or opted out of.
 
 See [panel setup and supported hosts](docs/route-ribbon.md).
 
@@ -131,8 +129,7 @@ The plugin also packages these focused skills:
 | `architrave-mcp-integration` | Design or review an MCP tool contract, permissions, data flow, and failure behavior. |
 
 Authoring skills are used when you ask for authoring work, not during routine
-tool use. The MCP skill designs the integration; enabling a server still uses
-the host's setup and permission flow.
+tool use.
 
 ## Install the plugin
 

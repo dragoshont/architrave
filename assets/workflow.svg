@@ -1,9 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 440" role="img" aria-labelledby="title description">
   <title id="title">Architrave workflow diagram</title>
-  <desc id="description">A request is grounded in repository context. The lead works directly or assigns independent slices to up to three scoped child sessions. It integrates their changes, runs checks and risk-based review, and returns the result. Adopted repositories can retain task records, checkpoints, and learning; companion panels show activity and evidence.</desc>
+  <desc id="description">A request is grounded in repository context. The lead works directly or assigns independent slices to up to three scoped child sessions. It integrates their changes, runs checks and risk-based review, and returns the result. A dashed deployment-only branch adds scoped approval and live verification before returning to checks. Adopted repositories can retain task records, checkpoints, and learning; companion panels show activity and evidence.</desc>
   <defs>
     <marker id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
       <path d="M0 0L7 3.5L0 7Z" fill="#526174"/>
+    </marker>
+    <marker id="deployment-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+      <path d="M0 0L7 3.5L0 7Z" fill="#9a5a00"/>
     </marker>
     <style>
       text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
@@ -13,12 +16,13 @@
       .branch { fill: none; stroke: #526174; stroke-width: 2; }
       .box { fill: #f3f7fc; stroke: #9aadc2; stroke-width: 1.5; }
       .child { fill: #eef8f5; stroke: #78a696; stroke-width: 1.5; }
+      .deployment { fill: none; stroke: #9a5a00; stroke-width: 2; stroke-dasharray: 5 5; marker-end: url(#deployment-arrow); }
     </style>
   </defs>
 
   <rect x="0" y="0" width="1120" height="440" rx="16" fill="#ffffff"/>
   <text class="sub" x="28" y="28">WORKFLOW DIAGRAM</text>
-  <text class="sub" x="374" y="155">Independent slices, when useful</text>
+  <text class="sub" x="374" y="155">Independent slices (up to 3)</text>
 
   <g class="box">
     <rect x="28" y="60" width="116" height="74" rx="10"/>
@@ -64,11 +68,11 @@
     <text x="474" y="277">Own assigned scope</text>
     <text x="474" y="344">Own assigned scope</text>
   </g>
-  <text class="sub" x="658" y="195">Up to 3 active children</text>
-  <text class="sub" x="658" y="220">Native sessions or subagents</text>
-  <text class="sub" x="658" y="245">Compact results return to the lead</text>
-  <text class="sub" x="658" y="287">Deployment: scoped approval</text>
-  <text class="sub" x="658" y="312">and live verification</text>
+  <rect x="658" y="224" width="370" height="68" rx="10" fill="#fff7e8" stroke="#c78a32" stroke-width="1.5"/>
+  <text class="label" x="843" y="250" text-anchor="middle">Deployment only</text>
+  <text class="sub" x="843" y="275" text-anchor="middle">Scoped approval, then live verification</text>
+  <path class="deployment" d="M696 138V216"/>
+  <path class="deployment" d="M1032 258H1056V162H867V142"/>
 
   <rect x="28" y="381" width="1064" height="38" rx="8" fill="#f3f7fc"/>
   <text class="sub" x="48" y="406">Repository kit: resumable tasks, checkpoints, learning</text>
