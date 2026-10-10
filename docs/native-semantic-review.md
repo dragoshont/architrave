@@ -1,0 +1,97 @@
+# Joined native semantic producer
+
+`architrave_native_review` executes a **fresh** independent review through the
+existing installed Copilot joined-host transport. It is not an importer for
+copied task reports, a public producer-label setter, or a model selector.
+
+Use the native bridge setup described in the README, then call with an absolute
+`repo`, canonical `run_id`, `task_id`, and optional `reviewer`: `rubber-duck`
+(default) or `code-review`. Host settings choose the actual model; no model,
+family, claimed PASS, result file or event fields are accepted.
+Structured JSON or one exact JSON code fence is accepted from the observed
+reviewer only. The explicit Adversarial Judge's Markdown rubric report remains
+separate requested coverage, not relabelled machine-producer evidence.
+
+Invalid output fails without admission. Parse diagnostics retain only structural
+classification, byte count and parse location; schema diagnostics retain field
+names/types, binding-match booleans and counts/lengths, never report text or the
+challenge. These diagnostics do not recover discarded earlier reports or grant
+review credit. A `NOT_A_REVIEW` format probe is transport evidence only, not a
+source verdict or a substitute for frozen implementation coverage.
+
+## Boundary and scope
+
+The installed extension and pinned Python executor live outside the target.
+Existing hashes are rechecked; the bridge owns a private per-invocation pipe.
+This is the existing **trusted local producer** boundary, not cryptographic
+provider attestation or protection against a malicious same-OS-user operator.
+No provider SDK, agent CLI, daemon or transcript store.
+
+Python binds Run/task/criteria/objective/frozen source, policy, pending human
+holds and declarative task scope. A process-held single-use ticket owns a random
+challenge, joined owner, outer invocation ID, expiry and canonical budget.
+The model is invoked fresh, never reused from candidate implementation.
+SDK completion/result must match the admitted agent. Observed SDK tasks RPC
+1.0.93-1 identifies completion `data.toolCallId` with the admitted agent ID,
+**not** the outer invocation ID. Missing, conflicting, cancelled, ephemeral,
+stale or differently correlated metadata fails closed. No configured-model or
+caller-labelled-family fallback.
+
+Execution is explicitly invoked at a clean committed boundary. Native review
+admission runs alone in its joined foreground session. The prompt supplies a
+validated tracked regular-source inventory and requests read-only inspection.
+Architrave registers no tool-blocking hooks and does not intercept, rewrite or
+deny ordinary host tool calls. Read-only behavior and descendant limits are
+instructions and host-owned permissions, not an Architrave sandbox.
+Source, policy, holds and objective are rechecked before evidence admission.
+
+## Receipts and gates
+
+The trusted Python executor—not reviewer prose—registers an
+`architrave.native-semantic-review.v1` artifact as `semantic-judge` and records
+its gate. Actual first-dispatched model evidence identifies supported
+OpenAI/Anthropic families; unknown mappings block. Requested high effort is not
+a reported effective reasoning setting; host defaults remain inherited.
+
+PASS consumes native evidence once. Replay, stale source/declarations/policy/
+holds, wrong scope, altered bytes or a coordinator-labelled file cannot create
+a current PASS. Older receipts remain historical and no longer satisfy current
+risk floors. Same-role unchanged source/scope review is refused; real corrections
+allow a fresh review. Non-PASS reports cannot be relabelled PASS.
+
+Semantic PASS is not product acceptance, a policy grant or human-hold resolution.
+Deterministic, product/reality, security and policy floors still apply. No
+historical Run is promoted by copied reviews.
+
+Focused fixtures: `python scripts/test-native-review.py` and
+`node --experimental-vm-modules scripts/test-native-review.mjs`. Synthetic SDK
+fixtures are not live evidence. Qualification separately records real joined
+admission, exact source/agent/tool/completion identities, actual family and
+gate/artifact references, plus normal CI.
+
+Receipt and gate admission share one validated Run transaction. Rejected gate
+registration leaves no committed producer artifact or role-retry blocker.
+Cleanup warnings are reported separately from a durably admitted result;
+unclosed owned jobs retain a recovery handle for the existing native cancel
+surface. Cleanup failure is never reinterpreted as a missing source verdict.
+Exceptional execution responses also include settled cleanup confirmation and
+the actual owned recovery handle when removal fails.
+Semantic execution requires `tasks.startAgent`, `list`, `cancel` and `remove`
+before opening its producer pipe or admitting a reviewer. Partial hosts fail
+before AI rather than entering an unrecoverable cleanup hold.
+Pending owned-review cleanup blocks another native dispatch/review admission
+until removal is confirmed; it does not block ordinary host tools. The existing
+native cancel surface retains the owned recovery path. Report finding paths are
+normalized and must belong to the ticket's declared implementation inventory.
+Tracked-source inventory uses count-bound, byte-bounded transport frames rather
+than embedding all paths in the prepared response. Validated public
+filenames serialize losslessly, including credential-shaped filenames; this
+does not bypass redaction for reports, errors or file contents. Required but uninspected
+implementation is a REVISE coverage gap, not a full-source PASS.
+The trusted producer declares **full implementation-source** coverage before
+advertising paths. Root `.architrave` canonical state/history and `.git` trust
+metadata are excluded explicitly, with their category and exact tracked-entry
+count. The declared inventory count/hash and exclusion scope bind the live
+ticket and retained receipt. This is not tracked-repository, history, Run or
+product acceptance; supervisor ledger audit stays separate. Any unsupported
+public advertised entry, alias, symlink or non-regular file still fails before AI.

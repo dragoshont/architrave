@@ -79,8 +79,6 @@ json_files=(
   kit/examples/tessera.architrave.json
   kit/examples/design-map.stub.json
   kit/examples/tokens.web-shadcn.tokens.json
-  gates/hooks/design-guard.json
-  gates/hooks/design-guard.windows.json
   harness/schemas/run-summary.schema.json
   harness/schemas/run-v2.schema.json
   harness/schemas/event-v2.schema.json
@@ -328,11 +326,29 @@ else
 fi
 
 echo "== durable Run v2 control-plane fixtures =="
+if node --experimental-vm-modules scripts/test-native-review.mjs; then
+  ok "native semantic trusted-transport fixtures"
+else
+  err "native semantic trusted-transport fixtures failed"
+fi
+if node --experimental-vm-modules scripts/test-ribbon.mjs; then
+  ok "optional single-file Route Ribbon renderer"
+else
+  err "Route Ribbon renderer fixtures failed"
+fi
+if node --experimental-vm-modules scripts/test-session-companion.mjs; then
+  ok "passive session companion lifecycle and provider coexistence"
+else
+  err "session companion fixtures failed"
+fi
 runtime_test_output="$(mktemp)"
 for test_script in \
   scripts/test-runtime-v2.py \
   scripts/test-worker-adapters.py \
   scripts/test-native-host.py \
+  scripts/test-native-review.py \
+  scripts/test-quality-cadence.py \
+  scripts/test-ribbon.py \
   scripts/test-invariant-engine.py \
   scripts/test-legibility.py \
   scripts/test-workspaces.py \

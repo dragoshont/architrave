@@ -12,7 +12,57 @@ prove the requested product outcome actually occurred.
 
 ![Architrave — ground in the repo, route to specialists, gate with a judge plus real checks, then ship](assets/overview.png)
 
-## Latest news: v0.14.0
+## Latest news: v0.14.2
+
+The lead agent inherits host tools instead of restricting them with an
+allowlist. Plugin-only work needs no repo initialization, resolves kit guidance
+from the installed plugin, and uses host tracking when durable support is not
+adopted. Independent implementation tracks prefer coordinated sidebar sessions
+when exposed, with native subagents as the CLI fallback.
+
+## Prepared for publication: Session instrument
+
+The portable ribbon renderer also provides the lightweight **Session instrument**,
+independent of the named Architrave agent, repository config and canonical Runs.
+Its Apple-like operating surface puts a compact telemetry rail above a quiet
+activity ribbon, with expandable child role, assigned-slice, status and model
+rows. It follows the host theme and reduced-motion setting; no preview numbers,
+synthetic phases or example children are included in the production renderer.
+The Copilot legacy plugin manifest contributes its dedicated extension root;
+standalone user-extension adoption remains an alternative. It attempts one
+provider-qualified automatic open in new supported sessions, preserving opt-out,
+dismissal and existing panels. Host-reported model, effort setting and context
+usage stay distinct from observed model-call identity; missing telemetry stays
+unavailable. Activity is indeterminate, never invented completion.
+Close-this-session and durable user opt-out do not change work or permissions.
+No tools, prompt injections, workers or recurring model calls are added.
+Owned SDK subagents show names, roles, lifecycle and assigned slices with
+model details on demand; app-native child-session visibility remains explicitly
+unavailable through the current extension API.
+See [companion adoption and supported boundaries](docs/route-ribbon.md#session-companion-included-in-v0141).
+Included in the user-approved v0.14.1 publication scope;
+no candidate global adoption or default-on host acceptance is implied.
+
+## Latest news: v0.14.1 candidate
+
+The optional **Route Ribbon** turns a compact Run snapshot into a segmented,
+keyboard-accessible canvas: scoped completion and observed product verification
+stay distinct, with visible bypasses, human/resource/dependency blockers,
+explicit stops and fingerprint-backed retry history. One portable
+`extension.mjs`, no npm runtime dependencies beyond the Copilot host SDK.
+Snapshots persist by repository/Run identity and rehydrate after extension reload.
+Parallel workstream data adds labelled stacked lanes while preserving the
+segmented overview. Delivery, exploration and reference work remain distinct;
+display-only INFORMS annotations never become scheduling dependencies.
+The joined native bridge can now execute and admit a fresh source-bound semantic
+review from actual host completion/model evidence. Automatic PostToolUse quality
+commands are retired; explicit focused quick checks and required CI preserve
+the executable validators without pretending prose is automatic enforcement.
+This is an **agent-fed snapshot, not a live telemetry feed**. Missing active
+effort, wait duration, tokens and cost stay Unknown.
+See [Route Ribbon installation and snapshot contract](docs/route-ribbon.md).
+
+### Previous release: v0.14.0
 
 This release adds adaptive on-demand feasibility windows, truthful runtime/
 adoption provenance, verified intermediate milestones and guarded owner path
@@ -58,6 +108,24 @@ using the [update instructions](#install).
 
 **Architrave** is the front door. It stays in control of the plan, routes focused work to specialists, and refuses to call the job done until real checks pass.
 
+The lead agent intentionally omits a `tools` allowlist so Copilot retains the
+tools already available in the current host, including newly added host tools.
+This does not grant tools the host has not configured; Architrave's policy and
+the host's permissions still govern how available tools are used. Specialist
+agents may keep narrower tool lists for their bounded roles.
+
+For non-trivial work with independent implementation tracks, Architrave prefers
+coordinated sidebar sessions when the host supports them, giving each track
+disjoint ownership and integrating results in the parent. Single-trace or
+shared-patch work stays direct. In Claude Code or Copilot CLI, use the client's
+native agent/subagent tool as a fallback when sidebar-session controls are not
+exposed; Architrave never shells out to create sessions.
+
+Architrave establishes the mandate quickly, continues authorized work past
+intermediate status, and researches unknowns as they arise during development.
+It stops for completion evidence, explicit pauses, human holds or genuine
+blockers, not routine phase boundaries; urgency never bypasses consent or scope.
+
 | Agent | Invoke | What it owns |
 |---|---|---|
 | **Architrave** | directly | Leads the durable Run: Outcome, Acceptance Matrix, TaskGraph, policy, bounded workers, resume, gates, and final status. |
@@ -77,13 +145,22 @@ using the [update instructions](#install).
 
 ## Install
 
-After installation, verify copied-kit identities separately from the active
-chat: `python /path/to/architrave/tools/install_update.py adoption-status <repo>`.
+Repository adoption is optional for plugin use. For an adopted repo, verify
+copied-kit identities separately from the active chat:
+`python /path/to/architrave/tools/install_update.py adoption-status <repo>`.
 The result is filesystem provenance, **not** proof that an existing session
 loaded the new instructions. Update adopted kit assets at a safe owner boundary,
 then read/load the current skill in a supported new turn/session. Direct host
 workers outside the canonical Run are not counted by `activeWorkers`; absence
 there never proves idle. Inactive or user-paused sessions need no forced restart.
+
+If an existing chat lists Architrave but reports a missing skill file, compare
+its reported identity with `copilot plugin list` and `copilot skill list --json`.
+Check the reported `SKILL.md` path, not a guessed cache location. A stale chat
+may need a fresh session to load the current plugin. A direct read from a
+verified installed skill path is a guidance fallback, not proof that the
+name resolver or old context was repaired. Do not manufacture cache paths or
+repeat reinstallations without new evidence.
 
 Install the plugin once in your agent client:
 
@@ -114,15 +191,26 @@ execution: start a new desktop thread and verify plugin discovery there.
 No private app files or provider credentials are edited. The audit contains one
 owner smoke prompt for desktop execution unavailable to the builder.
 
-The Codex plugin owns four skills: `architrave` (implicit lead workflow), plus
-explicit-only `architrave-tournament`, `architrave-review`, and the inline CTO
-checklist `architrave-cto`. Do not copy those
+The Codex plugin owns five skills: `architrave` (implicit lead workflow), plus
+explicit-only `architrave-tournament`, `architrave-review`, the inline CTO
+checklist `architrave-cto`, and the bounded worker skill `architrave-work`.
+Child kickoffs name relevant skills and verified guidance paths instead of
+assuming parent context is inherited. The work skill uses only the assigned
+development, evidence-backed research or writing/author-voice mode; it is not
+another supervisor and adds no tools, dependencies or automatic worker creation.
+Voice matching uses author-provided samples, not invented first-person claims;
+drafting is not permission to send or publish. Do not copy those
 same names into `.agents/skills`; Codex does not merge duplicate skill names.
 
-Then **adopt/ground each repository** so local agents, cloud agents, and
-deterministic gates all see the same source of truth. Python is the canonical
-cross-platform implementation; the small `.sh`/`.ps1` files are compatibility
-launchers only.
+Plugin installation is enough to use Architrave directly in a repository; no
+repo setup command is required for plugin-only work. The plugin uses the
+current host's available tools and grounds in the checked-out repository.
+
+**Optional repo adoption** adds repo-local agents, configured deterministic
+gates, durable Run support, and managed grounding instructions. It is also
+required when you want Architrave available to the Copilot cloud agent. Python
+is the canonical cross-platform implementation; the small `.sh`/`.ps1` files
+are compatibility launchers only.
 
 ```bash
 python /path/to/architrave/tools/install_update.py install .
@@ -168,7 +256,7 @@ claude plugin marketplace update architrave
 claude plugin update architrave@architrave
 ```
 
-After updating the plugin, users **must also refresh each adopted repo's copied kit assets**. A plugin update refreshes the locally installed agent package only; it does not change copied gates, the active `.github/hooks/design-guard.json`, harness, knowledge, profile-appropriate constitutions, or the managed `AGENTS.md` stanza. Run the matching repo script in every adopted repo. This leaves `architrave.config.json` and copied `.github/agents` untouched by default:
+After updating the plugin, users **must also refresh each adopted repo's copied kit assets** at a safe owner boundary. A plugin update does not change copied gates, harness, knowledge, profile-appropriate constitutions, or the managed `AGENTS.md` stanza. The updater retires only exact recognized legacy Architrave quality-hook definitions; custom/mixed/unknown definitions are preserved with `MANUAL_ACTION_REQUIRED` (exit 2). It never registers a new automatic PostToolUse quality hook. Configuration and copied agents remain untouched unless `--agents` is requested:
 
 ```bash
 python /path/to/architrave/tools/install_update.py update .
@@ -366,6 +454,14 @@ from the installed kit once, then use the supported extensions reload. Invoke
 `architrave_native_dispatch` with the absolute adopted repo, Run and task IDs;
 `architrave_native_gate` independently observes the configured test/build or
 installed quick gate. `status` is a fresh projection; worker done is never PASS.
+`architrave_native_review` executes and admits a fresh independent source review
+through the same trusted joined producer; see
+[native semantic execution](docs/native-semantic-review.md).
+For explicit quality-check cadence and safe legacy-hook retirement, see
+[quality checks without automatic turn hooks](docs/quality-check-cadence.md).
+Architrave registers no native tool-blocking hooks. Host permissions remain
+host-owned; explicit native tool admission/source/evidence checks and passive
+Route Ribbon/Session companion event observation remain.
 The copied kit/bridge supports Python 3.9+ (including macOS system 3.9.6);
 optional `--codex` role adoption still requires Python 3.11+.
 
@@ -596,9 +692,11 @@ The kit is Markdown plus one canonical Python implementation.
 
 Your repo's own build/test toolchain (Node for web, Xcode for Apple, .NET for WinUI, …) is whatever your `architrave.config.json` `build`/`test` commands invoke — the gates just run those.
 
-## Set up a repo
+## Optional: adopt a repo
 
-After installing the plugin (above), **adopt/ground a repo** — this is also what reaches the Copilot **cloud** agent:
+Use repo adoption when you want repo-local agents, configured gates and durable
+Run support, or when you need Architrave in the Copilot **cloud** agent. Skip
+this step for plugin-only local work:
 
 ```bash
 python /path/to/architrave/tools/install_update.py install .
@@ -606,13 +704,13 @@ python /path/to/architrave/tools/install_update.py install .
 
 This copies agents, gates, the complete harness, and knowledge packs; scaffolds
 config; ignores private Runs and worktrees; injects the grounding stanza; wires
-the hook; and drops cloud setup. Existing configs remain valid. The application
+explicit quick-check instructions; and drops cloud setup. Existing configs remain valid. The application
 profile also copies native constitutions; the knowledge profile omits them.
 
 **Important update rule:** after every Architrave plugin update, run
 `python tools/install_update.py update <repo>` in each adopted repo.
 Plugin updates do not rewrite copied repo assets. The Python updater refreshes
-gates, the active platform-specific workspace hook, harness, knowledge,
+gates, recognized legacy quality-hook retirement, harness, knowledge,
 profile-appropriate constitutions, the run-artifact ignore, and the managed
 `AGENTS.md` stanza while leaving `architrave.config.json` and `.github/agents`
 alone by default; pass `--agents` only when deliberately refreshing copied
@@ -702,7 +800,7 @@ plugin.json                   ← agent-plugin manifest (Copilot CLI / app / VS 
 .claude-plugin/               ← Claude Code plugin + marketplace manifests
 .codex-plugin/plugin.json     ← Codex / ChatGPT plugin manifest
 .codex/                       ← project role registrations + two generated role configs
-skills/                       ← plugin-only Architrave / Tournament / Review skills
+skills/                       ← plugin-only Lead / CTO / Tournament / Review / bounded Work skills
 kit/
         MIGRATION.md                  ← how to replace bespoke repo agents with Architrave
   architrave.config.schema.json    ← per-repo config schema (the keystone)
@@ -719,7 +817,7 @@ knowledge/
 agents/                       ← Architrave · CTO · Product Research · Operations UX · UX Architect · UI Visual · Platform Design · Tournament Analyst · Adversarial Judge
                                  + backend lane: Service Architect · Backend Planner · Backend Implementer · Infra Engineer
                                  + runtime lane: Runtime Observer
-gates/                        ← rubric.md · checks.{sh,ps1} · reconcile.{sh,ps1} · quality-gate.{sh,ps1} · backend-checks.{sh,ps1} · hooks/
+gates/                        ← rubric.md · checks.{sh,ps1} · reconcile.{sh,ps1} · quality-gate.{sh,ps1} · backend-checks.{sh,ps1}
 harness/                      ← Run v2 runtime · workers/workspaces · invariants · legibility · v1/v2 validators · schemas
 benchmarks/                   ← short/feature/multi-surface/LongBuild scenarios + frozen fixture
 docs/                         ← runtime, legibility, LongBuild, and v1→v2 migration guides

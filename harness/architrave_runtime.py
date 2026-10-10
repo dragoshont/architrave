@@ -309,18 +309,18 @@ def safe_relative_path(value: str, label: str = "path") -> str:
     return normalized
 
 
-def run_command(args: Sequence[str], cwd: Path) -> str:
+def run_command(args: Sequence[str], cwd: Path, *, strip_output: bool = True) -> str:
     try:
         completed = subprocess.run(
             list(args),
             cwd=cwd,
             check=True,
             capture_output=True,
-            text=True,
+            text=strip_output,
         )
     except (OSError, subprocess.CalledProcessError) as exc:
         raise RuntimeFailure("REPOSITORY_IDENTITY", f"failed to inspect repository: {' '.join(args)}") from exc
-    return completed.stdout.strip()
+    return completed.stdout.strip() if strip_output else os.fsdecode(completed.stdout)
 
 
 class FileLock:
@@ -398,11 +398,46 @@ class NativeWorkerTicket:
         self.consumed = False
 
 
+class NativeSemanticTicket:
+    """Single-invocation authority; never a serialized verdict-import capability."""
+
+    def __init__(self, issuer: object, binding: dict[str, Any], challenge: str, budget: dict[str, Any]):
+        self.issuer = issuer
+        self.binding = binding
+        self.challenge = challenge
+        self.budget = budget
+        self.consumed = False
+        self.receipt_sha256 = None
+
+
+def native_review_family(model: str) -> str:
+    if isinstance(model, str) and model.startswith(("gpt-", "o1", "o3", "o4")):
+        return "openai"
+    if isinstance(model, str) and model.startswith("claude-"):
+        return "anthropic"
+    raise RuntimeFailure("SEMANTIC_FAMILY_UNCONFIRMED", "host first-dispatched model has no supported family mapping")
+
+def native_source_inventory(repository: Path) -> tuple[list[str], dict[str, Any]]:
+    tracked = [path for path in run_command(["git", "ls-files", "-z"], repository, strip_output=False).split("\0") if path]
+    private = [path for path in tracked if path.split("/", 1)[0].casefold() in {".git", ".architrave"}]
+    private_paths = set(private)
+    implementation = [path for path in tracked if path not in private_paths]
+    if len(implementation) > 4096:
+        raise RuntimeFailure("SEMANTIC_SOURCE_TOO_LARGE", "bounded native implementation inventory exceeded")
+    scope = {"kind": "implementation-source", "inventoryCount": len(implementation),
+             "inventorySha256": sha256_value(implementation),
+             "excludedCategory": "canonical-control-plane/history-and-private-trust-metadata",
+             "excludedPrivateStateCount": len(private),
+             "privateHistoryAcceptance": "not reviewed; supervisor audit remains separate"}
+    return implementation, scope
+
+
 class RunStore:
     def __init__(self, repository: Path | str):
         self.repository = Path(repository).resolve()
         self.runs_root = self.repository / ".architrave" / "runs"
         self.__native_issuer = object()
+        self.__semantic_issuer = object()
         self.key_path = self.repository / ".architrave" / "runtime.key"
         self.__objective_capability = object()
         self.__policy_capability = object()
@@ -2498,10 +2533,25 @@ class RunStore:
         except (OSError, json.JSONDecodeError) as exc:
             raise RuntimeFailure("INVARIANT_RECEIPT", "invariant result is unreadable") from exc
         from invariant_engine import evaluate, load_config
+        from worker_adapters import workspace_fingerprint
 
+        state = self.load(run_id)
+        observed_source = workspace_fingerprint(self.repository, include_ignored=False)
         expected = evaluate(self.repository, load_config(self.repository))
         if payload != expected:
             raise RuntimeFailure("INVARIANT_RECEIPT", "invariant result does not match a fresh engine evaluation")
+        if observed_source != workspace_fingerprint(self.repository, include_ignored=False):
+            raise RuntimeFailure("EVIDENCE_SOURCE_STALE", "source changed during invariant observation")
+        bound = {**payload,
+                 "binding": {"runId": run_id, "objectiveVersion": state["objective"]["version"],
+                             "criteria": state["objective"]["acceptanceCriteria"]},
+                 "source": {"commit": run_command(["git", "rev-parse", "HEAD"], self.repository),
+                            "sha256": observed_source}}
+        retained = self.run_dir(run_id) / "evidence" / f"invariant-{uuid.uuid4().hex}.json"
+        retained.parent.mkdir(parents=True, exist_ok=True)
+        with retained.open("x", encoding="utf-8") as stream:
+            json.dump(bound, stream)
+        kwargs["path"] = retained.relative_to(self.repository).as_posix()
         return self._record_artifact(run_id, kind="invariant-result", actor="invariant-engine", producer="invariant", **kwargs)
 
     def _record_legibility_result(self, run_id: str, *, kind: str, **kwargs: Any) -> dict[str, Any]:
@@ -2514,12 +2564,17 @@ class RunStore:
         }.get(surface)
         results = receipt.get("results") or []
         result_names = {item.get("name") for item in results if isinstance(item, dict) and item.get("status") == "pass"}
+        failed_names = [item.get("name") for item in results
+                        if isinstance(item, dict) and item.get("status") in {"fail", "missing"}]
+        passing = receipt.get("status") == "pass" and receipt.get("failed") == [] and not failed_names
+        failing = (receipt.get("status") == "fail" and bool(failed_names)
+                   and receipt.get("failed") == failed_names)
+        observed_names = {item.get("name") for item in results if isinstance(item, dict)}
         if (
             required_names is None
             or receipt.get("surface") != surface
-            or receipt.get("status") != "pass"
-            or receipt.get("failed") != []
-            or not required_names.issubset(result_names)
+            or not (passing or failing)
+            or not required_names.issubset(result_names if passing else observed_names)
         ):
             raise RuntimeFailure("LEGIBILITY_RECEIPT", "legibility receipt does not prove the required surface checks")
         return self._record_artifact(run_id, kind=kind, actor="legibility-runner", producer="legibility", **kwargs)
@@ -3061,7 +3116,9 @@ class RunStore:
                 raise RuntimeFailure("TASK_NOT_COMPLETABLE", f"task {task_id} is {task['status']}")
             if task["sideEffect"] is not None and task["sideEffect"]["state"] != "CONFIRMED":
                 raise RuntimeFailure("RECONCILIATION_REQUIRED", "task side effect must be confirmed before completion")
-            if any(result["taskId"] == task_id and result["status"] == "FAIL" for result in state["gateResults"]):
+            if any(result["taskId"] == task_id and result["status"] == "FAIL"
+                   and result["objectiveVersion"] == state["objective"]["version"]
+                   and self.failure_source_status(state, result) is None for result in state["gateResults"]):
                 raise RuntimeFailure("DETERMINISTIC_FAILURE", "a failed gate blocks task completion")
             referenced_gates = [
                 result
@@ -3356,6 +3413,281 @@ class RunStore:
         ticket.consumed = True
         return {**result, "artifactRef": f"artifact:{artifact_id}"}
 
+    def _semantic_authority(self, state: dict[str, Any], task: dict[str, Any]) -> str:
+        scope = {key: value for key, value in task.items()
+                 if key not in {"status", "attempts", "lease", "retryNotBefore", "retryHypothesis", "loop"}}
+        return sha256_value({
+            "policy": state["policy"], "autonomy": state["autonomy"],
+            "objective": state["objective"], "task": scope,
+            "pending": [item for item in state["externalCheckpoints"] if item["status"] == "PENDING"],
+        })
+
+    def _native_review_storage(self, run_id: str) -> Path:
+        current = self.repository
+        for part in (".architrave", "runs", require_id(run_id, "run id"), "workers"):
+            current = current / part
+            try:
+                info = current.lstat()
+            except FileNotFoundError:
+                continue
+            if not stat.S_ISDIR(info.st_mode) or current.is_symlink() or _is_reparse_point(info):
+                raise RuntimeFailure("SEMANTIC_STORAGE_UNSAFE", "native review storage must use real in-repository directories")
+        return current
+
+    def prepare_native_semantic_review(
+        self, run_id: str, task_id: str, *, host_owner: str, invocation_id: str, reviewer: str,
+    ) -> tuple[NativeSemanticTicket, str]:
+        """Only the installed joined bridge executes this producer, never an imported report."""
+        from worker_adapters import git_status, workspace_fingerprint
+
+        if reviewer not in {"code-review", "rubber-duck"}:
+            raise RuntimeFailure("SEMANTIC_REVIEWER_UNSUPPORTED", "a supported independent review role is required")
+        require_id(host_owner, "joined owner")
+        require_id(invocation_id, "host invocation")
+        state = self.load(run_id)
+        self._assert_repository_baseline(state)
+        self._native_review_storage(run_id)
+        task = find_task(state, task_id)
+        if task["objectiveVersion"] != state["objective"]["version"] or task["status"] in {"DEFERRED", "CANCELLED", "FAILED", "RUNNING"}:
+            raise RuntimeFailure("SEMANTIC_SCOPE_INVALID", "review must bind a current, stable task")
+        if git_status(self.repository):
+            raise RuntimeFailure("SEMANTIC_SOURCE_UNFROZEN", "commit the review subject before native semantic execution")
+        budget = effective_work_budget(state, task)
+        signal = budget_signal(state, self.events(run_id), self.repository)
+        if signal and signal["signal"] == "BUDGET_100":
+            raise RuntimeFailure("BUDGET_100", "budget exhausted; no native semantic model invocation")
+        source = {"commit": state["baseline"]["commit"],
+                  "sha256": workspace_fingerprint(self.repository, include_ignored=False)}
+        source_files, review_scope = native_source_inventory(self.repository)
+        for artifact in state["artifacts"]:
+            if artifact["producer"] != "semantic-judge":
+                continue
+            prior = self._read_json_receipt(artifact["path"], "semantic")
+            binding = prior.get("binding") or {}
+            if (prior.get("schema") == "architrave.native-semantic-review.v1"
+                    and binding.get("taskId") == task_id and binding.get("source") == source
+                    and binding.get("objectiveVersion") == state["objective"]["version"]
+                    and binding.get("authority") == self._semantic_authority(state, task)
+                    and binding.get("role") == reviewer):
+                raise RuntimeFailure("SEMANTIC_ALREADY_OBSERVED", "this role already reviewed the frozen subject; new source/evidence is required")
+        challenge = secrets.token_hex(32)
+        now = dt.datetime.now(dt.timezone.utc)
+        binding = {
+            "runId": run_id, "taskId": task_id, "criteria": list(task["acceptanceCriteria"]),
+            "objectiveVersion": state["objective"]["version"], "revision": state["revision"],
+            "source": source, "authority": self._semantic_authority(state, task),
+            "owner": host_owner, "invocationId": invocation_id, "role": reviewer,
+            "hostTaskId": None, "challengeHash": sha256_value(challenge),
+            "preparedAt": now.isoformat(), "expiresAt": (now + dt.timedelta(seconds=budget["timeoutSeconds"])).isoformat(),
+            "reviewScope": review_scope,
+        }
+        instructions = {
+            "scope": str(self.repository), "source": source, "criteria": binding["criteria"],
+            "objective": state["objective"]["description"], "task": task["objective"],
+            "challenge": challenge,
+            "reviewScope": review_scope,
+        }
+        prompt = (
+            "Independently review the FULL frozen IMPLEMENTATION SOURCE, not a previous report. "
+            "The declared reviewScope explicitly excludes canonical/private control-plane history and trust metadata; "
+            "do not claim tracked-repository/history/Run acceptance. Retain that uncovered category in your summary. "
+            "Read repository instructions, "
+            "Cover every implementation area named in the task. Use bounded view_range sections for large files; "
+            "a truncated first view is not full inspection. Uninspected required source must yield REVISE, not PASS. "
+            "Your summary must identify inspected implementation areas and required coverage gaps; "
+            "uninspected governing or load-bearing baseline is not a FULL implementation-source PASS. "
+            "architrave.config.json, governing sources and gates/rubric.md. Grade source and observed deterministic "
+            "evidence; publication/family receipt admission is the host qualifier's responsibility, not a circular "
+            "condition for your source verdict. Use the configured profile; do not invent product acceptance. "
+            "READ ONLY: only view of tracked regular source files and source-inventory-bounded rg are permitted. "
+            "No recursive glob or directory view; use the supplied source inventory and absolute paths. "
+            "No shell/execute, private .git/.architrave reads, file/history/Run/policy changes, scratch files, "
+            "agent spawning, control-plane tools, provider SDK or agent CLI. The trusted executor has already "
+            "bound the exact source commit/hash; do not execute git to rediscover it. "
+            "Do not rerun unrelated full suites. Return only ONE JSON object with exactly "
+            "these keys: verdict (PASS|REVISE|FAIL), criteria (the supplied IDs), sourceCommit, sourceSha256, "
+            "challenge (the supplied nonce), summary (nonempty, <=1600 characters), findings (<=12 objects, "
+            "each exactly severity (blocker|major|minor), path (repository-relative), message (<=800 characters)). "
+            "PASS cannot contain blocker/major findings. Put uncovered verification/publication phases in summary; "
+            "do not guess model/family or put model fields in your report. Keep output within "
+            f"{budget['maxOutputBytes']} UTF-8 bytes. High semantic effort is requested only within host-supported "
+            "defaults; no per-task reasoning override is available. Bound subject:\n" + canonical_json(redact(instructions))
+        )
+        ticket = NativeSemanticTicket(self.__semantic_issuer, binding, challenge, budget)
+        ticket.source_files = source_files
+        return ticket, prompt
+
+    def bind_native_semantic_owner(self, ticket: NativeSemanticTicket, host_task_id: str) -> None:
+        if (not isinstance(ticket, NativeSemanticTicket) or ticket.issuer is not self.__semantic_issuer
+                or ticket.consumed or ticket.binding["hostTaskId"] is not None):
+            raise RuntimeFailure("SEMANTIC_RESULT_UNTRUSTED", "a live, unbound joined review invocation is required")
+        require_id(host_task_id, "admitted reviewer")
+        ticket.binding["hostTaskId"] = host_task_id
+
+    def _assert_native_semantic_receipt(
+        self, state: dict[str, Any], artifact: dict[str, Any], receipt: dict[str, Any],
+        task_id: str | None, criteria: Sequence[str], family: str, *, allow_consumed: bool = False,
+    ) -> None:
+        from worker_adapters import git_status, workspace_fingerprint
+
+        binding = receipt.get("binding") or {}
+        observed = receipt.get("completion") or {}
+        task = find_task(state, str(binding.get("taskId", "")))
+        source = {"commit": run_command(["git", "rev-parse", "HEAD"], self.repository),
+                  "sha256": workspace_fingerprint(self.repository, include_ignored=False)}
+        if (binding.get("runId") != state["runId"] or task_id != task["id"]
+                or binding.get("objectiveVersion") != state["objective"]["version"]
+                or task["objectiveVersion"] != state["objective"]["version"]
+                or set(criteria) != set(binding.get("criteria") or [])
+                or binding.get("source") != source or git_status(self.repository)
+                or binding.get("reviewScope") != native_source_inventory(self.repository)[1]
+                or binding.get("authority") != self._semantic_authority(state, task)):
+            raise RuntimeFailure("SEMANTIC_SOURCE_STALE", "native semantic receipt no longer binds current scope/source/policy/holds")
+        if (observed.get("agentId") != binding.get("hostTaskId")
+                or observed.get("toolCallId") != binding.get("hostTaskId")
+                or observed.get("agentName") != binding.get("role")
+                or observed.get("type") != "subagent.completed" or observed.get("cancelled")
+                or observed.get("ephemeral") or not observed.get("id")
+                or native_review_family(observed.get("firstDispatchedModel")) != family
+                or receipt.get("family") != family):
+            raise RuntimeFailure("SEMANTIC_HOST_PROVENANCE", "native receipt owner/completion/actual-model provenance is invalid")
+        if artifact["consumedByTask"] is not None and not (
+                allow_consumed and artifact["consumedByTask"] == task_id):
+            raise RuntimeFailure("EVIDENCE_REPLAY", "native semantic producer evidence was already consumed")
+
+    def _native_semantic_gate_is_current(self, state: dict[str, Any], gate: dict[str, Any]) -> bool:
+        refs = set(gate["evidenceRefs"])
+        for artifact in state["artifacts"]:
+            if f"artifact:{artifact['id']}" not in refs or artifact["producer"] != "semantic-judge":
+                continue
+            receipt = self._read_json_receipt(artifact["path"], "semantic")
+            if receipt.get("schema") != "architrave.native-semantic-review.v1":
+                continue
+            try:
+                self._assert_native_semantic_receipt(
+                    state, artifact, receipt, gate["taskId"], gate["criteria"], gate["family"], allow_consumed=True,
+                )
+            except RuntimeFailure as exc:
+                if exc.code == "SEMANTIC_SOURCE_STALE":
+                    return False
+                raise
+        return True
+
+    def accept_native_semantic_review(
+        self, ticket: NativeSemanticTicket, *, host_task_id: str, host_status: str,
+        text: str, completion: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Trusted private transport completion, not a caller-labelled result or file importer."""
+        from worker_adapters import workspace_fingerprint
+
+        if (not isinstance(ticket, NativeSemanticTicket) or ticket.issuer is not self.__semantic_issuer
+                or ticket.consumed):
+            raise RuntimeFailure("SEMANTIC_RESULT_UNTRUSTED", "native semantic results require a live process-held invocation")
+        ticket.consumed = True
+        binding = ticket.binding
+        state = self.load(binding["runId"])
+        task = find_task(state, binding["taskId"])
+        if (state["revision"] != binding["revision"] or parse_iso(binding["expiresAt"]) <= dt.datetime.now(dt.timezone.utc)
+                or binding["hostTaskId"] != host_task_id or host_status not in {"idle", "completed"}):
+            raise RuntimeFailure("SEMANTIC_RESULT_STALE", "review owner/revision/deadline is stale or replayed")
+        if not isinstance(text, str) or len(text.encode("utf-8")) > ticket.budget["maxOutputBytes"]:
+            raise RuntimeFailure("SEMANTIC_RESULT_INVALID", "review output exceeds its canonical bound")
+        structured = text.strip()
+        lines = structured.splitlines()
+        if len(lines) >= 3 and lines[0] == "```json" and lines[-1] == "```":
+            structured = "\n".join(lines[1:-1]).strip()
+        try:
+            report = json.loads(structured, object_pairs_hook=_reject_duplicate_json_keys)
+        except (ValueError, json.JSONDecodeError) as exc:
+            raise RuntimeFailure("SEMANTIC_RESULT_INVALID", "reviewer must return the requested structured JSON",
+                details={"classification": "json-parse", "responseBytes": len(text.encode("utf-8")),
+                         "empty": not bool(structured), "startsObject": structured.startswith("{"),
+                         "exactJsonFence": len(lines) >= 3 and lines[0] == "```json" and lines[-1] == "```",
+                         "parseLine": getattr(exc, "lineno", None), "parseColumn": getattr(exc, "colno", None)}) from exc
+        fields = {"verdict", "criteria", "sourceCommit", "sourceSha256", "challenge", "summary", "findings"}
+        if (not isinstance(report, dict) or set(report) != fields
+                or not isinstance(report["verdict"], str) or report["verdict"] not in {"PASS", "REVISE", "FAIL"}
+                or report["criteria"] != binding["criteria"] or report["challenge"] != ticket.challenge
+                or report["sourceCommit"] != binding["source"]["commit"]
+                or report["sourceSha256"] != binding["source"]["sha256"]
+                or not isinstance(report["summary"], str) or not report["summary"].strip() or len(report["summary"]) > 1600
+                or not isinstance(report["findings"], list) or len(report["findings"]) > 12):
+            names = set(report) if isinstance(report, dict) else set()
+            raise RuntimeFailure("SEMANTIC_RESULT_INVALID", "review scope/challenge/verdict shape is invalid",
+                details={"classification": "report-schema", "rootType": type(report).__name__,
+                         "missingFields": sorted(fields - names),
+                         "extraFields": sorted(names - fields),
+                         "fieldTypes": {key: type(report.get(key)).__name__ for key in fields} if isinstance(report, dict) else {},
+                         "bindingMatches": {key: report.get(key) == expected for key, expected in {
+                             "criteria": binding["criteria"], "sourceCommit": binding["source"]["commit"],
+                             "sourceSha256": binding["source"]["sha256"], "challenge": ticket.challenge}.items()}
+                             if isinstance(report, dict) else {},
+                         "summaryChars": len(report["summary"]) if isinstance(report, dict) and isinstance(report.get("summary"), str) else None,
+                         "findingCount": len(report["findings"]) if isinstance(report, dict) and isinstance(report.get("findings"), list) else None})
+        for index, finding in enumerate(report["findings"]):
+            if (not isinstance(finding, dict) or set(finding) != {"severity", "path", "message"}
+                    or not isinstance(finding["severity"], str) or finding["severity"] not in {"blocker", "major", "minor"}
+                    or not isinstance(finding["path"], str)
+                    or not isinstance(finding["message"], str) or not finding["message"].strip() or len(finding["message"]) > 800):
+                names = set(finding) if isinstance(finding, dict) else set()
+                expected = {"severity", "path", "message"}
+                raise RuntimeFailure("SEMANTIC_RESULT_INVALID", "review finding is malformed",
+                    details={"classification": "finding-schema", "findingIndex": index,
+                             "missingFields": sorted(expected - names), "extraFields": sorted(names - expected),
+                             "fieldTypes": {key: type(finding.get(key)).__name__ for key in expected} if isinstance(finding, dict) else {},
+                             "messageChars": len(finding["message"]) if isinstance(finding, dict) and isinstance(finding.get("message"), str) else None})
+            path = safe_relative_path(finding["path"], "review finding path")
+            if path not in ticket.source_files:
+                raise RuntimeFailure("SEMANTIC_RESULT_INVALID", "review finding must belong to the declared implementation inventory")
+            finding["path"] = path
+            if report["verdict"] == "PASS" and finding["severity"] in {"blocker", "major"}:
+                raise RuntimeFailure("SEMANTIC_RESULT_INVALID", "PASS contradicts blocking findings")
+        if (not isinstance(completion, dict) or not isinstance(completion.get("timestamp"), str)
+                or parse_iso(completion["timestamp"]) < parse_iso(binding["preparedAt"])
+                or parse_iso(completion["timestamp"]) > dt.datetime.now(dt.timezone.utc) + dt.timedelta(seconds=5)
+                or parse_iso(completion["timestamp"]) > parse_iso(binding["expiresAt"])):
+            raise RuntimeFailure("SEMANTIC_HOST_PROVENANCE", "completion is outside the live review interval")
+        family = native_review_family(completion.get("firstDispatchedModel"))
+        artifact = {"consumedByTask": None}
+        receipt = {
+            "schema": "architrave.native-semantic-review.v1", "verdict": report["verdict"],
+            "family": family, "reviewer": "host-native", "criteria": binding["criteria"],
+            "binding": binding, "completion": completion, "report": redact({
+                "summary": report["summary"], "findings": report["findings"],
+            }), "resultSha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            "observedAt": utc_now(), "effort": {"requested": "high", "effective": None},
+        }
+        self._assert_native_semantic_receipt(state, artifact, receipt, task["id"], binding["criteria"], family)
+        if workspace_fingerprint(self.repository, include_ignored=False) != binding["source"]["sha256"]:
+            raise RuntimeFailure("SEMANTIC_SOURCE_STALE", "reviewed source changed before receipt creation")
+        artifact_id = f"native-semantic-{uuid.uuid4().hex}"
+        path = self._native_review_storage(state["runId"]) / f"{artifact_id}.json"
+        self._atomic_write(path, receipt)
+        ticket.receipt_sha256 = sha256_file(path)
+        artifact = {
+            "id": artifact_id, "kind": "semantic-verdict", "producer": "semantic-judge",
+            "path": path.relative_to(self.repository).as_posix(), "createdAt": utc_now(),
+            "sha256": ticket.receipt_sha256, "evidenceRefs": [f"task:{task['id']}"], "consumedByTask": None,
+        }
+        status = {"PASS": "PASS", "REVISE": "BLOCKED", "FAIL": "FAIL"}[report["verdict"]]
+        gate_id = f"semantic-{uuid.uuid4().hex}"
+        try:
+            self.record_gate(
+                state["runId"], gate_id=gate_id, task_id=task["id"], gate_type="semantic", status=status,
+                evidence_refs=[f"artifact:{artifact_id}"], family=family, criteria=binding["criteria"],
+                reviewer="host-native", effort="high", actor="native-semantic-review",
+                _native_receipt=(ticket, artifact),
+            )
+        except RuntimeFailure:
+            path.unlink(missing_ok=True)
+            raise
+        finally:
+            ticket.receipt_sha256 = None
+        return {"status": status, "verdict": report["verdict"], "family": family,
+                "artifactRef": f"artifact:{artifact_id}", "gateRef": f"gate:{gate_id}",
+                "source": binding["source"], "hostTaskId": host_task_id,
+                "completionEventId": completion["id"], "summary": receipt["report"]["summary"]}
+
     def recover_workers(self, run_id: str, *, task_id: str | None = None) -> dict[str, Any]:
         """Close orphan/expired records; an explicit failed task recovery never runs commands."""
         def mutate(state: dict[str, Any]) -> dict[str, Any]:
@@ -3391,7 +3723,9 @@ class RunStore:
                     raise RuntimeFailure("RECOVERY_UNSAFE", "explicit recovery requires a failed task with no side effect")
                 if task["objectiveVersion"] != state["objective"]["version"]:
                     raise RuntimeFailure("OBJECTIVE_SUPERSEDED", "cannot recover a historical task")
-                if any(gate["taskId"] == task_id and gate["status"] == "FAIL" for gate in state["gateResults"]):
+                if any(gate["taskId"] == task_id and gate["status"] == "FAIL"
+                       and gate["objectiveVersion"] == state["objective"]["version"]
+                       and self.failure_source_status(state, gate) is None for gate in state["gateResults"]):
                     raise RuntimeFailure("RECOVERY_GATE_FAILED", "a failed deterministic/product gate needs separate reconciliation")
                 task["retryPolicy"]["maxAttempts"] = max(task["retryPolicy"]["maxAttempts"], task["attempts"] + 1)
                 task["status"] = ("WAITING_EXTERNAL" if task_has_pending_checkpoint(state, task["id"])
@@ -3548,8 +3882,19 @@ class RunStore:
         refs = {ref for gate in state["gateResults"] if gate["id"] in gate_ids for ref in gate["evidenceRefs"]}
         observed_source = None
         for artifact in state["artifacts"]:
+            if f"artifact:{artifact['id']}" in refs and artifact["producer"] == "semantic-judge":
+                receipt = self._read_json_receipt(artifact["path"], "semantic")
+                if receipt.get("schema") == "architrave.native-semantic-review.v1":
+                    for gate in state["gateResults"]:
+                        if gate["id"] in gate_ids and f"artifact:{artifact['id']}" in gate["evidenceRefs"]:
+                            self._assert_native_semantic_receipt(
+                                state, artifact, receipt, gate["taskId"], gate["criteria"], gate["family"], allow_consumed=True,
+                            )
             if f"artifact:{artifact['id']}" in refs and artifact["producer"] == "legibility":
-                self._assert_product_binding(state, artifact, task_id=None, criteria=None)
+                require_pass = any(gate["id"] in gate_ids and gate["status"] == "PASS"
+                                   and f"artifact:{artifact['id']}" in gate["evidenceRefs"]
+                                   for gate in state["gateResults"])
+                self._assert_product_binding(state, artifact, task_id=None, criteria=None, require_pass=require_pass)
             if f"artifact:{artifact['id']}" not in refs or artifact["producer"] != "deterministic":
                 continue
             receipt = self._read_json_receipt(artifact["path"], "deterministic")
@@ -3570,13 +3915,21 @@ class RunStore:
                 raise RuntimeFailure("EVIDENCE_SOURCE_STALE", "deterministic evidence no longer matches current source/objective/task/risk")
 
     def _assert_product_binding(self, state: dict[str, Any], artifact: dict[str, Any],
-                                *, task_id: str | None, criteria: Sequence[str] | None) -> None:
+                                *, task_id: str | None, criteria: Sequence[str] | None, require_pass: bool = True) -> None:
         from worker_adapters import workspace_fingerprint
         receipt = self._read_json_receipt(artifact["path"], "product")
+        if require_pass and (receipt.get("status") != "pass" or receipt.get("failed") != []):
+            raise RuntimeFailure("LEGIBILITY_RECEIPT", "PASS requires a passing observed product receipt")
+        if not require_pass:
+            failed = [item.get("name") for item in receipt.get("results", [])
+                      if isinstance(item, dict) and item.get("status") in {"fail", "missing"}]
+            if receipt.get("status") != "fail" or not failed or receipt.get("failed") != failed:
+                raise RuntimeFailure("LEGIBILITY_RECEIPT", "FAIL requires a failed observed product receipt")
         binding = receipt.get("binding")
-        if binding is None:
-            return  # Historical receipts remain readable; milestone advancement rejects them.
-        source = receipt.get("source", {})
+        source = receipt.get("source")
+        if not isinstance(binding, dict) or not isinstance(source, dict):
+            raise RuntimeFailure("EVIDENCE_SOURCE_STALE",
+                                 "historical product receipt without source binding cannot provide current PASS evidence")
         bound_task = find_task(state, binding["taskId"]) if binding.get("taskId") else None
         if (binding.get("runId") != state["runId"]
                 or binding.get("objectiveVersion") != state["objective"]["version"]
@@ -3586,6 +3939,107 @@ class RunStore:
                 or source.get("commit") != run_command(["git", "rev-parse", "HEAD"], self.repository)
                 or source.get("sha256") != workspace_fingerprint(self.repository, include_ignored=False)):
             raise RuntimeFailure("EVIDENCE_SOURCE_STALE", "frozen product receipt no longer binds current task/objective/source")
+
+    def failure_source_status(self, state: dict[str, Any], gate: dict[str, Any]) -> str | None:
+        if gate["type"] in {"policy", "security"}:
+            from worker_adapters import workspace_fingerprint
+            expected = "policy-engine" if gate["type"] == "policy" else "security-review"
+            stale_receipts = []
+            for artifact in state["artifacts"]:
+                if f"artifact:{artifact['id']}" not in gate["evidenceRefs"] or artifact["producer"] != expected:
+                    continue
+                receipt = self._read_json_receipt(artifact["path"], expected)
+                binding = receipt.get("binding")
+                source = receipt.get("source")
+                stale = False
+                if "binding" in receipt:
+                    if not isinstance(binding, dict):
+                        raise RuntimeFailure("EVIDENCE_BINDING_INVALID", "policy/security binding must be an object")
+                    if ("runId" in binding and (not isinstance(binding["runId"], str) or not ID_RE.fullmatch(binding["runId"]))
+                            or "objectiveVersion" in binding and (not isinstance(binding["objectiveVersion"], int)
+                                or isinstance(binding["objectiveVersion"], bool) or binding["objectiveVersion"] < 1)):
+                        raise RuntimeFailure("EVIDENCE_BINDING_INVALID", "policy/security Run/objective identity is malformed")
+                    if ("taskId" in binding and binding["taskId"] is not None
+                            and (not isinstance(binding["taskId"], str) or not ID_RE.fullmatch(binding["taskId"]))
+                            or "revision" in binding and (not isinstance(binding["revision"], int)
+                                or isinstance(binding["revision"], bool) or binding["revision"] < 0)):
+                        raise RuntimeFailure("EVIDENCE_BINDING_INVALID", "policy/security task/revision identity is malformed")
+                    if "criteria" in binding and (not isinstance(binding["criteria"], list)
+                            or any(not isinstance(item, str) or not ID_RE.fullmatch(item) for item in binding["criteria"])):
+                        raise RuntimeFailure("EVIDENCE_BINDING_INVALID", "policy/security criterion identities are malformed")
+                    if (binding.get("runId", state["runId"]) != state["runId"]
+                            or binding.get("objectiveVersion", state["objective"]["version"]) != state["objective"]["version"]):
+                        stale = True
+                if "source" in receipt:
+                    if not isinstance(source, dict):
+                        raise RuntimeFailure("EVIDENCE_BINDING_INVALID", "policy/security source must be an object")
+                    for field, pattern in (("commit", r"(?:[0-9a-f]{40}|[0-9a-f]{64})"), ("sha256", r"[0-9a-f]{64}")):
+                        if field in source and (not isinstance(source[field], str) or not re.fullmatch(pattern, source[field])):
+                            raise RuntimeFailure("EVIDENCE_BINDING_INVALID", "policy/security source identity is malformed")
+                    if source.get("commit") is not None and source["commit"] != run_command(["git", "rev-parse", "HEAD"], self.repository):
+                        stale = True
+                    if source.get("sha256") is not None and source["sha256"] != workspace_fingerprint(self.repository, include_ignored=False):
+                        stale = True
+                stale_receipts.append(stale)
+            # Unknown source coverage cannot clear an authenticated current safety failure.
+            return ("stale source" if stale_receipts and len(stale_receipts) == len(gate["evidenceRefs"])
+                    and all(stale_receipts) else None)
+        if not gate["evidenceRefs"]:
+            return "unbound source"
+
+        try:
+            self.assert_gate_sources_current(state, [f"gate:{gate['id']}"])
+        except RuntimeFailure as exc:
+            if exc.code != "EVIDENCE_SOURCE_STALE":
+                raise
+            return "stale source"
+        refs = set(gate["evidenceRefs"])
+        for artifact in state["artifacts"]:
+            if f"artifact:{artifact['id']}" not in refs or artifact["producer"] not in {"legibility", "deterministic"}:
+                continue
+            receipt = self._read_json_receipt(artifact["path"], "governing failure")
+            if artifact["producer"] == "legibility" or receipt.get("schema") == "architrave.deterministic-observation.v1":
+                return None
+        return "unbound source"
+
+    def pass_gate_source_is_current(self, state: dict[str, Any], gate: dict[str, Any]) -> bool:
+        if gate["type"] == "semantic":
+            return self._native_semantic_gate_is_current(state, gate)
+        from worker_adapters import workspace_fingerprint
+        references = set(gate["evidenceRefs"])
+        artifacts = [item for item in state["artifacts"] if f"artifact:{item['id']}" in references]
+        if not artifacts or len(artifacts) != len(references):
+            return False
+        try:
+            self.assert_gate_sources_current(state, [f"gate:{gate['id']}"])
+        except RuntimeFailure as exc:
+            if exc.code != "EVIDENCE_SOURCE_STALE":
+                raise
+            return False
+        current_commit = run_command(["git", "rev-parse", "HEAD"], self.repository)
+        current_sha = workspace_fingerprint(self.repository, include_ignored=False)
+        for artifact in artifacts:
+            receipt = self._read_json_receipt(artifact["path"], "risk-floor")
+            binding, source = receipt.get("binding"), receipt.get("source")
+            if "binding" not in receipt or "source" not in receipt:
+                return False
+            if not isinstance(binding, dict) or not isinstance(source, dict):
+                raise RuntimeFailure("EVIDENCE_BINDING_INVALID", "risk-floor source binding must be an object")
+            if ("objectiveVersion" in binding and (not isinstance(binding["objectiveVersion"], int)
+                    or isinstance(binding["objectiveVersion"], bool) or binding["objectiveVersion"] < 1)
+                    or "runId" in binding and (not isinstance(binding["runId"], str) or not ID_RE.fullmatch(binding["runId"]))):
+                raise RuntimeFailure("EVIDENCE_BINDING_INVALID", "risk-floor Run/objective identity is malformed")
+            for field, pattern in (("commit", r"(?:[0-9a-f]{40}|[0-9a-f]{64})"), ("sha256", r"[0-9a-f]{64}")):
+                if field in source and (not isinstance(source[field], str) or not re.fullmatch(pattern, source[field])):
+                    raise RuntimeFailure("EVIDENCE_BINDING_INVALID", "risk-floor source identity is malformed")
+            if (binding.get("runId") != state["runId"]
+                    or binding.get("objectiveVersion") != state["objective"]["version"]
+                    or not isinstance(binding.get("criteria"), list)
+                    or not all(isinstance(item, str) for item in binding["criteria"])
+                    or not set(gate["criteria"]).issubset(binding["criteria"])
+                    or source.get("commit") != current_commit or source.get("sha256") != current_sha):
+                return False
+        return True
 
     def record_gate(
         self,
@@ -3602,6 +4056,7 @@ class RunStore:
         reviewer: str | None = None,
         effort: str | None = None,
         actor: str = "coordinator",
+        _native_receipt: tuple[NativeSemanticTicket, dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         require_id(gate_id, "gate id")
         requested_level, _, effective_level = (effort or "").partition(":")
@@ -3625,6 +4080,24 @@ class RunStore:
             raise RuntimeFailure("INVALID_GATE", f"invalid gate status: {status}")
 
         def mutate(state: dict[str, Any]) -> dict[str, Any]:
+            if _native_receipt is not None:
+                ticket, artifact = _native_receipt
+                if (not isinstance(ticket, NativeSemanticTicket) or ticket.issuer is not self.__semantic_issuer
+                        or not ticket.consumed or not ticket.receipt_sha256
+                        or gate_type != "semantic" or task_id != ticket.binding["taskId"]
+                        or run_id != ticket.binding["runId"] or artifact["sha256"] != ticket.receipt_sha256
+                        or sha256_file(self.repository / artifact["path"]) != ticket.receipt_sha256):
+                    raise RuntimeFailure("SEMANTIC_RESULT_UNTRUSTED", "atomic producer admission requires its verified live capability")
+                if any(item["id"] == artifact["id"] for item in state["artifacts"]):
+                    raise RuntimeFailure("EVIDENCE_REPLAY", "native semantic artifact already exists")
+                if state["revision"] != ticket.binding["revision"]:
+                    raise RuntimeFailure("SEMANTIC_RESULT_STALE", "review scope changed before atomic gate admission")
+                self._assert_native_semantic_receipt(
+                    state, artifact, self._read_json_receipt(artifact["path"], "semantic"),
+                    task_id, list(criteria or []), family,
+                )
+                artifact["attestation"] = self._artifact_attestation(artifact)
+                state["artifacts"].append(artifact)
             if any(result["id"] == gate_id for result in state["gateResults"]):
                 raise RuntimeFailure("GATE_EXISTS", f"gate result already exists: {gate_id}")
             if task_id is not None:
@@ -3656,18 +4129,21 @@ class RunStore:
                 and item["status"] == "PASS" and item.get("family") == family
                 and item.get("objectiveVersion") == state["objective"]["version"]
                 and high_risk.intersection(bound_criteria).intersection(item["criteria"])
+                and self._native_semantic_gate_is_current(state, item)
             ), None)
             if duplicate:
                 raise RuntimeFailure(
                     "DUPLICATE_REVIEW_FAMILY",
                     f"R3/R4 review family {family} already passed in {duplicate}; the second review needs a different family",
                 )
-            if status == "PASS":
-                require_evidence_refs(state, evidence_refs, allowed={"artifact", "external"})
-                artifact_ids = [reference.split(":", 1)[1] for reference in evidence_refs if reference.startswith("artifact:")]
+            artifact_ids = [reference.split(":", 1)[1] for reference in evidence_refs if reference.startswith("artifact:")]
+            if status in {"PASS", "FAIL"}:
                 for artifact in state["artifacts"]:
                     if artifact["id"] in artifact_ids and artifact["producer"] == "legibility":
-                        self._assert_product_binding(state, artifact, task_id=task_id, criteria=bound_criteria)
+                        self._assert_product_binding(state, artifact, task_id=task_id, criteria=bound_criteria,
+                                                     require_pass=status == "PASS")
+            if status == "PASS":
+                require_evidence_refs(state, evidence_refs, allowed={"artifact", "external"})
                 if task_id is not None and any(
                     f"task:{task_id}" not in artifact["evidenceRefs"]
                     for artifact in state["artifacts"]
@@ -3697,8 +4173,11 @@ class RunStore:
                         if artifact["id"] not in artifact_ids:
                             continue
                         verdict = self._read_json_receipt(artifact["path"], "semantic")
-                        if verdict.get("family") != family or not set(bound_criteria).issubset(set(verdict.get("criteria") or [])):
+                        if (verdict.get("verdict") != "PASS" or verdict.get("family") != family
+                                or not set(bound_criteria).issubset(set(verdict.get("criteria") or []))):
                             raise RuntimeFailure("SEMANTIC_RECEIPT", "semantic gate does not match verdict family/criteria")
+                        if verdict.get("schema") == "architrave.native-semantic-review.v1":
+                            self._assert_native_semantic_receipt(state, artifact, verdict, task_id, bound_criteria, family)
                 if gate_type in {"reality", "e2e"}:
                     # A reality/e2e PASS gate proves exactly one verification surface (web,
                     # electron, ios, deployment, runtime). Evidence spanning zero or more than
@@ -3777,6 +4256,13 @@ class RunStore:
                         if receipt.get("result", {}).get("status") != "pass" or receipt.get("result", {}).get("mismatches") != []:
                             raise RuntimeFailure("MUTATION_RECEIPT", "mutation PASS gate requires a fully matching receipt")
             now = utc_now()
+            if status == "PASS" and gate_type == "semantic":
+                for artifact in state["artifacts"]:
+                    if artifact["id"] in artifact_ids:
+                        receipt = self._read_json_receipt(artifact["path"], "semantic")
+                        if receipt.get("schema") == "architrave.native-semantic-review.v1":
+                            artifact["consumedByTask"] = task_id
+                            artifact["attestation"] = self._artifact_attestation(artifact)
             state["gateResults"].append(
                 {
                     "id": gate_id,
@@ -4691,14 +5177,25 @@ class RunStore:
 
         def mutate(state: dict[str, Any]) -> dict[str, Any]:
             required = [criterion for criterion in state["acceptanceCriteria"] if criterion["blocking"]]
-            self.assert_gate_sources_current(state, [ref for criterion in required for ref in criterion["evidenceRefs"]])
-            deterministic_failures = [
-                gate["id"]
-                for gate in state["gateResults"]
-                if gate["status"] == "FAIL" and gate["type"] in {"deterministic", "e2e", "reality", "policy", "security"}
-            ]
-            failed = [criterion["id"] for criterion in required if criterion["status"] == "FAIL"]
-            untested = [criterion["id"] for criterion in required if criterion["status"] == "UNTESTED"]
+            stale_failures = set()
+            for criterion in required:
+                try:
+                    self.assert_gate_sources_current(state, criterion["evidenceRefs"])
+                except RuntimeFailure as exc:
+                    if criterion["status"] != "FAIL" or exc.code != "EVIDENCE_SOURCE_STALE":
+                        raise
+                    stale_failures.add(criterion["id"])
+            deterministic_failures = []
+            for gate in state["gateResults"]:
+                if (gate["status"] != "FAIL" or gate["objectiveVersion"] != state["objective"]["version"]
+                        or gate["type"] not in {"deterministic", "e2e", "reality", "policy", "security"}):
+                    continue
+                if self.failure_source_status(state, gate) is None:
+                    deterministic_failures.append(gate["id"])
+            failed = [criterion["id"] for criterion in required
+                      if criterion["status"] == "FAIL" and criterion["id"] not in stale_failures]
+            untested = [criterion["id"] for criterion in required
+                        if criterion["status"] == "UNTESTED" or criterion["id"] in stale_failures]
             blocked = [criterion["id"] for criterion in required if criterion["status"] == "BLOCKED_EXTERNAL"]
             missing_evidence = [
                 criterion["id"]
@@ -4730,6 +5227,7 @@ class RunStore:
                 gate["type"]
                 for gate in state["gateResults"]
                 if gate["status"] == "PASS" and gate["type"] in {"e2e", "reality"}
+                and self.pass_gate_source_is_current(state, gate)
             }
             missing_reality = bool(high_risk and not passed_real_gates)
             missing_risk_gates = missing_gate_requirements(state, required)
@@ -5493,6 +5991,7 @@ def missing_gate_requirements(state: dict[str, Any], criteria: Sequence[dict[str
     configured = repo_config.get("evaluation") or {}
     risk_policy = configured.get("riskPolicy") or {}
     cross_family = bool((repo_config.get("review") or {}).get("crossFamily"))
+    store = RunStore(state["baseline"]["repository"])
     missing: list[str] = []
     for criterion in criteria:
         requirements = list(
@@ -5514,6 +6013,7 @@ def missing_gate_requirements(state: dict[str, Any], criteria: Sequence[dict[str
             if gate["status"] == "PASS"
             and gate.get("objectiveVersion", 1) == state["objective"]["version"]
             and criterion["id"] in gate["criteria"]
+            and store.pass_gate_source_is_current(state, gate)
         ]
         capabilities: set[str] = {gate["type"] for gate in passed}
         if any(gate["type"] == "semantic" for gate in passed):
@@ -5958,7 +6458,7 @@ def runtime_identity() -> dict[str, Any]:
 
 
 def state_summary(state: dict[str, Any]) -> dict[str, Any]:
-    from worker_adapters import workspace_fingerprint
+    from worker_adapters import git_status, workspace_fingerprint
 
     now = dt.datetime.now(dt.timezone.utc)
     active_worker_ids = {task["lease"]["owner"] for task in state["tasks"]
@@ -5967,6 +6467,8 @@ def state_summary(state: dict[str, Any]) -> dict[str, Any]:
     repository = Path(state["baseline"]["repository"])
     current_commit = run_command(["git", "rev-parse", "HEAD"], repository)
     source_sha = workspace_fingerprint(repository, include_ignored=False)
+    source_drift = [path for path in git_status(repository)
+                    if path.split("/", 1)[0].casefold() not in {".git", ".architrave"}]
     evidence = []
     for artifact in state["artifacts"]:
         item = {"id": artifact["id"], "producer": artifact["producer"],
@@ -6003,7 +6505,7 @@ def state_summary(state: dict[str, Any]) -> dict[str, Any]:
         "observedAt": utc_now(),
         "source": {"commit": state["baseline"]["commit"], "branch": state["baseline"]["branch"],
                    "observedCommit": current_commit, "sha256": source_sha,
-                   "baselineFresh": state["baseline"]["commit"] == current_commit},
+                   "baselineFresh": state["baseline"]["commit"] == current_commit and not source_drift},
         "activeWorkers": [worker["id"] for worker in state["workers"]
                           if worker["status"] == "RUNNING" and worker["id"] in active_worker_ids],
         "historicalWorkers": {worker["id"]: worker["status"] for worker in state["workers"]
@@ -6092,7 +6594,7 @@ def build_parser() -> argparse.ArgumentParser:
     primary.add_argument("--path", action="append", required=True)
     primary.add_argument("--threshold", type=int, default=PRIMARY_STALL_THRESHOLD)
 
-    for command in ("status", "inspect", "events", "ready", "resume", "verify", "checkpoint"):
+    for command in ("status", "inspect", "events", "ready", "resume", "verify", "checkpoint", "ribbon-snapshot"):
         current = subparsers.add_parser(command)
         current.add_argument("run_id", nargs="?")
         if command == "resume":
@@ -6337,6 +6839,12 @@ def cli(argv: Sequence[str] | None = None) -> int:
             output = state_summary(state)
         elif command == "status":
             output = state_summary(store.load(args.run_id))
+        elif command == "ribbon-snapshot":
+            from ribbon import ribbon_snapshot, RuntimeFailure as ProjectionFailure
+            try:
+                output = ribbon_snapshot(store, args.run_id)
+            except ProjectionFailure as exc:
+                raise RuntimeFailure(exc.code, exc.message, details=exc.details) from exc
         elif command == "worker-recover":
             output = state_summary(store.recover_workers(args.run_id, task_id=args.task_id))
         elif command == "gate-execute":

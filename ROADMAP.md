@@ -1,5 +1,69 @@
 # Roadmap
 
+## v0.14.2 - Host capability inheritance
+
+- [x] Lead-agent tool inheritance, optional adoption and plugin-relative guidance.
+- [x] Visible independent tracks with capability-based native subagent fallback.
+- [x] Explicit child skill handoffs and one bounded development/research/writing
+  skill, with evidence-backed author voice and no nested supervision.
+- [x] Mac local 0.14.2 payload enabled through the supported marketplace flow;
+  five readable skills resolve to the stable local plugin root.
+- [x] Fresh Copilot CLI lead/skill smoke: name-based loading, plugin-relative
+  contract access and a source edit in an unadopted repository.
+- [x] Fresh installed-lead native child smoke: one bounded writing worker
+  invoked `architrave-work`, read supplied facts/voice samples and returned a
+  grounded draft without edits, grandchildren or publication.
+- [ ] Existing desktop chat skill-path refresh remains unconfirmed; fresh CLI
+  success does not prove old sessions reloaded their instructions.
+
+## v0.14.1 publication scope - Session instrument
+
+- [x] Ordinary-session display in the same portable renderer, without a Run,
+  repository or named agent; lightweight discovery does not disclose Run schemas.
+- [x] Passive host events for bounded activity and usage, selected vs observed
+  model/effort, truthful unknowns, no routine transcript/model traffic.
+- [x] Owned SDK-subagent names, roles, lifecycle, explicit assigned slice and
+  model details; app-native child-session visibility explicitly unavailable.
+- [x] Implement the approved Apple-like Session instrument in the same renderer:
+  telemetry rail, context occupancy gauge, quiet indeterminate activity and
+  expandable role/slice/model/status lanes; no illustrative stages or counts.
+- [x] Batched 1280px light / 360px dark browser contract, host-theme overrides,
+  reduced motion, keyboard focus across updates, eight states, long content,
+  unknown usage and close/opt-out interactions; synthetic data, not host proof.
+- [x] One-shot opening, session dismissal, durable user preference and explicit
+  standalone one-file adoption, with no permissions or orchestration changes.
+- [x] User-directed default-on Copilot legacy plugin contribution, explicit
+  host-reported provider identity and confirmed-open persistence; opt-out and
+  existing user/project providers remain intact.
+- [x] Live desktop/narrow rendering and exact-source close-this-session followed
+  by supported reload/no-reopen; global checkbox was not exercised.
+- [ ] Fresh-session lifecycle and same-host context-delta qualification;
+  fixture success alone does not close native-host or footprint claims.
+- [ ] Resolve the observed pristine-project extension-discovery/loading
+  boundary; initial, settled and foreground contexts lacked both companion and
+  native-extension tools. No further unchanged-evidence retries.
+- [x] Preserve committed v0.14.1 corrections through `f8dcf02`; later release
+  fixes must still be preserved before eventual landing.
+- [ ] Reviewed published-source adoption only, not candidate global installation.
+
+## Milestone 10.1 - Optional Route Ribbon (v0.14.1 candidate)
+
+- [x] One portable, optional Copilot canvas with a segmented route and evidence
+  inspector, responsive keyboard navigation and explicit snapshot freshness.
+- [x] Bounded Python projection of authenticated Run state/events; scoped done,
+  source-bound product observations, superseded history, stops and retry
+  fingerprints remain separate. No orchestration or canonical state writes.
+- [x] Domain-keyed durable display snapshots, extension-reload rehydration,
+  loopback-only serving and opt-in managed project installation/refresh.
+- [x] Stacked workstream views grounded in Run/task lanes and work kinds, with
+  independent slices/source/owner and explicit BLOCKS vs display-only INFORMS.
+- [x] Fresh joined native semantic producer with source/policy/holds/owner/
+  challenge binding, actual host family and one-use evidence.
+- [x] Retired automatic quality registrations; exact recognized transactional
+  retirement, custom-hook preservation and explicit executable check cadence.
+- [ ] Approved publication after final requested reviews and CI; consumer
+  installation/adoption remains separate owner authorization.
+
 ## Milestone 10 - Truthful adaptive supervision (v0.14.0)
 
 - [x] Agent-estimated finite on-demand feasibility reset, cumulative observed
@@ -36,9 +100,10 @@
 ## Milestone 3 — Gates (DONE)
 - [x] `gates/rubric.md` — cross‑platform evaluation rubric (spec / design‑language / platform / adversarial / security / a11y / reconcile / tests / verification).
 - [x] `gates/reconcile.sh` + `gates/reconcile.ps1` — design↔code drift checker (regenerate from tokens via `config.tokenBuild`, diff against committed code).
-- [x] `gates/checks.sh` + `gates/checks.ps1` — deterministic gate runner driven by `architrave.config.json` (generate/build/test + designMap/tokens JSON valid; `--quick` / `-Quick` for hooks).
+- [x] `gates/checks.sh` + `gates/checks.ps1` — deterministic gate runner driven by `architrave.config.json` (generate/build/test + designMap/tokens JSON valid; `--quick` / `-Quick` for focused validation).
 - [x] `gates/quality-gate.sh` + `gates/quality-gate.ps1` — lightweight quick gate (fast JSON guard + reconcile/judge reminder).
-- [x] `gates/hooks/design-guard.json` (POSIX) + `design-guard.windows.json` (pwsh) — PostToolUse JSON‑validity guard.
+- [x] Automatic quality-hook registrations and packaged definitions removed; exact legacy recognition remains in the installer for safe consumer cleanup.
+- [x] Native tool-blocking hooks removed; explicit tool admission/source/evidence checks and passive Ribbon/companion event observation retained.
 - [x] `harness/init-run.*` + `validate-run.*` + `semantic-review.*` — durable run artifacts, learning notes, and optional judge prompt helper.
 
 > **Cross-platform:** every gate ships thin POSIX `.sh` and PowerShell `.ps1`
@@ -49,7 +114,7 @@
 ## Milestone 4 — Distribution
 - [x] **Plugin packaging** — `plugin.json` + `.github/plugin/marketplace.json`. Verified end‑to‑end with the real Copilot CLI (v1.0.64): both `copilot plugin install <path>` and the future‑proof `copilot plugin marketplace add dragoshont/architrave` + `copilot plugin install architrave@architrave` load the agent crew. The shared `~/.copilot` runtime ⇒ also reaches the Copilot app + VS Code.
 - [x] **Codex / ChatGPT packaging** — `.codex-plugin/plugin.json`, three plugin-only Agent Skills, two generated project roles, opt-in role installation/update, bounded dual-family launchers, and disposable plugin/role/MCP runtime smokes. Normal roles inherit parent MCP/skills/permissions and are documented as advisory contexts, not mandatory security gates.
-- [x] `tools/install.sh` (+ `install.ps1`) — per‑repo grounding: copies agents → `.github/agents/`, gates → `gates/`, scaffolds `architrave.config.json`, injects the `AGENTS.md` stanza (idempotent), wires the per‑OS PostToolUse hook, drops `copilot-setup-steps.yml`. Both variants tested on throwaway repos.
+- [x] `tools/install.sh` (+ `install.ps1`) — per‑repo grounding: copies agents → `.github/agents/`, gates → `gates/`, scaffolds `architrave.config.json`, injects the `AGENTS.md` stanza (idempotent), retires exact recognized legacy quality hooks without registering new ones, drops `copilot-setup-steps.yml`. Both variants tested on throwaway repos.
 - [x] `AGENTS.md` (kit) + a per‑repo `AGENTS.md` stanza template (`templates/AGENTS.stanza.md`) — the cloud‑agent reach.
 - [x] Prove on Sideport (web) — adopted on an isolated worktree (branch `architrave-adoption`, based on the UI branch's committed HEAD). The installer wired the gates to Sideport's real `tsc -b && vite build` + `eslint`; baseline gate green; ran the Feature‑Builder harness for a grounded a11y change (`aria-current` on the primary nav + the onboarding step‑tabs — WCAG 2.2 / web pack), with a consistency sweep; post‑change gate green. The config was corrected to the repo's real scripts (`test`→`lint`, `screenshot`→`test:screens`).
 

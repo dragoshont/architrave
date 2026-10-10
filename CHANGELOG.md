@@ -11,6 +11,85 @@ Releases at or before **v0.8.12** are on the
 - Add a public Run cancel/supersede transition and make invalid unstarted-task
   intake terminal instead of retry-ready.
 
+## [0.14.2] - 2026-10-10
+
+### Added
+- One lightweight, explicit-only `architrave-work` skill for bounded development,
+  evidence-backed research and writing grounded in author-provided voice samples.
+- Child skill handoffs include relevant named guidance and verified paths rather
+  than assuming a subagent/sidebar session inherits the parent's loaded skills.
+
+### Changed
+- Lead agent inherits all host-available tools; specialist tool scopes remain.
+- Plugin-only work no longer requires repository adoption. Kit guidance resolves
+  from the reported plugin skill base, not guessed host cache paths.
+- Independent implementation tracks prefer supported coordinated sidebar
+  sessions, falling back to native subagents in CLI clients.
+- Mandate-driven continuation and focused mid-development research, without
+  routine status rituals or treating urgency as authorization.
+
+### Limitations
+- Existing host sessions may retain stale skill paths. A readable plugin payload
+  or successful fresh-session load does not prove an old session was refreshed.
+
+## [0.14.1] - 2026-10-08 (candidate)
+
+### Added
+- Optional, single-file Copilot Route Ribbon canvas: segmented steps, evidence
+  inspector, visibly bypassed/deferred routes, human/resource/dependency holds,
+  explicit dead ends and fingerprint-backed retry stops. No private demo history.
+- Read-only `ribbon-snapshot` Python Run projection with capture/source/objective
+  provenance and current product milestone identity. Scoped done is not product
+  verified; superseded blockers remain historical.
+- Domain-keyed display snapshot persistence and supported canvas reload
+  rehydration, bounded input/request guards, loopback-only serving and cleanup.
+- Explicit `canvas-install TARGET` to install or refresh the portable renderer
+  through existing managed-path safety. Normal adoption remains unchanged.
+- Display-digest compare-and-swap updates allow equal-Run-revision refreshes
+  while rejecting competing/stale display writes, with ordering and reload
+  regressions. Empty event history fails with an explicit projection error.
+- Fresh source-bound native semantic execution through the joined host, using
+  owned reviewer results, actual first-dispatched model metadata and one-use
+  owner/challenge-bound authenticated producer receipts.
+- Optional stacked workstream lanes with independent slice/source/owner states,
+  canonical cross-stream BLOCKS and non-authoritative INFORMS annotations.
+- Passive Session instrument with the approved restrained visual grammar,
+  host-reported model/effort/context and expandable owned-child lanes. The
+  documented Copilot extension contribution preserves standalone preferences
+  and provider-qualified one-shot startup without automatic workers or prompts.
+
+### Changed
+- Automatic PostToolUse quality registration is retired. The same deterministic
+  quick validator runs explicitly after relevant config/design/product-copy
+  changes and final integration, with mandatory checkpoint/CI evidence.
+- Removed packaged quality-hook definitions and obsolete packaging/documentation
+  references. Exact legacy recognition remains in installer code for safe cleanup.
+- Removed native tool-blocking hooks. Host permissions remain host-owned;
+  explicit native tool admission/source/evidence checks and passive Route
+  Ribbon/Session companion event observation remain.
+- Install/update retires only exact recognized legacy definitions transactionally;
+  custom/mixed/unknown hooks are preserved with manual action. A hooks-only
+  `retire-hooks --dry-run TARGET` preview supports post-release owner cleanup;
+  public quality-gate CLI compatibility and explicit native tool checks remain.
+
+### Limitations
+- Copilot canvas capability required; no Codex/Claude canvas claim. Agent-fed
+  snapshots, not live telemetry. Active effort, wait duration, tokens and cost
+  remain Unknown; relative segment weights are explicitly estimates.
+- Preparation does not authorize consumer installation, tagging or publication.
+
+### Fixed
+- Governing failed checks revoke current ribbon verification/milestones without
+  erasing earlier completion history. Failed product observations are retained
+  canonically and cannot be relabelled PASS; repeat observations keep immutable
+  logs and visual artifacts.
+- Display CAS is protected across provider processes, with dead-writer recovery.
+  Native source inventories use byte-bounded frames; semantic cleanup preserves
+  admitted results and separately retains owned recovery progress.
+- Hook retirement preserves post-backup custom edits, retains legacy crash
+  recovery, and reports manual action for custom-only/malformed definitions.
+  The canonical rubric uses the explicit executable quality-check cadence.
+
 ## [0.14.0] - 2026-10-07
 
 ### Added
