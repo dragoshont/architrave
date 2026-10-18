@@ -1,6 +1,6 @@
 ---
 name: architrave-cto
-description: Apply the CTO checklist inline at Run start, checkpoint or stall. Return only a concise correction; do not spawn a CTO merely for ceremony.
+description: Apply the CTO checklist inline for an established stall, material scope/budget decision or requested feasibility reset. Not a mandatory startup or periodic review; do not spawn another supervisor.
 ---
 
 Check inline. Report only what is off, then one correction: objective, last

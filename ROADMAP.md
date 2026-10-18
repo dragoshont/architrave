@@ -107,7 +107,7 @@
 - [x] `agents/architrave.agent.md` — the config‑driven, judge‑gated harness (understand → propose → judge → implement → reconcile → tests → judge → verify).
 - [x] `agents/adversarial-judge.agent.md` — LLM‑as‑judge against `gates/rubric.md` (cross‑platform).
 - [x] `agents/tournament-analyst.agent.md` — isolated, read-only option comparison for materially risky decisions.
-- [x] `agents/cto.agent.md` + `skills/architrave-cto` — consulted at Run start and on stall; keeps the Run outcome-driven and lean.
+- [x] `agents/cto.agent.md` + `skills/architrave-cto` — on-demand stall, scope/budget and feasibility guidance; no mandatory startup review.
 
 ## Milestone 3 — Gates (DONE)
 - [x] `gates/rubric.md` — cross‑platform evaluation rubric (spec / design‑language / platform / adversarial / security / a11y / reconcile / tests / verification).
@@ -135,7 +135,7 @@
 **Status: M1–M4 complete.** The kit is built, cross‑platform tested, packaged as a Copilot/Claude plugin, installable per‑repo, and proven on a non‑PhonoDeck repo. The public repo is `dragoshont/architrave`.
 
 ## Milestone 5 — SDD + Learning Hardening
-- [x] Mandatory visible intake for non-trivial work, with direct plans for routine bounded changes and a Tournament of Options only for materially ambiguous or high-risk choices.
+- [x] Existing request/contract drives direct work without separate intake or planning artifacts; a Tournament of Options only for materially ambiguous or high-risk choices.
 - [x] Compact canonical Run state plus authenticated events and one rolling recovery snapshot; phase/status/audit views are rendered on demand.
 - [x] Run v1 migration support retained without requiring legacy projection files for Run v2.
 - [x] Validator hardening for canonical state, event integrity, recovery state, and compact artifact receipts.

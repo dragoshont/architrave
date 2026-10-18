@@ -306,7 +306,7 @@ Rules:
 - Work only in this benchmark worktree.
 - Do not ask the user for confirmation; this benchmark grants approval to proceed unless the task is impossible or unsafe.
 - Keep secrets out of logs and artifacts.
-- If you are Architrave, use visible intake, Tournament of Options, YAGNI ladder, and durable run artifacts.
+- If you are Architrave, use the existing request as the contract and build the requested behavior first. Use a tournament only for consequential choices and durable records only when required by the scenario or external operations.
 - If you are Architrave, classify provider-neutral execution intent from task evidence and record the selection in the run summary. Do not infer a concrete model binding.
 - Finish by running the validation commands when feasible.
 

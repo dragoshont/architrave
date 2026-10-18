@@ -15,15 +15,15 @@ Grounded in current practice:
 
 Architrave uses four different stores because each has a different job:
 
-1. **Run artifacts (episodic memory):** `.architrave/runs/<run-id>/` records what happened in one task: intake, tournament, plan, gates, judge verdicts, runtime evidence, final status, and optional adaptive execution evidence. It is auditable and can resume after context loss, but it is not automatically treated as future instruction.
+1. **Run artifacts (episodic memory):** when adopted work needs resumability or external operations, `.architrave/runs/<run-id>/` retains canonical state and evidence for that work. Record decisions and observations actually used, not a required set of intake/tournament/plan files. It can support recovery, but is not automatically future instruction.
 2. **Repo profile (semantic memory):** `.architrave/learning/repo-profile.md` is the concise, validated description of the repository: purpose, surfaces, architecture lanes, source-of-truth paths, build/test commands, recurring gotchas, and last-reviewed evidence.
 3. **Candidate lessons (semantic/episodic bridge):** `.architrave/learning/repo-lessons.md` tracks repeated observations with evidence and occurrence counts. It is a review queue, not a command file.
 4. **Promoted rules (procedural memory):** stable lessons move into `architrave.config.json`, `AGENTS.md`, `.github/instructions/*.instructions.md`, docs, or contracts after review. These are the places future agents are allowed to treat as standing guidance.
 
-Artifacts are audit support, not delivery currency. Emit them at useful
-boundaries—intake, material decision, candidate handoff, failed side-effect
-reconciliation, integration gate, and completion—not after every micro-action.
-Artifact/event counts never measure product progress.
+Artifacts are audit support, not delivery currency. Retain them only where they
+decide safety, release or recovery truth, or capture a useful repeated lesson.
+Ordinary source edits need no learning file or separate receipt. Existing Run
+API event recording remains intact; artifact/event counts never measure progress.
 
 ## Promotion rules
 
@@ -64,7 +64,9 @@ Each durable fact should either cite a file/command/run artifact or be marked as
 
 ## What the judge checks
 
-The Adversarial Judge should treat missing learning artifacts on non-trivial work as a process gap, not as implementation failure by itself. It becomes a Blocker when the missing artifact hides an unsafe change, skipped sign-off, unverified runtime claim, stale lesson promotion, or secret leakage.
+Missing optional learning artifacts are not a finding. Missing required safety
+or release evidence, skipped consent, false runtime claims, stale lesson
+promotion and secret leakage remain findings under the applicable risk floor.
 
 ## Citations
 

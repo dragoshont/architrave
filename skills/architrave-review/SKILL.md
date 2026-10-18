@@ -8,14 +8,18 @@ Prefer the host-native reviewer. When the host provides one (GitHub Copilot
 instead of launching `adversarial-judge`, so there's never a double review.
 Pass the frozen review subject, acceptance criteria, `gates/rubric.md`, and
 deterministic evidence, and require one PASS/REVISE/FAIL verdict with findings
-by severity, uncovered specifications, and unstarted phases.
+by severity and uncovered requested criteria. Use the rubric's compact output;
+do not repeat the contract or score irrelevant dimensions.
 
 `adversarial-judge` (`architrave_judge` in Codex) stays the rubric source and
 the fallback when no native reviewer exists. The Codex role is advisory and
 inherits parent skills, MCP, and permission policy.
 
-Record each result with `gate-record --type semantic --reviewer
+For an adopted canonical Run, record its result with `gate-record --type semantic --reviewer
 host-native|architrave-judge --family <model family> --effort <requested>:<mapping>`.
+For ordinary direct work, return the review in conversation; do not create a
+Run, receipt or report solely to record a review. This does not waive required
+source-bound admission for an existing Run or authorized external operation.
 For R3/R4 request `effort: high`, mapped only to what the host exposes (auto
 tier or `reasoning_effort`), else none; never name a model. One independent
 review suffices. Only when `review.crossFamily` is true (building Architrave

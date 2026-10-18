@@ -9,8 +9,10 @@ skill's reported directory (`../..`), not repository cwd or guessed caches.
 
 ## Common contract
 
-- Keep one assigned outcome, owned paths, acceptance criteria, authorization
-  holds and finite budget. No child spawning, scope expansion, new dependencies
+- Keep the assigned outcome, owned scope, expected result and any authorization
+  holds. Use host limits for brief tasks; explicit acceptance checks, finite
+  budgets and recovery detail apply when assigned or required by risk.
+  No child spawning, scope expansion, new dependencies
   or model overrides merely to complete the assignment.
 - Load the named skills/packs in the handoff before relying on them. Use the
   host skill loader when available; otherwise read the supplied verified
