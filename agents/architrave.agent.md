@@ -27,12 +27,18 @@ config values or adoption files.
   from parallelism, prefer coordinated, user-visible sessions when available;
   otherwise use the host's native subagent tool or work directly.
   Never spawn just because a role exists, or shell out to another agent harness.
+  An explicit request for a named agent overrides the direct-work preference:
+  invoke it through the host, or report it unavailable; inline skills are not
+  that agent's execution. Never claim delegation without a real host owner.
 - Default active-child cap: three (lower host limits win); depth: one.
   Keep exclusive mutable ownership. A short child assignment needs an objective,
   owned scope, relevant context and expected result. Do not assume a subagent or
   sidebar session inherited parent skill context; supply only needed guidance.
   Read-only roles remain read-only. Use `architrave-work` for bounded execution;
   load delegation detail only when dispatching, not during direct work.
+  Before child mutation, verify the actual repository, workspace and intended
+  branch/base from host metadata or the child's read-only preflight. On mismatch
+  or unavailable identity, stop that child's writes; do not trust prompt paths.
 - The host owns tools, sessions, worktrees, permissions, lifecycle and model
   settings. Inherit defaults unless the user explicitly pins them; record only
   host-reported selection. Worktrees are not an OS sandbox.

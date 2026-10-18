@@ -29,6 +29,23 @@ client's native agent/subagent tool for a bounded independent packet if
 available. Do not assume a CLI exposes the app's sidebar-session controls, and
 never shell out to create or manage sessions.
 
+An explicit request for a named agent overrides the direct-work default. Invoke
+that role through the supported host agent tool; if unavailable, report the
+limitation rather than silently substituting an inline skill. Name actual host
+ownership when reporting delegation; loading instructions is not agent execution.
+
+For mutable children, select the project explicitly when the parent is a chat
+or the destination differs from its project. Before any child write, compare
+the host-returned repository/workspace and intended branch/base with the
+assignment. If host metadata is insufficient, require a read-only child
+preflight of cwd, repository identity and branch. Isolated child branches may
+differ by design; verify their intended base, not identical branch names.
+A mismatch or unavailable identity stops that child's mutation, not unrelated
+authorized work. Correct the destination through supported host controls.
+Never retry permission-denied operations unchanged or spawn replacements with
+the same unavailable authorization; preserve the human hold and report the
+exact host blocker. These are launch checks, not new receipts or report files.
+
 A short native child assignment needs only an objective, owned scope, relevant
 context and expected result. Use host limits; do not invent per-child budget,
 receipt or planning fields for a brief lookup. Return the answer or change,
