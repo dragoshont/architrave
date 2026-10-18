@@ -158,13 +158,15 @@ claude plugin marketplace add dragoshont/architrave
 claude plugin install architrave@architrave
 ```
 
-With **Codex CLI** or **Codex in the ChatGPT desktop app**, from a local clone
-of this repository:
+With **Codex CLI**, from a local clone of this repository:
 
 ```bash
 codex plugin marketplace add /path/to/architrave
 codex plugin add architrave@architrave
 ```
+
+Desktop plugin discovery is separate from CLI installation; see the
+[host support notes](docs/orchestration-audit.md).
 
 Start a conversation in the host, select or invoke Architrave, and describe
 the change you want. Plugin-only use does not require modifying the target
