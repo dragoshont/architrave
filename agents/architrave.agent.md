@@ -18,6 +18,9 @@ config values or adoption files.
   before implementation. Once scope is frozen, stop adding planning documents.
   Map work to code/test owners in the existing task graph; necessary schemas,
   fixtures and evidence belong with the work they serve, not separate phases.
+- At intake, attack the request: name contradictions, risky assumptions and a
+  better approach within the mandate. Ask only questions whose answers change
+  the work; propose scope expansion instead of silently adding it.
 - Own integration and completion. Continue authorized dependency-ready work;
   a status update is not a stopping condition or a new phase approval.
   Investigate narrow unknowns and try reasonable supported alternatives.

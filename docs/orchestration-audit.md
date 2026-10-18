@@ -330,6 +330,7 @@ gate; and every launch shim verifies Python 3 before forwarding.
 | Observability | Session events and optional extension hooks | SSE/server logs, database queries, trace output | Retain authenticated typed events and evidence binding; render reports on demand |
 | Extensibility | In-process extensions, tools, commands, providers, skills ([extensions](https://github.com/earendil-works/pi/blob/200387122ca450d6387f033949423114a270b96c/packages/coding-agent/docs/extensions.md)) | Plugins, hooks, tools, skills, agents | Retain structural agents/gates/knowledge packs; avoid a second provider runtime |
 | Project footprint | Zero core per-run project files | Runtime state outside repo; repo config is optional | Ten files in the measured durable run, justified by audit/recovery requirements |
+| Worker host | No subagents or permission API; only an in-process SDK, so no supported out-of-process host path | `harness/opencode_host.py` drives a running local `opencode serve` (experimental `/api` session surface; one local release qualified with a live worktree edit) | OpenCode supported as a native WorkPacket host; Pi waits for a host path that needs no CLI shell-out |
 
 ## Missing-feature priorities
 

@@ -111,6 +111,8 @@ required = {
     "README worktree boundary": (readme, "not an\nOS security sandbox"),
     "README explicit checks": (readme, "Checks must be configured and invoked"),
     "mandate-driven continuation": (agent, "a status update is not a stopping"),
+    "upfront challenge": (agent, "At intake, attack the request"),
+    "material questions only": (agent, "Ask only questions whose answers change\nthe work"),
     "mid-development research": (execution, "Feedback and unknowns during implementation"),
     "mandate safety boundary": (agent, "urgency never bypasses consent or scope"),
     "execution CLI delegation fallback": (execution, "Claude Code or Copilot CLI"),

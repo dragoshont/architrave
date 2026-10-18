@@ -235,6 +235,23 @@ Then reload extensions through the supported host controls. The bridge provides
 `architrave_native_review`, with status, cancellation, and recovery tools.
 See [native review](docs/native-semantic-review.md) for the evidence contract.
 
+With **OpenCode**, a durable WorkPacket can run in a child session of an
+already-running local `opencode serve` (loopback only; the CLI is never
+launched):
+
+```bash
+OPENCODE_SERVER_PASSWORD=... python3 /path/to/architrave/harness/opencode_host.py \
+  --repo . --server http://127.0.0.1:4096 <run-id> <task-id>
+```
+
+The session is bound to the task's isolated worktree, uses an existing OpenCode
+agent (`general` for edits, `explore` for read-only, or `--agent`), and returns
+only a candidate; gates still run in the coordinator. OpenCode keeps its own
+permissions and model choice. Pending permission prompts are reported, never
+answered, and a timeout interrupts the session and fails the task. This uses
+OpenCode's experimental `/api` surface, checked against one local OpenCode
+release; Pi is not supported.
+
 The kit uses Python; the shell and PowerShell entrypoints forward to the same
 implementation. Your project's build and test toolchain stays unchanged.
 
