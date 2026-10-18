@@ -85,6 +85,31 @@ documents or broader history only when focused retrieval is insufficient.
 Handoffs and worker results are bounded summaries with source paths or artifact
 references; they do not duplicate transcripts or repository content.
 
+## Product path before planning
+
+Treat the user request or existing product contract as the source of truth.
+Turn it into the first useful end-to-end product slice, with only the
+acceptance checks needed to prove that slice. Begin implementation as soon as
+its real blockers are known; do not require a separate specification,
+exhaustive requirement ledger, or evidence receipt for every requirement
+before product code can move.
+Once scope is frozen, stop adding planning documents. Map the contract directly
+to code and test owners in the existing task graph; revise it only for a real
+scope change or newly observed blocker.
+
+Keep the live task graph small: group work by implementation owner and actual
+dependencies, and add a task only when it builds, tests, integrates, or unblocks
+the requested behavior. Do not create a standalone task for an artifact; include
+necessary schema, fixture, or evidence work with the implementation or check it
+serves. A plan, ledger row, or passing unit suite is useful when it answers a
+product or release question; its existence or count is not product progress.
+Keep required safety, contract, release, and real-target evidence, but do not
+turn each evidence item into a separate implementation phase by default.
+
+At progress updates, lead with the behavior now available, the evidence that
+shows it, and the next product blocker. If product behavior has not changed,
+say so plainly; do not use document, task, test, or artifact counts as a proxy.
+
 ## Verification
 
 Verification is selected from task risk and acceptance criteria, never from a
@@ -149,9 +174,13 @@ finding. For replacement work the first gate is a parity test against that
 reference on the real flow, before any hardening.
 
 Two semantic reopens require one coherent fix batch. A third non-PASS terminates
-that attempt. For a command with no new output for 15 minutes or beyond twice
-its expected duration, inspect its exact owned process/resources before stopping
-it; parent idleness and file mtimes do not establish subagent inactivity.
+that attempt. A Run with a declared primary criterion uses its event/path-based
+stall signal; when status reports `STALLED_PRIMARY_CRITERION`, return to that
+criterion's code path or ask the owner to replace the objective. It blocks task
+starts not bound to that criterion and is not an idle timer. For a command with
+no new output for 15 minutes or beyond twice its expected duration, inspect its
+exact owned process/resources before stopping it; parent idleness and file
+mtimes do not establish subagent inactivity.
 
 The Python admission API caps active tasks at three or a lower configured
 limit, keeps exclusive mutable ownership and refuses unexplained retries.

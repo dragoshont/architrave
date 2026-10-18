@@ -61,6 +61,11 @@ dependent tasks, permissions, checkpoints, checks, and evidence. A rolling
 recovery snapshot and authenticated event history support resuming after an
 interruption without treating the chat transcript as the task database.
 
+Keep that work focused on one outcome: begin the first end-to-end slice when
+its real blockers are known, and keep the task list to implementation, checks,
+integration, and actual dependencies. The lead reports what the product can do
+now and what proves it, not how many plans, tests, or receipts exist.
+
 Independent tasks can continue while another waits for sign-in, signing,
 consent, or another human decision. Scoped permissions and recorded deployment
 results keep external actions separate from ordinary code edits. Uncertain
@@ -71,6 +76,10 @@ change, try another approach, or park it.
 The lead integrates candidate changes and verifies the acceptance criteria.
 Recorded checks are tied to the task and source being reviewed, so an old green
 build or a worker's completion message cannot stand in for the current result.
+An adopted Run can flag a primary product criterion as stalled after repeated
+work does not touch its paths or change its outcome, then block unrelated task
+starts not bound to that criterion. It requires a declared primary criterion;
+it is not an idle timer.
 See the [runtime guide](docs/runtime-v2.md) and
 [execution policy](knowledge/execution-policy.md).
 
