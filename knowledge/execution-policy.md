@@ -29,19 +29,42 @@ client's native agent/subagent tool for a bounded independent packet if
 available. Do not assume a CLI exposes the app's sidebar-session controls, and
 never shell out to create or manage sessions.
 
-A WorkPacket contains only the objective, acceptance criteria, repository
-context paths, mutable paths, allowed tools, expected artifacts, risk, and
-bounded time/output budgets.
+An explicit request for a named agent overrides the direct-work default. Invoke
+that role through the supported host agent tool; if unavailable, report the
+limitation rather than silently substituting an inline skill. Name actual host
+ownership when reporting delegation; loading instructions is not agent execution.
 
-The kickoff/prompt explicitly names only the relevant skills/packs and their
-verified absolute paths, including repository instructions; parent skill
-context is not assumed inherited. Use existing context paths, not a new
+For mutable children, select the project explicitly when the parent is a chat
+or the destination differs from its project. Before any child write, compare
+the host-returned repository/workspace and intended branch/base with the
+assignment. If host metadata is insufficient, require a read-only child
+preflight of cwd, repository identity and branch. Isolated child branches may
+differ by design; verify their intended base, not identical branch names.
+A mismatch or unavailable identity stops that child's mutation, not unrelated
+authorized work. Correct the destination through supported host controls.
+Never retry permission-denied operations unchanged or spawn replacements with
+the same unavailable authorization; preserve the human hold and report the
+exact host blocker. These are launch checks, not new receipts or report files.
+
+A short native child assignment needs only an objective, owned scope, relevant
+context and expected result. Use host limits; do not invent per-child budget,
+receipt or planning fields for a brief lookup. Return the answer or change,
+actual checks and any blocker, not a transcript or a mandatory status form.
+For persistent implementation, external effects or expensive experiments, add
+explicit acceptance checks, permission boundaries, finite budgets and recovery
+detail as needed. Durable WorkPackets still obey their existing schema and
+admission checks; this shorter prompt contract does not relax that API.
+
+The kickoff names only guidance actually needed for the task, using resolvable
+skills or verified source paths and repository instructions; parent skill
+context is not assumed inherited. Supply verified absolute paths when the host
+needs them, not as a ritual for every lookup. Use existing context paths, not a new
 WorkPacket schema or host-specific preload field. Bounded development, research
 and writing use `architrave-work` with the assigned mode; independent rubric
 review and competing-option tasks use the existing review/tournament skills.
 The child invokes named skills if its host exposes a loader, otherwise reads
 the supplied verified files. It reports invocation vs direct-read provenance
-when needed. Missing guidance is an explicit limitation, not a guessed cache
+only when load evidence is required. Missing guidance is an explicit limitation, not a guessed cache
 path or an excuse to reinstall. Skills change neither role scope nor permission.
 Writing context includes audience, format and author-provided example paths.
 
@@ -99,7 +122,9 @@ scope change or newly observed blocker.
 
 Keep the live task graph small: group work by implementation owner and actual
 dependencies, and add a task only when it builds, tests, integrates, or unblocks
-the requested behavior. Do not create a standalone task for an artifact; include
+the requested behavior. If a document, schema or fixture is the requested
+deliverable, build and verify it directly; it is product work, not ceremony.
+Otherwise do not create a standalone task for an artifact; include
 necessary schema, fixture, or evidence work with the implementation or check it
 serves. A plan, ledger row, or passing unit suite is useful when it answers a
 product or release question; its existence or count is not product progress.
@@ -157,10 +182,14 @@ the flow actually needs. Every failure carries its specific step and reason
 
 ## Durable records
 
-Persist canonical Run state, authenticated typed events, compact evidence
+For adopted work needing resumability or external operations, persist canonical
+Run state, authenticated typed events, compact evidence
 receipts, and one rolling recovery snapshot. Render status, phase, handoff, and
 audit views on demand. Do not create per-agent plans, reports, status files, or
-empty placeholders.
+empty placeholders. Ordinary direct source work needs no qualification Run or
+separate acceptance matrix. Required deployment grants, checkpoints, receipts,
+release evidence and recovery are unchanged; unavailable support cannot waive
+them.
 
 ## Delivery detail (on demand)
 

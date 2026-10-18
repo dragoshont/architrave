@@ -102,10 +102,16 @@ class QualityCadenceTests(unittest.TestCase):
         self.assertEqual({"continue": True}, json.loads(output.getvalue()))
 
     def test_agent_skill_cadence_and_ci_coverage_are_explicit(self):
-        for name in ("agents/architrave.agent.md", "skills/architrave/SKILL.md", "templates/AGENTS.stanza.md"):
-            text = (ROOT / name).read_text()
-            self.assertIn("python gates/gate_runner.py quality-gate", text)
-            self.assertIn("final integration", text.replace("\n", " "))
+        text = " ".join((ROOT / "agents/architrave.agent.md").read_text().split())
+        self.assertIn("python gates/gate_runner.py quality-gate", text)
+        self.assertIn("final integration", text)
+        self.assertIn("after relevant config, referenced design JSON or configured product-copy changes", text)
+        skill = (ROOT / "skills/architrave/SKILL.md").read_text()
+        stanza = (ROOT / "templates/AGENTS.stanza.md").read_text()
+        self.assertIn("agents/architrave.agent.md", skill)
+        self.assertIn(".github/agents/architrave.agent.md", stanza)
+        self.assertIn("canonical lead contract", skill)
+        self.assertIn("delegation, verification and stop rules", stanza)
         self.assertIn("test-quality-cadence.py", (ROOT / ".github/workflows/validate.yml").read_text())
         self.assertIn("test-quality-cadence.py", (ROOT / "scripts/check-manifests.sh").read_text())
 

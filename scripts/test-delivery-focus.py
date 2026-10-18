@@ -2,6 +2,12 @@
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
+
+
+def contains_guidance(text: str, phrase: str) -> bool:
+    return " ".join(phrase.split()) in " ".join(text.split())
+
+
 agent = (root / "agents/architrave.agent.md").read_text(encoding="utf-8")
 agent_frontmatter = agent.split("---", 2)[1]
 execution = (root / "knowledge/execution-policy.md").read_text(encoding="utf-8")
@@ -25,7 +31,7 @@ codex_roles = "\n".join(
 
 required = {
     "child explicit skill handoff": (agent, "Do not assume a subagent or sidebar session inherited parent skill context"),
-    "portable worker guidance": (execution, "not a new\nWorkPacket schema or host-specific preload field"),
+    "portable worker guidance": (execution, "not a new WorkPacket schema or host-specific preload field"),
     "worker no nested supervision": (work_skill, "No child spawning"),
     "worker verified research": (work_skill, "verify relevant passages"),
     "worker voice evidence": (work_skill, "author-voice fidelity\nunconfirmed"),
@@ -39,7 +45,7 @@ required = {
     "compact records": (execution, "one rolling recovery snapshot"),
     "rubric delivery": (rubric, "Delivery focus and verification cadence"),
     "artifact accounting": (learning, "Artifacts are audit support, not delivery currency"),
-    "installed stanza": (stanza, "smallest\ndemonstrable"),
+    "installed stanza": (stanza, "That lead contract owns delegation, verification and stop rules"),
     "README bounded option comparison": (readme, "Compare alternatives when\n  an architecture choice"),
     "README host-owned execution": (readme, "Model and reasoning choices remain in your host settings"),
     "execution bounded tournament": (execution, "it is not a prerequisite for routine bounded work"),
@@ -53,43 +59,52 @@ required = {
     "execution proportional ceremony": (execution, "R0/R1 single-path fixes need no\nper-change pin, receipt, or qualification Run"),
     "execution approved quit": (execution, "escalate a graceful quit to SIGTERM after a timeout without a new hold"),
     "rubric product copy": (rubric, "Internal evidence, spec, status, certification, or receipt\n    language in user-facing UI strings"),
-    "agent consults cto": (agent, "Consult architrave:cto at start and on stall"),
-    "skill consults cto": (lead_skill, "Consult architrave:cto at start and on stall"),
-    "stanza consults cto": (stanza, "Consult architrave:cto at start and on stall"),
+    "cto on demand": (agent, "Use the CTO skill only for an established stall"),
+    "no startup ceremony": (agent, "no mandatory startup checklist"),
+    "skill delegates contract": (lead_skill, "It is the canonical lead contract"),
+    "stanza delegates contract": (stanza, "not both copies"),
     "cto agent routes": (cto_agent, "never implements"),
     "cto skill outcome": (cto_skill, "Outcome over ceremony"),
     "cto skill push-back": (cto_skill, "KEEP/CUT/DEFER verdict"),
-    "agent push-back": (agent, "Push back KEEP/CUT/DEFER with one reason"),
+    "scope discipline": (agent, "Owner corrections replace old scope"),
     "tournament skill baselines": (tournament_skill, 'include a "do nothing" baseline and a "smallest viable" option'),
     "tournament skill beats nothing": (tournament_skill, "why the chosen\noption beats doing nothing"),
     "tournament typed result": (tournament_skill, "typed as `DO_NOTHING` and `SMALLEST_VIABLE`"),
     "review prefers host-native": (review_skill, "Prefer the host-native reviewer"),
-    "review records reviewer": (review_skill, "--reviewer\nhost-native|architrave-judge --family"),
+    "review records reviewer": (review_skill, "--reviewer host-native|architrave-judge --family"),
+    "review recording scoped": (review_skill, "For an adopted canonical Run"),
+    "direct review no Run": (review_skill, "do not create a Run, receipt or report solely to record a review"),
     "agent host-native review": (agent, "`architrave-review`; `gates/rubric.md`"),
     "direct-work threshold": (agent, "Use direct work for one continuous trace"),
+    "explicit role wins": (agent, "An explicit request for a named agent overrides the direct-work preference"),
+    "skill is not agent execution": (execution, "loading instructions is not agent execution"),
+    "explicit chat project": (execution, "select the project explicitly when the parent is a chat"),
+    "actual child destination": (execution, "compare the host-returned repository/workspace and intended branch/base"),
+    "isolated branch identity": (execution, "verify their intended base, not identical branch names"),
+    "worker verifies destination": (work_skill, "Before writing, verify cwd, repository identity and branch/base"),
+    "no unchanged denied retries": (execution, "Never retry permission-denied operations unchanged"),
     "visible-session parallelism": (agent, "prefer coordinated, user-visible sessions"),
     "single product contract": (execution, "Treat the user request or existing product contract as the source of truth"),
     "first vertical slice": (execution, "first useful end-to-end product slice"),
     "no per-requirement ceremony": (agent, "exhaustive requirement ledger"),
-    "product progress reporting": (agent, "report what the product can now do"),
+    "product progress reporting": (agent, "Report what the product can now do"),
     "small task graph": (execution, "Keep the live task graph small"),
     "primary criterion stall signal": (agent, "When an adopted Run reports `STALLED_PRIMARY_CRITERION`"),
     "stall blocks unrelated tasks": (agent, "blocks new tasks not bound to that criterion"),
     "stall is not an idle timer": (execution, "is not an idle timer"),
     "README describes automatic criterion stall": (readme, "An adopted Run can flag a primary product criterion as stalled"),
-    "installed task graph stays small": (stanza, "Keep the task graph to implementation, checks"),
+    "installed product focus": (stanza, "Build the requested behavior first"),
     "README product-first guidance": (readme, "focused on one outcome"),
     "default child bounds": (agent, "three (lower host limits win); depth: one"),
     "repeat-failure stop": (agent, "twice without new evidence stops the lane"),
     "progressive disclosure": (lead_skill, "Do not preload every pack"),
-    "skill session parallelism": (lead_skill, "prefer coordinated visible sessions"),
+    "load lead only once": (lead_skill, "unless that contract is already loaded"),
     "plugin-only use needs no repo initialization": (lead_skill, "Plugin-only use does not require\nrepo initialization"),
-    "unadopted repo fallback": (agent, "if the config or adopted kit\nfiles are absent"),
+    "unadopted repo fallback": (agent, "if the config or adopted kit files are absent"),
     "plugin-only edit authority": (agent, "Plugin-only source edits follow the user's mandate"),
-    "adopted lead quality gate": (agent, "In an adopted repo,\n  MUST execute"),
-    "adopted skill quality gate": (lead_skill, "In an adopted repo,"),
-    "adopted stanza fallback": (stanza, "if this stanza is copied without the rest of the kit"),
-    "adopted stanza quality gate": (stanza, "In an adopted repo, MUST run"),
+    "adopted lead quality gate": (agent, "In an adopted repo, MUST execute"),
+    "adopted stanza fallback": (stanza, "If this stanza is copied without the rest of the kit"),
+    "centralized verification contract": (stanza, "That lead contract owns delegation, verification and stop rules"),
     "optional repo adoption": (readme, "## Optional repository setup"),
     "README CLI delegation fallback": (readme, "In a CLI, Architrave uses native subagents when available"),
     "README host-tool limits": (readme, "not missing tools or\nMCP servers"),
@@ -97,9 +112,17 @@ required = {
     "README explicit checks": (readme, "Checks must be configured and invoked"),
     "mandate-driven continuation": (agent, "a status update is not a stopping"),
     "mid-development research": (execution, "Feedback and unknowns during implementation"),
-    "mandate safety boundary": (lead_skill, "urgency never bypasses consent or scope"),
+    "mandate safety boundary": (agent, "urgency never bypasses consent or scope"),
     "execution CLI delegation fallback": (execution, "Claude Code or Copilot CLI"),
-    "stanza session parallelism": (stanza, "prefer coordinated\nsidebar sessions"),
+    "short child assignment": (execution, "A short native child assignment needs only an objective, owned scope, relevant context and expected result"),
+    "durable packet safety unchanged": (execution, "Durable WorkPackets still obey their existing schema and admission checks"),
+    "no invented lookup budgets": (execution, "do not invent per-child budget, receipt or planning fields for a brief lookup"),
+    "no blank artifact penalties": (rubric, "Missing optional artifacts are not findings"),
+    "no universal intake": (rubric, "Missing intake or planning documents alone are not findings"),
+    "no universal Run": (rubric, "Ordinary direct source work does not need a Run, acceptance matrix or phase ledger"),
+    "compact review output": (rubric, "A clean review needs no dimension-score table"),
+    "required evidence preserved": (rubric, "Missing required release/mutation evidence"),
+    "learning optional": (learning, "Missing optional learning artifacts are not a finding"),
     "on-demand feasibility": (cto_skill, "On-demand feasibility reset"),
     "adaptive window": (cto_skill, "Estimate a finite time/turn/output window"),
     "explicit owner ceiling": (cto_skill, "deadlines/ceilings win"),
@@ -107,7 +130,20 @@ required = {
     "tournament agent baselines": (tournament_agent, 'include a "do nothing" baseline and a "smallest viable" option'),
 }
 
-missing = [name for name, (text, phrase) in required.items() if phrase not in text]
+missing = [name for name, (text, phrase) in required.items() if not contains_guidance(text, phrase)]
+for name, (text, phrase) in required.items():
+    reflowed = "\n\t".join(text.split())
+    if contains_guidance(text, phrase) != contains_guidance(reflowed, phrase):
+        missing.append(f"whitespace-sensitive rule: {name}")
+if contains_guidance("scoped permission is mandatory", "scoped permission is optional"):
+    missing.append("guidance matcher accepts substantive changes")
+for name, text in (("skill", lead_skill), ("stanza", stanza)):
+    if len(text.split()) > 200:
+        missing.append(f"{name} duplicates too much of the lead contract")
+for phrase in ("visible intake block", "non-trivial work has canonical",
+               "Missing artifacts are a Major concern"):
+    if contains_guidance(rubric, phrase):
+        missing.append(f"rubric still mandates blanket ceremony: {phrase}")
 if "before task or Outcome completion" in agent:
     missing.append("per-task full-gate phrase remains")
 if "Then it runs a **Tournament of Options**" in readme:

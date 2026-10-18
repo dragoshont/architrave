@@ -1,52 +1,15 @@
 <!-- Managed by Architrave's Python installer; edit the kit, not this block. -->
 ## Architrave
 
-Read `architrave.config.json` when present. The plugin works without repo
-initialization; if this stanza is copied without the rest of the kit, ground
-work directly in repository instructions and sources, and do not assume gates
-or durable Run support are installed. Use the `architrave` skill/agent for
-non-trivial work; its small core is the canonical mission/worker/stop contract.
-Work directly for cheap single-lane changes. Host sessions, context, worktrees,
-permissions, lifecycle and model settings remain host-owned.
-Treat the user request or existing product contract as the source of truth.
-Start the first useful end-to-end slice when its actual blockers are known; do
-not require a separate specification or a task/receipt for every requirement.
-Keep the task graph to implementation, checks, integration and real blockers.
-Report product behavior and evidence, not plan, test or artifact counts.
-For independent implementation tracks on a non-trivial task, prefer coordinated
-sidebar sessions when the host exposes them; give each a disjoint owned scope
-and integrate/verify in the parent. If unavailable, use the client's native
-subagent tool for a bounded independent packet when available. Keep one-trace
-or shared-patch work direct.
-Child kickoffs name relevant skills and verified guidance paths, not assumed
-parent context. Use `architrave-work` for bounded development/research/writing,
-with its assigned mode; keep review/tournament guidance task-specific. Writing
-includes audience, format and author-provided voice examples.
+Read repository instructions and `architrave.config.json` when present.
+Work directly for a single trace; use the `architrave` skill or the adopted
+`.github/agents/architrave.agent.md` for coordination, not both copies.
+That lead contract owns delegation, verification and stop rules.
+If this stanza is copied without the rest of the kit, follow repository
+instructions without claiming uninstalled gates or durable Run support.
 
-Ground in this repository; reproduce rather than reinvent. A knowledge profile
-uses docs/scripts/schemas/tests, never an invented UI lane. UI uses configured
-design source/map/tokens and platform guidance; backend uses its real contract.
-Load those packs only for the relevant task.
-
-Infrastructure/runtime mutation defaults to deny; source edits follow the
-user's mandate and host permissions. Never expose secrets, bypass human checkpoints,
-manually edit Run state, blindly replay uncertain side effects or mistake
-worker completion/compile for product PASS. With adopted durable support,
-recovery and evidence use
-`harness/architrave_runtime.py`; details in `knowledge/runtime-v2.md` on demand.
-Run targeted checks first; required gates must pass before completion.
-No automatic PostToolUse quality hook is registered. In an adopted repo, MUST run
-`python gates/gate_runner.py quality-gate` after relevant config, referenced
-design JSON or configured product-copy changes, and at final integration.
-Retain real exit/output proof and stop on mandatory failure. This preserves the
-executable quick validators, not identical automatic scheduling. Architrave
-registers no tool-blocking hooks; host permissions remain host-owned and explicit
-native tool admission/source/evidence checks remain.
-Consult architrave:cto at start and on stall inline; schedule the smallest
-demonstrable product slice, not harness ceremony. When an adopted Run reports
-`STALLED_PRIMARY_CRITERION`, return to its declared code path; it blocks new
-tasks not bound to that criterion. Ask the owner to replace the objective if
-the path cannot advance. This signal requires a declared primary criterion; do
-not infer a stall from parent silence or filesystem timestamps. Keep
-Run/worktree/key artifacts private and ignored. No duplicate transcripts, plans
-or status files.
+Build the requested behavior first; report what works and what proves it.
+Host tools and permissions remain host-owned; worktrees are not an OS sandbox.
+Infrastructure/runtime mutation defaults to deny and needs scoped authorization.
+Preserve human holds, secrets and uncertain-side-effect recovery.
+No automatic quality or tool-blocking hooks are registered.

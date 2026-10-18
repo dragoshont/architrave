@@ -9,8 +9,14 @@ skill's reported directory (`../..`), not repository cwd or guessed caches.
 
 ## Common contract
 
-- Keep one assigned outcome, owned paths, acceptance criteria, authorization
-  holds and finite budget. No child spawning, scope expansion, new dependencies
+- Before writing, verify cwd, repository identity and branch/base match the
+  assignment, allowing the intended isolated worktree branch. Stop on mismatch
+  or unavailable identity; a path in a prompt is not proof of destination.
+  Report denied host authorization without bypassing it or retrying unchanged.
+- Keep the assigned outcome, owned scope, expected result and any authorization
+  holds. Use host limits for brief tasks; explicit acceptance checks, finite
+  budgets and recovery detail apply when assigned or required by risk.
+  No child spawning, scope expansion, new dependencies
   or model overrides merely to complete the assignment.
 - Load the named skills/packs in the handoff before relying on them. Use the
   host skill loader when available; otherwise read the supplied verified

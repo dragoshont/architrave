@@ -7,29 +7,42 @@ Grounded in modern eval practice:
 - **OpenAI** — an eval is a **dataset + graders**; treat it like **BDD** (specify behavior before building); combine **code graders** (deterministic) with **model graders** (LLM‑as‑judge).
 - **IBM** — combine **rule‑based + semantic (LLM‑as‑judge)** evaluation; assess **each step and the whole path**, plus **policy‑adherence, prompt‑injection and bias** dimensions, not just final text.
 
-## Two grading layers (use both)
+## Applicable grading layers
+Apply configured/required checks to the actual changed surface. Do not demand
+uninstalled gates or irrelevant design/runtime evidence. Required safety and
+release checks cannot be waived because a tool or target is unavailable.
+
 1. **Deterministic gates (code‑graded — rule‑based):** `gates/checks.sh` / `gates/checks.ps1` (`config.generate` + `config.build` + `config.test` + `config.designMap` / `config.tokens` JSON valid) and `gates/reconcile.sh` / `gates/reconcile.ps1` (design↔code token drift), plus explicit `gates/quality-gate.sh` / `gates/quality-gate.ps1` at the relevant-change and final-integration cadence in `docs/quality-check-cadence.md` (no automatic PostToolUse registration); for the backend lane, `gates/backend-checks.sh` (build/test + migration safety + secret scan + IaC plan/policy, **never apply**); plus Run v2 validation, invariant checks, configured E2E/reality checks, and policy/receipt validation. Objective ground truth; they **override optimistic or semantic claims** and must be green.
 2. **Semantic gate (LLM‑as‑judge):** this rubric, applied adversarially according to `knowledge/execution-policy.md`, by one independent reviewer for R3/R4 (two of different families, both PASS, only when `review.crossFamily` is true). R2 uses one fresh-context reviewer. Low-risk mechanical work may close with deterministic evidence only when every acceptance criterion is mechanically decided and no semantic/high-risk floor applies. Model choice belongs to the user and host.
 
-## Before grading: derive acceptance criteria (BDD)
-Restate the request + the source‑of‑truth (Storybook + `config.designMap` + the platform pack + `config.tokens`) as a **numbered, testable acceptance‑criteria checklist**. Grade against the checklist, not vibes.
+## Before grading
+Reuse the request or existing product contract and its acceptance criteria.
+Derive only missing checks needed to decide the result; do not require a new
+intake, specification or acceptance matrix. Load only relevant repository
+sources and rubric dimensions. For knowledge work, do not invent a UI lane.
 
 ## Rubric dimensions
 Score each **Pass / Concern / Fail** with a severity and cite evidence (a spec line, pack section, or doc rule).
 
-1. **Spec & acceptance‑criteria conformance** — every criterion met; no scope drift; honest about anything not done. For Architrave-run non-trivial work, a visible intake block (understanding, acceptance criteria, grounding sources, assumptions, blocking questions/none) must exist before implementation; missing intake is at least a Major concern and can be a Blocker if it caused drift.
+1. **Spec & acceptance‑criteria conformance** — every requested criterion met;
+   no scope drift; honest about unfinished work. Grade the behavior against the
+   existing request/contract. Missing intake or planning documents alone are
+   not findings; scope mistakes and unverified claims are.
 2. **Tournament & recommended-plan quality** — a full tournament is required for
    architecture/dependency choices, systemic failures, migrations, data loss,
    security, deployment, or materially ambiguous options. Routine bounded
-   implementation records a direct plan and the selected YAGNI rung instead.
-   Missing the form required by the actual decision risk is a Major concern;
-   choosing a high-risk option without justification is a Blocker.
-3. **Durable Run and phase observability** — non-trivial work has canonical
-	`architrave.run.v2`, Outcome, Acceptance Matrix, dependency-safe TaskGraph,
-	typed EventLog, and truthful checkpoints. The Phase Ledger is synchronized as
-	a readable projection; it does not independently block an `approved-program`
-	transition. Repeating completed work, manual state edits, or claiming an
-	unstarted task is complete is a Blocker.
+   implementation needs no tournament, separate plan or recorded YAGNI rung.
+   For consequential decisions, require evidence-backed justification, not a
+   particular document format. Choosing a high-risk option without
+   justification is a Blocker.
+3. **Durable Run and phase observability** — applicable when adopted work needs
+   resumability or external operations. Use canonical API-owned state, events,
+   truthful checkpoints and required evidence; views are on-demand projections,
+   not additional files to maintain. Ordinary direct source work does not need
+   a Run, acceptance matrix or phase ledger merely because it is non-trivial.
+   Required scoped mutation grants, consent, receipts and uncertain-side-effect
+   recovery remain mandatory. Repeating completed work, manual state edits or
+   false completion is a Blocker.
 4. **YAGNI / minimum-sufficient-change** — the proposal uses the ladder in `knowledge/yagni.md`: skip/delete first, reuse existing repo source of truth, prefer native/platform and standard library, use installed dependencies before new ones, and add new abstractions/dependencies/config only with current evidence. Speculative layers, one-implementation interfaces, unused flags, wrapper-only services, decorative scaffolding, and future-proofing without a current criterion are Major concerns or Blockers. Do not punish enabling practices: refactoring, contracts, tests, validation, security, accessibility, design-token reconciliation, and root-cause/durable fixes for a recurring problem (a deeper change that removes a recurring cause is **not** over-engineering).
 4b. **Root-cause & durability (the counterweight to YAGNI)** — for a defect, outage, regression, or recurring/systemic problem, the work diagnoses the **cause**, not just the symptom: the acceptance criteria target the cause, recurrence was checked (prior runs/lessons/"it broke again"), and the underlying mechanism is named and grounded in evidence/standard. A symptom-only patch presented as the *solution* to a recurring or systemic problem is a **Blocker**; a stopgap is acceptable **only** when explicitly labeled as such with the durable fix written down and tracked. Grounded in SRE postmortem culture (fix the cause) + Five-Whys RCA. Do not penalize a correctly-labeled, user-accepted stopgap, and do not penalize a durable fix as "too big" when it removes a recurring cause.
 4c. **Execution-policy fitness** — delegation is bounded to isolation, parallelism, permissions, expertise, or independent context; WorkPackets omit model-selection guidance; context and outputs are bounded; required verification follows task risk. A host-selected model never replaces gates. A verification level below a mandatory safety floor, duplicated reviewer identity presented as independent review, or agent-harness shell-out from canonical policy is a Major or Blocker depending on impact.
@@ -43,7 +56,13 @@ Score each **Pass / Concern / Fail** with a severity and cite evidence (a spec l
 11. **Design↔code reconciliation** — `gates/reconcile.*` clean: generated‑from‑tokens output matches committed code; any design‑value change went through `config.tokens` first.
 12. **Tests** — the repo's test pattern (`config.test`); cover the new logic **plus ≥ 1 adversarial/edge case** and capability honesty; deterministic and green.
 13. **Verification & ground truth** — `gates/checks.*` green; for UI, a screenshot (`config.screenshot`) matches the Storybook reference; sibling‑instance consistency sweep done.
-14. **Learning/audit trail** — for non-trivial Architrave runs, durable artifacts exist at `config.learning.runArtifactsPath` (or `.architrave/runs` by default): intake, tournament, recommended plan, deterministic gates, judge verdicts, runtime evidence when used, and summary. The repo profile at `config.learning.repoProfilePath` is concise, cited, and current when updated. Candidate lessons are recorded in `config.learning.lessonsPath`; stable repeated lessons are proposed for promotion instead of silently bloating config. Missing artifacts are a Major concern; promoted rules without evidence, stale-fact validation, redaction, or approval are a Major/Blocker depending on blast radius.
+14. **Learning/audit trail** — inspect learning only when it is updated, and
+    durable evidence only when it decides safety, release or recovery truth.
+    Do not require a lesson, intake, tournament, plan or summary file for every
+    change. Reuse existing checks and source-bound evidence without duplicate
+    receipts for routine source edits. Missing optional artifacts are not
+    findings. Missing required release/mutation evidence or promoted rules
+    without validation, redaction or approval remain Major/Blocker findings.
 
 15. **Delivery focus and verification cadence** — durable state, gates, and review
     artifacts support a product increment; they do not substitute for one.
@@ -103,9 +122,8 @@ the same slice require one consolidated fix batch. On the 3rd consecutive
 non-PASS, stop and escalate once with the complete findings rather than opening
 another micro-delta.
 
-## Required judge output format
-1. **Acceptance criteria** — checklist: `criterion → met? → evidence`.
-2. **Dimension scores** — table: `dimension → Pass/Concern/Fail → severity → evidence (spec/pack/doc ref) → required fix`.
-3. **Blockers** (must‑fix) and **Concerns** (should‑fix).
-4. **Specs not covered.**
-5. **VERDICT: PASS | REVISE | FAIL** + a one‑line rationale.
+## Required judge output
+Return **PASS | REVISE | FAIL** with a one-line rationale, then only actionable
+findings (severity, path/line evidence, consequence and required fix) and any
+uncovered requested criteria. A clean review needs no dimension-score table,
+restated contract, exhaustive N/A list or separate report file.

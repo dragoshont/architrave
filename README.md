@@ -45,9 +45,10 @@ records, and reviewable learning.
 
 Architrave keeps one lead responsible for the request and final integration.
 Independent slices can run in coordinated child sessions with separate
-worktrees and non-overlapping ownership. Each child gets its own objective,
-relevant source paths, allowed edits, acceptance criteria, and a bounded budget;
-it returns a compact result rather than handing the lead its entire transcript.
+worktrees and non-overlapping ownership. A brief assignment needs an objective,
+owned scope, relevant context, and expected result. Add acceptance checks,
+explicit budgets, and recovery detail when the task or risk needs them.
+Children return compact results, not their entire transcripts.
 The default is at most three active children, one level deep.
 
 On hosts with app-native session controls, those children can appear as separate
@@ -118,7 +119,7 @@ ones. They are optional contexts, not a required procession for every task.
 
 | Work | Roles |
 |---|---|
-| Coordination and decisions | **Architrave** leads the work; **CTO** supplies a short start/stall checklist; **Tournament Analyst** compares consequential alternatives. |
+| Coordination and decisions | **Architrave** leads the work; **CTO** helps resolve stalls or scope/budget decisions; **Tournament Analyst** compares consequential alternatives. |
 | Research and UI | **Product Research** finds source-backed patterns; **Operations UX** covers admin workflows; **UX Architect** handles flows and interaction; **UI Visual** handles appearance; **Platform Design** checks platform conventions. |
 | Backend | **Service Architect** works through boundaries and contracts; **Backend Planner** sequences implementation and migration; **Backend Implementer** builds the approved slice and tests it. |
 | Infrastructure and runtime | **Infra Engineer** plans scoped infrastructure work; **Runtime Observer** checks deployed or running behavior. |
@@ -130,7 +131,7 @@ The plugin also packages these focused skills:
 |---|---|
 | `architrave` | Coordinate a non-trivial repository change. |
 | `architrave-work` | Carry out one assigned development, research, or writing task in a child. Writing can use author-provided voice samples. |
-| `architrave-cto` | Apply the start/stall checklist inline, without spawning another supervisor. |
+| `architrave-cto` | Resolve an established stall or feasibility decision inline, without spawning another supervisor. |
 | `architrave-tournament` | Compare material implementation alternatives. |
 | `architrave-review` | Request a read-only rubric review of a proposal or implementation. |
 | `architrave-agent-authoring` | Create, revise, or review a focused agent role. |

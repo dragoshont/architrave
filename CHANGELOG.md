@@ -11,6 +11,32 @@ Releases at or before **v0.8.12** are on the
 - Add a public Run cancel/supersede transition and make invalid unstarted-task
   intake terminal instead of retry-ready.
 
+## [0.14.4] - 2026-10-18
+
+### Changed
+- Centralized the lead contract and shortened skill/repository entrypoints.
+- Removed blanket intake, Run, acceptance-matrix and learning-artifact demands
+  for ordinary direct source work; required safety/release evidence remains.
+- Made child assignments proportional and CTO consultation on-demand.
+- Made prose assertions whitespace-insensitive, retaining substantive checks.
+- Aligned judge guidance, the generated Codex role and benchmark prompts with
+  product-first work and compact reviews.
+- Refreshed README setup, capabilities and the accessible workflow diagram,
+  replacing outdated synthetic screenshots without product version labels.
+
+### Fixed
+- Explicit named-agent requests cannot be silently replaced by inline skills.
+- Mutable children must verify their actual repository, workspace and intended
+  branch/base before writes, and stop on identity mismatch or unavailable host
+  authorization rather than retrying unchanged.
+
+### Limitations
+- These orchestration rules guide host behavior; they are not new automatic
+  hooks or an OS sandbox. No runtime authorization or admission code changed.
+- Existing sessions may retain old instructions; use a fresh session after
+  updating the plugin. Static instruction-size reduction is not measured
+  token-cost savings.
+
 ## [0.14.3] - 2026-10-11
 
 ### Added
