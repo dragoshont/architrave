@@ -51,10 +51,19 @@ explicit budgets, and recovery detail when the task or risk needs them.
 Children return compact results, not their entire transcripts.
 The default is at most three active children, one level deep.
 
-On hosts with app-native session controls, those children can appear as separate
-sidebar sessions. In a CLI, Architrave uses native subagents when available.
+On hosts with app-native session controls, the lead can create child sessions,
+send them instructions, receive results, and inspect their status. In the
+Copilot app, these use the host's `create_session`, `send_session_message`, and
+session-status tools; children can appear separately in the sidebar.
+Children report back to the lead rather than spawning grandchildren.
+In a CLI, Architrave uses native subagents when available.
 Work that follows one continuous trace or touches the same files stays direct.
 Model and reasoning choices remain in your host settings.
+
+Architrave uses the host's communication tools, not a separate agent-messaging
+framework. The optional native bridge connects supported host tasks to the
+durable Python harness for Run state, admission checks, and evidence. Ordinary
+host-managed sessions and messaging do not require that bridge.
 
 For longer work, an adopted repository can keep a **Run** under
 `.architrave/runs/`. It records the requested outcome, acceptance criteria,
