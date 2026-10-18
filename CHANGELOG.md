@@ -11,6 +11,21 @@ Releases at or before **v0.8.12** are on the
 - Add a public Run cancel/supersede transition and make invalid unstarted-task
   intake terminal instead of retry-ready.
 
+## [0.15.0] - 2026-10-18
+
+### Added
+- OpenCode worker host (`harness/opencode_host.py`): runs one WorkPacket in a
+  session of an already-running local `opencode serve` through its HTTP API,
+  bound to the task worktree, returning only a candidate. Loopback only, no
+  redirects or proxies; host permissions and model choice stay with OpenCode,
+  and pending permission prompts are reported, never answered.
+- Lead contract: challenge the request at intake and ask only questions whose
+  answers change the work.
+
+### Fixed
+- An OpenCode session that cannot be confirmed stopped keeps its task lease, so
+  the task is not redispatched until `worker-recover`.
+
 ## [0.14.4] - 2026-10-18
 
 ### Changed
