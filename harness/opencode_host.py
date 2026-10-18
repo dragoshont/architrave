@@ -27,6 +27,14 @@ LOOPBACK = {"127.0.0.1", "localhost", "::1"}
 OUTCOME_STATUS = {"succeeded": "completed", "failed": "failed", "interrupted": "cancelled"}
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None  # a redirect could leave loopback with the Basic credential
+
+
+_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect)
+
+
 class OpenCodeServer:
     def __init__(self, url: str, username: str, password: str | None):
         parsed = urllib.parse.urlsplit(url)
@@ -43,7 +51,7 @@ class OpenCodeServer:
             self.base + path, method=method, headers=self.headers,
             data=None if body is None else json.dumps(body).encode())
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
+            with _OPENER.open(request, timeout=timeout) as response:
                 raw = response.read()
         except urllib.error.HTTPError as exc:
             exc.close()
@@ -56,9 +64,12 @@ class OpenCodeServer:
             raise RuntimeFailure("OPENCODE_UNAVAILABLE", f"opencode server unreachable: {exc.reason}", exit_code=2) from exc
         if not raw:
             return None
-        if not raw.lstrip().startswith(b"{"):
-            raise RuntimeFailure("OPENCODE_API_UNSUPPORTED", f"{path} did not return the OpenCode JSON API", exit_code=2)
-        return json.loads(raw)
+        try:
+            if raw.lstrip().startswith(b"{"):
+                return json.loads(raw)
+        except ValueError:
+            pass
+        raise RuntimeFailure("OPENCODE_API_UNSUPPORTED", f"{path} did not return the OpenCode JSON API", exit_code=2)
 
 
 def session_reply(server: OpenCodeServer, session_id: str) -> tuple[str, int, dict]:
@@ -89,6 +100,21 @@ def wait_until_idle(server: OpenCodeServer, session_id: str, timeout: float, int
     return "timeout"
 
 
+def stop_session(server: OpenCodeServer, session_id: str) -> bool:
+    """Interrupt and confirm the session stopped; any failure counts as unconfirmed."""
+    try:
+        server.call("POST", f"/api/session/{session_id}/interrupt")
+        return wait_until_idle(server, session_id, 10, 0.5) is None
+    except Exception:
+        return False
+
+
+def unconfirmed(session_id: str) -> RuntimeFailure:
+    return RuntimeFailure("OPENCODE_TERMINATION_UNCONFIRMED",
+                          f"opencode session {session_id} may still be running; the task lease is kept so it is not "
+                          "redispatched. Stop it in OpenCode; after the lease expires, run `worker-recover`.", exit_code=2)
+
+
 def dispatch(store: RunStore, server: OpenCodeServer, run_id: str, task_id: str, agent: str | None) -> dict:
     info = server.call("GET", "/api/info") or {}
     owner = f"opencode:{info.get('pid', '?')}@{server.base}"[:256]
@@ -112,10 +138,8 @@ def dispatch(store: RunStore, server: OpenCodeServer, run_id: str, task_id: str,
             + f"Use ONLY this isolated workspace: {workspace}\n"
             + "Do not commit, mutate the source checkout, or change Run state. Return a candidate, never claim gate PASS."})
         budget_stop = wait_until_idle(server, session_id, packet["budget"]["timeoutSeconds"])
-        if budget_stop:
-            server.call("POST", f"/api/session/{session_id}/interrupt")
-            if wait_until_idle(server, session_id, 10, 0.5):
-                budget_stop += "; termination unconfirmed"
+        if budget_stop and not stop_session(server, session_id):
+            raise unconfirmed(session_id)
         session = server.call("GET", f"/api/session/{session_id}")["data"]
         status = "cancelled" if budget_stop else OUTCOME_STATUS.get(session.get("outcome"), "failed")
         text, turns, model = session_reply(server, session_id)
@@ -129,16 +153,15 @@ def dispatch(store: RunStore, server: OpenCodeServer, run_id: str, task_id: str,
         })
         return {**result, "host": "opencode", "sessionId": session_id}
     except BaseException as exc:
-        if session_id:
-            try:
-                server.call("POST", f"/api/session/{session_id}/interrupt")
-            except RuntimeFailure:
-                pass
+        if isinstance(exc, RuntimeFailure) and exc.code == "OPENCODE_TERMINATION_UNCONFIRMED":
+            raise
+        if session_id and not stop_session(server, session_id):
+            raise unconfirmed(session_id) from exc
         if not ticket.consumed:
             try:
                 store.fail_task(run_id, task_id, f"opencode bridge failed: {exc}")
-            except RuntimeFailure:
-                pass
+            except Exception as cleanup:
+                print(f"opencode bridge could not fail task {task_id}: {cleanup}", file=sys.stderr)
         raise
 
 

@@ -34,6 +34,12 @@ class FakeOpenCode(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
+    def _raw(self, raw):
+        self.send_response(200)
+        self.send_header("content-length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
     def do_GET(self):
         s = self.scenario
         s.setdefault("calls", []).append(("GET", self.path))
@@ -50,6 +56,8 @@ class FakeOpenCode(BaseHTTPRequestHandler):
                 s["running"] = False
             return self.reply(200, {"data": {"ses_fixture": {"type": "running"}} if s.get("running") else {}})
         if self.path == "/api/session/ses_fixture/permission":
+            if s.get("poll_error"):
+                return self.reply(500, {})
             return self.reply(200, {"data": s.get("permissions", [])})
         if self.path == "/api/session/ses_fixture":
             return self.reply(200, {"data": {"id": "ses_fixture", "outcome": s.get("outcome", "succeeded"),
@@ -74,8 +82,15 @@ class FakeOpenCode(BaseHTTPRequestHandler):
             s["prompt"] = body["text"]
             s["running"] = True
             return self.reply(200, {"data": {"id": "msg"}})
+        if self.path == "/api/redirect":
+            self.send_response(307)
+            self.send_header("location", "http://example.invalid/collect")
+            self.send_header("content-length", "0")
+            return self.end_headers()
         if self.path == "/api/session/ses_fixture/interrupt":
             s["interrupted"] = True
+            if s.get("bad_interrupt"):
+                return self._raw(b"not json")
             if not s.get("stuck"):
                 s["running"] = False
             return self.reply(200, {"interrupted": True})
@@ -165,12 +180,40 @@ class OpenCodeHostTests(unittest.TestCase):
         self.assertIn("answer it in OpenCode", stderr.getvalue())
         self.assertFalse(any("/permission/" in path for _, path in FakeOpenCode.scenario["calls"]))
 
-    def test_unconfirmed_termination_is_not_a_candidate(self):
+    def assert_lease_kept(self, run_id):
+        state = self.store.load(run_id)
+        self.assertEqual("RUNNING", state["tasks"][0]["status"])
+        self.assertIsNotNone(state["tasks"][0]["lease"])
+
+    def test_unconfirmed_termination_keeps_lease_instead_of_redispatching(self):
         run_id, task_id = self.task(timeout=1)
         FakeOpenCode.scenario.update(hang=True, stuck=True)
-        result = dispatch(self.store, self.server, run_id, task_id, None)
-        self.assertEqual("failed", result["status"])
-        self.assertEqual("timeout; termination unconfirmed", result["hostObservation"]["budgetStop"])
+        with self.assertRaises(RuntimeFailure) as error:
+            dispatch(self.store, self.server, run_id, task_id, None)
+        self.assertEqual("OPENCODE_TERMINATION_UNCONFIRMED", error.exception.code)
+        self.assert_lease_kept(run_id)
+
+    def test_poll_failure_with_unparseable_interrupt_keeps_lease(self):
+        run_id, task_id = self.task()
+        FakeOpenCode.scenario.update(hang=True, stuck=True, poll_error=True, bad_interrupt=True)
+        with self.assertRaises(RuntimeFailure) as error:
+            dispatch(self.store, self.server, run_id, task_id, None)
+        self.assertEqual("OPENCODE_TERMINATION_UNCONFIRMED", error.exception.code)
+        self.assertEqual("OPENCODE_HTTP", error.exception.__cause__.code)
+        self.assert_lease_kept(run_id)
+
+    def test_poll_failure_after_confirmed_stop_fails_task(self):
+        run_id, task_id = self.task()
+        FakeOpenCode.scenario.update(hang=True, poll_error=True)
+        with self.assertRaises(RuntimeFailure) as error:
+            dispatch(self.store, self.server, run_id, task_id, None)
+        self.assertEqual("OPENCODE_HTTP", error.exception.code)
+        self.assertIsNone(self.store.load(run_id)["tasks"][0]["lease"])
+
+    def test_redirects_are_not_followed(self):
+        with self.assertRaises(RuntimeFailure) as error:
+            self.server.call("GET", "/api/redirect")
+        self.assertEqual("OPENCODE_HTTP", error.exception.code)
 
     def test_failed_outcome_is_not_a_candidate(self):
         run_id, task_id = self.task()

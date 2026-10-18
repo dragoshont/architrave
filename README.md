@@ -248,9 +248,10 @@ The session is bound to the task's isolated worktree, uses an existing OpenCode
 agent (`general` for edits, `explore` for read-only, or `--agent`), and returns
 only a candidate; gates still run in the coordinator. OpenCode keeps its own
 permissions and model choice. Pending permission prompts are reported, never
-answered, and a timeout interrupts the session and fails the task. This uses
-OpenCode's experimental `/api` surface, checked against one local OpenCode
-release; Pi is not supported.
+answered. A timeout interrupts the session and fails the task; if the session
+cannot be confirmed stopped, the task keeps its lease until `worker-recover`.
+This uses OpenCode's experimental `/api` surface, checked against one local
+OpenCode release; Pi is not supported.
 
 The kit uses Python; the shell and PowerShell entrypoints forward to the same
 implementation. Your project's build and test toolchain stays unchanged.
