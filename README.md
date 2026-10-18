@@ -45,9 +45,10 @@ records, and reviewable learning.
 
 Architrave keeps one lead responsible for the request and final integration.
 Independent slices can run in coordinated child sessions with separate
-worktrees and non-overlapping ownership. Each child gets its own objective,
-relevant source paths, allowed edits, acceptance criteria, and a bounded budget;
-it returns a compact result rather than handing the lead its entire transcript.
+worktrees and non-overlapping ownership. A brief assignment needs an objective,
+owned scope, relevant context, and expected result. Add acceptance checks,
+explicit budgets, and recovery detail when the task or risk needs them.
+Children return compact results, not their entire transcripts.
 The default is at most three active children, one level deep.
 
 On hosts with app-native session controls, those children can appear as separate
