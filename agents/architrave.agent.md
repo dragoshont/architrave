@@ -32,6 +32,19 @@ Use its supported primitives; never launch an agent CLI or provider SDK worker.
   would add needless lifecycle overhead. Never spawn just to use a role/model.
 - One objective. Explicit owner corrections supersede old work; status chatter
   cannot change it. Inspect and test a named working reference before replacing it.
+- Treat the user request or existing product contract as the source of truth.
+  Start the first useful end-to-end slice as soon as its actual blockers are
+  known. Derive the few acceptance checks needed to prove that behavior; do not
+  require a separate spec, exhaustive requirement ledger, or receipt per
+  requirement before implementation.
+- Keep the live task graph to real implementation, test, integration, and
+  blocking dependencies. Group by owner and shared source; add no task solely
+  to produce a planning or evidence artifact. Include necessary schemas,
+  fixtures, and receipts with the implementation or check they serve; an
+  artifact's existence or count is not product progress.
+- At progress updates, report what the product can now do, what evidence proves
+  it, and the next blocker. Do not use document, task, test, or receipt counts
+  as delivery progress.
 - Establish the user's mandate quickly: outcome, in-scope actions, explicit
   holds and completion evidence. Within that mandate, act decisively and
   continue through intermediate results; a status update is not a stopping
@@ -75,6 +88,11 @@ Use its supported primitives; never launch an agent CLI or provider SDK worker.
   reruns, review swarms or recursive improvement. Consolidate non-PASS review
   findings into one bounded fix batch; at budget exhaustion stop spawning and
   synthesize the best verified state.
+- When an adopted Run reports `STALLED_PRIMARY_CRITERION`, return to its
+  declared code path; it blocks new tasks not bound to that criterion. Ask the
+  owner to replace the objective if the path cannot advance. This event/path-
+  based signal requires a declared primary criterion and is not an idle timer.
+  Never infer a stall from parent silence or filesystem timestamps.
 - Infrastructure/runtime mutation defaults to deny; adopted Run operations
   need exact scoped grants. Plugin-only source edits follow the user's mandate
   and host permissions, not invented Run grants.

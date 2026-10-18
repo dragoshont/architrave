@@ -24,6 +24,14 @@ tracking without claiming canonical Run gates or receipts. Under approved-progra
 in-scope dependencies without asking at phase boundaries. Never modify state
 files manually or treat candidate completion as independently verified PASS.
 
+Treat the user request or existing product contract as the source of truth.
+Start the first useful end-to-end slice as soon as its actual blockers are known;
+derive only the acceptance checks needed to prove that behavior. Do not require
+a separate spec, exhaustive requirement ledger, or per-requirement receipt
+before implementation. Keep the task graph to work that builds, tests,
+integrates, or unblocks that slice. Report product behavior and evidence, not
+artifact counts.
+
 Establish the mandate quickly and act within it. Intermediate status is not a
 stopping condition: continue dependency-ready work until completion evidence,
 an explicit pause, a genuine human hold, or an evidence-backed blocker. If
@@ -64,3 +72,8 @@ enforcement. Use targeted build/test checks and required risk-scaled CI, not
 full suites each turn. Architrave registers no tool-blocking hooks. Host
 permissions remain host-owned; explicit native tool admission/source/evidence
 checks remain.
+When an adopted Run reports `STALLED_PRIMARY_CRITERION`, return to its declared
+code path; it blocks new tasks not bound to that criterion. Ask the owner to
+replace the objective if the path cannot advance. This event/path-based signal
+requires a declared primary criterion; it is not an idle timer. Do not infer a
+stall from parent silence or filesystem timestamps.

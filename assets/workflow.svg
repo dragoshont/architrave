@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 440" role="img" aria-labelledby="title description">
+  <title id="title">Architrave workflow diagram</title>
+  <desc id="description">A request is grounded in repository context. The lead works directly or assigns independent slices to up to three scoped child sessions. It integrates their changes, runs checks and risk-based review, and returns the result. A dashed deployment-only branch adds scoped approval and live verification before returning to checks. Adopted repositories can retain task records, checkpoints, and learning; companion panels show activity and evidence.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+      <path d="M0 0L7 3.5L0 7Z" fill="#526174"/>
+    </marker>
+    <marker id="deployment-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+      <path d="M0 0L7 3.5L0 7Z" fill="#9a5a00"/>
+    </marker>
+    <style>
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .label { fill: #17283d; font-size: 17px; font-weight: 600; }
+      .sub { fill: #46566a; font-size: 14px; }
+      .line { fill: none; stroke: #526174; stroke-width: 2; marker-end: url(#arrow); }
+      .branch { fill: none; stroke: #526174; stroke-width: 2; }
+      .box { fill: #f3f7fc; stroke: #9aadc2; stroke-width: 1.5; }
+      .child { fill: #eef8f5; stroke: #78a696; stroke-width: 1.5; }
+      .deployment { fill: none; stroke: #9a5a00; stroke-width: 2; stroke-dasharray: 5 5; marker-end: url(#deployment-arrow); }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1120" height="440" rx="16" fill="#ffffff"/>
+  <text class="sub" x="28" y="28">WORKFLOW DIAGRAM</text>
+  <text class="sub" x="374" y="155">Independent slices (up to 3)</text>
+
+  <g class="box">
+    <rect x="28" y="60" width="116" height="74" rx="10"/>
+    <rect x="180" y="60" width="150" height="74" rx="10"/>
+    <rect x="374" y="60" width="200" height="74" rx="10"/>
+    <rect x="636" y="60" width="120" height="74" rx="10"/>
+    <rect x="792" y="60" width="150" height="74" rx="10"/>
+    <rect x="978" y="60" width="114" height="74" rx="10"/>
+  </g>
+  <g class="child">
+    <rect x="374" y="171" width="200" height="51" rx="10"/>
+    <rect x="374" y="238" width="200" height="51" rx="10"/>
+    <rect x="374" y="305" width="200" height="51" rx="10"/>
+  </g>
+
+  <path class="line" d="M148 97H172"/>
+  <path class="line" d="M334 97H366"/>
+  <path class="line" d="M578 97H628"/>
+  <path class="line" d="M760 97H784"/>
+  <path class="line" d="M946 97H970"/>
+  <path class="branch" d="M350 97V330"/>
+  <path class="line" d="M350 196H366"/>
+  <path class="line" d="M350 263H366"/>
+  <path class="line" d="M350 330H366"/>
+  <path class="branch" d="M578 196H612M578 263H612M578 330H612V122"/>
+  <path class="line" d="M612 122H628"/>
+
+  <g class="label" text-anchor="middle">
+    <text x="86" y="103">Request</text>
+    <text x="255" y="92"><tspan x="255">Repository</tspan><tspan x="255" dy="22">context</tspan></text>
+    <text x="474" y="92">Lead works directly</text>
+    <text x="696" y="103">Integrate</text>
+    <text x="867" y="87">Checks</text>
+    <text x="1035" y="103">Result</text>
+    <text x="474" y="191">Child session 1</text>
+    <text x="474" y="258">Child session 2</text>
+    <text x="474" y="325">Child session 3</text>
+  </g>
+  <g class="sub" text-anchor="middle">
+    <text x="474" y="115" font-size="12">One request, one coordinator</text>
+    <text x="867" y="110">Risk-based review</text>
+    <text x="474" y="210">Own assigned scope</text>
+    <text x="474" y="277">Own assigned scope</text>
+    <text x="474" y="344">Own assigned scope</text>
+  </g>
+  <rect x="658" y="224" width="370" height="68" rx="10" fill="#fff7e8" stroke="#c78a32" stroke-width="1.5"/>
+  <text class="label" x="843" y="250" text-anchor="middle">Deployment only</text>
+  <text class="sub" x="843" y="275" text-anchor="middle">Scoped approval, then live verification</text>
+  <path class="deployment" d="M696 138V216"/>
+  <path class="deployment" d="M1032 258H1056V162H867V142"/>
+
+  <rect x="28" y="381" width="1064" height="38" rx="8" fill="#f3f7fc"/>
+  <text class="sub" x="48" y="406">Repository kit: resumable tasks, checkpoints, learning</text>
+  <text class="sub" x="658" y="406">Companion panels: activity, workstreams, evidence</text>
+</svg>

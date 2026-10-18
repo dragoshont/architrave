@@ -8,6 +8,11 @@ or durable Run support are installed. Use the `architrave` skill/agent for
 non-trivial work; its small core is the canonical mission/worker/stop contract.
 Work directly for cheap single-lane changes. Host sessions, context, worktrees,
 permissions, lifecycle and model settings remain host-owned.
+Treat the user request or existing product contract as the source of truth.
+Start the first useful end-to-end slice when its actual blockers are known; do
+not require a separate specification or a task/receipt for every requirement.
+Keep the task graph to implementation, checks, integration and real blockers.
+Report product behavior and evidence, not plan, test or artifact counts.
 For independent implementation tracks on a non-trivial task, prefer coordinated
 sidebar sessions when the host exposes them; give each a disjoint owned scope
 and integrate/verify in the parent. If unavailable, use the client's native
@@ -38,5 +43,10 @@ executable quick validators, not identical automatic scheduling. Architrave
 registers no tool-blocking hooks; host permissions remain host-owned and explicit
 native tool admission/source/evidence checks remain.
 Consult architrave:cto at start and on stall inline; schedule the smallest
-demonstrable product slice, not harness ceremony. Keep Run/worktree/key artifacts
-private and ignored. No duplicate transcripts, plans or status files.
+demonstrable product slice, not harness ceremony. When an adopted Run reports
+`STALLED_PRIMARY_CRITERION`, return to its declared code path; it blocks new
+tasks not bound to that criterion. Ask the owner to replace the objective if
+the path cannot advance. This signal requires a declared primary criterion; do
+not infer a stall from parent silence or filesystem timestamps. Keep
+Run/worktree/key artifacts private and ignored. No duplicate transcripts, plans
+or status files.
