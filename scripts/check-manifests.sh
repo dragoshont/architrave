@@ -352,6 +352,7 @@ for test_script in \
   scripts/test-runtime-v2.py \
   scripts/test-worker-adapters.py \
   scripts/test-native-host.py \
+  scripts/test-opencode-host.py \
   scripts/test-native-review.py \
   scripts/test-quality-cadence.py \
   scripts/test-ribbon.py \

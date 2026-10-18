@@ -80,8 +80,10 @@ the change, runs the required gates, and owns completion.
 
 Durable agent tasks route through `native`, not Copilot/Claude/Codex CLI
 subprocess adapters. Copilot's installed native extension joins the existing
-host and uses its supported structured tasks RPC; unsupported hosts fail
-early with `NATIVE_HOST_REQUIRED`. Deterministic `shell` argv remains available
+host and uses its supported structured tasks RPC. `harness/opencode_host.py`
+drives an already-running local `opencode serve` through its session API with
+the same native ticket; it never answers OpenCode permission prompts. Other
+hosts fail early with `NATIVE_HOST_REQUIRED`. Deterministic `shell` argv remains available
 but cannot launch an agent harness. The user-installed extension and Python
 executor are trusted local producers outside the target repository; hashes
 detect installation drift, not host/provider authenticity. Host permissions

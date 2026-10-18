@@ -1,5 +1,16 @@
 # Roadmap
 
+## Next - OpenCode sessions and upfront challenge
+
+- [x] OpenCode WorkPacket bridge through a running local `opencode serve`
+  session API: worktree-bound session, existing agent, bounded poll, interrupt
+  on timeout, host permissions reported but never answered; candidate only.
+  Fixture tests plus one live local edit; other OpenCode releases unqualified.
+- [x] Lead contract challenges contradictions and risky assumptions at intake
+  and asks only material questions.
+- [ ] Pi only if a supported in-process host path appears; no CLI shell-out.
+- [ ] SQLite Run store stays deferred (see runtime-v2 storage decision).
+
 ## v0.14.3 - Authoring skills and benchmark coverage
 
 - [x] Add explicit-only, host-neutral agent-authoring, skill-authoring, and
