@@ -193,8 +193,10 @@ for path in sorted((root / "agents").glob("*.agent.md")):
         missing.append(f"{path.relative_to(root)} still contains model-selection metadata")
 if '"CTO"' not in agent.split("---", 2)[1]:
     missing.append("conductor does not route to the CTO agent")
-if any(line.startswith("tools:") for line in agent_frontmatter.splitlines()):
-    missing.append("conductor restricts the host-provided default tool set")
+for path in sorted((root / "agents").glob("*.agent.md")):
+    frontmatter = path.read_text(encoding="utf-8").split("---", 2)[1]
+    if any(line.startswith("tools:") for line in frontmatter.splitlines()):
+        missing.append(f"{path.relative_to(root)} restricts the host tool set (blocks session spawn/notify)")
 if not cto_agent.startswith('---\nname: "CTO"\n') or not cto_skill.startswith("---\nname: architrave-cto\n"):
     missing.append("CTO agent or skill frontmatter is not registered")
 if not (root / "skills/architrave-cto/agents/openai.yaml").is_file():
