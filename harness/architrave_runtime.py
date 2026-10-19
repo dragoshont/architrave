@@ -442,7 +442,49 @@ class RunStore:
         self.__objective_capability = object()
         self.__policy_capability = object()
 
+    def _runtime_context(self) -> dict[str, Any] | None:
+        path = self.repository / ".architrave" / "runtime-context.json"
+        if not path.exists() and not path.is_symlink():
+            return None
+        try:
+            for directory in (path.parent, path.parent / "runs"):
+                info = directory.lstat()
+                if not stat.S_ISDIR(info.st_mode) or directory.is_symlink() or _is_reparse_point(info):
+                    raise ValueError("context directories must not be links")
+            info = path.lstat()
+            if not stat.S_ISREG(info.st_mode) or path.is_symlink() or _is_reparse_point(info):
+                raise ValueError("context must be a regular file")
+            context = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_reject_duplicate_json_keys)
+            if (
+                not isinstance(context, dict)
+                or set(context) != {"schema", "sourceRepository", "repository", "commonDirectory", "runId", "transitionHash"}
+                or context["schema"] != "architrave.runtime-context.v1"
+                or context["repository"] != str(self.repository)
+                or not re.fullmatch(r"[0-9a-f]{64}", str(context["transitionHash"]))
+            ):
+                raise ValueError("context shape or destination mismatch")
+            require_id(context["runId"], "context run id")
+            source = Path(context["sourceRepository"])
+            if not source.is_absolute() or source.resolve() != source or source == self.repository:
+                raise ValueError("context source is invalid")
+            common = self._git_common_directory(self.repository)
+            if str(common) != context["commonDirectory"] or self._git_common_directory(source) != common:
+                raise ValueError("context repositories are not linked worktrees")
+            if self.key_path.exists() or self.key_path.is_symlink():
+                raise ValueError("context cannot override a local authentication key")
+            source_control = source / ".architrave"
+            if source_control.is_symlink() or _is_reparse_point(source_control.lstat()) or (source_control / "runtime-context.json").exists():
+                raise ValueError("authentication context chains are not supported")
+            return context
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            raise RuntimeFailure("RUNTIME_CONTEXT_INVALID", "Run authentication context is invalid") from exc
+
     def _runtime_key(self, *, create: bool = False) -> bytes:
+        context = self._runtime_context()
+        if context is not None:
+            if create:
+                raise RuntimeFailure("RUNTIME_CONTEXT_READ_ONLY", "a reconciled context cannot create new Runs")
+            return RunStore(context["sourceRepository"])._runtime_key()
         if create and not self.key_path.exists():
             self.key_path.parent.mkdir(parents=True, exist_ok=True)
             try:
@@ -456,7 +498,7 @@ class RunStore:
                     os.fsync(handle.fileno())
         try:
             key_stat = self.key_path.lstat()
-            if not stat.S_ISREG(key_stat.st_mode) or self.key_path.is_symlink():
+            if not stat.S_ISREG(key_stat.st_mode) or self.key_path.is_symlink() or _is_reparse_point(key_stat):
                 raise RuntimeFailure("RUNTIME_KEY_INVALID", "durable Run authentication key must be a regular file")
             if os.name != "nt" and ((key_stat.st_mode & 0o077) != 0 or key_stat.st_uid != os.getuid()):
                 raise RuntimeFailure("RUNTIME_KEY_PERMISSIONS", "durable Run authentication key permissions or owner are unsafe")
@@ -819,6 +861,293 @@ class RunStore:
             "deployment": None,
         }
 
+    @staticmethod
+    def _git_common_directory(repository: Path) -> Path:
+        value = run_command(["git", "rev-parse", "--git-common-dir"], repository)
+        return (repository / value).resolve()
+
+    def _reconciliation_identity(self) -> dict[str, Any]:
+        identity = self.repository_identity()
+        args = ["git", "--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false"]
+        status = run_command(
+            [*args, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=none"],
+            self.repository, strip_output=False,
+        )
+        ignored = run_command(
+            [*args, "ls-files", "--others", "--ignored", "--exclude-standard", "-z"],
+            self.repository, strip_output=False,
+        )
+        files = run_command(
+            [*args, "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+            self.repository, strip_output=False,
+        )
+        digest = hashlib.sha256()
+        for command in (
+            ["diff", "--binary", "--no-ext-diff", "--no-textconv"],
+            ["diff", "--cached", "--binary", "--no-ext-diff", "--no-textconv"],
+            ["ls-files", "--stage", "-z"],
+        ):
+            digest.update(os.fsencode(run_command([*args, *command], self.repository, strip_output=False)))
+        digest.update(os.fsencode(status))
+        inventory = set(files.split("\0")) | {
+            name for name in ignored.split("\0") if not name.startswith(".architrave/")
+        }
+        for name in sorted(inventory - {""}):
+            path = self.repository / name
+            digest.update(os.fsencode(name))
+            if path.exists() or path.is_symlink():
+                digest.update(str(path.lstat().st_mode).encode("ascii"))
+            if path.is_symlink():
+                digest.update(os.fsencode(os.readlink(path)))
+            elif path.is_file():
+                digest.update(bytes.fromhex(sha256_file(path)))
+        info = self.repository.stat()
+        return {
+            **identity,
+            "commonDirectory": str(self._git_common_directory(self.repository)),
+            "gitDirectory": str((self.repository / run_command(["git", "rev-parse", "--git-dir"], self.repository)).resolve()),
+            "directoryId": [info.st_dev, info.st_ino],
+            "sourceSha256": digest.hexdigest(),
+            "dirty": bool(status),
+            "ignoredOutsideControl": any(
+                name and not name.startswith(".architrave/") for name in ignored.split("\0")
+            ),
+        }
+
+    @staticmethod
+    def _assert_exact_worktree(repository: Path, commit: str) -> None:
+        tree = run_command(["git", "--no-replace-objects", "ls-tree", "-rz", commit], repository, strip_output=False)
+        for entry in filter(None, tree.split("\0")):
+            metadata, name = entry.split("\t", 1)
+            mode, kind, object_id = metadata.split()
+            path = repository / name
+            if kind != "blob" or (mode == "120000") != path.is_symlink() or not (path.is_file() or path.is_symlink()):
+                raise RuntimeFailure("RECONCILIATION_DIRTY", "destination must contain exact Git blobs, not submodules or substituted links")
+            for parent in path.parents:
+                if parent == repository:
+                    break
+                if parent.is_symlink() or _is_reparse_point(parent.lstat()):
+                    raise RuntimeFailure("RECONCILIATION_DIRTY", "destination tracked directories cannot be substituted links")
+            content = os.fsencode(os.readlink(path)) if path.is_symlink() else path.read_bytes()
+            digest = hashlib.new("sha1" if len(object_id) == 40 else "sha256")
+            digest.update(f"blob {len(content)}\0".encode("ascii"))
+            digest.update(content)
+            if digest.hexdigest() != object_id or (
+                os.name != "nt" and mode != "120000" and bool(path.stat().st_mode & 0o111) != (mode == "100755")
+            ):
+                raise RuntimeFailure("RECONCILIATION_DIRTY", "destination bytes or executable modes differ from the exact commit",
+                                     details={"path": name})
+
+    @staticmethod
+    def _assert_reconciliation_quiescent(state: dict[str, Any], *, allow_terminal: bool = False) -> None:
+        if not allow_terminal and state["status"] in {"COMPLETED", "CANCELLED"}:
+            raise RuntimeFailure("RECONCILIATION_UNSAFE", "terminal Run outcomes cannot be rebound to unverified source")
+        unsafe = [
+            task["id"] for task in state["tasks"]
+            if task["status"] == "RUNNING" or task.get("lease")
+            or (task.get("sideEffect") and task["sideEffect"]["state"] in {"PENDING", "UNCERTAIN"})
+            or (task["status"] not in TERMINAL_TASK_STATUSES and task.get("workspace"))
+        ]
+        if unsafe or any(worker["status"] == "RUNNING" for worker in state["workers"]):
+            raise RuntimeFailure("RECONCILIATION_UNSAFE", "close active workers, pending workspaces and uncertain side effects first",
+                                 details={"tasks": unsafe})
+
+    def _reconciliation_binding(
+        self, state: dict[str, Any], destination: Path, source_commit: str, baseline_commit: str,
+        destination_commit: str, *, reserved: bool = False,
+    ) -> dict[str, Any]:
+        for commit in (source_commit, baseline_commit, destination_commit):
+            if not re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", commit):
+                raise RuntimeFailure("RECONCILIATION_COMMIT", "reconciliation requires full exact commit object IDs")
+        self._assert_reconciliation_quiescent(state)
+        if self._runtime_context() is not None:
+            raise RuntimeFailure("RECONCILIATION_CONTEXT", "chained Run reconciliation is not supported")
+        source = self._reconciliation_identity()
+        target = RunStore(destination)._reconciliation_identity()
+        for task in state["tasks"]:
+            if task["status"] not in TERMINAL_TASK_STATUSES or task["status"] == "FAILED":
+                packet = task.get("workPacket") or {}
+                expected_scope = str(task.get("workspace") or self.repository)
+                if packet.get("repoScope") != expected_scope or str(self.repository) in canonical_json(packet.get("execution")):
+                    raise RuntimeFailure("RECONCILIATION_UNSAFE", "pending task has a custom scope or execution bound to the old checkout",
+                                         details={"taskId": task["id"]})
+        if (
+            state["baseline"]["repository"] != str(self.repository)
+            or state["baseline"]["commit"] != baseline_commit
+            or source["commit"] != source_commit or target["commit"] != destination_commit
+        ):
+            raise RuntimeFailure("RECONCILIATION_STALE", "source, baseline or destination commit does not match")
+        if destination == self.repository or source["commonDirectory"] != target["commonDirectory"]:
+            raise RuntimeFailure("RECONCILIATION_REPOSITORY", "destination must be a distinct linked worktree of this repository")
+        for commit in (source_commit, baseline_commit):
+            try:
+                run_command(["git", "--no-replace-objects", "merge-base", commit, destination_commit], self.repository)
+            except RuntimeFailure as exc:
+                raise RuntimeFailure("RECONCILIATION_REPOSITORY", "destination must share source and baseline Git history") from exc
+        if self.repository in destination.parents or destination in self.repository.parents:
+            raise RuntimeFailure("RECONCILIATION_REPOSITORY", "nested worktrees cannot be reconciled")
+        if target["dirty"] or target["ignoredOutsideControl"]:
+            raise RuntimeFailure("RECONCILIATION_DIRTY", "destination must be pristine, including ignored product files")
+        self._assert_exact_worktree(destination, destination_commit)
+        ignored_control = run_command(
+            ["git", "check-ignore", "--", ".architrave/runs/probe", ".architrave/runtime-context.json"], destination,
+        )
+        if len(ignored_control.splitlines()) != 2:
+            raise RuntimeFailure("RECONCILIATION_CONTEXT", "destination must ignore the Run control directory")
+        if not reserved and ((destination / ".architrave").exists() or (destination / ".architrave").is_symlink()):
+            raise RuntimeFailure("RECONCILIATION_CONTEXT", "destination already has a control directory")
+        run_dir = self.run_dir(state["runId"])
+        for directory in (self.repository / ".architrave", self.runs_root, self.runs_root / state["runId"]):
+            info = directory.lstat()
+            if directory.is_symlink() or _is_reparse_point(info) or not stat.S_ISDIR(info.st_mode):
+                raise RuntimeFailure("RECONCILIATION_CONTEXT", "source control directories cannot be links")
+        if run_dir.stat().st_dev != destination.stat().st_dev:
+            raise RuntimeFailure("RECONCILIATION_FILESYSTEM", "Run relocation requires the same filesystem; keys and Runs are never copied")
+        for path in run_dir.rglob("*"):
+            info = path.lstat()
+            if path.is_symlink() or _is_reparse_point(info) or not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode)):
+                raise RuntimeFailure("RECONCILIATION_CONTEXT", "Run directory must contain only regular files and directories")
+        prefix = f".architrave/runs/{state['runId']}/"
+        paths = [artifact["path"] for artifact in state["artifacts"]]
+        for artifact in state["artifacts"]:
+            if artifact["producer"] == "legibility":
+                receipt = self._read_json_receipt(artifact["path"], "legibility")
+                paths.extend(source["path"] for result in receipt.get("results") or [] for source in result.get("artifacts") or [])
+        for relative in paths:
+            relative = safe_relative_path(relative, "reconciled evidence")
+            if relative.startswith(prefix):
+                continue
+            old = (self.repository / relative).resolve()
+            new = (destination / relative).resolve()
+            try:
+                new.relative_to(destination)
+            except ValueError as exc:
+                raise RuntimeFailure("RECONCILIATION_EVIDENCE", "historical evidence escapes destination") from exc
+            if not new.is_file() or sha256_file(old) != sha256_file(new):
+                raise RuntimeFailure("RECONCILIATION_EVIDENCE", "historical evidence outside this Run must already match at destination",
+                                     details={"path": relative})
+        return {"runId": state["runId"], "objectiveVersion": state["objective"]["version"],
+                "baseline": copy.deepcopy(state["baseline"]), "source": source, "destination": target}
+
+    def request_worktree_reconciliation(
+        self, run_id: str, *, destination: Path | str, source_commit: str, baseline_commit: str,
+        destination_commit: str, revision: int, principal: str, provider: str, reason: str, actor: str,
+    ) -> tuple[dict[str, Any], str]:
+        if not principal.strip() or not provider.strip() or not reason.strip() or actor != f"human:{principal}":
+            raise RuntimeFailure("RECONCILIATION_AUTHORITY", "reconciliation requires explicit owner principal, provider and reason")
+        challenge = "arc_" + secrets.token_urlsafe(32)
+        destination = Path(destination).resolve()
+
+        def mutate(state: dict[str, Any]) -> dict[str, Any]:
+            if state["revision"] != revision:
+                raise RuntimeFailure("RECONCILIATION_STALE", "Run revision changed")
+            binding = self._reconciliation_binding(state, destination, source_commit, baseline_commit, destination_commit)
+            return {"binding": binding, "principal": principal, "provider": provider, "reason": reason,
+                    "requestedRevision": revision + 1, "challengeHash": hashlib.sha256(challenge.encode()).hexdigest()}
+
+        with FileLock(self.repository / ".architrave" / "resources.lock"):
+            self._assert_other_runs_quiescent(run_id)
+            state = self._transaction(run_id, mutate, event_type="run.reconciliation_requested", actor=actor)
+        return state, challenge
+
+    def _assert_other_runs_quiescent(self, run_id: str) -> None:
+        for path in self.runs_root.iterdir():
+            if path.is_dir() and path.name != run_id and (path / "run.json").exists():
+                self._assert_reconciliation_quiescent(self.load(path.name), allow_terminal=True)
+
+    def reconcile_worktree(
+        self, run_id: str, *, destination: Path | str, source_commit: str, baseline_commit: str,
+        destination_commit: str, revision: int, principal: str, provider: str, challenge: str, actor: str,
+    ) -> dict[str, Any]:
+        destination = Path(destination).resolve()
+        target = RunStore(destination)
+        with FileLock(self.repository / ".architrave" / "resources.lock"):
+            self._assert_other_runs_quiescent(run_id)
+            with FileLock(self.run_dir(run_id) / ".run.lock"):
+                run_dir, state = self._load_locked(run_id)
+                events = self._read_events(run_dir)
+                event = events[-1]
+                proposal = event["payload"]
+                prepared = event["type"] == "run.reconciled"
+                if (
+                    event["type"] not in {"run.reconciliation_requested", "run.reconciled"}
+                    or proposal.get("requestedRevision") != revision
+                    or state["revision"] != revision + int(prepared)
+                    or event["actor"] != actor or actor != f"human:{principal}"
+                    or proposal.get("principal") != principal or proposal.get("provider") != provider
+                    or proposal.get("challengeHash") != hashlib.sha256(challenge.encode()).hexdigest()
+                ):
+                    raise RuntimeFailure("RECONCILIATION_AUTHORITY", "owner challenge, revision or authority is stale or invalid")
+                context_path = destination / ".architrave" / "runtime-context.json"
+                context = {
+                    "schema": "architrave.runtime-context.v1", "sourceRepository": str(self.repository),
+                    "repository": str(destination), "commonDirectory": str(self._git_common_directory(self.repository)),
+                    "runId": run_id,
+                }
+                expected_context = {**context, "transitionHash": event["hash"]}
+                reserved = prepared and context_path.is_file() and target._runtime_context() == expected_context
+                if reserved:
+                    # An interrupted, already signed relocation owns only this empty reservation.
+                    if set((destination / ".architrave").iterdir()) != {context_path, destination / ".architrave" / "runs"}:
+                        raise RuntimeFailure("RECONCILIATION_CONTEXT", "interrupted destination reservation contains unexpected data")
+                    if list((destination / ".architrave" / "runs").iterdir()):
+                        raise RuntimeFailure("RECONCILIATION_CONTEXT", "interrupted destination Run root is not empty")
+                before = copy.deepcopy(state)
+                if prepared:
+                    before["baseline"] = proposal["binding"]["baseline"]
+                    for task in before["tasks"]:
+                        if task["status"] not in TERMINAL_TASK_STATUSES or task["status"] == "FAILED":
+                            task["workPacket"]["repoScope"] = str(task.get("workspace") or self.repository)
+                binding = self._reconciliation_binding(before, destination, source_commit, baseline_commit, destination_commit,
+                                                       reserved=reserved)
+                if binding != proposal.get("binding"):
+                    raise RuntimeFailure("RECONCILIATION_STALE", "source or destination identity changed after owner challenge")
+                if not prepared:
+                    state["baseline"] = {key: binding["destination"][key] for key in state["baseline"]}
+                    for task in state["tasks"]:
+                        if task["status"] not in TERMINAL_TASK_STATUSES or task["status"] == "FAILED":
+                            task["workPacket"]["repoScope"] = str(destination)
+                    state = self._commit_locked(run_dir, state, event_type="run.reconciled", actor=actor,
+                                                payload={**proposal, "context": context})
+                    event = self._read_events(run_dir)[-1]
+                elif proposal.get("context") != context:
+                    raise RuntimeFailure("RECONCILIATION_CONTEXT", "signed relocation context does not match")
+                if self._reconciliation_identity() != binding["source"] or target._reconciliation_identity() != binding["destination"]:
+                    raise RuntimeFailure("RECONCILIATION_STALE", "checkout changed during the signed transition; relocation remains pending")
+                control = destination / ".architrave"
+                try:
+                    if not reserved:
+                        staging = self.repository / ".architrave" / f".reconcile-{event['hash']}"
+                        staging.mkdir(mode=0o700, exist_ok=True)
+                        if staging.is_symlink() or _is_reparse_point(staging.lstat()):
+                            raise RuntimeFailure("RECONCILIATION_CONTEXT", "relocation staging cannot be a link")
+                        if any(path.name not in {"runs", "runtime-context.json"} for path in staging.iterdir()):
+                            raise RuntimeFailure("RECONCILIATION_CONTEXT", "relocation staging contains unexpected data")
+                        (staging / "runs").mkdir(exist_ok=True)
+                        if (staging / "runs").is_symlink() or _is_reparse_point((staging / "runs").lstat()) or list((staging / "runs").iterdir()):
+                            raise RuntimeFailure("RECONCILIATION_CONTEXT", "relocation staging Run root is unsafe")
+                        target._atomic_write(staging / "runtime-context.json", {**context, "transitionHash": event["hash"]})
+                        os.rename(staging, control)
+                except OSError as exc:
+                    raise RuntimeFailure("RECONCILIATION_PENDING", "signed relocation is pending; retry the identical owner command") from exc
+            # Close the per-Run lock before rename for Windows. All subsequent source
+            # transactions reject the signed destination baseline, including after a crash.
+            try:
+                os.rename(run_dir, target.runs_root / run_id)
+                if os.name != "nt":
+                    for directory in (self.runs_root, target.runs_root, destination, self.repository / ".architrave"):
+                        descriptor = os.open(directory, os.O_RDONLY)
+                        try:
+                            os.fsync(descriptor)
+                        finally:
+                            os.close(descriptor)
+            except OSError as exc:
+                raise RuntimeFailure("RECONCILIATION_PENDING", "signed relocation is pending; retry the identical owner command") from exc
+        result = target.load(run_id)
+        if target._reconciliation_identity() != binding["destination"]:
+            raise RuntimeFailure("RECONCILIATION_STALE", "Run moved, but destination changed; current-source verification is required")
+        return result
+
     def _assert_repository_baseline(self, state: dict[str, Any]) -> None:
         identity = self.repository_identity()
         drift = {
@@ -1070,6 +1399,16 @@ class RunStore:
         self._verify_artifacts(state)
         events = self._read_events(run_dir)
         self._verify_events(run_id, events, state["eventCursor"])
+        context = self._runtime_context()
+        if context is not None and (
+            context["runId"] != run_id or state["baseline"]["repository"] != str(self.repository)
+            or not any(
+                event["type"] == "run.reconciled" and event["hash"] == context["transitionHash"]
+                and event["payload"].get("context") == {key: value for key, value in context.items() if key != "transitionHash"}
+                for event in events
+            )
+        ):
+            raise RuntimeFailure("RUNTIME_CONTEXT_INVALID", "Run does not authenticate this destination context")
         if events and events[-1]["payload"].get("stateHash") != self._state_hash(state):
             recovered = self._restore_snapshot(run_dir, run_id, events)
             if recovered is not None:
@@ -1184,6 +1523,8 @@ class RunStore:
         run_dir = self.run_dir(run_id)
         with FileLock(run_dir / ".run.lock"):
             _, state = self._load_locked(run_id)
+            if state["baseline"]["repository"] != str(self.repository):
+                raise RuntimeFailure("STALE_REPOSITORY", "Run is bound to a different repository context")
             before_state = copy.deepcopy(state)
             before_policy = copy.deepcopy(state["policy"])
             before_objective = copy.deepcopy(state["objective"])
@@ -3732,6 +4073,7 @@ class RunStore:
                                   else "READY" if dependencies_completed(state, task) else "NOT_READY")
                 task["retryNotBefore"] = None
                 task["workspace"] = None
+                task["workPacket"]["repoScope"] = str(self.repository)
             if state["status"] not in {"COMPLETED", "CANCELLED"}:
                 state["status"] = "RECOVERING"
                 state["status"] = derive_run_status(state)
@@ -6600,6 +6942,22 @@ def build_parser() -> argparse.ArgumentParser:
         if command == "resume":
             current.add_argument("--accept-commit", action="store_true")
 
+    for command in ("reconcile-worktree-request", "reconcile-worktree"):
+        reconcile = subparsers.add_parser(command, help="owner-confirmed same-Run relocation to a pristine linked worktree")
+        reconcile.add_argument("run_id")
+        reconcile.add_argument("--destination", required=True)
+        reconcile.add_argument("--source-commit", required=True)
+        reconcile.add_argument("--baseline-commit", required=True)
+        reconcile.add_argument("--destination-commit", required=True)
+        reconcile.add_argument("--revision", required=True, type=int)
+        reconcile.add_argument("--principal", required=True)
+        reconcile.add_argument("--provider", required=True)
+        reconcile.add_argument("--actor", required=True)
+        if command.endswith("-request"):
+            reconcile.add_argument("--reason", required=True)
+        else:
+            reconcile.add_argument("--challenge", required=True)
+
     recover = subparsers.add_parser("worker-recover", help="close expired/orphan workers without replaying side effects")
     recover.add_argument("run_id")
     recover.add_argument("--task-id", help="explicitly release one failed, side-effect-free task for a new candidate")
@@ -6863,6 +7221,19 @@ def cli(argv: Sequence[str] | None = None) -> int:
         elif command == "resume":
             run_id = args.run_id or store.latest_run_id()
             output = state_summary(store.resume(run_id, accept_commit=args.accept_commit))
+        elif command in {"reconcile-worktree-request", "reconcile-worktree"}:
+            kwargs = {
+                "destination": args.destination, "source_commit": args.source_commit,
+                "baseline_commit": args.baseline_commit, "destination_commit": args.destination_commit,
+                "revision": args.revision, "principal": args.principal, "provider": args.provider, "actor": args.actor,
+            }
+            if command.endswith("-request"):
+                state, challenge = store.request_worktree_reconciliation(args.run_id, **kwargs, reason=args.reason)
+                output = {**state_summary(state), "resolutionChallenge": challenge,
+                          "reconciliation": store.events(args.run_id)[-1]["payload"]}
+            else:
+                state = store.reconcile_worktree(args.run_id, **kwargs, challenge=args.challenge)
+                output = state_summary(state)
         elif command == "verify":
             run_id = args.run_id or store.latest_run_id()
             state, completed = store.verify(run_id)

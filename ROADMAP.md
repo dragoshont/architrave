@@ -183,6 +183,8 @@
 	uncertain-side-effect reconciliation, and deployment receipts.
 - [x] Challenge-bound additive mutation-policy amendments for an existing Run,
   enforced by a store-private transaction capability.
+- [x] Owner-confirmed, source/destination-bound authenticated Run relocation to
+  an exact clean linked worktree, without key copies or policy/checkpoint changes.
 - [x] Copilot/Claude/Codex/shell worker adapters with bounded/redacted output and
 	coordinator-only task completion.
 - [x] Isolated git worktrees, mutable-path validation, candidate patch artifacts,

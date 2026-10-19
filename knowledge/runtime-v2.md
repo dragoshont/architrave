@@ -33,6 +33,22 @@ the event cursor. A pending event in canonical state makes process
 death between state write and event append recoverable and detects deletion,
 reordering, or mutation.
 
+An existing authenticated Run can be owner-confirmed onto an exact pristine
+linked worktree with `reconcile-worktree-request` / `reconcile-worktree`.
+The signed, revision/challenge-bound transition moves the same Run directory
+on the same filesystem, binds the real destination baseline, and leaves the
+original key in place through a signed-context reference (never a key copy).
+Original HEAD/index and dirty product bytes are unchanged; only ignored
+control-plane state moves/changes. A destination without its own control
+directory, exact committed blob bytes, related Git history and no active or
+uncertain work are required. No policy, task-kind/status, gate, minimal-slice
+or human-checkpoint requirements are relaxed. Pending packets change only
+their repository scope; assigned unfinished workspaces and argv referencing
+the old source are refused. Original authority must remain accessible;
+chaining and creating new Runs through that reference are unsupported.
+See the [safe invocation and interruption rules](../docs/runtime-v2.md#authenticated-worktree-reconciliation).
+This is not `resume --accept-commit` with an arbitrary named SHA.
+
 ## Files
 
 ```text
