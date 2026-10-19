@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import re
 
 root = Path(__file__).resolve().parents[1]
 
@@ -195,7 +196,7 @@ if '"CTO"' not in agent.split("---", 2)[1]:
     missing.append("conductor does not route to the CTO agent")
 for path in sorted((root / "agents").glob("*.agent.md")):
     frontmatter = path.read_text(encoding="utf-8").split("---", 2)[1]
-    if any(line.startswith("tools:") for line in frontmatter.splitlines()):
+    if re.search(r"^['\"]?tools['\"]?\s*:", frontmatter, re.MULTILINE):
         missing.append(f"{path.relative_to(root)} restricts the host tool set (blocks session spawn/notify)")
 if not cto_agent.startswith('---\nname: "CTO"\n') or not cto_skill.startswith("---\nname: architrave-cto\n"):
     missing.append("CTO agent or skill frontmatter is not registered")
