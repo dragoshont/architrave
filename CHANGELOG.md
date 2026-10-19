@@ -11,6 +11,14 @@ Releases at or before **v0.8.12** are on the
 - Add a public Run cancel/supersede transition and make invalid unstarted-task
   intake terminal instead of retry-ready.
 
+## [0.15.1] - 2026-10-19
+
+### Fixed
+- Removed `tools:` allowlists from every agent. They hid host session tools, so
+  a role such as the Adversarial Judge could not spawn a session or notify its
+  parent. Agents now inherit the host's tool set; read-only roles stay
+  read-only by contract. A check rejects new `tools:` lists.
+
 ## [0.15.0] - 2026-10-18
 
 ### Added
