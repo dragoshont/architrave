@@ -31,7 +31,7 @@ class ReconciliationTests(unittest.TestCase):
         self.git(self.source, "config", "user.email", "fixture@example.invalid")
         self.git(self.source, "config", "core.autocrlf", "false")
         (self.source / ".gitignore").write_text(".architrave/\nignored-output\n")
-        (self.source / "product").write_text("baseline\n")
+        (self.source / "product").write_bytes(b"baseline\n")
         self.git(self.source, "add", ".")
         self.git(self.source, "commit", "-qm", "baseline")
         self.baseline = self.git(self.source, "rev-parse", "HEAD")
@@ -44,11 +44,11 @@ class ReconciliationTests(unittest.TestCase):
         self.run_id = state["runId"]
         # A verified product commit exists in a linked worktree, while source HEAD
         # and the authenticated Run baseline independently lag behind.
-        (self.source / "product").write_text("old source HEAD\n")
+        (self.source / "product").write_bytes(b"old source HEAD\n")
         self.git(self.source, "commit", "-qam", "source HEAD")
         self.source_commit = self.git(self.source, "rev-parse", "HEAD")
         self.git(self.source, "worktree", "add", "-q", "-b", "verified", str(self.target))
-        (self.target / "product").write_text("verified product\n")
+        (self.target / "product").write_bytes(b"verified product\n")
         self.git(self.target, "commit", "-qam", "verified")
         self.target_commit = self.git(self.target, "rev-parse", "HEAD")
         (self.source / "product").write_bytes(b"dirty staged\0bytes\n")
