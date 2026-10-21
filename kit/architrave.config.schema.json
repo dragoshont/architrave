@@ -129,6 +129,25 @@
         }
       }
     },
+    "components": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Optional component map for work that spans repositories, usually declared in one coordination repository. Each entry names the only repository a child may change for that component. `python gates/gate_runner.py components` checks local checkouts; `--test` runs service tests before UI tests.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "repo"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$", "description": "Short unique component name." },
+          "repo": { "type": "string", "pattern": "^(?!\\.+/)[A-Za-z0-9._-]+/(?!\\.+$)[A-Za-z0-9._-]+$", "description": "GitHub owner/name of the repository changes are pushed to. Every push URL of the checkout's effective push remote must match." },
+          "path": { "type": "string", "minLength": 1, "description": "Local checkout path: absolute, ~-relative, or relative to this repository. Must not be inside agent session scratch." },
+          "upstream": { "type": "string", "pattern": "^(?!\\.+/)[A-Za-z0-9._-]+/(?!\\.+$)[A-Za-z0-9._-]+$", "description": "Read-only upstream owner/name. Branches must never push to it." },
+          "consumes": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Components whose locally built output this component uses instead of a published or installed copy." },
+          "service": { "type": "string", "minLength": 1, "description": "Service, CLI or contract test command, run in the checkout before ui." },
+          "ui": { "type": "string", "minLength": 1, "description": "UI or end-to-end test command; runs only after service passes." }
+        }
+      }
+    },
     "workers": {
       "type": "object",
       "description": "Optional worker routing and isolated workspace defaults. The runtime remains usable with built-in defaults when omitted.",

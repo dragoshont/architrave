@@ -8,6 +8,9 @@
   Fixture tests plus one live local edit; other OpenCode releases unqualified.
 - [x] Lead contract challenges contradictions and risky assumptions at intake
   and asks only material questions.
+- [x] Optional `components` map and `components` gate: checkouts outside
+  session scratch, push target is the component repo and never its upstream,
+  service checks before UI checks; lead contract keeps one writer per component.
 - [ ] Pi only if a supported in-process host path appears; no CLI shell-out.
 - [ ] SQLite Run store stays deferred (see runtime-v2 storage decision).
 

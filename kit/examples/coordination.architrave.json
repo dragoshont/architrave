@@ -1,0 +1,28 @@
+{
+  "kind": "knowledge",
+  "build": "git diff --check --cached",
+  "test": "git diff --check",
+  "components": [
+    {
+      "name": "engine",
+      "repo": "example/engine-private",
+      "path": "../engine",
+      "upstream": "upstream-org/engine",
+      "service": "cargo test --workspace"
+    },
+    {
+      "name": "shims",
+      "repo": "example/shims",
+      "path": "../shims",
+      "service": "make test"
+    },
+    {
+      "name": "app",
+      "repo": "example/app",
+      "path": "../app",
+      "consumes": ["engine", "shims"],
+      "service": "swift test --filter ServiceTests",
+      "ui": "swift test --filter UITests"
+    }
+  ]
+}

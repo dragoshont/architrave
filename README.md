@@ -253,6 +253,28 @@ cannot be confirmed stopped, the task keeps its lease until `worker-recover`.
 This uses OpenCode's experimental `/api` surface, checked against one local
 OpenCode release; Pi is not supported.
 
+### Work that spans several repositories
+
+When one product is built from several repositories (an app, a fork of an
+engine you do not own, shims), list them in a coordination repository's
+`architrave.config.json`:
+
+```json
+"components": [
+  {"name": "engine", "repo": "you/engine-private", "path": "../engine", "upstream": "vendor/engine",
+   "service": "make test"},
+  {"name": "app", "repo": "you/app", "path": "../app", "consumes": ["engine"],
+   "service": "swift test", "ui": "./scripts/e2e.sh"}
+]
+```
+
+`python3 gates/gate_runner.py components` checks each local checkout: it must
+not live in agent session scratch, and its branch must push to `repo`, never
+to `upstream`. Unpushed commits and uncommitted files are reported as warnings.
+Add `--test` to run each `service` command before its `ui` command; the UI
+check is skipped when the service check fails. See
+`kit/examples/coordination.architrave.json`.
+
 The kit uses Python; the shell and PowerShell entrypoints forward to the same
 implementation. Your project's build and test toolchain stays unchanged.
 

@@ -52,6 +52,7 @@ for field in platform stack designSource designMap tokens tokenBuild knowledgePa
   expect_fail "knowledge-forbids-$field" "$tmp/forbidden-$field.json"
 done
 
+expect_pass coordination kit/examples/coordination.architrave.json
 expect_pass legacy-phonodeck kit/examples/phonodeck.architrave.json
 expect_pass legacy-sideport kit/examples/sideport.architrave.json
 expect_pass legacy-tessera kit/examples/tessera.architrave.json
