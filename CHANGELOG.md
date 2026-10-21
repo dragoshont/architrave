@@ -7,6 +7,17 @@ Releases at or before **v0.8.12** are on the
 
 ## Unreleased
 
+## [0.16.0] - 2026-10-21
+
+### Added
+- Optional `components` map in `architrave.config.json` for work spanning
+  several repositories, and `gate_runner.py components [--test]`: fails a
+  checkout in agent session scratch or one whose branch does not push to its
+  `repo` (naming a read-only `upstream`), warns on unpushed or uncommitted
+  work, and runs each `service` check before its `ui` check. The lead contract
+  keeps one writer per component and splits multi-component threads into fresh
+  sessions. Example: `kit/examples/coordination.architrave.json`.
+
 ### Planned
 - Add a public Run cancel/supersede transition and make invalid unstarted-task
   intake terminal instead of retry-ready.

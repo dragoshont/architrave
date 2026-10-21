@@ -74,6 +74,7 @@ json_files=(
   .claude-plugin/marketplace.json
   kit/architrave.config.schema.json
   kit/examples/knowledge.architrave.json
+  kit/examples/coordination.architrave.json
   kit/examples/phonodeck.architrave.json
   kit/examples/sideport.architrave.json
   kit/examples/tessera.architrave.json
@@ -353,6 +354,7 @@ for test_script in \
   scripts/test-worker-adapters.py \
   scripts/test-native-host.py \
   scripts/test-opencode-host.py \
+  scripts/test-components.py \
   scripts/test-native-review.py \
   scripts/test-quality-cadence.py \
   scripts/test-ribbon.py \

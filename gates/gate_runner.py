@@ -86,7 +86,140 @@ def validate_profile(config: dict[str, object]) -> list[str]:
         for field in ("platform", "stack", "designSource", "applyTo", "build", "test"):
             if field not in config:
                 errors.append(f"application profile requires {field}")
+    return errors + validate_components(config.get("components"))
+
+
+REPO_NAME = re.compile(r"^(?!\.+/)[A-Za-z0-9._-]+/(?!\.+$)[A-Za-z0-9._-]+$")
+# Agent session scratch: clones here vanish with the session and hide forks from their real repository.
+SCRATCH_PARTS = ((".copilot", "session-state"), (".copilot", "chats"), (".codex", "sessions"), (".claude", "projects"))
+
+
+def validate_components(components: object) -> list[str]:
+    if components is None:
+        return []
+    if not isinstance(components, list) or not components:
+        return ["components must be a non-empty list"]
+    errors: list[str] = []
+    names: set[str] = set()
+    for index, item in enumerate(components):
+        if not isinstance(item, dict):
+            errors.append(f"components[{index}] must be an object")
+            continue
+        name = item.get("name")
+        if not isinstance(name, str) or not name:
+            errors.append(f"components[{index}] requires name")
+        elif name in names:
+            errors.append(f"duplicate component {name}")
+        else:
+            names.add(name)
+        for field in ("repo", "upstream"):
+            value = item.get(field)
+            if (field == "repo" or value is not None) and not (isinstance(value, str) and REPO_NAME.match(value)):
+                errors.append(f"component {name} {field} must be owner/name")
+        if item.get("upstream") and str(item.get("upstream")).lower() == str(item.get("repo")).lower():
+            errors.append(f"component {name} repo must not be its read-only upstream")
+    for item in components:
+        if isinstance(item, dict):
+            for used in item.get("consumes") or []:
+                if used not in names:
+                    errors.append(f"component {item.get('name')} consumes unknown component {used}")
     return errors
+
+
+def github_name(url: str) -> str | None:
+    url = url.strip()
+    match = (re.match(r"^[a-z][a-z0-9+.-]*://(?:[^@/]+@)?([^/:]+)(?::\d+)?/(.+)$", url, re.IGNORECASE)
+             or re.match(r"^(?:[^@/]+@)?([^/:]+):(?!/)(.+)$", url))
+    if not match or match.group(1).lower() != "github.com":
+        return None
+    name = re.sub(r"\.git$", "", match.group(2).rstrip("/"), flags=re.IGNORECASE)
+    return name.lower() if REPO_NAME.match(name) else None
+
+
+def git(path: Path, *args: str) -> str | None:
+    process = subprocess.run(["git", "-C", str(path), *args], capture_output=True, text=True, check=False)
+    return process.stdout.strip() if process.returncode == 0 else None
+
+
+def component_path(root: Path, value: str) -> Path:
+    path = Path(value).expanduser()
+    return (path if path.is_absolute() else root / path).resolve()
+
+
+def in_scratch(path: Path) -> bool:
+    parts = path.parts
+    return any(parts[i:i + 2] == pair for pair in SCRATCH_PARTS for i in range(len(parts) - 1))
+
+
+def check_component(root: Path, item: dict[str, object]) -> tuple[bool, Path | None]:
+    name, repo = item["name"], str(item["repo"]).lower()
+    if not item.get("path"):
+        print(f"skip  {name}: no local path")
+        return True, None
+    path = component_path(root, str(item["path"]))
+    if in_scratch(path):
+        print(f"FAIL  {name}: {path} is agent session scratch; clone {repo} to a normal checkout")
+        return False, None
+    if git(path, "rev-parse", "--git-dir") is None:
+        print(f"FAIL  {name}: {path} is not a git checkout")
+        return False, None
+    branch = git(path, "branch", "--show-current") or ""
+    keys = ([f"branch.{branch}.pushRemote"] if branch else []) + ["remote.pushDefault"] + ([f"branch.{branch}.remote"] if branch else [])
+    remote = next((value for value in (git(path, "config", "--get", key) for key in keys) if value), "origin")
+    push_urls = (git(path, "remote", "get-url", "--push", "--all", remote) or "").splitlines() or ["missing"]
+    upstream = str(item.get("upstream") or "").lower()
+    for push_url in push_urls:
+        target = github_name(push_url)
+        if target != repo:
+            hint = "read-only upstream; " if target and target == upstream else ""
+            print(f"FAIL  {name}: {branch or 'HEAD'} pushes to {remote}={push_url} ({hint}expected {repo}); "
+                  f"set the push remote to {repo}")
+            return False, path
+    unpushed = git(path, "rev-list", "--count", "HEAD", "--not", "--remotes") or "0"
+    dirty = len((git(path, "status", "--porcelain") or "").splitlines())
+    note = f"{branch or 'detached'}, {unpushed} unpushed commits, {dirty} changed files"
+    print(f"{'warn' if unpushed != '0' or dirty else 'ok  '}  {name}: {note}")
+    return True, path
+
+
+def components(root: Path, run_tests: bool) -> int:
+    try:
+        config = load_config(root)
+    except ValueError as exc:
+        print(f"components: {exc}", file=sys.stderr)
+        return 2
+    items = config.get("components")
+    if items is None:
+        print("components: none configured - skipping (PASS)")
+        return 0
+    errors = validate_components(items)
+    for error in errors:
+        print(f"FAIL  {error}")
+    if errors:
+        return 1
+    success = True
+    for item in items:
+        ok, path = check_component(root, item)
+        success = ok and success
+        if not run_tests:
+            continue
+        if item.get("ui") and not item.get("service"):
+            print(f"FAIL  {item['name']}: ui tests need a service test first")
+            success = False
+            continue
+        if ok and path is None and (item.get("service") or item.get("ui")):
+            print(f"FAIL  {item['name']}: tests are configured but there is no local path to run them in")
+            success = False
+        if not ok or path is None:
+            continue
+        if item.get("service") and not run_recipe(path, f"{item['name']} service", item["service"]):
+            if item.get("ui"):
+                print(f"skip  {item['name']} ui (service failed)")
+            success = False
+            continue
+        success = run_recipe(path, f"{item['name']} ui", item.get("ui")) and success
+    print("ARCHITRAVE-COMPONENTS: PASS" if success else "ARCHITRAVE-COMPONENTS: FAIL")
+    return 0 if success else 1
 
 
 def check_json_reference(root: Path, value: object, label: str) -> bool:
@@ -246,8 +379,9 @@ def quality(root: Path, hook_json: bool) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("gate", choices=["checks", "reconcile", "quality-gate", "backend-checks", "message-lint"])
+    parser.add_argument("gate", choices=["checks", "reconcile", "quality-gate", "backend-checks", "message-lint", "components"])
     parser.add_argument("--quick", action="store_true")
+    parser.add_argument("--test", action="store_true", help="components: run service then ui tests")
     parser.add_argument("--hook-json", action="store_true")
     parser.add_argument("--repo", default=".")
     parser.add_argument("--file", help="message-lint: text file to check (default stdin)")
@@ -272,6 +406,8 @@ def main() -> int:
         return reconcile(root)
     if args.gate == "backend-checks":
         return backend(root)
+    if args.gate == "components":
+        return components(root, args.test)
     return quality(root, args.hook_json)
 
 

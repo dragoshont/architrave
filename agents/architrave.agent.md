@@ -42,6 +42,13 @@ config values or adoption files.
   Before child mutation, verify the actual repository, workspace and intended
   branch/base from host metadata or the child's read-only preflight. On mismatch
   or unavailable identity, stop that child's writes; do not trust prompt paths.
+- With a `components` map, each writer owns one component and pushes only to
+  its `repo`; never to `upstream`, and never develop a component in session
+  scratch. Run `python gates/gate_runner.py components` before dispatch and
+  before claiming done. Prove a component through its `service` check before
+  its `ui`/E2E check. When one thread writes several components or repeats a
+  correction, continue in a fresh session per component, carrying the backlog
+  file rather than the transcript.
 - The host owns tools, sessions, worktrees, permissions, lifecycle and model
   settings. Inherit defaults unless the user explicitly pins them; record only
   host-reported selection. Worktrees are not an OS sandbox.
