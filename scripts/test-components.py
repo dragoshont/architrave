@@ -25,6 +25,12 @@ def checkout(path: Path, origin: str) -> Path:
     return path
 
 
+def python_command(args):
+    if sys.platform == "win32":
+        return "& '" + sys.executable.replace("'", "''") + "' " + args
+    return f'"{sys.executable}" ' + args
+
+
 class ComponentGate(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -97,12 +103,14 @@ class ComponentGate(unittest.TestCase):
     def test_service_runs_before_ui_and_failure_skips_ui(self):
         checkout(self.base / "app", "https://github.com/me/app.git")
         components = [{"name": "app", "repo": "me/app", "path": "../app"}]
-        components[0]["service"] = f'"{sys.executable}" -c "open(\'order\',\'a\').write(\'s\')"'
-        components[0]["ui"] = f'"{sys.executable}" -c "open(\'order\',\'a\').write(\'u\')"'
+        app = self.base / "app"
+        (app / "mark.py").write_text("import sys\nif sys.argv[1] == 'fail':\n    raise SystemExit(3)\nopen('order', 'a').write(sys.argv[1])\n")
+        components[0]["service"] = python_command("mark.py s")
+        components[0]["ui"] = python_command("mark.py u")
         code, out = self.run_gate(components, "--test")
         self.assertEqual(code, 0, out)
         self.assertEqual((self.base / "app" / "order").read_text(), "su")
-        components[0]["service"] = f'"{sys.executable}" -c "raise SystemExit(3)"'
+        components[0]["service"] = python_command("mark.py fail")
         code, out = self.run_gate(components, "--test")
         self.assertEqual(code, 1, out)
         self.assertIn("skip  app ui (service failed)", out)
