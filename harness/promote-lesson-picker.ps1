@@ -1,29 +1,19 @@
-#!/usr/bin/env pwsh
 [CmdletBinding()]
-param(
-  [int]$Index,
-  [string]$Target,
-  [string]$Repo = (Get-Location).Path,
-  [switch]$Apply
+param([Parameter(ValueFromRemainingArguments=$true)][string[]]$Forwarded)
+$root = Split-Path $MyInvocation.MyCommand.Path -Parent
+$candidates = @(
+  [pscustomobject]@{ Name = 'py'; Prefix = @('-3') },
+  [pscustomobject]@{ Name = 'python3'; Prefix = @() },
+  [pscustomobject]@{ Name = 'python'; Prefix = @() }
 )
-$ErrorActionPreference = 'Stop'
-Set-Location $Repo
-if ($Index -lt 1) { [Console]::Error.WriteLine('promote-lesson-picker: -Index must be a positive integer'); exit 2 }
-if (-not $Target) { [Console]::Error.WriteLine('promote-lesson-picker: -Target is required'); exit 2 }
-$Lessons = '.architrave/learning/repo-lessons.md'
-if (-not (Test-Path $Lessons) -or (Get-Item $Lessons).Length -eq 0) { [Console]::Error.WriteLine("promote-lesson-picker: missing $Lessons"); exit 2 }
-$Rows = @()
-foreach ($Line in Get-Content $Lessons) {
-  if ($Line -notmatch '^\|') { continue }
-  $Cells = $Line.Trim('|').Split('|') | ForEach-Object { $_.Trim() }
-  if ($Cells.Count -lt 1 -or $Cells[0] -match '^(-+|Lesson)$') { continue }
-  $Rows += $Cells[0]
+foreach ($candidate in $candidates) {
+  $command = Get-Command $candidate.Name -ErrorAction SilentlyContinue
+  if (-not $command) { continue }
+  $prefix = @($candidate.Prefix)
+  & $command.Source @prefix -c 'import sys; raise SystemExit(0 if sys.version_info[0] == 3 else 1)' *> $null
+  if ($LASTEXITCODE -ne 0) { continue }
+  & $command.Source @prefix (Join-Path $root 'improvement.py') promote-lesson-picker @Forwarded
+  exit $LASTEXITCODE
 }
-if ($Index -gt $Rows.Count) { [Console]::Error.WriteLine("promote-lesson-picker: candidate index not found: $Index"); exit 2 }
-$RepoRoot = (Get-Location).Path
-if ($Apply) {
-  & ./harness/promote-lesson.ps1 -Lesson $Rows[$Index - 1] -Target $Target -Repo $RepoRoot -Apply
-} else {
-  & ./harness/promote-lesson.ps1 -Lesson $Rows[$Index - 1] -Target $Target -Repo $RepoRoot
-}
-exit $LASTEXITCODE
+[Console]::Error.WriteLine('promote-lesson-picker: Python 3 is required. Install from https://www.python.org/downloads/windows/ and enable the Python launcher or add Python to PATH.')
+exit 2

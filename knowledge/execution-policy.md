@@ -110,14 +110,15 @@ documents or broader history only when focused retrieval is insufficient.
 Handoffs and worker results are bounded summaries with source paths or artifact
 references; they do not duplicate transcripts or repository content.
 
-## Product path before planning
+## Spec first, then the product path
 
-Treat the user request or existing product contract as the source of truth.
-Turn it into the first useful end-to-end product slice, with only the
-acceptance checks needed to prove that slice. Begin implementation as soon as
-its real blockers are known; do not require a separate specification,
-exhaustive requirement ledger, or evidence receipt for every requirement
-before product code can move.
+The repository requirements file (config `requirements`, else `SPEC.md`) is the
+source of truth. Turn the user request or existing product contract into short
+REQ rows with testable acceptance there, then build the first useful
+end-to-end product slice that satisfies them. Begin implementation as soon as
+the REQs and their real blockers are known; the spec is a few table rows, not a
+document phase, and needs no separate evidence receipt per requirement beyond
+the row's Evidence cell.
 Once scope is frozen, stop adding planning documents. Map the contract directly
 to code and test owners in the existing task graph; revise it only for a real
 scope change or newly observed blocker.

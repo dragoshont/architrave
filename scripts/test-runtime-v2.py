@@ -269,6 +269,171 @@ class RuntimeV2Tests(unittest.TestCase):
         )
         self.store.complete_task(run_id, task_id, evidence_refs=[f"gate:gate-{task_id}"])
 
+    def requirements_fixture(self, *, owner: str = "", status: str = "open") -> None:
+        (self.repo / "architrave.config.json").write_text(json.dumps({"requirements": "requirements.md"}), encoding="utf-8")
+        (self.repo / "requirements.md").write_text(
+            "| ID | Requirement | Acceptance | Owner | Status | Evidence |\n"
+            "|---|---|---|---|---|---|\n"
+            f"| REQ-1 | Deliver fixture | fixture test passes | {owner} | {status} | test log |\n"
+            "| REQ-10 | Other scope | other test passes | | open | |\n"
+            "| REQ-old | Old scope | old test | | superseded | |\n"
+            "| REQ-gone | Removed | old test | | withdrawn | |\n"
+            "| REQ-done | Done | test passes | | accepted | test log |\n"
+            "\n## Corrections\n| ID | Type | Target | Change |\n|---|---|---|---|\n"
+            "| C-1 | revise | REQ-1 | Preserve owner correction |\n"
+            "| C-2 | supersede | REQ-old | Use REQ-1 instead |\n"
+            "| C-3 | retract | REQ-gone | No longer needed |\n"
+            "\n## Handoff\nNext: deliver fixture\nFailed approaches: none\nVerify: fixture test\n", encoding="utf-8")
+
+    def bound_task(self, run_id, task_id="bound", **kwargs):
+        return self.store.add_task(run_id, {"id": task_id, "objective": "Deliver fixture", "risk": "R0",
+            "workerProfile": "shell", "acceptanceCriteria": ["OUTCOME-001"], "reqs": ["REQ-1"], **kwargs})
+
+    def test_requirements_creation_validates_ids_status_and_packet_binding(self):
+        self.requirements_fixture()
+        run = self.create(risk="R0")["runId"]
+        for reqs, code in (([], "REQ_BINDING_REQUIRED"), (["REQ-missing"], "REQ_UNKNOWN"),
+                           (["REQ-old"], "REQ_NOT_ACTIVE"), (["REQ-gone"], "REQ_NOT_ACTIVE"),
+                           (["REQ-done"], "REQ_NOT_ACTIVE"), (["REQ-1", "REQ-1"], "REQ_BINDING_INVALID"),
+                           ("REQ-1", "REQ_BINDING_INVALID")):
+            with self.subTest(reqs=reqs), self.assertRaises(RuntimeFailure) as error:
+                self.bound_task(run, reqs=reqs)
+            self.assertEqual(code, error.exception.code)
+        with self.assertRaises(RuntimeFailure) as error:
+            self.bound_task(run, workPacket={"reqs": ["REQ-10"]})
+        self.assertEqual("REQ_BINDING_MISMATCH", error.exception.code)
+        state = self.bound_task(run, reqs=["REQ-1", "REQ-10"])
+        self.assertEqual(["REQ-1", "REQ-10"], state["tasks"][0]["workPacket"]["reqs"])
+        self.assertEqual([], self.store.load(run)["workers"])
+
+    def test_requirements_workpacket_only_binding_and_status_traceability(self):
+        self.requirements_fixture()
+        run = self.create(risk="R0")["runId"]
+        state = self.store.add_task(run, {"id": "packet", "objective": "Deliver fixture", "risk": "R0",
+            "workerProfile": "shell", "acceptanceCriteria": ["OUTCOME-001"], "workPacket": {"reqs": ["REQ-1"]}})
+        task = state["tasks"][0]
+        self.assertEqual(["REQ-1"], task["reqs"])
+        self.assertEqual(task["reqs"], task["workPacket"]["reqs"])
+        binding = state_summary(state)["requirementsBindings"]["packet"]
+        self.assertEqual(["REQ-1"], binding["reqs"])
+        self.assertEqual(f"{run}:packet", binding["claim"]["owner"])
+        self.assertTrue(binding["claim"]["active"])
+
+    def test_requirements_new_configuration_blocks_dispatch_of_unbound_legacy_task(self):
+        run = self.create(risk="R0")["runId"]
+        self.add_task(run, "unbound", risk="R0")
+        self.requirements_fixture()
+        with self.assertRaises(RuntimeFailure) as error:
+            self.store.start_task(run, "unbound", worker_id="worker")
+        self.assertEqual("REQ_BINDING_REQUIRED", error.exception.code)
+
+    def test_requirements_claims_cross_runs_and_release_on_handoff_and_cancel(self):
+        self.requirements_fixture()
+        first, second = self.create(risk="R0")["runId"], self.create(risk="R0")["runId"]
+        self.bound_task(first, owner="lane-a")
+        event = self.store.events(first)[-1]
+        self.assertEqual("lane-a", event["payload"]["requirementsClaimed"][0]["owner"])
+        with self.assertRaises(RuntimeFailure) as error:
+            self.bound_task(second, owner="lane-b")
+        self.assertEqual("REQ_CLAIM_CONFLICT", error.exception.code)
+        self.assertEqual([], self.store.load(second)["tasks"])
+        self.store.handoff_task(first, "bound")
+        self.assertEqual(["REQ-1"], self.store.events(first)[-1]["payload"]["requirementsReleased"][0]["reqs"])
+        self.bound_task(second, owner="lane-b")
+        self.store.handoff_task(second, "bound", cancel=True)
+        self.assertFalse(self.store.load(second)["tasks"][0]["requirementClaim"]["active"])
+        self.bound_task(first, "replacement", owner="lane-c")
+
+    def test_requirements_claims_allow_same_owner_and_respect_document_owner(self):
+        self.requirements_fixture(owner="lane-a")
+        run = self.create(risk="R0")["runId"]
+        with self.assertRaises(RuntimeFailure) as error:
+            self.bound_task(run, owner="lane-b")
+        self.assertEqual("REQ_CLAIM_CONFLICT", error.exception.code)
+        self.bound_task(run, owner="lane-a")
+        self.bound_task(run, "same-owner", owner="lane-a")
+        self.assertEqual(2, len(self.store.load(run)["tasks"]))
+
+    def test_requirements_dispatch_revalidates_live_file_and_handoff_keeps_running_owner(self):
+        self.requirements_fixture()
+        run = self.create(risk="R0")["runId"]
+        self.bound_task(run)
+        for status in ("accepted", "superseded", "withdrawn"):
+            self.requirements_fixture(status=status)
+            # Closed requirements need their explanation in the shared correction table.
+            with self.assertRaises(RuntimeFailure) as error:
+                self.store.start_task(run, "bound", worker_id="worker")
+            self.assertEqual("REQ_NOT_ACTIVE", error.exception.code)
+        self.requirements_fixture()
+        self.store.start_task(run, "bound", worker_id="worker")
+        with self.assertRaises(RuntimeFailure) as error:
+            self.store.handoff_task(run, "bound")
+        self.assertEqual("REQ_OWNER_RUNNING", error.exception.code)
+        self.assertTrue(self.store.load(run)["tasks"][0]["requirementClaim"]["active"])
+
+    def test_requirements_claim_released_only_on_task_completion_not_worker_finish(self):
+        self.requirements_fixture()
+        run = self.create(risk="R0")["runId"]
+        self.bound_task(run)
+        self.store.start_task(run, "bound", worker_id="worker")
+        self.store.finish_worker(run, "bound", worker_id="worker", status="FINISHED")
+        self.assertTrue(self.store.load(run)["tasks"][0]["requirementClaim"]["active"])
+        evidence = self.evidence(run, "bound-evidence", task_id="bound")
+        self.store.record_gate(run, gate_id="bound-gate", task_id="bound", gate_type="deterministic",
+                               status="PASS", evidence_refs=[evidence])
+        self.store.complete_task(run, "bound", evidence_refs=["gate:bound-gate"])
+        self.assertFalse(self.store.load(run)["tasks"][0]["requirementClaim"]["active"])
+        self.assertEqual("task.completed", self.store.events(run)[-1]["type"])
+        self.assertIn("requirementsReleased", self.store.events(run)[-1]["payload"])
+
+    def test_requirements_completion_reloads_file_even_for_handed_off_tasks(self):
+        self.requirements_fixture()
+        criterion = self.criterion(risk="R0")
+        criterion["blocking"] = False
+        run = self.store.create(goal="Fixture", outcome="Fixture", criteria=[criterion])["runId"]
+        self.bound_task(run)
+        self.store.handoff_task(run, "bound")
+        revision = self.store.load(run)["revision"]
+        with self.assertRaises(RuntimeFailure) as error:
+            self.store.verify(run)
+        self.assertEqual("REQ_NOT_ACCEPTED", error.exception.code)
+        self.assertEqual(revision, self.store.load(run)["revision"])
+        self.requirements_fixture(status="accepted")
+        state, done = self.store.verify(run)
+        self.assertTrue(done)
+        self.assertEqual("COMPLETED", state["status"])
+
+    def test_requirements_invalid_file_fails_closed(self):
+        self.requirements_fixture()
+        run = self.create(risk="R0")["runId"]
+        for text in ("not a requirements table", ""):
+            (self.repo / "requirements.md").write_text(text, encoding="utf-8")
+            with self.assertRaises(RuntimeFailure) as error:
+                self.bound_task(run)
+            self.assertEqual("REQUIREMENTS_INVALID", error.exception.code)
+        (self.repo / "requirements.md").unlink()
+        with self.assertRaises(RuntimeFailure) as error:
+            self.bound_task(run)
+        self.assertEqual("REQUIREMENTS_INVALID", error.exception.code)
+
+    def test_requirements_cli_claims_are_serialized_across_processes(self):
+        self.requirements_fixture()
+        runs = [self.create(risk="R0")["runId"] for _ in range(2)]
+        processes = [subprocess.Popen([sys.executable, str(ROOT / "harness/architrave_cli.py"),
+            "runtime", "--repo", str(self.repo), "task-add", run, "--id", "bound", "--title", "Bound",
+            "--objective", "Deliver fixture", "--criteria", "OUTCOME-001", "--req", "REQ-1",
+            "--owner", f"lane-{index}", "--risk", "R0"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            for index, run in enumerate(runs)]
+        outputs = [process.communicate(timeout=30) for process in processes]
+        self.assertEqual([0, 1], sorted(process.returncode for process in processes), outputs)
+        loser = next(index for index, process in enumerate(processes) if process.returncode)
+        self.assertIn("REQ_CLAIM_CONFLICT", outputs[loser][1])
+        winner = 1 - loser
+        result = subprocess.run([sys.executable, str(ROOT / "harness/architrave_cli.py"), "runtime", "--repo",
+            str(self.repo), "task-handoff", runs[winner], "bound"], capture_output=True, text=True)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.bound_task(runs[loser], owner="next-owner")
+
     def test_create_anchors_hash_chained_event_log(self) -> None:
         state = self.create()
         run_id = str(state["runId"])

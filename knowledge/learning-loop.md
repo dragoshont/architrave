@@ -32,11 +32,46 @@ API event recording remains intact; artifact/event counts never measure progress
 - Promote after the configured threshold, usually two occurrences, or immediately for a high-severity validated safety/build fact with human approval.
 - Before promotion, validate against the current branch. Stale facts from closed/unmerged branches must not affect behavior unless the codebase still substantiates them.
 - For prose claims that cannot be proven by local link existence alone, run the semantic learning review helper. The provider-backed review emits JSONL findings for unsupported claims; the deterministic apply helper only marks exact matching learning lines as `UNVALIDATED:` so stale review output cannot mutate changed text.
-- Prefer executable promotion. A lesson about a repeated failure becomes a gate, lint, test or requirements acceptance where possible; prose is the fallback and must say why no check fits. Failed approaches stay in the requirements `## Handoff` so successors do not retry them.
-- Agents propose skill, instruction or gate changes from lessons; they never edit always-loaded global instructions on their own. A change merges only with a before/after check (a test, gate fixture or benchmark task) and human approval. Keep the skill library small; retire a gate or rule when a model upgrade makes it dead weight.
+- Executable first: record an `Executable Check` (gate/test/lint/acceptance command) or an explicit `prose-justification` column in the candidate lesson row. `harness/promote-lesson.sh --lesson <id-or-exact-text> --target docs/guide.md` and `harness/promote-lesson-picker.sh --index 1 --target docs/guide.md` refuse prose promotion without one; both remain dry-run until `--apply`. Failed approaches stay in the requirements `## Handoff`.
+- Propose controls with `python3 harness/improvement.py propose --source-lesson L1 --kind test --target tests/regression.py --summary "Prevent recurrence" --before-command "python3 tests/regression.py" --after-command "python3 tests/regression.py"`. Run `check <id> --phase before`, make the proposed change, then `check <id> --phase after`; only `approve <id> --by <human>` admits a failing or baseline before plus a passing after. Instruction proposals targeting `AGENTS.md`, `agents/*.agent.md`, or `.github/copilot-instructions.md` also require `--owner-approved`. Approval records consent; it does not edit guidance or merge code. Keep the skill library small.
 - Keep always-loaded instruction files short and scoped. Use path-specific `.github/instructions/*.instructions.md` or docs for local rules instead of stuffing every detail into `AGENTS.md`.
 - Redact secrets. Learning artifacts may say a secret reference exists or a config file is required; they must not contain secret values, tokens, private keys, cookies, or credentials.
 - Keep adaptive evidence concise: semantic intent and selection reason, requested binding, observed model/vendor/effort, fallback/escalation evidence, judge provenance, and available duration/token/tool metrics. Never store hidden reasoning or treat a producer's self-report as host observation.
+
+## Improvement and pruning registers
+
+`harness/improvement.py` (also `harness/improvement.sh` / `.ps1`) records one JSON
+object per line in `.architrave/learning/improvements.jsonl`. Rows retain the id,
+source lesson ids or `--failure-fingerprint`, kind (`gate|test|lint|skill|instruction|retire`),
+repo-relative target, summary, before/after commands, observed exit codes and short
+redacted output tails, status (`proposed|approved|merged|rejected`), and approver.
+`list` prints the ledger. Each command accepts `--repo DIR` after its subcommand.
+Checks execute the recorded shell command in that repo (60-second default timeout,
+`--timeout` up to 3600); run only trusted commands within the caller's authorization.
+A failed check returns 1 but still records evidence; usage or approval errors return 2.
+Rerunning before discards after evidence; changing the target after a passing check
+requires another after check before approval. `--by` is a human-consent attestation,
+not authentication: agents propose, the human reviews the diff/evaluation and approves,
+and the normal human-controlled merge records merged/rejected disposition in the ledger.
+No command automatically edits the target or deletes a rule.
+
+Keep `.architrave/learning/harness-assumptions.md` as a small table:
+
+```markdown
+| Rule | Model Limitation | Last Reviewed Model | Target |
+|---|---|---|---|
+| Repeated-failure stop | Retries the same failed approach | model-v1 | docs/controls.md |
+```
+
+`python3 harness/improvement.py prune-review --model model-v2` lists entries last
+reviewed for another model and records an idempotent `retire` proposal stub per entry.
+Fill its checks with `check <id> --phase before --command "<baseline eval>"` and
+`check <id> --phase after --command "<candidate eval>"`; pruning still requires passing
+after evidence and human approval. Update `Last Reviewed Model` only after actual
+review; never remove controls just because the model name changed.
+
+`harness/validate-learning.sh` validates both registers when present, including the
+existing no-secrets scan. Missing optional registers are not an error.
 
 ## Repo profile shape
 

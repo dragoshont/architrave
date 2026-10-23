@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "One Architrave improvement JSONL row",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "source_lessons", "failure_fingerprint", "kind", "target", "summary", "before_command", "after_command", "evidence", "status", "approver", "owner_approved"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"},
+    "source_lessons": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "failure_fingerprint": {"type": "string"},
+    "kind": {"enum": ["gate", "test", "lint", "skill", "instruction", "retire"]},
+    "target": {"type": "string", "minLength": 1},
+    "summary": {"type": "string", "minLength": 1},
+    "before_command": {"type": "string"},
+    "after_command": {"type": "string"},
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "before": {"$ref": "#/$defs/check"},
+        "after": {"$ref": "#/$defs/check"}
+      },
+      "dependentRequired": {"after": ["before"]}
+    },
+    "status": {"enum": ["proposed", "approved", "merged", "rejected"]},
+    "approver": {"type": "string"},
+    "owner_approved": {"type": "boolean"}
+  },
+  "anyOf": [
+    {"properties": {"source_lessons": {"minItems": 1}}},
+    {"properties": {"failure_fingerprint": {"minLength": 1}}}
+  ],
+  "allOf": [{
+    "if": {"properties": {"status": {"enum": ["approved", "merged"]}}},
+    "then": {
+      "properties": {
+        "approver": {"minLength": 1},
+        "evidence": {
+          "required": ["before", "after"],
+          "properties": {"after": {"properties": {"exit_code": {"const": 0}}}}
+        }
+      }
+    }
+  }],
+  "$defs": {
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "exit_code", "tail", "target_digest"],
+      "properties": {
+        "command": {"type": "string", "minLength": 1},
+        "exit_code": {"type": "integer"},
+        "tail": {"type": "string", "maxLength": 2000},
+        "target_digest": {"type": "string", "pattern": "^(missing|[0-9a-f]{64})$"}
+      }
+    }
+  }
+}

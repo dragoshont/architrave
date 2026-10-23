@@ -19,6 +19,14 @@ format and packaging contract before writing.
   maintained inventory or packaging tests. Skills remain plugin-only unless a
   repository explicitly adopts a separate, supported mechanism; do not create
   duplicate names in host locations that do not merge plugin skills.
+- Route skill changes through `python3 harness/improvement.py propose --kind skill`
+  with a source lesson or failure fingerprint, target, summary, and before/after
+  eval commands. Run `check <id> --phase before` before editing, then
+  `check <id> --phase after`; a human uses `approve <id> --by <human>` before merge.
+  Evaluate representative trigger/non-trigger cases and task outcomes, not just
+  wording. If already vendored, `skill-creator` and `writing-skills` can supply
+  eval methods; do not install them just for this step. Prefer improving or
+  retiring an existing skill over expanding the routing library.
 - Validate frontmatter, referenced paths, package discovery and the narrow
   behavior with existing checks. Separate structural fixtures from live-host
   evidence and report unavailable host validation honestly.

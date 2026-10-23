@@ -19,10 +19,15 @@ def validate(root: Path) -> tuple[list[str], list[str]]:
     root = root.resolve()
     learning = root / ".architrave" / "learning"
     files = [learning / "repo-profile.md", learning / "repo-lessons.md"]
+    files += [learning / name for name in ("improvements.jsonl", "harness-assumptions.md")
+              if (learning / name).exists() or (learning / name).is_symlink()]
     passed: list[str] = []
     errors: list[str] = []
     for path in files:
         relative = path.relative_to(root).as_posix()
+        if not path.resolve().is_relative_to(root):
+            errors.append(f"learning path escapes repo: {relative}")
+            continue
         if not path.is_file() or path.stat().st_size == 0:
             errors.append(f"missing/empty {relative}")
             continue
@@ -30,6 +35,14 @@ def validate(root: Path) -> tuple[list[str], list[str]]:
         text = path.read_text(encoding="utf-8", errors="replace")
         if SECRET_RE.search(text):
             errors.append(f"possible secret material in {relative}")
+        if path.name in {"improvements.jsonl", "harness-assumptions.md"}:
+            from improvement import load_assumptions, load_proposals
+            try:
+                (load_proposals if path.name == "improvements.jsonl" else load_assumptions)(root)
+            except (ValueError, TypeError, OSError, UnicodeError) as exc:
+                errors.append(f"malformed {relative}: {exc}")
+        if path.suffix != ".md":
+            continue
         for target in LINK_RE.findall(text):
             if target.startswith(("http://", "https://", "mailto:", "#")):
                 continue

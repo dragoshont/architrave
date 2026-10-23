@@ -15,6 +15,37 @@ The complete behavioral contract lives in
 - `harness/architrave_runtime.py` is the only state transition API.
 - v1 `summary.json` remains readable and migratable.
 
+## Requirements binding
+
+Set `requirements` in `architrave.config.json` to your repository requirements
+file. New tasks and WorkPackets must name `reqs`; unknown, accepted, superseded
+or withdrawn REQs cannot start. For example (one line):
+
+```text
+python3 harness/architrave_cli.py runtime --repo REPO task-add RUN --id TASK --title TITLE --objective OBJECTIVE --criteria CRITERION --req REQ-1 --owner lane-a
+```
+
+Repeat `--req` for multiple REQs. Owner defaults to `RUN:TASK`; match the file's
+owner when set. Claims are recorded in task events (`requirementsClaimed` /
+`requirementsReleased`) and shown by status as `requirementsBindings`. A shared
+checkout lock prevents different owners from claiming the same REQ across Runs.
+Claims release on task completion, cancellation or handoff, not candidate return.
+Use `task-handoff RUN TASK` or `task-cancel RUN TASK` with the same CLI prefix;
+stop and observe a running worker first. Native cancellation also releases claims.
+
+Native dispatch takes `reqs: ["REQ-1"]`; batch takes
+`reqs: {"task-a": ["REQ-1"], "task-b": ["REQ-2"]}` alongside `task_ids`.
+Python checks canonical bindings; prompts begin with current acceptance text and
+all corrections. Existing admission and child caps remain enforced.
+
+Completion rereads the file: every bound REQ must be `accepted`, even for
+cancelled/deferred tasks. Evidence and existing gates still apply. Without a
+`requirements` key, behavior is unchanged. Claims do not span separate checkouts.
+
+Errors: `REQUIREMENTS_INVALID`, `REQ_BINDING_REQUIRED`, `REQ_BINDING_INVALID`,
+`REQ_UNKNOWN`, `REQ_NOT_ACTIVE`, `REQ_BINDING_MISMATCH`, `REQ_CLAIM_CONFLICT`,
+`REQ_OWNER_INVALID`, `REQ_OWNER_RUNNING`, `REQ_NOT_ACCEPTED`.
+
 ## Common flow
 
 ```bash

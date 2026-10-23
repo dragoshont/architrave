@@ -355,6 +355,7 @@ for test_script in \
   scripts/test-native-host.py \
   scripts/test-opencode-host.py \
   scripts/test-components.py \
+  scripts/test-improvement.py \
   scripts/test-native-review.py \
   scripts/test-quality-cadence.py \
   scripts/test-ribbon.py \

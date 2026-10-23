@@ -54,6 +54,15 @@ def emit_source_inventory(paths):
         print(json.dumps({"status": "source-inventory", "files": chunk}, separators=(",", ":")), flush=True)
 
 
+def requirements_kickoff(store: RunStore, task: dict, reqs: object) -> str:
+    """Validate the tool's explicit binding against canonical state before host admission."""
+    if store.requirements_document() is not None:
+        selected = store.validate_requirement_binding(reqs)
+        if selected != task.get("reqs", []):
+            raise RuntimeFailure("REQ_BINDING_MISMATCH", "dispatch reqs must match the canonical task/WorkPacket")
+    return store.requirements_context(task)
+
+
 def routing_observation(requested, effective, reused_owner=False):
     fallback = None
     if not effective:
@@ -121,6 +130,7 @@ def main():
         if action != "dispatch":
             raise RuntimeFailure("NATIVE_TRANSPORT_INVALID", "unknown native host action")
         task_id = request["taskId"]
+        requirements_kickoff(store, find_task(store.load(run_id), task_id), request.get("reqs"))
         ticket = store.begin_native_worker(run_id, task_id, host_owner=request["owner"],
                                           retry_hypothesis=request.get("retryHypothesis"),
                                           owner_handle=request.get("ownerHandle"))
@@ -132,7 +142,7 @@ def main():
                             request.get("hostEffort") or {})
         emit({
             "status": "prepared", "binding": ticket.binding,
-            "prompt": render_prompt(packet) + "\n"
+            "prompt": requirements_kickoff(store, task, request.get("reqs")) + render_prompt(packet) + "\n"
             + f"Use ONLY this isolated workspace, with absolute paths: {task['workspace']}\n"
             + "Do not launch another agent CLI, commit, mutate the source checkout, or change Run state.\n"
             + "Do not call Architrave control-plane extension tools. Return a candidate, never claim gate PASS.",

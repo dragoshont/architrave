@@ -336,6 +336,10 @@
         "afterCompletion": { "type": "boolean" }
       }
     },
+    "reqs": {
+      "type": "array", "minItems": 1, "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^REQ-[A-Za-z0-9_.-]+$" }
+    },
     "workPacket": {
       "type": "object",
       "required": [
@@ -355,6 +359,7 @@
       "additionalProperties": false,
       "properties": {
         "workPacketId": { "$ref": "#/definitions/id" },
+        "reqs": { "$ref": "#/definitions/reqs" },
         "taskId": { "$ref": "#/definitions/id" },
         "objective": { "type": "string", "minLength": 1 },
         "acceptanceCriteria": {
@@ -562,6 +567,14 @@
           }
         },
         "workPacket": { "$ref": "#/definitions/workPacket" },
+        "reqs": { "$ref": "#/definitions/reqs" },
+        "requirementClaim": {
+          "type": "object", "required": ["owner", "active"], "additionalProperties": false,
+          "properties": {
+            "owner": { "type": "string", "minLength": 1, "maxLength": 257 },
+            "active": { "type": "boolean" }
+          }
+        },
         "sideEffect": {
           "type": ["object", "null"],
           "required": ["operation", "target", "state", "reconciliation"],

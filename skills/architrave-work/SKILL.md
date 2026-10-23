@@ -13,6 +13,11 @@ skill's reported directory (`../..`), not repository cwd or guessed caches.
   assignment, allowing the intended isolated worktree branch. Stop on mismatch
   or unavailable identity; a path in a prompt is not proof of destination.
   Report denied host authorization without bypassing it or retrying unchanged.
+- Work to the assigned REQ ids and their acceptance in the requirements file
+  (config `requirements`, else `SPEC.md`). Read its `## Handoff` and correction
+  rows first; do not retry listed failed approaches. Report status and
+  evidence per REQ, and record new failed approaches in Handoff. Never mark a
+  REQ `accepted` without evidence; never edit REQs you were not assigned.
 - Keep the assigned outcome, owned scope, expected result and any authorization
   holds. Use host limits for brief tasks; explicit acceptance checks, finite
   budgets and recovery detail apply when assigned or required by risk.

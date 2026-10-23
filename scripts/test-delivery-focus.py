@@ -85,9 +85,20 @@ required = {
     "worker verifies destination": (work_skill, "Before writing, verify cwd, repository identity and branch/base"),
     "no unchanged denied retries": (execution, "Never retry permission-denied operations unchanged"),
     "visible-session parallelism": (agent, "prefer coordinated, user-visible sessions"),
-    "single product contract": (execution, "Treat the user request or existing product contract as the source of truth"),
+    "spec is source of truth": (execution, "The repository requirements file (config `requirements`, else `SPEC.md`) is the source of truth"),
+    "spec-driven default": (agent, "Spec-driven by default. The repository requirements file is the source of truth"),
+    "spec trivial exemption": (agent, "Exempt: read-only questions and trivial one-line edits"),
+    "trace to REQs": (agent, "Commits, child kickoffs, hand-offs and reports name the REQ ids they serve"),
+    "corrections recorded first": (agent, "as a typed `add|revise|retract|supersede` correction row before acting on it"),
+    "done is accepted REQs": (agent, "`python gates/gate_runner.py requirements --done` passes"),
+    "spec-driven skill": (lead_skill, "Work is spec-driven"),
+    "spec-driven stanza": (stanza, "Spec-driven: record requests and owner corrections as REQ rows"),
+    "worker REQ discipline": (work_skill, "Work to the assigned REQ ids and their acceptance"),
+    "rubric grades REQs": (rubric, "Non-trivial work without REQ rows with testable acceptance is a Major finding"),
+    "rubric done blocker": (rubric, "Claiming done while an in-scope REQ is not `accepted` with evidence"),
+    "README spec-driven lead": (readme, "Architrave is a spec-driven development control plane"),
     "first vertical slice": (execution, "first useful end-to-end product slice"),
-    "no per-requirement ceremony": (agent, "exhaustive requirement ledger"),
+    "spec is short": (agent, "a bounded task may be one\n  to three rows"),
     "product progress reporting": (agent, "Report what the product can now do"),
     "small task graph": (execution, "Keep the live task graph small"),
     "primary criterion stall signal": (agent, "When an adopted Run reports `STALLED_PRIMARY_CRITERION`"),
@@ -121,8 +132,8 @@ required = {
     "durable packet safety unchanged": (execution, "Durable WorkPackets still obey their existing schema and admission checks"),
     "no invented lookup budgets": (execution, "do not invent per-child budget, receipt or planning fields for a brief lookup"),
     "no blank artifact penalties": (rubric, "Missing optional artifacts are not findings"),
-    "no universal intake": (rubric, "Missing intake or planning documents alone are not findings"),
-    "no universal Run": (rubric, "Ordinary direct source work does not need a Run, acceptance matrix or phase ledger"),
+    "no extra planning documents": (rubric, "Missing other planning documents are not findings"),
+    "no universal Run": (rubric, "Ordinary direct source work does not need a Run or phase ledger"),
     "compact review output": (rubric, "A clean review needs no dimension-score table"),
     "required evidence preserved": (rubric, "Missing required release/mutation evidence"),
     "learning optional": (learning, "Missing optional learning artifacts are not a finding"),
@@ -147,6 +158,11 @@ for phrase in ("visible intake block", "non-trivial work has canonical",
                "Missing artifacts are a Major concern"):
     if contains_guidance(rubric, phrase):
         missing.append(f"rubric still mandates blanket ceremony: {phrase}")
+for manifest in ("plugin.json", ".claude-plugin/plugin.json", ".github/plugin/marketplace.json", ".codex-plugin/plugin.json"):
+    if "Spec-driven" not in (root / manifest).read_text(encoding="utf-8"):
+        missing.append(f"{manifest} description does not lead with spec-driven development")
+if "exhaustive requirement ledger" in agent or "do not require a separate specification" in execution:
+    missing.append("anti-spec wording returned to the lead contract")
 if "before task or Outcome completion" in agent:
     missing.append("per-task full-gate phrase remains")
 if "Then it runs a **Tournament of Options**" in readme:
