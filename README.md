@@ -90,6 +90,8 @@ An adopted Run can flag a primary product criterion as stalled after repeated
 work does not touch its paths or change its outcome, then block unrelated task
 starts not bound to that criterion. It requires a declared primary criterion;
 it is not an idle timer.
+An authenticated Run can also be owner-confirmed onto an exact clean linked
+worktree without changing the dirty source checkout or copying its key.
 See the [runtime guide](docs/runtime-v2.md) and
 [execution policy](knowledge/execution-policy.md).
 

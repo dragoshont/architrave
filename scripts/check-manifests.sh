@@ -316,7 +316,7 @@ if python3 -m py_compile \
   scripts/bench-architrave.py scripts/judge-bench.py scripts/summarize-bench.py \
   scripts/test-benchmark-tools.py \
   scripts/test-codex-runtime.py scripts/fixtures/codex_fake.py \
-  scripts/test-runtime-v2.py scripts/test-worker-adapters.py scripts/test-invariant-engine.py \
+  scripts/test-runtime-v2.py scripts/test-run-reconciliation.py scripts/test-worker-adapters.py scripts/test-invariant-engine.py \
   scripts/test-legibility.py scripts/test-workspaces.py scripts/test-longbuild-runtime.py \
   scripts/test-benchmark-runtime.py \
   benchmarks/fixtures/tessera-shaped/server/*.py benchmarks/fixtures/tessera-shaped/plugin/*.py \
@@ -351,6 +351,7 @@ fi
 runtime_test_output="$(mktemp)"
 for test_script in \
   scripts/test-runtime-v2.py \
+  scripts/test-run-reconciliation.py \
   scripts/test-worker-adapters.py \
   scripts/test-native-host.py \
   scripts/test-opencode-host.py \
