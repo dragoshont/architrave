@@ -12,6 +12,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER = ROOT / "gates" / "gate_runner.py"
+EXAMPLE = ROOT / "kit" / "examples" / "requirements.md"
 
 
 def git(path: Path, *args: str) -> None:
@@ -46,7 +47,7 @@ class ComponentGate(unittest.TestCase):
         if requirements:
             config["requirements"] = requirements
             if requirements == "SPEC.md":
-                (self.hub / "SPEC.md").write_text("# Requirements\n- REQ-01\n")
+                (self.hub / "SPEC.md").write_text(EXAMPLE.read_text())
         (self.hub / "architrave.config.json").write_text(json.dumps(config))
         process = subprocess.run(
             [sys.executable, str(RUNNER), "components", "--repo", str(self.hub), *flags],
@@ -92,6 +93,56 @@ class ComponentGate(unittest.TestCase):
         code, out = self.run_gate(pair)
         self.assertEqual(code, 0, out)
         self.assertIn("ok    requirements: SPEC.md", out)
+
+    def requirements(self, text, *flags):
+        (self.hub / "SPEC.md").write_text(text)
+        (self.hub / "architrave.config.json").write_text(json.dumps(
+            {"kind": "knowledge", "build": "true", "test": "true", "requirements": "SPEC.md"}))
+        process = subprocess.run(
+            [sys.executable, str(RUNNER), "requirements", "--repo", str(self.hub), *flags],
+            capture_output=True, text=True, check=False,
+        )
+        return process.returncode, process.stdout + process.stderr
+
+    def test_requirements_file_needs_table_acceptance_evidence_corrections_and_handoff(self):
+        example = EXAMPLE.read_text()
+        code, out = self.requirements(example)
+        self.assertEqual(code, 0, out)
+        self.assertIn("ARCHITRAVE-REQUIREMENTS: PASS", out)
+        code, out = self.requirements("# Requirements\n- REQ-01\n")
+        self.assertEqual(code, 1)
+        self.assertIn("no requirements table", out)
+        self.assertIn("'Next:'", out)
+        broken = (example
+                  .replace("| `make test-library` passes; owned count matches service |", "| |")
+                  .replace("commit abc1234, test log ci/123", "")
+                  .replace("| C-01 | supersede | REQ-03 → REQ-04 |", "| C-01 | tweak | REQ-09 |")
+                  .replace("Failed approaches: forcing a refresh on appear re-triggered the loop (reverted in def5678).",
+                           "Failed approaches:"))
+        code, out = self.requirements(broken)
+        self.assertEqual(code, 1)
+        for text in ("REQ-01 has no testable acceptance", "REQ-02 is accepted without evidence",
+                     "REQ-03 is superseded but no correction", "type 'tweak'", "unknown REQ-09",
+                     "'Failed approaches:'"):
+            self.assertIn(text, out)
+
+    def test_requirements_claim_refuses_duplicate_or_closed_lanes_and_done_needs_acceptance(self):
+        example = EXAMPLE.read_text()
+        code, out = self.requirements(example, "--claim", "REQ-01", "--owner", "ui-lane")
+        self.assertEqual(code, 0, out)
+        self.assertIn("acceptance: `make test-library`", out)
+        code, out = self.requirements(example, "--claim", "REQ-04", "--owner", "new-lane")
+        self.assertEqual(code, 0, out)
+        code, out = self.requirements(example, "--claim", "REQ-01", "--owner", "other-lane")
+        self.assertEqual(code, 1)
+        self.assertIn("already owned by ui-lane", out)
+        code, out = self.requirements(example, "--claim", "REQ-03,REQ-02,REQ-77", "--owner", "x")
+        self.assertIn("REQ-03: status is superseded", out)
+        self.assertIn("REQ-02: status is accepted", out)
+        self.assertIn("REQ-77: not in", out)
+        code, out = self.requirements(example, "--done")
+        self.assertEqual(code, 1)
+        self.assertIn("2 active REQs are not accepted: REQ-01, REQ-04", out)
 
     def test_private_push_remote_passes(self):
         engine = checkout(self.base / "engine", "https://github.com/me/public-fork.git")

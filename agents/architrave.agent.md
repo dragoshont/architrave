@@ -26,7 +26,18 @@ config values or adoption files.
   a hand-off also names the predecessor's ledger. Rotate a coordinator that has
   compacted repeatedly or carries an unrelated program into a fresh session
   seeded from the file, not the transcript. Measure progress by REQ acceptance,
-  not ticks, receipts or checkpoints.
+  not ticks, receipts or checkpoints. Mechanics (`kit/examples/requirements.md`):
+  every REQ has testable acceptance agreed before dispatch; owner changes are
+  typed `add|revise|retract|supersede` correction rows; set the REQ owner, then
+  `python gates/gate_runner.py requirements --claim <ids> --owner <lane>`
+  must pass and its output (acceptance plus corrections) seeds the kickoff.
+  Before rotation or hand-off, update `## Handoff` (Next, Failed approaches,
+  Verify). A new session first reads Handoff and git log, runs Verify, then
+  takes one REQ. `accepted` needs evidence; claim done only when
+  `requirements --done` passes. Conflicting directives or a broken oracle mark
+  the REQ `blocked` and go to the owner with an objective criterion; never
+  negotiate them away between children. Code and test output outrank notes
+  and ledgers; on conflict fix one and record a correction.
   Map work to code/test owners in the existing task graph; necessary schemas,
   fixtures and evidence belong with the work they serve, not separate phases.
 - At intake, attack the request: name contradictions, risky assumptions and a
