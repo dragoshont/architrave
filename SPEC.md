@@ -17,6 +17,7 @@ Source of truth for Architrave's own development (spec-driven, see
 | REQ-08 | REQ-bound native dispatch is exercised in a real Copilot session, not only fixtures | Live `architrave_native_dispatch` with `reqs` against `test-native-host.py --prepare-live` fixture returns a gated candidate | lead | accepted | 2026-10-23 live: dispatch reqs=[REQ-1] returned candidate (worker obeyed correction C-1, answered "42"); `architrave_native_gate test` PASS gate-test-77dfd7ba; second run on same REQ rejected REQ_CLAIM_CONFLICT |
 | REQ-09 | Architrave is Python only: no shell entrypoints ship (vendored skill assets excepted); every gate, harness command, installer and test runs as `python <file>.py`; install/update have no legacy migrations | `python3 scripts/check_manifests.py` rejects tracked shell entrypoints; `python3 scripts/test_install_update.py` no-launcher and install/update safety tests | lead | accepted | 0.21.0 |
 | REQ-10 | Reusable kickoff guidance closes only gaps in fresh multi-repo bootstrap, component ref/write identity, precursor evidence and scoped scheduled-automation retirement; reuse existing ownership, permission and E2E rules | `python3 scripts/test-delivery-focus.py` protects the new guidance; `python3 scripts/check_manifests.py`, quality-gate and requirements --done pass; one independent R2 rubric review PASS | kickoff-guidance | accepted | 2026-10-23: 20 new delivery-focus assertions fail before guidance and pass after; check_manifests.py PASS incl. 18 runtime suites; quality-gate PASS; independent host code-review R2 PASS, no findings |
+| REQ-11 | Merge the kickoff patch, publish the next coordinated public release and install locally without dispatching or consuming Actions CI | Verify PR merge SHA, tag and manifest agreement, public release source/artifact hashes, supported local install identities, local manifest/browser checks and no new Actions runs; coordinate one release writer | kickoff-release | in-progress | |
 
 ## Corrections
 
@@ -25,9 +26,11 @@ Source of truth for Architrave's own development (spec-driven, see
 | C-01 | revise | REQ-01 | Owner, 2026-10-23: spec-driven applies to every non-trivial task, not only long programs |
 | C-02 | add | REQ-05 | Owner, 2026-10-23: README must list the entire functionality set |
 | C-03 | add | REQ-10 | Owner, 2026-10-23: capture only missing generic lessons from an overlong kickoff in Architrave source, not installed caches or project-specific rules; preserve human grants, exclusive ownership, dirty work and host lifecycle; no versions, release or automatic merge |
+| C-04 | revise | REQ-11 | Owner via coordinating session, 2026-10-23: now merge, build, release publicly and install locally; no CI minutes. This replaces C-03's no-release/no-merge hold for this bounded release only; coordinate existing release owner, inspect automation before writes, preserve required local gates and do not publish duplicates |
+| C-05 | add | REQ-11 | Owner via coordinating session, 2026-10-23: report whether sessions need restart; distinguish disk install from already-loaded instructions and extension processes, and explain how a fresh session proves the released version without interrupting unrelated sessions |
 
 ## Handoff
 
-Next: REQ-10 accepted on base 02c7218; open new REQ rows for the next owner request. No version change or release; hardening session confirmed no overlapping work.
+Next: REQ-11 coordinates one release writer and no-CI merge/tag/publish/install; inspect current remote state before writes. REQ-10 source review passed.
 Failed approaches: treating spec-driven work as a long-program exception (0.17–0.18) repeated the drift that removed it in 0.11.1.
 Verify: `python3 gates/gate_runner.py requirements --done` then `python3 scripts/check_manifests.py`.
