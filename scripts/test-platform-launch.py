@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 import sys
+import os
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,14 +19,18 @@ class PlatformLaunchTests(unittest.TestCase):
     def mapping(values: dict[str, str]):
         return lambda name: values.get(name)
 
-    def test_windows_uses_available_powershell(self) -> None:
+    def test_windows_without_posix_shell_uses_cmd(self) -> None:
         command = configured_shell_command(
-            "Write-Output ok",
+            "echo ok",
             platform="windows",
-            which=self.mapping({"powershell": "C:\\Power Shell\\powershell.exe"}),
+            which=self.mapping({"cmd": "C:\\Windows\\System32\\cmd.exe", "powershell": "C:\\ps.exe"}),
         )
-        self.assertEqual("C:\\Power Shell\\powershell.exe", command[0])
-        self.assertEqual("[Console]::OutputEncoding=[Text.Encoding]::UTF8; Write-Output ok", command[-1])
+        self.assertEqual(["C:\\Windows\\System32\\cmd.exe", "/d", "/s", "/c", "echo ok"], command)
+
+    def test_windows_never_selects_powershell(self) -> None:
+        with mock.patch.dict(os.environ, {"COMSPEC": ""}), self.assertRaisesRegex(LaunchError, "no command shell"):
+            configured_shell_command("echo ok", platform="windows",
+                                     which=self.mapping({"pwsh": "C:\\pwsh.exe", "powershell": "C:\\ps.exe"}))
 
     def test_windows_falls_back_to_shell_for_repository_recipes(self) -> None:
         command = configured_shell_command(

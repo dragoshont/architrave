@@ -7,8 +7,8 @@ Architrave is meant to replace most project-specific development agents with one
 1. **Inventory existing agents.** Capture each agent's mission, tools, trigger phrases, handoffs, and hard rules.
 2. **Map reusable behavior to Architrave.** Move general behaviors into Architrave agents, knowledge packs, or `gates/rubric.md`; leave product/domain facts in the app repo.
 3. **Archive, don't delete.** Move old agents into `docs/archive/<old-agent-set>/` with a README explaining the replacement mapping.
-4. **Adopt the repo.** Add `architrave.config.json`, copy agents/gates/knowledge/harness with `tools/install.*`, and refresh copied `gates/` + `knowledge/` + `harness/` + the Architrave `AGENTS.md` stanza with `tools/update.*`. Use `tools/update.sh --agents` or `tools/update.ps1 -Agents` only when you deliberately want to refresh copied Architrave agents after archiving bespoke repo agents.
-5. **Validate.** Run `gates/checks.*`, `gates/backend-checks.*` when configured, and any app-specific test/screenshot gates.
+4. **Adopt the repo.** Add `architrave.config.json`, copy agents/gates/knowledge/harness with `python tools/install_update.py install`, and refresh copied `gates/` + `knowledge/` + `harness/` + the Architrave `AGENTS.md` stanza with `python tools/install_update.py update` (which also removes the pre-0.21.0 `.sh`/`.ps1` launchers). Use `update --agents` only when you deliberately want to refresh copied Architrave agents after archiving bespoke repo agents.
+5. **Validate.** Run `gates/gate_runner.py checks`, `gates/gate_runner.py backend-checks` when configured, and any app-specific test/screenshot gates.
 
 ## Common Mappings
 

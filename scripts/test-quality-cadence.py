@@ -19,7 +19,9 @@ spec.loader.exec_module(gate)
 
 class QualityCadenceTests(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
+        scratch = ROOT / ".architrave/test-fixtures"
+        scratch.mkdir(parents=True, exist_ok=True)
+        self.temp = tempfile.TemporaryDirectory(prefix="quality-cadence-", dir=scratch)
         self.repo = Path(self.temp.name)
         self.config = {
             "platform": "web", "stack": "fixture", "designSource": {"path": "design.json"},
@@ -71,29 +73,32 @@ class QualityCadenceTests(unittest.TestCase):
 
     def test_all_windows_fixture_processes_propagate_failure_immediately(self):
         for name in (".github/workflows/validate.yml", ".github/workflows/release.yml"):
-            lines = (ROOT / name).read_text().splitlines()
-            checked = 0
-            windows_job = False
-            for index, line in enumerate(lines):
-                if line.startswith("  ") and not line.startswith("    ") and line.endswith(":"):
-                    windows_job = False
-                if line.strip() == "runs-on: windows-2025":
-                    windows_job = True
-                if windows_job and line.strip().startswith(("python ", "node ", "powershell ")):
-                    self.assertEqual("if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }", lines[index + 1].strip())
-                    checked += 1
-            self.assertGreater(checked, 10)
+            text = (ROOT / name).read_text()
+            windows_job = text.split("  windows-python:\n", 1)[1].split("\n  release:", 1)[0]
+            self.assertIn("runs-on: windows-2025", windows_job)
+            self.assertNotIn("shell:", windows_job)
+            self.assertNotIn("continue-on-error:", windows_job)
+            self.assertNotIn("$LASTEXITCODE", windows_job)
+            commands = [line.strip()[5:] for line in windows_job.splitlines()
+                        if line.startswith("        run: ")]
+            self.assertGreater(len(commands), 10)
+            for command in commands:
+                self.assertTrue(command.startswith(("python ", "node ")), command)
+                self.assertNotIn(";", command)
+                self.assertNotIn("\n", command)
+                self.assertNotIn(".ps1", command)
+                self.assertNotIn(".sh", command)
 
     def test_actual_browser_contract_is_required_in_validate_and_release(self):
         for name in (".github/workflows/validate.yml", ".github/workflows/release.yml"):
             text = (ROOT / name).read_text()
-            browser_job = text.split("  session-browser:\n", 1)[1].split("\n  powershell-harness:", 1)[0]
+            browser_job = text.split("  session-browser:\n", 1)[1].split("\n  windows-python:", 1)[0]
             self.assertIn("playwright==1.56.0", browser_job)
             self.assertIn("playwright install --with-deps chromium", browser_job)
             self.assertIn("COMPANION_VISUAL_OUTPUT:", browser_job)
             self.assertIn("scripts/test-session-companion.mjs", browser_job)
             self.assertIn("actions/upload-artifact@v4", browser_job)
-        self.assertIn("needs: [validate, powershell-harness, session-browser]",
+        self.assertIn("needs: [validate, windows-python, session-browser]",
                       (ROOT / ".github/workflows/release.yml").read_text())
     def test_public_hook_json_compatibility_remains(self):
         output = io.StringIO()
@@ -113,7 +118,7 @@ class QualityCadenceTests(unittest.TestCase):
         self.assertIn("canonical lead contract", skill)
         self.assertIn("delegation, verification and stop rules", stanza)
         self.assertIn("test-quality-cadence.py", (ROOT / ".github/workflows/validate.yml").read_text())
-        self.assertIn("test-quality-cadence.py", (ROOT / "scripts/check-manifests.sh").read_text())
+        self.assertIn("test-quality-cadence.py", (ROOT / "scripts/check_manifests.py").read_text())
 
 
 if __name__ == "__main__":

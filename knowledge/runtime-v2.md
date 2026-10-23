@@ -42,8 +42,8 @@ key `SPEC.md` is used when present; separate clones do not share claims. See
 | Go | Excellent static binary/concurrency | New toolchain and substantially more code for the current local runtime | Rejected |
 | Shell + PowerShell | Already used for small gates | Unsafe duplication for structured transitions, recovery, process control, and event integrity | Rejected |
 
-Python contains all orchestration logic. Shell and PowerShell remain thin entry
-surfaces for small deterministic gates and v1 compatibility.
+Python contains all orchestration logic and every entrypoint; there are no shell
+or PowerShell launchers.
 
 ### Storage tournament
 

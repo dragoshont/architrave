@@ -30,16 +30,20 @@ KNOWLEDGE_AGENTS = (
     "runtime-observer",
 )
 GATE_FILES = (
-    "checks.sh",
-    "checks.ps1",
-    "reconcile.sh",
-    "reconcile.ps1",
-    "quality-gate.sh",
-    "quality-gate.ps1",
-    "backend-checks.sh",
-    "backend-checks.ps1",
     "gate_runner.py",
     "rubric.md",
+)
+# Shell/PowerShell launch shims shipped before 0.21.0; updates remove them.
+RETIRED_SHIMS = tuple(
+    f"{directory}/{name}.{suffix}"
+    for directory, names in (
+        ("gates", ("checks", "reconcile", "quality-gate", "backend-checks")),
+        ("harness", ("apply-semantic-learning-findings", "improvement", "init-run", "mark-stale-learning",
+                     "promote-lesson-picker", "promote-lesson", "semantic-learning-review", "semantic-review",
+                     "tournament-review", "validate-learning", "validate-run")),
+    )
+    for name in names
+    for suffix in ("sh", "ps1")
 )
 IGNORE_RULES = (
     ".architrave/runs/",
@@ -1237,6 +1241,10 @@ def copy_shared_assets(managed: ManagedRoot, kit: Path) -> None:
     managed.ensure_dir("gates")
     for name in GATE_FILES:
         managed.replace_file(kit / "gates" / name, f"gates/{name}")
+    for relative in RETIRED_SHIMS:
+        if _lstat(managed.path(relative)) is not None:
+            managed.remove_file(relative)
+            print(f"  retired shell shim: {relative}")
     print("  ok gates")
     managed.ensure_dir("knowledge")
     managed.copy_tree(kit / "knowledge", "knowledge")
@@ -1543,20 +1551,15 @@ def update(args: argparse.Namespace, kit: Path) -> int:
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(prog="install_update.py")
     subcommands = result.add_subparsers(dest="command", required=True)
-    default_entrypoint = "windows" if os.name == "nt" else "posix"
 
-    install_parser = subcommands.add_parser("install", add_help=False)
-    install_parser.add_argument("-h", "--help", "-Help", action="help")
-    install_parser.add_argument("--profile", "-Profile", choices=("application", "knowledge"), default="application")
-    install_parser.add_argument("--codex", "-Codex", action="store_true")
-    install_parser.add_argument("--entrypoint", choices=("posix", "windows"), default=default_entrypoint)
+    install_parser = subcommands.add_parser("install")
+    install_parser.add_argument("--profile", choices=("application", "knowledge"), default="application")
+    install_parser.add_argument("--codex", action="store_true")
     install_parser.add_argument("target", nargs="?")
 
-    update_parser = subcommands.add_parser("update", add_help=False)
-    update_parser.add_argument("-h", "--help", "-Help", action="help")
-    update_parser.add_argument("--agents", "-Agents", action="store_true")
-    update_parser.add_argument("--codex", "-Codex", action="store_true")
-    update_parser.add_argument("--entrypoint", choices=("posix", "windows"), default=default_entrypoint)
+    update_parser = subcommands.add_parser("update")
+    update_parser.add_argument("--agents", action="store_true")
+    update_parser.add_argument("--codex", action="store_true")
     update_parser.add_argument("target", nargs="?")
 
     executor = subcommands.add_parser("executor-install")

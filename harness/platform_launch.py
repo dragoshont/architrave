@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import shutil
 import re
 from typing import Sequence
@@ -32,20 +31,12 @@ def configured_shell_command(
 ) -> list[str]:
     reject_agent_harness(command)
     effective = platform or ("windows" if os.name == "nt" else "posix")
-    if effective == "windows":
-        executable = which("pwsh") or which("powershell")
-        if executable:
-            prefix = [executable, "-NoProfile"]
-            if Path(executable).name.lower().startswith("powershell"):
-                prefix.extend(["-ExecutionPolicy", "Bypass"])
-            return [*prefix, "-Command", "[Console]::OutputEncoding=[Text.Encoding]::UTF8; " + command]
-        shell = which("bash") or which("sh")
-        if shell:
-            return [shell, "-c", command]
-        raise LaunchError(
-            "no command shell is available; install PowerShell or a POSIX shell"
-        )
     shell = which("bash") or which("sh")
     if shell:
         return [shell, "-c", command]
+    if effective == "windows":
+        cmd = which("cmd") or os.environ.get("COMSPEC")
+        if cmd:
+            return [cmd, "/d", "/s", "/c", command]
+        raise LaunchError("no command shell is available; install Git Bash or ensure cmd.exe is on PATH")
     raise LaunchError("no POSIX shell is available")

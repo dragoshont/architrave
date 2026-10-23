@@ -318,8 +318,8 @@ Add `--test` to run each `service` command before its `ui` command; the UI
 check is skipped when the service check fails. See
 `kit/examples/coordination.architrave.json`.
 
-The kit uses Python; the shell and PowerShell entrypoints forward to the same
-implementation. Your project's build and test toolchain stays unchanged.
+The kit is Python only: run every gate, harness command and installer as
+`python <file>.py` on macOS, Linux or Windows. Your project's build and test toolchain stays unchanged.
 
 ## Updates
 
@@ -396,7 +396,7 @@ Everything Architrave ships, grouped by area. Paths point at the source of truth
 - Default-deny mutation: infrastructure and runtime changes need scoped grants, target attestation, receipts, reconciliation of uncertain side effects and live verification — `harness/architrave_runtime.py` (`policy-check`, `reconcile-side-effect`, `target-attest`).
 - Worker adapters (native host, command, external) and git-backed isolated workspaces with collect, integrate and cleanup — `harness/worker_adapters.py`, `harness/workspaces.py`.
 - Invariant engine for declarative product and safety invariants — `harness/invariant_engine.py`.
-- Run v1 to v2 migration — `docs/migration-run-v1-v2.md`; validation — `harness/validate_run_v2.py`, `harness/validate-run.{sh,ps1}`.
+- Run v1 to v2 migration — `docs/migration-run-v1-v2.md`; validation — `harness/validate_run_v2.py`, `harness/architrave_cli.py validate-run`.
 - Long-build runtime guidance — `docs/longbuild.md`.
 
 ### Native host bridge (Copilot)
@@ -405,10 +405,10 @@ Everything Architrave ships, grouped by area. Paths point at the source of truth
 - `architrave_native_gate` runs stored commands or observes configured workflows bound to the source, task and objective; `architrave_native_review` runs one fresh source-bound semantic review and admits only observed results — `docs/native-semantic-review.md`.
 
 ### Verification and review
-- Deterministic gates with Python implementation and `.sh`/`.ps1` entrypoints: `checks`, `reconcile` (design tokens against code), `quality-gate`, `backend-checks` (build, tests, migration safety, secret scan, IaC plan and policy, never apply), `components`, `requirements`, `message-lint` (owner-message identifiers) — `gates/`.
+- Deterministic gates in one Python CLI (`python gates/gate_runner.py <gate>`): `checks`, `reconcile` (design tokens against code), `quality-gate`, `backend-checks` (build, tests, migration safety, secret scan, IaC plan and policy, never apply), `components`, `requirements`, `message-lint` (owner-message identifiers) — `gates/`.
 - Risk-scaled verification: R0/R1 deterministic, R2 one fresh-context reviewer, R3 adds real end-to-end or runtime evidence, R4 adds security and policy review; cross-family review with `review.crossFamily` — `gates/rubric.md`, `knowledge/execution-policy.md`.
 - Adversarial Judge with a PASS, REVISE or FAIL rubric covering spec conformance, root cause, YAGNI, UX, visual fidelity, accessibility, backend security, runtime and evidence — `agents/adversarial-judge.agent.md`, `gates/rubric.md`.
-- Semantic and tournament review launchers for Copilot, Claude or both — `harness/semantic-review.{sh,ps1}`, `harness/tournament-review.{sh,ps1}`.
+- Semantic and tournament review launchers for Copilot, Claude or both — `harness/architrave_cli.py semantic-review`, `harness/architrave_cli.py tournament-review`.
 - Application legibility: health, release and deployment checks against the deployed artifact — `harness/legibility.py`, `docs/application-legibility.md`.
 - Explicit quality cadence rather than automatic hooks, plus safe retirement of legacy hooks — `docs/quality-check-cadence.md`.
 
@@ -422,7 +422,7 @@ Everything Architrave ships, grouped by area. Paths point at the source of truth
 ### Learning and self-improvement
 - Four memory stores with a candidate-lesson queue, promotion after repeated occurrences and human approval — `knowledge/learning-loop.md`, `harness/promote-lesson*.{sh,ps1}`.
 - Executable-first promotion, improvement proposals approved only with before/after evidence and a human, and a harness pruning review per model release — `harness/improvement.py`, `knowledge/learning-loop.md`.
-- Stale-fact guards: deterministic link checks, semantic review of prose claims and exact-line `UNVALIDATED:` marking — `harness/mark-stale-learning.*`, `harness/semantic-learning-review.*`.
+- Stale-fact guards: deterministic link checks, semantic review of prose claims and exact-line `UNVALIDATED:` marking — `harness/architrave_cli.py mark-stale-learning`, `harness/architrave_cli.py semantic-learning-review`.
 - Learning validation with a secret scan — `harness/validate_learning.py`.
 
 ### Skills
@@ -435,7 +435,7 @@ Everything Architrave ships, grouped by area. Paths point at the source of truth
 ### Install, update and hosts
 - Plugin for Copilot CLI/app, VS Code, Claude Code and Codex/ChatGPT; OpenCode host adapter — `plugin.json`, `.claude-plugin/`, `.codex-plugin/`, `harness/opencode_host.py`.
 - Per-repository installer: `install`, `update`, `executor-install`, `native-host-install`, `canvas-install`, `companion-install`, `retire-hooks`, `adoption-status`; atomic, hash-pinned, symlink-safe writes — `tools/install_update.py`.
-- Windows and PowerShell parity for every public entrypoint — `gates/*.ps1`, `harness/*.ps1`, `tools/*.ps1`.
+- Windows support through the same Python entrypoints; no shell or PowerShell launchers to keep in parity.
 - Codex project roles generated from the agents — `tools/codex-roles.py`, `.codex/agents/`.
 
 ### Benchmarks and research

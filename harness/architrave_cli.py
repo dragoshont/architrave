@@ -9,6 +9,7 @@ from pathlib import Path
 import sys
 
 from architrave_runtime import cli as runtime_cli
+import learning_tools
 from validate_learning import validate as validate_learning
 from validate_run_v2 import validate as validate_run_v2
 
@@ -120,7 +121,32 @@ def main(argv: list[str] | None = None) -> int:
     tournament.add_argument("--run", dest="run_dir")
     tournament.add_argument("--execute", action="store_true")
     tournament.add_argument("--result", help="validate a returned tournament result JSON")
+    init = subparsers.add_parser("init-run", help="legacy compact Run v1 record")
+    init.add_argument("run_id", nargs="?")
+    stale = subparsers.add_parser("mark-stale-learning")
+    stale.add_argument("--apply", action="store_true")
+    stale.add_argument("--repo", default=".")
+    review = subparsers.add_parser("semantic-learning-review")
+    review.add_argument("--provider", choices=["copilot", "claude", "both"], default="both")
+    review.add_argument("--execute", action="store_true")
+    review.add_argument("--repo", default=".")
+    review.add_argument("--prompt")
+    review.add_argument("--output")
+    findings = subparsers.add_parser("apply-semantic-learning-findings")
+    findings.add_argument("--apply", action="store_true")
+    findings.add_argument("--repo", default=".")
+    findings.add_argument("--findings", default=".architrave/learning/semantic-stale-facts.jsonl")
     args = parser.parse_args(argv)
+    if args.command == "init-run":
+        return learning_tools.init_run(args.run_id)
+    if args.command == "mark-stale-learning":
+        return learning_tools.mark_stale_learning(Path(args.repo).resolve(), args.apply)
+    if args.command == "semantic-learning-review":
+        return learning_tools.semantic_learning_review(Path(args.repo).resolve(), args.provider,
+                                                       args.execute, args.prompt, args.output)
+    if args.command == "apply-semantic-learning-findings":
+        return learning_tools.apply_semantic_learning_findings(Path(args.repo).resolve(),
+                                                               args.findings, args.apply)
     if args.command == "runtime":
         return runtime_cli(args.arguments)
     if args.command == "validate-run":

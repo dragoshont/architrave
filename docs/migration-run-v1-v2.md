@@ -1,8 +1,8 @@
 # Run v1 to v2 Migration
 
-Run v1 remains supported during transition. `harness/validate-run.sh` and
-`.ps1` accept its compact `summary.json`. When a directory contains `run.json`,
-both wrappers delegate to the shared Python v2 validator.
+Run v1 remains supported during transition. `python harness/architrave_cli.py
+validate-run` accepts its compact `summary.json`. When a directory contains `run.json`,
+it delegates to the shared Python v2 validator.
 
 Create a separate advisory v2 projection from a legacy summary:
 

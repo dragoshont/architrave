@@ -22,7 +22,7 @@ Each benchmark run emits one JSONL row per `(scenario, arm, repeat)`.
 
 **Correctness and safety**
 - deterministic validation command return codes;
-- Architrave gate pass/fail (`gates/checks.sh`, backend checks, Storybook build/test where configured);
+- Architrave gate pass/fail (`gates/gate_runner.py checks`, backend checks, Storybook build/test where configured);
 - expected artifact checks (run artifacts, Storybook files, contract/docs updates);
 - optional LLM/human judge verdicts.
 

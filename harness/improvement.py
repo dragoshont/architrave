@@ -320,14 +320,14 @@ def parser() -> argparse.ArgumentParser:
     for action in ("promote-lesson", "promote-lesson-picker"):
         promotion = commands.add_parser(action)
         if action == "promote-lesson":
-            promotion.add_argument("--lesson", "-Lesson", required=True)
-            promotion.add_argument("--heading", "-Heading", default="Promoted Lessons")
+            promotion.add_argument("--lesson", required=True)
+            promotion.add_argument("--heading", default="Promoted Lessons")
         else:
-            promotion.add_argument("--index", "-Index", type=int, required=True)
-        promotion.add_argument("--target", "-Target", required=True)
-        promotion.add_argument("--apply", "-Apply", action="store_true")
+            promotion.add_argument("--index", type=int, required=True)
+        promotion.add_argument("--target", required=True)
+        promotion.add_argument("--apply", action="store_true")
     for subparser in commands.choices.values():
-        subparser.add_argument("--repo", "-Repo", default=".")
+        subparser.add_argument("--repo", default=".")
     return result
 
 

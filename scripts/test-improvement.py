@@ -43,9 +43,8 @@ class LearningFixture(unittest.TestCase):
 
     def cli(self, *args, code=0, launcher=None):
         argv = [sys.executable, str(ROOT / "harness/improvement.py")]
-        if launcher:
-            argv = (["pwsh", "-NoProfile", "-File", str(ROOT / f"harness/{launcher}.ps1")]
-                    if os.name == "nt" else ["bash", str(ROOT / f"harness/{launcher}.sh")])
+        if launcher and launcher != "improvement":
+            argv.append(launcher)
         result = subprocess.run([*argv, *args, "--repo", str(self.root)], capture_output=True, text=True)
         self.assertEqual(result.returncode, code, result.stdout + result.stderr)
         return result
@@ -229,8 +228,7 @@ class PromotionTests(LearningFixture):
 
 class ValidationTests(LearningFixture):
     def test_validator_launcher(self):
-        argv = (["pwsh", "-NoProfile", "-File", str(ROOT / "harness/validate-learning.ps1")]
-                if os.name == "nt" else ["bash", str(ROOT / "harness/validate-learning.sh")])
+        argv = [sys.executable, str(ROOT / "harness/architrave_cli.py"), "validate-learning"]
         result = subprocess.run([*argv, str(self.root)], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("ARCHITRAVE-LEARNING: PASS", result.stdout)
