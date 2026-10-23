@@ -7,6 +7,14 @@ Releases at or before **v0.8.12** are on the
 
 ## Unreleased
 
+## [0.21.3] - 2026-10-23
+
+### Fixed
+- Requirements `--claim` and `--done` fail instead of silently passing when no
+  ledger resolves. Diagnostics identify the resolved root and config, and flag
+  a child SPEC.md requirements table ignored by a parent config. Plain
+  requirements validation keeps its optional skip behavior.
+
 ## [0.21.2] - 2026-10-23
 
 ### Changed

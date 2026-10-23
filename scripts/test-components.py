@@ -169,6 +169,50 @@ class ComponentGate(unittest.TestCase):
         code, out = gate("quality-gate")
         self.assertEqual(code, 2, out)
 
+    def test_explicit_requirements_operations_fail_without_a_ledger(self):
+        config = self.hub / "architrave.config.json"
+        config.write_text("{}")
+        for text in (None, "# Prose only\n"):
+            if text is not None:
+                (self.hub / "SPEC.md").write_text(text)
+            for flags in (("--claim", "REQ-63", "--owner", "X"), ("--done",),
+                          ("--claim", "", "--owner", "X")):
+                with self.subTest(text=text, flags=flags):
+                    process = subprocess.run(
+                        [sys.executable, str(RUNNER), "requirements", "--repo", str(self.hub), *flags],
+                        capture_output=True, text=True, check=False,
+                    )
+                    self.assertEqual(process.returncode, 1, process.stdout + process.stderr)
+                    self.assertIn("no requirements ledger resolves", process.stdout)
+                    self.assertIn(str(self.hub.resolve()), process.stdout)
+                    self.assertIn(str(config.resolve()), process.stdout)
+                    self.assertIn("ARCHITRAVE-REQUIREMENTS: FAIL", process.stdout)
+                    self.assertNotIn("skipping", process.stdout)
+
+    def test_parent_config_does_not_silently_claim_child_requirements(self):
+        config = self.hub / "architrave.config.json"
+        config.write_text("{}")
+        child = self.hub / "project"
+        child.mkdir()
+        ledger = child / "SPEC.md"
+        ledger.write_text(EXAMPLE.read_text())
+        before = ledger.read_bytes()
+        for flags in (("--claim", "REQ-01", "--owner", "X"), ("--done",), ()):
+            with self.subTest(flags=flags):
+                process = subprocess.run(
+                    [sys.executable, str(RUNNER), "requirements", "--repo", str(child), *flags],
+                    capture_output=True, text=True, check=False,
+                )
+                self.assertEqual(process.returncode, 1 if flags else 0, process.stdout + process.stderr)
+                if flags:
+                    self.assertIn(str(config.resolve()), process.stdout)
+                    self.assertIn(str(ledger.resolve()), process.stdout)
+                    self.assertIn("parent config", process.stdout)
+                    self.assertIn("not selected", process.stdout)
+                else:
+                    self.assertIn("skipping (PASS)", process.stdout)
+                self.assertEqual(ledger.read_bytes(), before)
+
     def test_private_push_remote_passes(self):
         engine = checkout(self.base / "engine", "https://github.com/me/public-fork.git")
         git(engine, "remote", "add", "private", "https://github.com/me/engine-private.git")
