@@ -7,6 +7,15 @@ Releases at or before **v0.8.12** are on the
 
 ## Unreleased
 
+## [0.19.0] - 2026-10-23
+
+### Added
+- Vendored six third-party skills, unchanged and with their upstream licence
+  files: `verification-before-completion`, `systematic-debugging`,
+  `subagent-driven-development` and `writing-skills` from obra/superpowers
+  (MIT), and `skill-creator` and `webapp-testing` from anthropics/skills
+  (Apache-2.0). The README lists source commits and licences.
+
 ## [0.18.0] - 2026-10-23
 
 ### Added

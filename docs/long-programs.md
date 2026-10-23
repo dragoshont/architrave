@@ -114,10 +114,10 @@ that long instruction files cost more without helping much. Agents may
 *propose* new skills or rules, but a change only merges with a before/after test
 and your approval. Rules that a newer model no longer needs get removed.
 
-## Optional skills worth adding
+## Bundled third-party skills
 
-These are well-maintained public skills that fit this approach. Install them
-yourself after reviewing them; Architrave does not bundle them.
+Architrave ships these well-maintained public skills, unchanged and with their
+licences. The README lists sources and licences.
 
 - `verification-before-completion` and `systematic-debugging` from
   [obra/superpowers](https://github.com/obra/superpowers) (MIT): evidence before
@@ -128,8 +128,9 @@ yourself after reviewing them; Architrave does not bundle them.
 - The `converge` idea from [github/spec-kit](https://github.com/github/spec-kit)
   (MIT) is mirrored here by `requirements --done`.
 
-Avoid unbounded "keep looping until done" plugins, and audit any third-party
-skill before installing it.
+It also ships `subagent-driven-development` and `writing-skills` (obra/superpowers,
+MIT). Avoid unbounded "keep looping until done" plugins, and audit any other
+third-party skill before installing it.
 
 ## Sources
 
