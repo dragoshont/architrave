@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import json
+import os
+import time
 from pathlib import Path
 import subprocess
 import sys
@@ -175,7 +177,7 @@ class ComponentGate(unittest.TestCase):
         for text in (None, "# Prose only\n"):
             if text is not None:
                 (self.hub / "SPEC.md").write_text(text)
-            for flags in (("--claim", "REQ-63", "--owner", "X"), ("--done",),
+            for flags in (("--claim", "REQ-63", "--owner", "X"), ("--done",), ("--handoff",),
                           ("--claim", "", "--owner", "X")):
                 with self.subTest(text=text, flags=flags):
                     process = subprocess.run(
@@ -188,6 +190,106 @@ class ComponentGate(unittest.TestCase):
                     self.assertIn(str(config.resolve()), process.stdout)
                     self.assertIn("ARCHITRAVE-REQUIREMENTS: FAIL", process.stdout)
                     self.assertNotIn("skipping", process.stdout)
+
+    def test_handoff_needs_committed_requirements_and_no_stranded_worktree_ledger(self):
+        commit = ("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m")
+        git(self.hub, "init", "-q", "-b", "main")
+        code, out = self.requirements(EXAMPLE.read_text(), "--handoff")
+        self.assertEqual(code, 1, out)
+        self.assertIn("never been committed", out)
+        git(self.hub, "add", "SPEC.md", "architrave.config.json")
+        git(self.hub, *commit, "spec")
+        stamp = int(subprocess.run(["git", "-C", str(self.hub), "log", "-1", "--format=%at"],
+                                   capture_output=True, text=True, check=True).stdout)
+
+        def handoff(checkout=self.hub):
+            process = subprocess.run([sys.executable, str(RUNNER), "requirements", "--repo", str(checkout),
+                                      "--handoff"], capture_output=True, text=True, check=False)
+            return process.returncode, process.stdout + process.stderr
+
+        def ledger(checkout, plan, mtime, slug="SPEC"):
+            workspace = checkout / ".superpowers" / "sdd" / slug
+            workspace.mkdir(parents=True, exist_ok=True)
+            (workspace / "plan-path").write_text(plan + "\n")
+            path = workspace / "progress.md"
+            path.write_text(f"# SDD ledger - plan: {plan}\nTask 1: complete\n")
+            os.utime(path, (mtime, mtime))
+            return path
+
+        self.assertEqual(handoff()[0], 0)
+        spec = self.hub / "SPEC.md"
+        spec.write_text(spec.read_text() + "\n")
+        code, out = handoff()
+        self.assertEqual(code, 1, out)
+        self.assertIn("SPEC.md has uncommitted changes", out)
+        git(self.hub, "checkout", "--", "SPEC.md")
+
+        stale = ledger(self.hub, "SPEC.md", stamp - 60)
+        code, out = handoff()
+        self.assertEqual(code, 0, out)
+        self.assertIn("scratch, not newer than SPEC.md@", out)
+        os.utime(stale, (stamp + 120, stamp + 120))
+        code, out = handoff()
+        self.assertEqual(code, 1, out)
+        self.assertIn("holds progress not in committed SPEC.md@", out)
+        self.assertIn("ARCHITRAVE-REQUIREMENTS: FAIL", out)
+        self.assertEqual(self.requirements(spec.read_text())[0], 0, "plain check stays unaffected")
+
+        git(self.hub, "add", "-f", str(stale))
+        git(self.hub, *commit, "track ledger")
+        code, out = handoff()
+        self.assertEqual(code, 0, out)
+        self.assertIn("(tracked, not newer", out)
+        stale.write_text(stale.read_text() + "Task 2: complete\n")
+        self.assertEqual(handoff()[0], 1)
+        git(self.hub, "checkout", "--", str(stale))
+
+        ledger(self.hub, "docs/other-plan.md", stamp + 600, slug="other-plan")
+        self.assertEqual(handoff()[0], 0, "another plan's ledger is not this hand-off's state")
+
+        sibling = self.base / "successor"
+        git(self.hub, "worktree", "add", "-q", "-b", "successor", str(sibling), "HEAD~1")
+        newer = ledger(sibling, "SPEC.md", stamp + 600)
+        code, out = handoff()
+        self.assertEqual(code, 0, out)
+        self.assertIn(f"warn  {newer.resolve()} on successor changed after its SPEC.md@", out)
+        self.assertIn("never start a second ledger", out)
+        code, out = handoff(sibling)
+        self.assertEqual(code, 1, out)
+        self.assertIn("holds progress not in committed", out)
+
+        # Each worktree is judged by its own branch's requirements commit, not the caller's newer one.
+        spec.write_text(spec.read_text() + "\n")
+        git(self.hub, "add", "SPEC.md")
+        later = stamp + 3600
+        subprocess.run(["git", "-C", str(self.hub), *commit, "fold later"], check=True, capture_output=True,
+                       env={**os.environ, "GIT_AUTHOR_DATE": f"@{later} +0000",
+                            "GIT_COMMITTER_DATE": f"@{later} +0000"})
+        code, out = handoff()
+        self.assertEqual(code, 0, out)
+        self.assertIn("on successor changed after its SPEC.md@", out)
+
+        # Amend/rebase rewrite committer time; author time keeps an unfolded ledger visible.
+        os.utime(stale, (later - 60, later - 60))
+        git(self.hub, "rm", "-q", "--cached", str(stale))
+        spec.write_text(spec.read_text() + "\n")
+        git(self.hub, "add", "SPEC.md")
+        subprocess.run(["git", "-C", str(self.hub), *commit, "rebased"], check=True, capture_output=True,
+                       env={**os.environ, "GIT_AUTHOR_DATE": f"@{stamp} +0000",
+                            "GIT_COMMITTER_DATE": f"@{later + 60} +0000"})
+        code, out = handoff()
+        self.assertEqual(code, 1, out)
+        self.assertIn("delete the folded scratch", out)
+        os.utime(stale, (stamp - 60, stamp - 60))
+        future = int(time.time()) + 86400
+        spec.write_text(spec.read_text() + "\n")
+        git(self.hub, "add", "SPEC.md")
+        subprocess.run(["git", "-C", str(self.hub), *commit, "skewed"], check=True, capture_output=True,
+                       env={**os.environ, "GIT_AUTHOR_DATE": f"@{future} +0000"})
+        code, out = handoff()
+        self.assertEqual(code, 1, "a future author time cannot hide a ledger: " + out)
+        stale.unlink()
+        self.assertEqual(handoff()[0], 0)
 
     def test_parent_config_does_not_silently_claim_child_requirements(self):
         config = self.hub / "architrave.config.json"

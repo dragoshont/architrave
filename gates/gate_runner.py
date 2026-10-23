@@ -13,6 +13,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -344,8 +345,73 @@ def check_requirements(root: Path, value: object, count: int) -> bool:
     return not errors
 
 
+SDD_LEDGERS = ".superpowers/sdd/*/progress.md"
+
+
+def worktrees(root: Path) -> list[Path]:
+    """Every checkout of this clone, this one first (they share one git common directory)."""
+    listed = git(root, "worktree", "list", "--porcelain") or ""
+    others = [Path(line[9:]).resolve() for line in listed.splitlines() if line.startswith("worktree ")]
+    return [root] + [path for path in others if path != root and path.is_dir()]
+
+
+def plan_ledgers(checkout: Path, plan: str) -> list[Path]:
+    """Worktree-local SDD ledgers whose plan is this requirements file (marker, else legacy slug)."""
+    found = []
+    for ledger in sorted(checkout.glob(SDD_LEDGERS)):
+        try:
+            marker = (ledger.parent / "plan-path").read_text(encoding="utf-8").strip()
+        except OSError:
+            marker = None
+        if marker == plan or (marker is None and ledger.parent.name == Path(plan).stem):
+            found.append(ledger)
+    return found
+
+
+def handoff_errors(root: Path, path: Path) -> list[str]:
+    """Durable hand-off: committed requirements and no newer state stranded in a worktree-local ledger."""
+    root = root.resolve()
+    try:
+        plan = path.resolve().relative_to(root).as_posix()
+    except ValueError:
+        return [f"--handoff: {path} is outside this checkout; commit the ledger in its own repository"]
+    errors = []
+    if git(root, "rev-parse", "--is-inside-work-tree") != "true":
+        return [f"--handoff: {root} is not a git checkout; the ledger cannot travel to another worktree"]
+    if git(root, "status", "--porcelain", "--", plan):
+        errors.append(f"--handoff: {plan} has uncommitted changes; commit it so the next session's checkout has it")
+    if not git(root, "log", "-1", "--format=%h", "--", plan):
+        return errors + [f"--handoff: {plan} has never been committed on this branch"]
+    for checkout in worktrees(root):
+        # Author time survives rebase and amend, so drift errs toward a fixable FAIL, never a silent PASS.
+        committed = (git(checkout, "log", "-1", "--format=%at %h", "--", plan) or "0 none").split()
+        stamp, sha = int(committed[0]), committed[1]
+        branch = git(checkout, "branch", "--show-current") or "detached"
+        for ledger in plan_ledgers(checkout, plan):
+            relative = ledger.relative_to(checkout).as_posix()
+            tracked = git(checkout, "ls-files", "--error-unmatch", "--", relative) is not None
+            if tracked:
+                newer = bool(git(checkout, "status", "--porcelain", "--", relative))
+            else:
+                # A future-dated commit cannot prove ordering, so the ledger counts as newer.
+                newer = ledger.stat().st_mtime > stamp + 1 or stamp > time.time() + 60
+            if not newer:
+                print(f"ok    {ledger} ({'tracked' if tracked else 'scratch'}, not newer than {plan}@{sha})")
+            elif checkout == root:
+                errors.append(f"--handoff: {ledger} holds progress not in committed {plan}@{sha}; fold its completed "
+                              "tasks into REQ Evidence/Handoff and commit, then delete the folded scratch or commit "
+                              "the ledger itself (git add -f)")
+            else:
+                print(f"warn  {ledger} on {branch} changed after its {plan}@{sha}; if it is your predecessor's, "
+                      "fold it into the requirements file before continuing; never start a second ledger")
+    upstream = git(root, "rev-list", "--count", "@{upstream}..HEAD")
+    if upstream not in (None, "0"):
+        print(f"warn  {upstream} commits are not pushed; a successor in another clone will not see them")
+    return errors
+
+
 def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bool,
-                      requested_root: Path | None = None) -> int:
+                      requested_root: Path | None = None, handoff: bool = False) -> int:
     """Validate the requirements file; optionally check a lane claim or program completion."""
     try:
         value = configured_requirements(root, load_config(root))
@@ -353,8 +419,8 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
         print(f"requirements: {exc}", file=sys.stderr)
         return 2
     if not value:
-        if claim is not None or done:
-            print(f"FAIL  requirements: no requirements ledger resolves for --claim/--done; "
+        if claim is not None or done or handoff:
+            print(f"FAIL  requirements: no requirements ledger resolves for --claim/--done/--handoff; "
                   f"resolved root: {root}; config: {root / 'architrave.config.json'}. "
                   "Configure `requirements` or add a SPEC.md requirements table at the resolved root.")
             if requested_root is not None:
@@ -395,6 +461,8 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
                 for item in corrections:
                     if rid in item["target"]:
                         print(f"        correction {item['id']} ({item['type']}): {item['change']}")
+    if handoff:
+        errors.extend(handoff_errors(root, path))
     if done:
         pending = [rid for rid, row in reqs.items() if row["status"].lower() in REQ_ACTIVE - {"accepted"}]
         if pending:
@@ -617,6 +685,8 @@ def main() -> int:
     parser.add_argument("--claim", help="requirements: comma-separated REQ ids a new lane will own")
     parser.add_argument("--owner", help="requirements: lane/session owner for --claim")
     parser.add_argument("--done", action="store_true", help="requirements: fail unless every active REQ is accepted")
+    parser.add_argument("--handoff", action="store_true",
+                        help="requirements: fail unless hand-off state is committed and not stranded in a worktree ledger")
     parser.add_argument("--file", help="message-lint: text file to check (default stdin)")
     args = parser.parse_args()
     if args.gate == "message-lint":
@@ -642,7 +712,7 @@ def main() -> int:
     if args.gate == "components":
         return components(root, args.test)
     if args.gate == "requirements":
-        return requirements_gate(root, args.claim, args.owner, args.done, Path(args.repo))
+        return requirements_gate(root, args.claim, args.owner, args.done, Path(args.repo), args.handoff)
     return quality(root, args.hook_json)
 
 

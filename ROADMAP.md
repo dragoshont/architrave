@@ -18,6 +18,7 @@
 
 - [x] `requirements` gate: REQ table with testable acceptance, evidence for accepted, typed owner corrections, required Handoff (Next / Failed approaches / Verify).
 - [x] `--claim` refuses duplicate or closed lanes and seeds kickoffs; `--done` decides program completion.
+- [x] `--handoff` keeps rotation state in the committed requirements file, not a worktree-local SDD ledger.
 - [x] Contract: get-bearings start, blocked-to-owner escalation, code outranks notes; executable-first lesson promotion and human-gated skill changes.
 - [x] Runtime-owned claims in the Run EventLog; gate output hygiene; per-model harness pruning review (0.20.0).
 

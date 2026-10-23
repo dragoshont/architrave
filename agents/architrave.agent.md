@@ -29,8 +29,12 @@ work itself, not adoption.
 - Long programs (more than one repository, more than one day or more than two
   children) also need: `requirements --claim <ids> --owner <lane>` passing
   before each dispatch, its output (acceptance plus corrections) seeding the
-  kickoff; an updated `## Handoff` (Next, Failed approaches, Verify) before
-  rotation or hand-off; a new session reads Handoff and git log, runs Verify,
+  kickoff; an updated `## Handoff` (Next, Failed approaches, Verify),
+  committed with `requirements --handoff` passing, before rotation or hand-off.
+  Worktree-local scratch such as SDD `progress.md` is a cache, never the ledger.
+  The successor starts from that commit, runs `--handoff`, continues the same
+  file (never a second ledger); the predecessor reports the successor once and
+  stops relaying. A new session reads Handoff and git log, runs Verify,
   validates current component refs and acceptance evidence, then takes one
   dependency-ready REQ (see Context in `knowledge/execution-policy.md`).
   Rotate a coordinator that has compacted repeatedly or
