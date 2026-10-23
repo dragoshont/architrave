@@ -91,6 +91,25 @@ The gate fails if any line is empty. A fresh session reads this note and the git
 log, runs `Verify`, and picks one requirement. Restarting a stale session then
 costs minutes instead of hours, and nobody retries a dead end.
 
+### A small kickoff, grounded in current work
+
+Link the Architrave contract rather than copying its workflow, verification and
+permission rules. Supply the objective, requirements entry point, component refs
+and project-specific decisions. Keep component identity in the existing map and
+requirements/Handoff: canonical repository, execution side/process, non-default
+working branch/base and safe write remote. The components gate checks local push
+targets; it does not resolve GitHub renames or prove which implementation ran.
+
+On restart, verify those refs and acceptance evidence. Historical audits remain
+provenance, not current runtime proof. Name a working precursor separately from
+its intended generated/product replacement, and bind evidence to the path that
+actually ran. Existing real-flow parity rules protect the baseline.
+
+Retire only assigned schedules whose work is completed, superseded or whose
+owner is archived, through authorized host controls; preserve source/evidence
+and do not revive retired monitors. See the Context section of
+`knowledge/execution-policy.md` for identity, evidence and lifecycle boundaries.
+
 ### "Done" means done
 
 ```sh

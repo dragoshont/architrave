@@ -24,6 +24,7 @@ cto_skill = (root / "skills/architrave-cto/SKILL.md").read_text(encoding="utf-8"
 tournament_skill = (root / "skills/architrave-tournament/SKILL.md").read_text(encoding="utf-8")
 review_skill = (root / "skills/architrave-review/SKILL.md").read_text(encoding="utf-8")
 work_skill = (root / "skills/architrave-work/SKILL.md").read_text(encoding="utf-8")
+long_programs = (root / "docs/long-programs.md").read_text(encoding="utf-8")
 tournament_agent = (root / "agents/tournament-analyst.agent.md").read_text(encoding="utf-8")
 generator = (root / "scripts/generate-codex-agents.py").read_text(encoding="utf-8")
 codex_roles = "\n".join(
@@ -31,6 +32,26 @@ codex_roles = "\n".join(
 )
 
 required = {
+    "fresh refs before resuming": (agent, "validates current component refs and acceptance evidence"),
+    "bootstrap from durable corrections": (execution, "requirements, correction rows and Handoff"),
+    "history is not runtime proof": (execution, "Historical source refs and old audit claims are not fresh runtime evidence"),
+    "component role and refs": (execution, "execution role (which side/process runs it), working branch/base when non-default"),
+    "reuse component map": (execution, "existing `components` map and requirements/Handoff"),
+    "effective write target": (execution, "effective push remote and every push URL"),
+    "no default-branch rescue assumption": (execution, "Do not assume the default branch contains rescued work"),
+    "redirect identity before destruction": (execution, "Resolve rename redirects and confirm the current canonical repository identity before destructive GitHub operations"),
+    "preserve dirty component work": (execution, "Preserve dirty work and other owners' branches"),
+    "precursor vs product path": (execution, "known-working precursor/lab/handwritten path from the intended generated/product path"),
+    "actual implementation evidence": (execution, "Evidence identifies the source ref/artifact and entry point that actually ran"),
+    "preserve proven baseline": (execution, "Preserve the proven baseline until replacement passes the real-flow parity check"),
+    "thin project kickoff": (execution, "project kickoff chiefly supplies the objective, requirements entry point, component refs and project-specific decisions"),
+    "retire only scoped schedules": (execution, "disable only the assigned scheduled automation"),
+    "retirement lifecycle trigger": (execution, "accepted, superseded or its owner is archived"),
+    "no retired loop resurrection": (execution, "Do not restart retired monitor loops without a new mandate"),
+    "retirement preserves evidence": (execution, "Preserve source and evidence; retirement is not permission for broad cleanup"),
+    "retirement respects host": (execution, "If host controls or authorization are unavailable, report the blocker"),
+    "lead routes scheduled retirement": (agent, "Retire assigned scheduled automation under the Context rules"),
+    "document thin kickoff": (long_programs, "Link the Architrave contract rather than copying its workflow, verification and permission rules"),
     "child explicit skill handoff": (agent, "Do not assume a subagent or sidebar session inherited parent skill context"),
     "portable worker guidance": (execution, "not a new WorkPacket schema or host-specific preload field"),
     "worker no nested supervision": (work_skill, "No child spawning"),

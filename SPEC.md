@@ -16,6 +16,7 @@ Source of truth for Architrave's own development (spec-driven, see
 | REQ-07 | Requirement claims coordinate every worktree of one clone through the git common directory; conflicts name the holding checkout | `python3 scripts/test-runtime-v2.py` cross-worktree claim test | lead | accepted | test_requirements_claims_conflict_across_worktrees_of_one_clone PASS (0.20.1) |
 | REQ-08 | REQ-bound native dispatch is exercised in a real Copilot session, not only fixtures | Live `architrave_native_dispatch` with `reqs` against `test-native-host.py --prepare-live` fixture returns a gated candidate | lead | accepted | 2026-10-23 live: dispatch reqs=[REQ-1] returned candidate (worker obeyed correction C-1, answered "42"); `architrave_native_gate test` PASS gate-test-77dfd7ba; second run on same REQ rejected REQ_CLAIM_CONFLICT |
 | REQ-09 | Architrave is Python only: no shell entrypoints ship (vendored skill assets excepted); every gate, harness command, installer and test runs as `python <file>.py`; install/update have no legacy migrations | `python3 scripts/check_manifests.py` rejects tracked shell entrypoints; `python3 scripts/test_install_update.py` no-launcher and install/update safety tests | lead | accepted | 0.21.0 |
+| REQ-10 | Reusable kickoff guidance closes only gaps in fresh multi-repo bootstrap, component ref/write identity, precursor evidence and scoped scheduled-automation retirement; reuse existing ownership, permission and E2E rules | `python3 scripts/test-delivery-focus.py` protects the new guidance; `python3 scripts/check_manifests.py`, quality-gate and requirements --done pass; one independent R2 rubric review PASS | kickoff-guidance | accepted | 2026-10-23: 20 new delivery-focus assertions fail before guidance and pass after; check_manifests.py PASS incl. 18 runtime suites; quality-gate PASS; independent host code-review R2 PASS, no findings |
 
 ## Corrections
 
@@ -23,9 +24,10 @@ Source of truth for Architrave's own development (spec-driven, see
 |---|---|---|---|
 | C-01 | revise | REQ-01 | Owner, 2026-10-23: spec-driven applies to every non-trivial task, not only long programs |
 | C-02 | add | REQ-05 | Owner, 2026-10-23: README must list the entire functionality set |
+| C-03 | add | REQ-10 | Owner, 2026-10-23: capture only missing generic lessons from an overlong kickoff in Architrave source, not installed caches or project-specific rules; preserve human grants, exclusive ownership, dirty work and host lifecycle; no versions, release or automatic merge |
 
 ## Handoff
 
-Next: open new REQ rows for the next owner request before work.
+Next: REQ-10 accepted on base 02c7218; open new REQ rows for the next owner request. No version change or release; hardening session confirmed no overlapping work.
 Failed approaches: treating spec-driven work as a long-program exception (0.17–0.18) repeated the drift that removed it in 0.11.1.
-Verify: `python3 gates/gate_runner.py requirements` then `python3 scripts/check_manifests.py`.
+Verify: `python3 gates/gate_runner.py requirements --done` then `python3 scripts/check_manifests.py`.
