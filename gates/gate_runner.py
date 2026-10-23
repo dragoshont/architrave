@@ -344,7 +344,8 @@ def check_requirements(root: Path, value: object, count: int) -> bool:
     return not errors
 
 
-def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bool) -> int:
+def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bool,
+                      requested_root: Path | None = None) -> int:
     """Validate the requirements file; optionally check a lane claim or program completion."""
     try:
         value = configured_requirements(root, load_config(root))
@@ -352,6 +353,18 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
         print(f"requirements: {exc}", file=sys.stderr)
         return 2
     if not value:
+        if claim is not None or done:
+            print(f"FAIL  requirements: no requirements ledger resolves for --claim/--done; "
+                  f"resolved root: {root}; config: {root / 'architrave.config.json'}. "
+                  "Configure `requirements` or add a SPEC.md requirements table at the resolved root.")
+            if requested_root is not None:
+                requested_root = requested_root.resolve()
+                if requested_root != root and configured_requirements(requested_root, {}):
+                    print(f"FAIL  requirements: {requested_root / DEFAULT_REQUIREMENTS} contains a "
+                          "requirements table but is not selected by the parent config; "
+                          "add a project config or configure the intended ledger explicitly.")
+            print("ARCHITRAVE-REQUIREMENTS: FAIL")
+            return 1
         if (root / DEFAULT_REQUIREMENTS).is_file():
             print(f"requirements: {DEFAULT_REQUIREMENTS} has no requirements table "
                   "(| ID | ... | Status |) and `requirements` is not configured - skipping (PASS)")
@@ -629,7 +642,7 @@ def main() -> int:
     if args.gate == "components":
         return components(root, args.test)
     if args.gate == "requirements":
-        return requirements_gate(root, args.claim, args.owner, args.done)
+        return requirements_gate(root, args.claim, args.owner, args.done, Path(args.repo))
     return quality(root, args.hook_json)
 
 
