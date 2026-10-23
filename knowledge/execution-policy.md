@@ -113,6 +113,17 @@ documents or broader history only when focused retrieval is insufficient.
 Handoffs and worker results are bounded summaries with source paths or artifact
 references; they do not duplicate transcripts or repository content.
 
+State that must survive a session, worktree or branch change lives in the
+committed requirements file on the coordinator's branch, not in git-ignored,
+worktree-local scratch (SDD `progress.md`, canvases, session notes). Before
+rotating, commit Handoff and pass `python gates/gate_runner.py requirements
+--handoff`; it fails on uncommitted requirements or newer progress stranded in
+this checkout's SDD ledger and warns about one in a sibling worktree. Start the
+successor from that commit, have it run `--handoff` first and fold any warned
+ledger into the same file; never start a second ledger. The predecessor names
+the successor, commit and open REQs once, then stops relaying; that hand-off is
+not a completion claim.
+
 For a fresh multi-repo session, bootstrap from the repository requirements,
 correction rows and Handoff, not the old kickoff transcript. Verify current
 refs and acceptance evidence before dispatching dependency-ready bounded work

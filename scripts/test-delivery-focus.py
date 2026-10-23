@@ -33,6 +33,12 @@ codex_roles = "\n".join(
 
 required = {
     "fresh refs before resuming": (agent, "validates current component refs and acceptance evidence"),
+    "commit-based rotation": (agent, "committed with `requirements --handoff` passing, before rotation or hand-off"),
+    "scratch is not the ledger": (agent, "Worktree-local scratch such as SDD `progress.md` is a cache, never the ledger"),
+    "predecessor stops relaying": (agent, "stops relaying"),
+    "state lives in committed file": (execution, "committed requirements file on the coordinator's branch"),
+    "no second ledger": (execution, "never start a second ledger"),
+    "document handoff gate": (long_programs, "python gates/gate_runner.py requirements --handoff"),
     "bootstrap from durable corrections": (execution, "requirements, correction rows and Handoff"),
     "history is not runtime proof": (execution, "Historical source refs and old audit claims are not fresh runtime evidence"),
     "component role and refs": (execution, "execution role (which side/process runs it), working branch/base when non-default"),

@@ -71,7 +71,7 @@ worktrees and non-overlapping ownership. A brief assignment needs an objective,
 owned scope, relevant context, and expected result. Add acceptance checks,
 explicit budgets, and recovery detail when the task or risk needs them.
 Children return compact results, not their entire transcripts.
-The default is at most three active children, one level deep; `workers.maxParallel` raises it to at most eight. Multi-component programs (`components` with two or more entries) must configure a repository `requirements` file; the components gate fails without it. The file is a REQ table with acceptance, typed corrections and a `## Handoff` note; `python gates/gate_runner.py requirements [--claim REQ-1 --owner lane] [--done]` checks it, refuses duplicate lanes and decides done. Plain-language guide: [docs/long-programs.md](docs/long-programs.md).
+The default is at most three active children, one level deep; `workers.maxParallel` raises it to at most eight. Multi-component programs (`components` with two or more entries) must configure a repository `requirements` file; the components gate fails without it. The file is a REQ table with acceptance, typed corrections and a `## Handoff` note; `python gates/gate_runner.py requirements [--claim REQ-1 --owner lane] [--done] [--handoff]` checks it, refuses duplicate lanes, decides done and, before session rotation, proves the hand-off is committed rather than stranded in a worktree-local ledger. Plain-language guide: [docs/long-programs.md](docs/long-programs.md).
 
 On hosts with app-native session controls, the lead can create child sessions,
 send them instructions, receive results, and inspect their status. In the
@@ -372,7 +372,7 @@ Everything Architrave ships, grouped by area. Paths point at the source of truth
 
 ### Specification and requirements
 - Requirements file with REQ rows (id, requirement, acceptance, owner, status, evidence), typed correction rows and a Handoff note — `kit/examples/requirements.md`, `SPEC.md` default or config `requirements`.
-- `requirements` gate: validates the table, testable acceptance, evidence for accepted rows, corrections for superseded or withdrawn rows, correction targets and the Handoff note; `--claim <ids> --owner <lane>` refuses duplicate, accepted or closed lanes and prints acceptance plus corrections for the kickoff; `--done` decides completion — `gates/gate_runner.py`.
+- `requirements` gate: validates the table, testable acceptance, evidence for accepted rows, corrections for superseded or withdrawn rows, correction targets and the Handoff note; `--claim <ids> --owner <lane>` refuses duplicate, accepted or closed lanes and prints acceptance plus corrections for the kickoff; `--done` decides completion; `--handoff` fails on uncommitted requirements or newer progress in this checkout's SDD ledger and warns about one in a sibling worktree — `gates/gate_runner.py`.
 - `checks` and `quality-gate` validate the requirements file whenever one exists, and `components` fails a multi-component program without one — `gates/gate_runner.py`.
 - Run v2 binds tasks to REQ ids, records claims as events and refuses completion while bound REQs are not accepted — `harness/architrave_runtime.py`, `docs/runtime-v2.md`.
 - Upfront challenge at intake: contradictions, risky assumptions and better approaches are named before work starts — `agents/architrave.agent.md`.

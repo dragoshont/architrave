@@ -91,6 +91,21 @@ The gate fails if any line is empty. A fresh session reads this note and the git
 log, runs `Verify`, and picks one requirement. Restarting a stale session then
 costs minutes instead of hours, and nobody retries a dead end.
 
+Before a coordinator hands over to a fresh session, commit the requirements file
+and run:
+
+```sh
+python gates/gate_runner.py requirements --handoff
+```
+
+It fails if the file has uncommitted changes, or if this checkout's git-ignored
+SDD ledger (`.superpowers/sdd/*/progress.md`) recorded progress after the last
+commit of the file, and it warns about such a ledger in another worktree. The
+successor starts from that commit, runs the same command, and continues the
+same file. Notes kept only in one worktree are lost or duplicated when work moves
+to another worktree or branch; Anthropic's harness, Spec Kit, Kiro, Codex
+ExecPlans and beads all keep this state in committed files for that reason.
+
 ### A small kickoff, grounded in current work
 
 Link the Architrave contract rather than copying its workflow, verification and
