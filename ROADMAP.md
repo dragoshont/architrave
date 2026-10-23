@@ -1,5 +1,11 @@
 # Roadmap
 
+## v0.20.1 - Review hardening
+
+- [x] Cross-worktree requirement claims; prose SPEC.md not adopted; fail-closed missing source.
+- [x] Private rotated gate logs; improvement ledger owner gate and compare-and-swap.
+- [ ] Live Copilot smoke of REQ-bound native dispatch (SPEC REQ-08).
+
 ## v0.20.0 - Spec-driven core restored
 
 - [x] Spec-first contract by default; `SPEC.md` default requirements file validated by `checks` and `quality-gate`.

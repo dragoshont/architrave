@@ -7,6 +7,22 @@ Releases at or before **v0.8.12** are on the
 
 ## Unreleased
 
+## [0.20.1] - 2026-10-23
+
+### Fixed
+- Requirement claims now coordinate every worktree of one clone through a shared
+  lock and checkout registry under the git common directory (separate clones are
+  still not coordinated).
+- A prose `SPEC.md` is no longer adopted as the requirements file; only one with a
+  `| ID | ... | Status |` table is.
+- Completion fails closed with `REQ_SOURCE_MISSING` when bound tasks exist but the
+  requirements file is gone; withdrawn/superseded REQs count as resolved.
+- Starting an already-claimed task re-checks the file's owner column.
+- Gate failure logs go to a private per-user directory, keep the newest 20 and
+  sanitise component names; PowerShell recipes emit UTF-8.
+- Improvement ledger: retiring a global instruction needs owner approval; CLI
+  writes use compare-and-swap so concurrent edits are not lost.
+
 ## [0.20.0] - 2026-10-23
 
 ### Changed

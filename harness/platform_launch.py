@@ -38,7 +38,7 @@ def configured_shell_command(
             prefix = [executable, "-NoProfile"]
             if Path(executable).name.lower().startswith("powershell"):
                 prefix.extend(["-ExecutionPolicy", "Bypass"])
-            return [*prefix, "-Command", command]
+            return [*prefix, "-Command", "[Console]::OutputEncoding=[Text.Encoding]::UTF8; " + command]
         shell = which("bash") or which("sh")
         if shell:
             return [shell, "-c", command]

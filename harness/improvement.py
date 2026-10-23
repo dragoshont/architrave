@@ -103,10 +103,15 @@ def approval_ready(row: dict, root: Path, *, check_source: bool = False) -> None
     evidence = row["evidence"]
     if "before" not in evidence or "after" not in evidence or evidence["after"]["exit_code"] != 0:
         raise ValueError("approval requires recorded before (failure or baseline) and passing after evidence")
-    if row["kind"] == "instruction" and global_instruction(root, row["target"]) and not row["owner_approved"]:
+    if global_instruction(root, row["target"]) and not row["owner_approved"]:
         raise ValueError("always-loaded global instruction requires --owner-approved")
     if check_source and evidence["after"]["target_digest"] != target_digest(root, row["target"]):
         raise ValueError("target changed since passing after check; rerun the check")
+
+
+def ledger_digest(root: Path) -> str | None:
+    path = repo_path(root, LEDGER)
+    return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
 
 
 def load_proposals(root: Path) -> list[dict]:
@@ -132,14 +137,20 @@ def load_proposals(root: Path) -> list[dict]:
     return rows
 
 
-def save_proposals(root: Path, rows: list[dict]) -> None:
+_UNCHECKED = object()
+
+
+def save_proposals(root: Path, rows: list[dict], expected: str | None | object = _UNCHECKED) -> None:
     for row in rows:
         validate_proposal(row, root)
     path = repo_path(root, LEDGER)
     path.parent.mkdir(parents=True, exist_ok=True)
     pending = repo_path(root, LEDGER + ".next")
     try:
+        # The exclusive .next file is the write mutex; compare-and-swap rejects stale load-modify-save.
         with pending.open("x", encoding="utf-8") as stream:
+            if expected is not _UNCHECKED and ledger_digest(root) != expected:
+                raise ValueError("improvement ledger changed concurrently; rerun the command")
             for row in rows:
                 stream.write(json.dumps(row, ensure_ascii=False) + "\n")
         pending.replace(path)
@@ -329,6 +340,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.action.startswith("promote-lesson"):
             promote(root, args)
             return 0
+        expected = ledger_digest(root)
         rows = load_proposals(root)
         if args.action == "list":
             for row in rows:
@@ -375,7 +387,7 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValueError("only proposed improvements can be changed")
             if args.action == "check":
                 code = run_check(root, row, args.phase, args.command, args.timeout)
-                save_proposals(root, rows)
+                save_proposals(root, rows, expected)
                 print(f"{row['id']} {args.phase}: exit {code}\n{row['evidence'][args.phase]['tail']}")
                 return 0 if code == 0 else 1
             if not nonempty(args.by) or SECRET_RE.search(args.by):
@@ -384,7 +396,7 @@ def main(argv: list[str] | None = None) -> int:
             approval_ready(row, root, check_source=True)
             row.update(status="approved", approver=args.by)
             print(f"approved {row['id']} by {args.by}")
-        save_proposals(root, rows)
+        save_proposals(root, rows, expected)
         return 0
     except (ValueError, TypeError, OSError, UnicodeError) as exc:
         print(f"improvement: {exc}", file=sys.stderr)

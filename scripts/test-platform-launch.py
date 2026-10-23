@@ -24,7 +24,7 @@ class PlatformLaunchTests(unittest.TestCase):
             which=self.mapping({"powershell": "C:\\Power Shell\\powershell.exe"}),
         )
         self.assertEqual("C:\\Power Shell\\powershell.exe", command[0])
-        self.assertEqual("Write-Output ok", command[-1])
+        self.assertEqual("[Console]::OutputEncoding=[Text.Encoding]::UTF8; Write-Output ok", command[-1])
 
     def test_windows_falls_back_to_shell_for_repository_recipes(self) -> None:
         command = configured_shell_command(

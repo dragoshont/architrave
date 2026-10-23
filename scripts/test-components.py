@@ -161,10 +161,11 @@ class ComponentGate(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertIn("ARCHITRAVE-REQUIREMENTS: PASS", out)
         self.assertEqual(gate("checks", "--quick")[0], 0)
-        (self.hub / "SPEC.md").write_text("# Requirements\n- REQ-01\n")
+        (self.hub / "SPEC.md").write_text("# Notes\n- REQ-01\n")
+        self.assertIn("no requirements table", gate("requirements")[1])
+        (self.hub / "SPEC.md").write_text("| ID | Requirement | Status |\n|---|---|---|\n| REQ-01 | x | bogus |\n")
         code, out = gate("checks", "--quick")
         self.assertEqual(code, 1, out)
-        self.assertIn("no requirements table", out)
         code, out = gate("quality-gate")
         self.assertEqual(code, 2, out)
 
@@ -280,6 +281,30 @@ class ComponentGate(unittest.TestCase):
         log = out.split("full log: ", 1)[1].split(")", 1)[0]
         self.assertIn("line 0\n", Path(log).read_text())
         Path(log).unlink()
+
+    def test_hostile_component_name_still_logs_failure(self):
+        fail = python_command("-c \"import sys; print('boom'); sys.exit(4)\"")
+        (self.hub / "architrave.config.json").write_text(json.dumps({"kind": "knowledge", "build": "true", "test": "true",
+            "components": [{"name": "api/core\\x", "repo": "o/r", "path": str(self.hub), "build": fail, "test": fail}]}))
+        process = subprocess.run([sys.executable, str(RUNNER), "components", "--repo", str(self.hub)],
+                                 capture_output=True, text=True, check=False)
+        out = process.stdout + process.stderr
+        self.assertNotIn("Traceback", out)
+        if "full log: " in out:
+            log = Path(out.split("full log: ", 1)[1].split(")", 1)[0])
+            self.assertTrue(log.name.startswith("api-core-x-"), log.name)
+            self.assertIn("boom", log.read_text())
+
+    def test_failure_logs_are_rotated(self):
+        sys.path.insert(0, str(RUNNER.parent))
+        import gate_runner
+        directory = Path(gate_runner.gate_log_dir())
+        for index in range(gate_runner.GATE_LOG_KEEP + 5):
+            (directory / f"rotation-test-{index}.log").write_text("x")
+        gate_runner.gate_log_dir()
+        self.assertLess(len(list(directory.glob("*.log"))), gate_runner.GATE_LOG_KEEP)
+        for leftover in directory.glob("rotation-test-*.log"):
+            leftover.unlink()
 
 if __name__ == "__main__":
     unittest.main()

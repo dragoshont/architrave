@@ -74,7 +74,7 @@ def run_recipe(root: Path, name: str, recipe: object) -> bool:
     if process.returncode:
         lines = output.splitlines()
         log = tempfile.NamedTemporaryFile(
-            "w", encoding="utf-8", prefix=f"architrave-{name}-", suffix=".log", delete=False
+            "w", encoding="utf-8", prefix=f"{log_slug(name)}-", suffix=".log", delete=False, dir=gate_log_dir()
         )
         with log:
             log.write(output)
@@ -86,6 +86,23 @@ def run_recipe(root: Path, name: str, recipe: object) -> bool:
         return False
     print(f"ok    {name}")
     return True
+
+
+GATE_LOG_KEEP = 20
+
+
+def log_slug(name: str) -> str:
+    return (re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-.") or "recipe")[:40]
+
+
+def gate_log_dir() -> str:
+    """Private per-user failure-log directory, keeping only the newest GATE_LOG_KEEP logs."""
+    path = Path(tempfile.gettempdir()) / f"architrave-gate-logs-{os.getuid() if hasattr(os, 'getuid') else 'user'}"
+    path.mkdir(mode=0o700, exist_ok=True)
+    logs = sorted(path.glob("*.log"), key=lambda item: item.stat().st_mtime)
+    for old in logs[:max(0, len(logs) - GATE_LOG_KEEP + 1)]:
+        old.unlink(missing_ok=True)
+    return str(path)
 
 
 def validate_profile(config: dict[str, object]) -> list[str]:
@@ -278,14 +295,24 @@ def parse_requirements(text: str) -> tuple[dict[str, dict[str, str]], list[dict[
 
 
 DEFAULT_REQUIREMENTS = "SPEC.md"
+REQ_TABLE_HEADER = re.compile(r"^\|\s*ID\s*\|.*\|\s*Status\s*\|", re.IGNORECASE | re.MULTILINE)
 
 
 def configured_requirements(root: Path, config: dict[str, object]) -> object:
-    """Spec-driven default: the configured file, else SPEC.md at the repository root when present."""
+    """Spec-driven default: the configured file, else a root SPEC.md that contains a REQ table.
+
+    A prose SPEC.md without the `| ID | ... | Status |` header is not adopted; set `requirements`
+    explicitly to make an existing file the ledger.
+    """
     value = config.get("requirements")
     if value:
         return value
-    return DEFAULT_REQUIREMENTS if (root / DEFAULT_REQUIREMENTS).is_file() else None
+    path = root / DEFAULT_REQUIREMENTS
+    try:
+        text = path.read_text(encoding="utf-8-sig") if path.is_file() else ""
+    except (OSError, UnicodeError):
+        return None
+    return DEFAULT_REQUIREMENTS if REQ_TABLE_HEADER.search(text) else None
 
 
 def requirements_path(root: Path, value: object) -> tuple[Path | None, str | None]:
@@ -325,7 +352,11 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
         print(f"requirements: {exc}", file=sys.stderr)
         return 2
     if not value:
-        print(f"requirements: no `requirements` configured and no {DEFAULT_REQUIREMENTS} - skipping (PASS)")
+        if (root / DEFAULT_REQUIREMENTS).is_file():
+            print(f"requirements: {DEFAULT_REQUIREMENTS} has no requirements table "
+                  "(| ID | ... | Status |) and `requirements` is not configured - skipping (PASS)")
+        else:
+            print(f"requirements: no `requirements` configured and no {DEFAULT_REQUIREMENTS} - skipping (PASS)")
         return 0
     path, error = requirements_path(root, value)
     if error:

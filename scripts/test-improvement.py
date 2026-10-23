@@ -112,6 +112,21 @@ class ImprovementTests(LearningFixture):
             self.cli("approve", identifier, "--by", "Owner", "--owner-approved")
             self.assertTrue(self.rows()[-1]["owner_approved"])
 
+    def test_retiring_global_instruction_requires_owner(self):
+        self.propose(kind="retire", target="AGENTS.md")
+        self.checks()
+        self.cli("approve", "P1", "--by", "Human", code=2)
+        self.cli("approve", "P1", "--by", "Owner", "--owner-approved")
+
+    def test_stale_load_modify_save_is_rejected(self):
+        self.propose()
+        expected = improvement.ledger_digest(self.root)
+        rows = improvement.load_proposals(self.root)
+        self.propose(identifier="P2")
+        with self.assertRaisesRegex(ValueError, "changed concurrently"):
+            improvement.save_proposals(self.root, rows, expected)
+        self.assertEqual(["P1", "P2"], [row["id"] for row in self.rows()])
+
     def test_windows_style_global_path_requires_owner(self):
         self.propose(kind="instruction", target="agents\\lead.agent.md")
         self.checks()

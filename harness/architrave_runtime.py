@@ -448,19 +448,20 @@ class RunStore:
             config = json.loads(config_path.read_text(encoding="utf-8-sig")) if config_path.is_file() else {}
             if not isinstance(config, dict):
                 config = {}
-            if "requirements" not in config:
-                if not (self.repository / "SPEC.md").is_file():
+            gate_path = str(Path(__file__).resolve().parents[1] / "gates")
+            if gate_path not in sys.path:
+                sys.path.insert(0, gate_path)
+            from gate_runner import configured_requirements, parse_requirements, requirements_path
+            if "requirements" in config:
+                value = config["requirements"]
+            else:
+                value = configured_requirements(self.repository, config)
+                if value is None:
                     return None
-                config = {"requirements": "SPEC.md"}
-            value = config["requirements"]
             if not isinstance(value, str) or not value.strip():
                 raise ValueError("requirements must name a repository file")
             path = (self.repository / value).resolve()
             path.relative_to(self.repository)
-            gate_path = str(Path(__file__).resolve().parents[1] / "gates")
-            if gate_path not in sys.path:
-                sys.path.insert(0, gate_path)
-            from gate_runner import parse_requirements, requirements_path
             _, error = requirements_path(self.repository, value)
             if error:
                 raise ValueError(error)
@@ -490,6 +491,51 @@ class RunStore:
                     raise RuntimeFailure("REQ_NOT_ACTIVE", f"{rid} is {status}; do not dispatch it")
         return list(reqs)
 
+    def shared_claims_dir(self) -> Path | None:
+        """Directory shared by every worktree of this clone (git common dir), or None outside git."""
+        try:
+            completed = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                                       cwd=self.repository, capture_output=True, text=True, check=True)
+        except (OSError, subprocess.CalledProcessError):
+            return None
+        value = completed.stdout.strip()
+        return Path(value) / "architrave" if value else None
+
+    def _claim_checkouts(self) -> list[Path]:
+        shared = self.shared_claims_dir()
+        if shared is None:
+            return []
+        try:
+            entries = json.loads((shared / "claim-checkouts.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return []
+        return [Path(entry) for entry in entries if isinstance(entry, str)] if isinstance(entries, list) else []
+
+    def _register_claim_checkout(self) -> None:
+        shared = self.shared_claims_dir()
+        if shared is None:
+            return
+        checkouts = [str(path) for path in self._claim_checkouts() if path.exists()]
+        if str(self.repository) not in checkouts:
+            checkouts.append(str(self.repository))
+        shared.mkdir(parents=True, exist_ok=True)
+        target = shared / "claim-checkouts.json"
+        temporary = target.with_suffix(".tmp")
+        temporary.write_text(json.dumps(sorted(set(checkouts)), indent=2) + "\n", encoding="utf-8")
+        os.replace(temporary, target)
+
+    def _other_checkout_runs(self) -> Iterator[tuple[Path, dict[str, Any]]]:
+        for checkout in self._claim_checkouts():
+            if checkout == self.repository or not (checkout / ".architrave" / "runs").is_dir():
+                continue
+            store = RunStore(checkout)
+            for directory in sorted(store.runs_root.iterdir()):
+                if (directory / "run.json").is_file():
+                    try:
+                        yield checkout, store.load(directory.name)
+                    except RuntimeFailure:
+                        continue
+
     def _validate_task_requirements(self, task: dict[str, Any]) -> None:
         self.validate_requirement_binding(task.get("reqs"))
         if task.get("reqs", []) != task["workPacket"].get("reqs", []):
@@ -513,11 +559,16 @@ class RunStore:
 
     def _assert_requirements_accepted(self, state: dict[str, Any]) -> None:
         document = self.requirements_document()
+        bound = {rid for task in state["tasks"] for rid in task.get("reqs", [])}
         if document is None:
+            if bound:
+                raise RuntimeFailure("REQ_SOURCE_MISSING", "bound requirements source is no longer available",
+                                     details={"reqs": sorted(bound)})
             return
         rows, _ = document
-        bound = {rid for task in state["tasks"] for rid in task.get("reqs", [])}
-        pending = sorted(rid for rid in bound if rid not in rows or rows[rid]["status"].lower() != "accepted")
+        # superseded/withdrawn rows already require an owner correction in the gate.
+        done = {"accepted", "superseded", "withdrawn"}
+        pending = sorted(rid for rid in bound if rid not in rows or rows[rid]["status"].lower() not in done)
         if pending:
             raise RuntimeFailure("REQ_NOT_ACCEPTED", "Run completion requires accepted requirements", details={"reqs": pending})
 
@@ -533,30 +584,40 @@ class RunStore:
             if claim["active"] and release:
                 claim["active"] = False
                 released.append({"taskId": task["id"], "owner": claim["owner"], "reqs": task["reqs"]})
-            if (release or claim["active"] or task["id"] != task_id
-                    or event_type not in {"task.created", "task.started"}):
+            if (release or task["id"] != task_id or event_type not in {"task.created", "task.started"}
+                    or claim["active"] and event_type != "task.started"):
                 continue
             self._validate_task_requirements(task)
             document = self.requirements_document()
             if document is None:
+                if task.get("reqs"):
+                    raise RuntimeFailure("REQ_SOURCE_MISSING", "bound requirements source is no longer available")
                 continue
             rows, _ = document
             for rid in task["reqs"]:
                 if rows[rid]["owner"] and rows[rid]["owner"] != claim["owner"]:
-                    raise RuntimeFailure("REQ_CLAIM_CONFLICT", f"{rid} is owned by {rows[rid]['owner']} in requirements")
+                    raise RuntimeFailure("REQ_CLAIM_CONFLICT", f"{rid} is owned by {rows[rid]['owner']} in requirements",
+                                         details={"reqs": [rid], "owner": rows[rid]["owner"]})
+            if claim["active"]:
+                continue
             others = [state]
             for directory in sorted(self.runs_root.iterdir()):
                 if directory.name != state["runId"] and (directory / "run.json").is_file():
                     others.append(self.load(directory.name))
-            for other in others:
+            candidates = [(self.repository, other) for other in others]
+            candidates.extend(self._other_checkout_runs())
+            for checkout, other in candidates:
                 for existing in other["tasks"]:
-                    if other["runId"] == state["runId"] and existing["id"] == task["id"]:
+                    if (checkout == self.repository and other["runId"] == state["runId"]
+                            and existing["id"] == task["id"]):
                         continue
                     active = existing.get("requirementClaim") or {}
                     overlap = sorted(set(task["reqs"]).intersection(existing.get("reqs", [])))
                     if active.get("active") and overlap and active["owner"] != claim["owner"]:
                         raise RuntimeFailure("REQ_CLAIM_CONFLICT", "requirements already claimed by another owner",
-                                             details={"reqs": overlap, "owner": active["owner"], "runId": other["runId"]})
+                                             details={"reqs": overlap, "owner": active["owner"],
+                                                      "runId": other["runId"], "checkout": str(checkout)})
+            self._register_claim_checkout()
             claim["active"] = True
             claimed.append({"taskId": task["id"], "owner": claim["owner"], "reqs": task["reqs"]})
         if claimed:
@@ -1324,7 +1385,9 @@ class RunStore:
         evidence_refs: Sequence[str] = (),
     ) -> dict[str, Any]:
         run_dir = self.run_dir(run_id)
-        with FileLock(self.runs_root / ".requirements.lock"), FileLock(run_dir / ".run.lock"):
+        shared = self.shared_claims_dir()
+        shared_lock = FileLock(shared / "claims.lock") if shared is not None else contextlib.nullcontext()
+        with shared_lock, FileLock(self.runs_root / ".requirements.lock"), FileLock(run_dir / ".run.lock"):
             _, state = self._load_locked(run_id)
             before_state = copy.deepcopy(state)
             before_policy = copy.deepcopy(state["policy"])

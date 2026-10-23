@@ -27,8 +27,10 @@ python3 harness/architrave_cli.py runtime --repo REPO task-add RUN --id TASK --t
 
 Repeat `--req` for multiple REQs. Owner defaults to `RUN:TASK`; match the file's
 owner when set. Claims are recorded in task events (`requirementsClaimed` /
-`requirementsReleased`) and shown by status as `requirementsBindings`. A shared
-checkout lock prevents different owners from claiming the same REQ across Runs.
+`requirementsReleased`) and shown by status as `requirementsBindings`. A lock in the
+git common directory prevents different owners from claiming the same REQ across
+Runs in this checkout and in every worktree of the same clone; a conflict names
+the holding checkout. Separate clones do not share claims.
 Claims release on task completion, cancellation or handoff, not candidate return.
 Use `task-handoff RUN TASK` or `task-cancel RUN TASK` with the same CLI prefix;
 stop and observe a running worker first. Native cancellation also releases claims.
@@ -40,11 +42,13 @@ all corrections. Existing admission and child caps remain enforced.
 
 Completion rereads the file: every bound REQ must be `accepted`, even for
 cancelled/deferred tasks. Evidence and existing gates still apply. Without a
-`requirements` key, behavior is unchanged. Claims do not span separate checkouts.
+`requirements` key, `SPEC.md` is used when it contains a `| ID | ... | Status |`
+table; a prose `SPEC.md` is ignored and binding is off.
 
 Errors: `REQUIREMENTS_INVALID`, `REQ_BINDING_REQUIRED`, `REQ_BINDING_INVALID`,
 `REQ_UNKNOWN`, `REQ_NOT_ACTIVE`, `REQ_BINDING_MISMATCH`, `REQ_CLAIM_CONFLICT`,
-`REQ_OWNER_INVALID`, `REQ_OWNER_RUNNING`, `REQ_NOT_ACCEPTED`.
+`REQ_OWNER_INVALID`, `REQ_OWNER_RUNNING`, `REQ_NOT_ACCEPTED`, `REQ_SOURCE_MISSING`
+(bound tasks exist but the requirements file is gone).
 
 ## Common flow
 
