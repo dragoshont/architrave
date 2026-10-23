@@ -1,5 +1,12 @@
 # Roadmap
 
+## v0.18.0 - Long-program requirements ledger
+
+- [x] `requirements` gate: REQ table with testable acceptance, evidence for accepted, typed owner corrections, required Handoff (Next / Failed approaches / Verify).
+- [x] `--claim` refuses duplicate or closed lanes and seeds kickoffs; `--done` decides program completion.
+- [x] Contract: get-bearings start, blocked-to-owner escalation, code outranks notes; executable-first lesson promotion and human-gated skill changes.
+- [ ] Runtime-owned claims in the Run EventLog; gate output hygiene; per-model harness pruning review.
+
 ## Next - OpenCode sessions and upfront challenge
 
 - [x] OpenCode WorkPacket bridge through a running local `opencode serve`

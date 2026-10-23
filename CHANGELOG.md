@@ -7,6 +7,26 @@ Releases at or before **v0.8.12** are on the
 
 ## Unreleased
 
+## [0.18.0] - 2026-10-23
+
+### Added
+- `python gates/gate_runner.py requirements` validates the long-program
+  requirements file. Each REQ needs testable acceptance, an accepted REQ needs
+  evidence, a superseded or withdrawn REQ needs a typed correction
+  (`add|revise|retract|supersede`), and `## Handoff` needs Next, Failed
+  approaches and Verify. The components gate applies the same checks.
+- `--claim <ids> --owner <lane>` refuses duplicate, accepted or closed lanes
+  and prints acceptance plus corrections to seed kickoffs. `--done` fails until
+  every active REQ is accepted.
+- `kit/examples/requirements.md` template and `docs/long-programs.md`, a
+  plain-language guide with research sources.
+
+### Changed
+- The lead contract adds a get-bearings start, an escalate-to-owner rule for
+  conflicting directives, and "code and tests outrank notes".
+- The learning loop prefers executable promotion, records failed approaches,
+  and requires human-gated skill or instruction changes.
+
 ## [0.17.0] - 2026-10-23
 
 ### Added

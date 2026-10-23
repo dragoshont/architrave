@@ -185,6 +185,86 @@ def check_component(root: Path, item: dict[str, object]) -> tuple[bool, Path | N
     return True, path
 
 
+REQ_COLUMNS = ("id", "requirement", "acceptance", "owner", "status", "evidence")
+REQ_ACTIVE = {"open", "claimed", "in-progress", "blocked", "accepted"}
+REQ_CLOSED = {"superseded", "withdrawn"}
+CORRECTION_TYPES = {"add", "revise", "retract", "supersede"}
+HANDOFF_FIELDS = ("next", "failed approaches", "verify")
+
+
+def markdown_tables(text: str) -> list[list[list[str]]]:
+    tables: list[list[list[str]]] = []
+    current: list[list[str]] = []
+    for line in text.splitlines() + [""]:
+        stripped = line.strip()
+        if stripped.startswith("|") and stripped.endswith("|"):
+            cells = [cell.strip() for cell in stripped[1:-1].split("|")]
+            if not all(re.fullmatch(r":?-{2,}:?", cell) for cell in cells if cell):
+                current.append(cells)
+        elif current:
+            tables.append(current)
+            current = []
+    return tables
+
+
+def section(text: str, title: str) -> str:
+    match = re.search(rf"^##\s+{re.escape(title)}\s*$(.*?)(?=^##\s|\Z)", text, re.M | re.S | re.I)
+    return match.group(1) if match else ""
+
+
+def parse_requirements(text: str) -> tuple[dict[str, dict[str, str]], list[dict[str, str]], list[str]]:
+    """Parse the long-program requirements file: REQ table, typed corrections and handoff."""
+    reqs: dict[str, dict[str, str]] = {}
+    corrections: list[dict[str, str]] = []
+    errors: list[str] = []
+    for table in markdown_tables(text):
+        header = [cell.lower() for cell in table[0]]
+        if header[: len(REQ_COLUMNS)] == list(REQ_COLUMNS):
+            for cells in table[1:]:
+                row = dict(zip(REQ_COLUMNS, cells + [""] * len(REQ_COLUMNS)))
+                rid = row["id"]
+                if not re.fullmatch(r"REQ-[A-Za-z0-9_.-]+", rid):
+                    errors.append(f"row id {rid!r} is not REQ-<id>")
+                elif rid in reqs:
+                    errors.append(f"{rid} is listed twice")
+                reqs[rid] = row
+        elif header[:4] == ["id", "type", "target", "change"]:
+            corrections.extend(dict(zip(("id", "type", "target", "change"), cells + [""] * 4)) for cells in table[1:])
+    if not reqs:
+        errors.append("no requirements table with columns | ID | Requirement | Acceptance | Owner | Status | Evidence |")
+    for rid, row in reqs.items():
+        status = row["status"].lower()
+        if status not in REQ_ACTIVE | REQ_CLOSED:
+            errors.append(f"{rid} status {row['status']!r} is not one of {', '.join(sorted(REQ_ACTIVE | REQ_CLOSED))}")
+        if status in REQ_ACTIVE and not row["acceptance"]:
+            errors.append(f"{rid} has no testable acceptance")
+        if status == "accepted" and not row["evidence"]:
+            errors.append(f"{rid} is accepted without evidence")
+        if status in REQ_CLOSED and not any(rid in c["target"] for c in corrections):
+            errors.append(f"{rid} is {status} but no correction row records why")
+    for item in corrections:
+        if item["type"].lower() not in CORRECTION_TYPES:
+            errors.append(f"correction {item['id']} type {item['type']!r} is not one of {', '.join(sorted(CORRECTION_TYPES))}")
+        for target in re.findall(r"REQ-[A-Za-z0-9_.-]+", item["target"]):
+            if target not in reqs:
+                errors.append(f"correction {item['id']} targets unknown {target}")
+    handoff = section(text, "Handoff")
+    for field in HANDOFF_FIELDS:
+        match = re.search(rf"^[ \t>*_-]*{field}[ \t*_]*:[ \t*_]*(\S.*)$", handoff, re.M | re.I)
+        if not match:
+            errors.append(f"## Handoff needs a non-empty '{field.capitalize()}:' line")
+    return reqs, corrections, errors
+
+
+def requirements_path(root: Path, value: object) -> tuple[Path | None, str | None]:
+    path = component_path(root, str(value))
+    if in_scratch(path):
+        return None, f"{path} is agent session scratch; keep it in a repository"
+    if not path.is_file() or not path.read_text(encoding="utf-8-sig").strip():
+        return None, f"{value} is missing or empty"
+    return path, None
+
+
 def check_requirements(root: Path, value: object, count: int) -> bool:
     """A multi-component program needs one repo-resident requirements file that survives sessions."""
     if not value:
@@ -193,15 +273,64 @@ def check_requirements(root: Path, value: object, count: int) -> bool:
         print("FAIL  requirements: several components are mapped but no `requirements` file is configured; "
               "add a repository requirements file (REQ ids, acceptance, owner, status) before dispatching children")
         return False
-    path = component_path(root, str(value))
-    if in_scratch(path):
-        print(f"FAIL  requirements: {path} is agent session scratch; keep it in a repository")
+    path, error = requirements_path(root, value)
+    if error:
+        print(f"FAIL  requirements: {error}")
         return False
-    if not path.is_file() or not path.read_text(encoding="utf-8-sig").strip():
-        print(f"FAIL  requirements: {value} is missing or empty")
-        return False
-    print(f"ok    requirements: {value}")
-    return True
+    _, _, errors = parse_requirements(path.read_text(encoding="utf-8-sig"))
+    for item in errors:
+        print(f"FAIL  requirements: {item}")
+    if not errors:
+        print(f"ok    requirements: {value}")
+    return not errors
+
+
+def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bool) -> int:
+    """Validate the requirements file; optionally check a lane claim or program completion."""
+    try:
+        value = load_config(root).get("requirements")
+    except ValueError as exc:
+        print(f"requirements: {exc}", file=sys.stderr)
+        return 2
+    if not value:
+        print("requirements: none configured - skipping (PASS)")
+        return 0
+    path, error = requirements_path(root, value)
+    if error:
+        print(f"FAIL  requirements: {error}")
+        print("ARCHITRAVE-REQUIREMENTS: FAIL")
+        return 1
+    reqs, corrections, errors = parse_requirements(path.read_text(encoding="utf-8-sig"))
+    if claim:
+        if not owner:
+            errors.append("--claim needs --owner (the lane/session that will own these REQs)")
+        for rid in [part.strip() for part in claim.split(",") if part.strip()]:
+            row = reqs.get(rid)
+            if row is None:
+                errors.append(f"claim {rid}: not in {value}")
+                continue
+            status = row["status"].lower()
+            if status in REQ_CLOSED | {"accepted"}:
+                errors.append(f"claim {rid}: status is {status}; do not dispatch it")
+            elif row["owner"] and owner and row["owner"] != owner:
+                errors.append(f"claim {rid}: already owned by {row['owner']}; do not spawn a duplicate lane")
+            else:
+                print(f"ok    {rid} [{status}] {row['requirement']}\n        acceptance: {row['acceptance']}")
+                for item in corrections:
+                    if rid in item["target"]:
+                        print(f"        correction {item['id']} ({item['type']}): {item['change']}")
+    if done:
+        pending = [rid for rid, row in reqs.items() if row["status"].lower() in REQ_ACTIVE - {"accepted"}]
+        if pending:
+            errors.append(f"not done: {len(pending)} active REQs are not accepted: {', '.join(pending[:20])}")
+    for item in errors:
+        print(f"FAIL  requirements: {item}")
+    counts: dict[str, int] = {}
+    for row in reqs.values():
+        counts[row["status"].lower()] = counts.get(row["status"].lower(), 0) + 1
+    print("requirements: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())))
+    print("ARCHITRAVE-REQUIREMENTS: " + ("FAIL" if errors else "PASS"))
+    return 1 if errors else 0
 
 
 def components(root: Path, run_tests: bool) -> int:
@@ -401,11 +530,14 @@ def quality(root: Path, hook_json: bool) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("gate", choices=["checks", "reconcile", "quality-gate", "backend-checks", "message-lint", "components"])
+    parser.add_argument("gate", choices=["checks", "reconcile", "quality-gate", "backend-checks", "message-lint", "components", "requirements"])
     parser.add_argument("--quick", action="store_true")
     parser.add_argument("--test", action="store_true", help="components: run service then ui tests")
     parser.add_argument("--hook-json", action="store_true")
     parser.add_argument("--repo", default=".")
+    parser.add_argument("--claim", help="requirements: comma-separated REQ ids a new lane will own")
+    parser.add_argument("--owner", help="requirements: lane/session owner for --claim")
+    parser.add_argument("--done", action="store_true", help="requirements: fail unless every active REQ is accepted")
     parser.add_argument("--file", help="message-lint: text file to check (default stdin)")
     args = parser.parse_args()
     if args.gate == "message-lint":
@@ -430,6 +562,8 @@ def main() -> int:
         return backend(root)
     if args.gate == "components":
         return components(root, args.test)
+    if args.gate == "requirements":
+        return requirements_gate(root, args.claim, args.owner, args.done)
     return quality(root, args.hook_json)
 
 
