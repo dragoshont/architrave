@@ -49,7 +49,7 @@ worktrees and non-overlapping ownership. A brief assignment needs an objective,
 owned scope, relevant context, and expected result. Add acceptance checks,
 explicit budgets, and recovery detail when the task or risk needs them.
 Children return compact results, not their entire transcripts.
-The default is at most three active children, one level deep.
+The default is at most three active children, one level deep; `workers.maxParallel` raises it to at most eight. Multi-component programs (`components` with two or more entries) must configure a repository `requirements` file; the components gate fails without it.
 
 On hosts with app-native session controls, the lead can create child sessions,
 send them instructions, receive results, and inspect their status. In the

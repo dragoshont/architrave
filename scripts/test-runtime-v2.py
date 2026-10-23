@@ -2334,6 +2334,19 @@ class RuntimeV2Tests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeFailure, "maxParallel"):
             self.store.start_task(run_id, "task-b", worker_id="worker-b")
 
+    def test_max_parallel_allows_owner_approved_eight_and_clamps_above(self) -> None:
+        for configured, allowed in ((8, 8), (20, 8)):
+            (self.repo / "architrave.config.json").write_text(
+                json.dumps({"workers": {"maxParallel": configured}}), encoding="utf-8")
+            state = self.create()
+            run_id = str(state["runId"])
+            for index in range(allowed + 1):
+                self.add_task(run_id, f"task-{index}")
+            for index in range(allowed):
+                self.store.start_task(run_id, f"task-{index}", worker_id=f"worker-{index}")
+            with self.assertRaisesRegex(RuntimeFailure, "maxParallel=8"):
+                self.store.start_task(run_id, f"task-{allowed}", worker_id="one-too-many")
+
     def test_retryable_worker_failure_reschedules_after_declared_backoff(self) -> None:
         state = self.create()
         run_id = str(state["runId"])

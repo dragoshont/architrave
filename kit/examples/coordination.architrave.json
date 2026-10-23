@@ -2,6 +2,8 @@
   "kind": "knowledge",
   "build": "git diff --check --cached",
   "test": "git diff --check",
+  "requirements": "SPEC.md",
+  "workers": { "maxParallel": 8 },
   "components": [
     {
       "name": "engine",

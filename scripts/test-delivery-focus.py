@@ -96,7 +96,7 @@ required = {
     "README describes automatic criterion stall": (readme, "An adopted Run can flag a primary product criterion as stalled"),
     "installed product focus": (stanza, "Build the requested behavior first"),
     "README product-first guidance": (readme, "focused on one outcome"),
-    "default child bounds": (agent, "three (lower host limits win); depth: one"),
+    "default child bounds": (agent, "default three, owner-approved up\n  to eight (lower host limits win); depth: one"),
     "repeat-failure stop": (agent, "twice without new evidence stops the lane"),
     "progressive disclosure": (lead_skill, "Do not preload every pack"),
     "load lead only once": (lead_skill, "unless that contract is already loaded"),

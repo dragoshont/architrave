@@ -7,6 +7,25 @@ Releases at or before **v0.8.12** are on the
 
 ## Unreleased
 
+## [0.17.0] - 2026-10-23
+
+### Added
+- Long-program mode in the lead contract: work spanning more than one
+  repository, more than one day or more than two children needs an adopted Run
+  or one repository-resident requirements file before spawning. Owner
+  corrections are appended to it, kickoffs and hand-offs name it, and repeatedly
+  compacted coordinators rotate into fresh sessions seeded from it.
+- `requirements` config key. The components gate fails when two or more
+  components are mapped without a non-empty requirements file outside session
+  scratch.
+
+### Changed
+- The active-child cap is `workers.maxParallel`: default 3, owner-approved up
+  to 8. It is enforced by both the runtime and native dispatch, and
+  `architrave_native_batch` accepts up to 8 packets.
+- The "no exhaustive ledger" rule now applies only to bounded single tasks.
+  A periodic check that sees no requirement change is not progress.
+
 ## [0.16.0] - 2026-10-21
 
 ### Added

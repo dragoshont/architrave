@@ -41,8 +41,12 @@ class ComponentGate(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def run_gate(self, components, *flags):
+    def run_gate(self, components, *flags, requirements="SPEC.md"):
         config = {"kind": "knowledge", "build": "true", "test": "true", "components": components}
+        if requirements:
+            config["requirements"] = requirements
+            if requirements == "SPEC.md":
+                (self.hub / "SPEC.md").write_text("# Requirements\n- REQ-01\n")
         (self.hub / "architrave.config.json").write_text(json.dumps(config))
         process = subprocess.run(
             [sys.executable, str(RUNNER), "components", "--repo", str(self.hub), *flags],
@@ -67,6 +71,27 @@ class ComponentGate(unittest.TestCase):
         self.assertEqual(code, 1, out)
         self.assertIn("FAIL  bridge: main pushes to origin=https://github.com/me/old-name.git (expected me/new-name)", out)
         self.assertIn("FAIL  fork: main pushes to origin=", out)
+
+    def test_multi_component_program_requires_repo_requirements_file(self):
+        checkout(self.base / "engine", "git@github.com:me/engine.git")
+        checkout(self.base / "app", "git@github.com:me/app.git")
+        pair = [{"name": "engine", "repo": "me/engine", "path": "../engine"},
+                {"name": "app", "repo": "me/app", "path": "../app"}]
+        code, out = self.run_gate(pair, requirements=None)
+        self.assertEqual(code, 1, out)
+        self.assertIn("FAIL  requirements: several components are mapped", out)
+        code, out = self.run_gate(pair, requirements="MISSING.md")
+        self.assertEqual(code, 1, out)
+        self.assertIn("FAIL  requirements: MISSING.md is missing or empty", out)
+        scratch = self.base / ".copilot" / "session-state" / "x" / "files"
+        scratch.mkdir(parents=True)
+        (scratch / "ledger.md").write_text("REQ-01")
+        code, out = self.run_gate(pair, requirements=str(scratch / "ledger.md"))
+        self.assertEqual(code, 1, out)
+        self.assertIn("is agent session scratch", out)
+        code, out = self.run_gate(pair)
+        self.assertEqual(code, 0, out)
+        self.assertIn("ok    requirements: SPEC.md", out)
 
     def test_private_push_remote_passes(self):
         engine = checkout(self.base / "engine", "https://github.com/me/public-fork.git")
