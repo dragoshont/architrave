@@ -18,7 +18,7 @@ def main():
         def make_repo(name):
             repo = Path(directory) / name
             shutil.copytree(ROOT / 'harness', repo / 'harness',
-                            ignore=shutil.ignore_patterns('__pycache__', '*.sh', '*.ps1'))
+                            ignore=shutil.ignore_patterns('__pycache__'))
             return repo
 
         def command(repo, *args, valid=True):

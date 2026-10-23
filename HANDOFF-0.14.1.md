@@ -64,7 +64,7 @@ Read once during wrap-up; these are snapshots, not predictions:
 |---|---|
 | [CI 37948285242](https://github.com/dragoshont/architrave/actions/runs/37948285242) | Exact `90ecf5a` run **in progress** |
 | POSIX job `113880173489` | **SUCCESS**, completed `2026-10-09T15:01:18Z` |
-| PowerShell job `113880173091` | **In progress**, started `2026-10-09T14:59:16Z` |
+| Windows job `113880173091` | **In progress**, started `2026-10-09T14:59:16Z` |
 | Copilot on `90ecf5a` | Actual request confirmed at `2026-10-09T14:59:40Z`; **no completed exact-head review observed** |
 | Previous `6bea034` CI `37944805390` | Both jobs SUCCESS; historical, not current-head qualification |
 | Previous Copilot `5471545516` on `6bea034` | COMMENTED / changes recommended, `2026-10-09T14:40:31Z`; current safety-failure classification and search-cap findings repaired in `90ecf5a` |

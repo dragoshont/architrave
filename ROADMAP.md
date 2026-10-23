@@ -146,22 +146,21 @@
 
 ## Milestone 3 — Gates (DONE)
 - [x] `gates/rubric.md` — cross‑platform evaluation rubric (spec / design‑language / platform / adversarial / security / a11y / reconcile / tests / verification).
-- [x] `gates/reconcile.sh` + `gates/reconcile.ps1` — design↔code drift checker (regenerate from tokens via `config.tokenBuild`, diff against committed code).
-- [x] `gates/checks.sh` + `gates/checks.ps1` — deterministic gate runner driven by `architrave.config.json` (generate/build/test + designMap/tokens JSON valid; `--quick` / `-Quick` for focused validation).
-- [x] `gates/quality-gate.sh` + `gates/quality-gate.ps1` — lightweight quick gate (fast JSON guard + reconcile/judge reminder).
-- [x] Automatic quality-hook registrations and packaged definitions removed; exact legacy recognition remains in the installer for safe consumer cleanup.
+- [x] `python gates/gate_runner.py reconcile` — design↔code drift checker (regenerate from tokens via `config.tokenBuild`, diff against committed code).
+- [x] `python gates/gate_runner.py checks` — deterministic gate runner driven by `architrave.config.json` (generate/build/test + designMap/tokens JSON valid; `--quick` for focused validation).
+- [x] `python gates/gate_runner.py quality-gate` — lightweight quick gate (fast JSON guard + reconcile/judge reminder).
+- [x] No automatic quality-hook registrations, packaged definitions or installer migration machinery.
 - [x] Native tool-blocking hooks removed; explicit tool admission/source/evidence checks and passive Ribbon/companion event observation retained.
-- [x] `harness/init-run.*` + `validate-run.*` + `semantic-review.*` — durable run artifacts, learning notes, and optional judge prompt helper.
+- [x] `harness/architrave_cli.py init-run` + `validate-run` + `semantic-review` — durable run artifacts, learning notes, and optional judge prompt helper.
 
 > **Cross-platform:** since 0.21.0 every gate, harness command and installer is
-> invoked directly as Python (the earlier `.sh`/`.ps1` launchers listed above were
-> removed). Exit codes stay PASS / FAIL / BLOCK / DRIFT (0 / 1 / 2 / 1). Copied core paths
+> invoked directly as Python. Exit codes stay PASS / FAIL / BLOCK / DRIFT (0 / 1 / 2 / 1). Copied core paths
 > support Python 3.9+, while optional Codex role adoption requires Python 3.11+.
 
 ## Milestone 4 — Distribution
 - [x] **Plugin packaging** — `plugin.json` + `.github/plugin/marketplace.json`. Verified end‑to‑end with the real Copilot CLI (v1.0.64): both `copilot plugin install <path>` and the future‑proof `copilot plugin marketplace add dragoshont/architrave` + `copilot plugin install architrave@architrave` load the agent crew. The shared `~/.copilot` runtime ⇒ also reaches the Copilot app + VS Code.
 - [x] **Codex / ChatGPT packaging** — `.codex-plugin/plugin.json`, three plugin-only Agent Skills, two generated project roles, opt-in role installation/update, bounded dual-family launchers, and disposable plugin/role/MCP runtime smokes. Normal roles inherit parent MCP/skills/permissions and are documented as advisory contexts, not mandatory security gates.
-- [x] `tools/install.sh` (+ `install.ps1`) — per‑repo grounding: copies agents → `.github/agents/`, gates → `gates/`, scaffolds `architrave.config.json`, injects the `AGENTS.md` stanza (idempotent), retires exact recognized legacy quality hooks without registering new ones, drops `copilot-setup-steps.yml`. Both variants tested on throwaway repos.
+- [x] `python tools/install_update.py install` — per-repo grounding: copies agents, gates, knowledge and harness, scaffolds `architrave.config.json`, injects the `AGENTS.md` stanza (idempotent), and drops `copilot-setup-steps.yml`. Install and update use transactional, symlink-safe writes without compatibility migrations.
 - [x] `AGENTS.md` (kit) + a per‑repo `AGENTS.md` stanza template (`templates/AGENTS.stanza.md`) — the cloud‑agent reach.
 - [x] Prove on Sideport (web) — adopted on an isolated worktree (branch `architrave-adoption`, based on the UI branch's committed HEAD). The installer wired the gates to Sideport's real `tsc -b && vite build` + `eslint`; baseline gate green; ran the Feature‑Builder harness for a grounded a11y change (`aria-current` on the primary nav + the onboarding step‑tabs — WCAG 2.2 / web pack), with a consistency sweep; post‑change gate green. The config was corrected to the repo's real scripts (`test`→`lint`, `screenshot`→`test:screens`).
 
@@ -180,8 +179,8 @@
 - [x] Candidate-row lesson promotion picker (`harness/promote-lesson-picker.*`) for `.architrave/learning/repo-lessons.md`.
 
 ## Next SDD Phases
-- [x] PowerShell execution validation in CI for run-artifact, learning, and promotion harness parity.
-- [x] PowerShell execution validation in CI for all gate scripts.
+- [x] Python execution validation in CI for run-artifact, learning, and promotion harness commands.
+- [x] Python execution validation in CI for all gate commands.
 - [x] Expanded benchmark scenario suite: representative scenarios across UI, backend, full-stack, plan-only infra, operations UX/read-only runtime, YAGNI, and learning promotion.
 - [x] Interactive lesson promotion picker for `.architrave/learning/repo-lessons.md` candidate rows.
 - [x] Deterministic stale-learning guard that validates repo-profile and lessons against current repo files before promotion.
@@ -190,7 +189,7 @@
 
 ## Milestone 6 - Repository Profiles
 - [x] First-class `kind: knowledge` schema contract with no synthetic UI fields.
-- [x] Explicit POSIX and PowerShell knowledge installer profiles.
+- [x] Cross-platform Python knowledge installer profile.
 - [x] Profile-aware gates, agent routing, examples, and cross-platform fixtures.
 - [x] First-class Codex CLI packaging and role routing (issue #4; release/rollout follows the gated phase ledger).
 

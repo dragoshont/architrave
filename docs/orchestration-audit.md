@@ -253,22 +253,12 @@ Initial slimming validation (historical; release validation is rerun for each re
 - Gate, Run validator, learning validator, config-profile, review-launcher,
   Codex role, and Codex runtime suites: passed.
 - `python scripts/test-delivery-focus.py`: passed.
-- `powershell -File scripts/test-validate-run.ps1`: compact v1/v2 cases passed.
 - `python scripts/generate-codex-agents.py --check`, Python compilation, JSON
   parsing, `git diff --check`, and direct compact Run validation: passed.
 
 Python stdlib is now the canonical implementation for install/update, gates,
 Run/learning validation, orchestration, review launchers, and platform command
-selection. The remaining `.sh`/`.ps1` entrypoints only locate Python and forward
-argv/output/exit status. Portable Node/npm was restored for the documented
-repository-development `npx ajv-cli` schema check.
-
-Substantive shell/PowerShell files over 20 lines fell from **55 files / 4,833
-lines** on the baseline to **33 files / 1,877 lines**. The remaining non-Python
-exceptions are release/manifest bootstrapping, legacy learning promotion/recovery
-utilities, and their compatibility tests; the product orchestration,
-install/update, deterministic gates, Run/learning validators, and review
-launchers are Python-backed.
+selection. Every maintained entrypoint is invoked directly through Python.
 
 ## Long-running-session failure controls
 

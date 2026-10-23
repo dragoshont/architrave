@@ -40,10 +40,9 @@ key `SPEC.md` is used when present; separate clones do not share claims. See
 | Python | Existing benchmark language, standard-library JSON/process/file locking, cross-platform, directly testable | Python 3 required for Run v2 | **Chosen** |
 | TypeScript/Node | Strong JSON/tooling ecosystem | Adds package/runtime dependency and duplicates existing Python benchmark infrastructure | Rejected |
 | Go | Excellent static binary/concurrency | New toolchain and substantially more code for the current local runtime | Rejected |
-| Shell + PowerShell | Already used for small gates | Unsafe duplication for structured transitions, recovery, process control, and event integrity | Rejected |
+| Shell scripts | Already used for small gates | Unsafe duplication for structured transitions, recovery, process control, and event integrity | Rejected |
 
-Python contains all orchestration logic and every entrypoint; there are no shell
-or PowerShell launchers.
+Python contains all orchestration logic and every entrypoint.
 
 ### Storage tournament
 

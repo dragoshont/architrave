@@ -186,8 +186,8 @@ def main() -> int:
         assert digest(fresh) == before
         print("ok    fresh role install and idempotency")
 
-        # Regression: on Windows, redirecting stdout (as -Codex installs do
-        # from PowerShell) drops Python's default UTF-8 stdout in favor of
+        # Regression: on Windows, redirecting stdout can replace Python's
+        # default UTF-8 stdout with
         # the legacy ANSI codepage, which cannot encode non-ASCII output.
         # PYTHONIOENCODING=ascii reproduces that failure mode on any OS.
         ascii_stdout = base / "ascii-stdout"

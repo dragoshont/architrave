@@ -434,8 +434,8 @@ Everything Architrave ships, grouped by area. Paths point at the source of truth
 
 ### Install, update and hosts
 - Plugin for Copilot CLI/app, VS Code, Claude Code and Codex/ChatGPT; OpenCode host adapter — `plugin.json`, `.claude-plugin/`, `.codex-plugin/`, `harness/opencode_host.py`.
-- Per-repository installer: `install`, `update`, `executor-install`, `native-host-install`, `canvas-install`, `companion-install`, `retire-hooks`, `adoption-status`; atomic, hash-pinned, symlink-safe writes — `tools/install_update.py`.
-- Windows support through the same Python entrypoints; no shell or PowerShell launchers to keep in parity.
+- Per-repository installer: `install`, `update`, `executor-install`, `native-host-install`, `canvas-install`, `companion-install`, `adoption-status`; atomic, hash-pinned, symlink-safe writes — `tools/install_update.py`.
+- Windows support through the same Python entrypoints.
 - Codex project roles generated from the agents — `tools/codex-roles.py`, `.codex/agents/`.
 
 ### Benchmarks and research

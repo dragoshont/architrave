@@ -1127,13 +1127,21 @@ def prepare_live(path):
         "platform": "web", "stack": "other", "designSource": {"type": "design-doc", "path": "README.md"},
         "applyTo": ["src/**"], "build": recipe, "test": recipe,
         "workers": {"defaultAdapter": "native", "enabledAdapters": ["native", "shell"]},
+        "requirements": "requirements.md",
     }), encoding="utf-8")
+    (repo / "requirements.md").write_text(
+        "| ID | Requirement | Acceptance | Owner | Status | Evidence |\n|---|---|---|---|---|---|\n"
+        "| REQ-1 | Report the fixture answer | README answer is stated | | open | |\n"
+        "| REQ-2 | Cancel a native worker | cancel releases the claim | | open | |\n"
+        "\n## Corrections\n| ID | Type | Target | Change |\n|---|---|---|---|\n"
+        "| C-1 | revise | REQ-1 | State the answer as a number |\n"
+        "\n## Handoff\nNext: REQ-1\nFailed approaches: none\nVerify: fixture_test.py\n", encoding="utf-8")
     for argv in (["git", "init", "-q"], ["git", "config", "user.email", "fixture@example.invalid"],
                  ["git", "config", "user.name", "Fixture"], ["git", "add", "."],
                  ["git", "commit", "-qm", "isolated installed fixture"]):
         subprocess.run(argv, cwd=repo, check=True, capture_output=True)
     store = RunStore(repo)
-    for run_id, timeout in (("live-native-pass", 120), ("live-native-cancel", 1)):
+    for run_id, timeout, req in (("live-native-pass", 120, "REQ-1"), ("live-native-cancel", 1, "REQ-2")):
         store.create(run_id=run_id, goal="Actual installed native host smoke", outcome="Real candidate is independently gated",
                      autonomy_scope="approved-program", criteria=[{
                          "id": "FIX", "description": "Tiny fixture is verified", "scope": "fixture", "risk": "R0",
@@ -1141,7 +1149,7 @@ def prepare_live(path):
                      }])
         store.add_task(run_id, {
             "id": "native-read", "objective": "Read README.md in the assigned fixture workspace; state its answer briefly.",
-            "workerProfile": "native", "risk": "R0", "acceptanceCriteria": ["FIX"],
+            "workerProfile": "native", "risk": "R0", "acceptanceCriteria": ["FIX"], "reqs": [req],
             "requiredArtifacts": ["worker-result"], "workPacket": {
                 "contextBundle": ["README.md"], "budget": {"timeoutSeconds": timeout, "maxOutputBytes": 8192},
             },

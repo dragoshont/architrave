@@ -20,12 +20,12 @@ defaults to deny; explicit Run policy may authorize a bounded target and operati
 - `knowledge/` — platform packs (`apple.md`, `microsoft.md`, `web.md`) + `backend.md` + `operations-ux.md` + `design-tokens.md` + `execution-policy.md` + `learning-loop.md` + `yagni.md` + `runtime-v2.md` for durable control-plane semantics.
 - `kit/` — `architrave.config.schema.json` (the per-repo config keystone) + `examples/`.
 - `plugin.json` + `.github/plugin/marketplace.json` — Copilot agent-plugin + self-hosting marketplace.
-- `.codex-plugin/plugin.json` + `skills/` + `.codex/` — eight Architrave plugin-only Codex/ChatGPT skills (including explicit-only agent, skill, and MCP authoring) plus six vendored MIT/Apache-2.0 skills (sources and licences in README) plus generated project roles. Adoption copies roles only with `--codex` / `-Codex`.
+- `.codex-plugin/plugin.json` + `skills/` + `.codex/` — eight Architrave plugin-only Codex/ChatGPT skills (including explicit-only agent, skill, and MCP authoring) plus six vendored MIT/Apache-2.0 skills (sources and licences in README) plus generated project roles. Adoption copies roles only with `--codex`.
 - `templates/` + `tools/install_update.py` — the per-repo installer and what it injects.
 
 ## Conventions when changing the kit
 - **Python only.** Every gate, harness command, installer and test is a Python
-  CLI invoked as `python <file>.py`; do not add `.sh` or `.ps1` entrypoints
+  CLI invoked as `python <file>.py`; do not add shell entrypoints
   (the validator rejects them; vendored skill assets are the only exception).
   Gate exits remain PASS=0 / FAIL=1 / BLOCK=2 / DRIFT=1 where applicable.
 - **Keep install/update logic canonical in `tools/install_update.py`** — managed-path safety and adversarial fixtures live there.

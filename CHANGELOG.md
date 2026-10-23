@@ -7,6 +7,18 @@ Releases at or before **v0.8.12** are on the
 
 ## Unreleased
 
+## [0.21.1] - 2026-10-23
+
+### Removed
+- Installer backward compatibility: retired-shim cleanup, legacy quality-hook
+  detection/retirement (`retire-hooks`), quarantine machinery and old
+  transaction-format fallbacks. Transactional and symlink safety remain.
+- Remaining PowerShell references in active docs (only rejection checks remain).
+
+### Changed
+- REQ-08 accepted: live `architrave_native_dispatch` with REQ binding and a
+  native gate PASS; the `--prepare-live` fixture is now requirements-bound.
+
 ## [0.21.0] - 2026-10-23
 
 ### Removed
