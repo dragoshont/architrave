@@ -7,6 +7,19 @@ Releases at or before **v0.8.12** are on the
 
 ## Unreleased
 
+## [0.21.4] - 2026-10-24
+
+### Added
+- `requirements --handoff` gates session rotation: it fails on uncommitted
+  requirements or on progress in this checkout's git-ignored SDD ledger newer
+  than the committed requirements, and warns about such a ledger in a sibling
+  worktree (each judged against its own branch, by author time).
+
+### Changed
+- Rotation is commit-based: commit Handoff and pass `--handoff`; the successor
+  starts from that commit and continues the same file; the predecessor hands
+  off once and stops relaying. Worktree-local scratch is never the ledger.
+
 ## [0.21.3] - 2026-10-23
 
 ### Fixed
