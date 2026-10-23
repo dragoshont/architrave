@@ -30,6 +30,8 @@ Source of truth for Architrave's own development (spec-driven, see
 | C-04 | revise | REQ-11 | Owner via coordinating session, 2026-10-23: now merge, build, release publicly and install locally; no CI minutes. This replaces C-03's no-release/no-merge hold for this bounded release only; coordinate existing release owner, inspect automation before writes, preserve required local gates and do not publish duplicates |
 | C-05 | add | REQ-11 | Owner via coordinating session, 2026-10-23: report whether sessions need restart; distinguish disk install from already-loaded instructions and extension processes, and explain how a fresh session proves the released version without interrupting unrelated sessions |
 
+| C-06 | add | REQ-12 | Owner via coordinating session, 2026-10-23: publish 0.21.3 through PR merge, merge-commit tag and locally built source archives plus verified download hashes; keep Actions disabled with unchanged run count; restore public Copilot/Codex sources, install native from merged source, verify single identities and installed repros, then record post-release acceptance evidence |
+
 ## Handoff
 
 Next: REQ-12 accepted; 0.21.3 is installed locally, not released or tagged. Copilot uses the direct hotfix install; Codex marketplace now points at the hotfix worktree, replacing its original Git source `https://github.com/dragoshont/architrave.git` through supported CLI commands. Preserve the worktree until the source is restored after the remote carries the fix. Fresh sessions must load the updated plugin; existing context is not replaced by disk updates. Reload supported host extensions for native pins; do not interrupt unrelated sessions.
