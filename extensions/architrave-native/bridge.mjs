@@ -177,8 +177,18 @@ function result(value) {
     resultType: value.status === "failed" || ["FAIL", "failed"].includes(value.result?.status) ? "failure" : "success" };
 }
 
+const HARD_CHILD_CAP = 8;
+// workers.maxParallel in the target repository's architrave.config.json; default 3, never above 8.
+function childCap(repo) {
+  try {
+    const value = JSON.parse(readFileSync(join(realpathSync(repo), "architrave.config.json"), "utf8")).workers?.maxParallel;
+    if (Number.isInteger(value) && value >= 1) return Math.min(HARD_CHILD_CAP, value);
+  } catch {}
+  return 3;
+}
+
 async function withAdmission(operation) {
-  if (pendingDispatches >= 3) throw new Error("CHILD_LIMIT: three dispatches already admitted");
+  if (pendingDispatches >= HARD_CHILD_CAP) throw new Error(`CHILD_LIMIT: ${HARD_CHILD_CAP} dispatches already admitted`);
   pendingDispatches += 1;
   try { return await operation(); }
   finally { pendingDispatches -= 1; }
@@ -216,8 +226,9 @@ const tools = [
       if (semanticScope) throw new Error("SEMANTIC_REVIEW_BUSY: frozen review owns this joined session");
       const owned = new Set([...active.values()].map(entry => entry.hostTaskId));
       const outside = tasks.filter(task => task.type === "agent" && task.status === "running" && !owned.has(task.id)).length;
-      if (outside + pendingDispatches > 3) {
-        throw new Error("CHILD_LIMIT: three active host children already exist, including child-originated work");
+      const cap = typeof args.repo === "string" && isAbsolute(args.repo) ? childCap(args.repo) : 3;
+      if (outside + pendingDispatches > cap) {
+        throw new Error(`CHILD_LIMIT: ${cap} active host children already exist, including child-originated work (workers.maxParallel)`);
       }
       if (args.owner_handle && !tasks.some(task => task.id === args.owner_handle && task.type === "agent" && task.status === "idle")) {
         throw new Error("Existing owner must be an idle native agent in the current joined host session");
@@ -469,10 +480,10 @@ async function cleanupSemanticOwner(owner, connection, progress = {}) {
 
 tools.push({
   name: "architrave_native_batch",
-  description: "Invoke two or three pre-decomposed independent canonical WorkPackets concurrently through the same native dispatch. No automatic decomposition or recursive spawning.",
+  description: "Invoke two to eight (within workers.maxParallel) pre-decomposed independent canonical WorkPackets concurrently through the same native dispatch. No automatic decomposition or recursive spawning.",
   parameters: { type: "object", properties: {
     repo: identitySchema.repo, run_id: identitySchema.run_id,
-    task_ids: { type: "array", items: { type: "string" }, minItems: 2, maxItems: 3, uniqueItems: true },
+    task_ids: { type: "array", items: { type: "string" }, minItems: 2, maxItems: 8, uniqueItems: true },
   }, required: ["repo", "run_id", "task_ids"], additionalProperties: false },
   handler: async (args, invocation) => {
     const results = await Promise.all(args.task_ids.map(task_id =>

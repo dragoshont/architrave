@@ -884,7 +884,7 @@ for(const owner of ["early-admission","retained-delivery"]) {
 }
 host.rpc.tasks.list=()=>new Promise(()=>{});
 const dispatch=options.tools.find(tool=>tool.name==="architrave_native_dispatch");
-for(let i=0;i<3;i++) void dispatch.handler({repo:"unused",run_id:"r",task_id:String(i)},{sessionId:"root"});
+for(let i=0;i<8;i++) void dispatch.handler({repo:"unused",run_id:"r",task_id:String(i)},{sessionId:"root"});
 assert.equal(Object.hasOwn(options,"hooks"),false);
 await assert.rejects(dispatch.handler({},{sessionId:"root"}),/CHILD_LIMIT/);
 console.log("SDK event/hookless/admission fixture: PASS (not native evidence)");

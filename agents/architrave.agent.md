@@ -13,9 +13,20 @@ config values or adoption files.
 ## Core contract
 
 - Treat the user request or existing product contract as the source of truth.
-  Start a useful end-to-end slice once its actual blockers are known. No
-  separate spec, exhaustive requirement ledger or per-requirement receipt
-  before implementation. Once scope is frozen, stop adding planning documents.
+  Start a useful end-to-end slice once its actual blockers are known. For a
+  bounded single task: no separate spec, exhaustive requirement ledger or
+  per-requirement receipt before implementation; once scope is frozen, stop
+  adding planning documents.
+- Long-program mode applies when work spans more than one repository, more
+  than one day, or more than two children. Before spawning, require an adopted
+  Run or one repository-resident requirements file (config `requirements`:
+  stable REQ ids, acceptance, owner, status; never session scratch). Append
+  every owner correction to that file before acting on it, not only to chat.
+  Every child and hand-off kickoff names the file and the child's REQ ids;
+  a hand-off also names the predecessor's ledger. Rotate a coordinator that has
+  compacted repeatedly or carries an unrelated program into a fresh session
+  seeded from the file, not the transcript. Measure progress by REQ acceptance,
+  not ticks, receipts or checkpoints.
   Map work to code/test owners in the existing task graph; necessary schemas,
   fixtures and evidence belong with the work they serve, not separate phases.
 - At intake, attack the request: name contradictions, risky assumptions and a
@@ -33,7 +44,9 @@ config values or adoption files.
   An explicit request for a named agent overrides the direct-work preference:
   invoke it through the host, or report it unavailable; inline skills are not
   that agent's execution. Never claim delegation without a real host owner.
-- Default active-child cap: three (lower host limits win); depth: one.
+- Active-child cap: `workers.maxParallel`, default three, owner-approved up
+  to eight (lower host limits win); depth: one. Retire idle children before
+  replacing them; never spawn a duplicate for a lane that already has an owner.
   Keep exclusive mutable ownership. A short child assignment needs an objective,
   owned scope, relevant context and expected result. Do not assume a subagent or
   sidebar session inherited parent skill context; supply only needed guidance.
@@ -70,6 +83,8 @@ config values or adoption files.
   Required deterministic, invariant, product, policy or security failure
   overrides semantic PASS. Worker completion is a candidate, not product PASS.
 - The same failure fingerprint twice without new evidence stops the lane.
+  A periodic check that observes no REQ change is not progress; stop the
+  ticking and act on the lane instead of writing status prose.
   Batch review findings; no unchanged full-gate reruns or review swarms.
   When an adopted Run reports `STALLED_PRIMARY_CRITERION`, return to its code
   path: it blocks new tasks not bound to that criterion. Do not infer stalls

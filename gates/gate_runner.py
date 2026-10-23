@@ -86,6 +86,9 @@ def validate_profile(config: dict[str, object]) -> list[str]:
         for field in ("platform", "stack", "designSource", "applyTo", "build", "test"):
             if field not in config:
                 errors.append(f"application profile requires {field}")
+    requirements = config.get("requirements")
+    if requirements is not None and not (isinstance(requirements, str) and requirements):
+        errors.append("requirements must be a non-empty path")
     return errors + validate_components(config.get("components"))
 
 
@@ -182,6 +185,25 @@ def check_component(root: Path, item: dict[str, object]) -> tuple[bool, Path | N
     return True, path
 
 
+def check_requirements(root: Path, value: object, count: int) -> bool:
+    """A multi-component program needs one repo-resident requirements file that survives sessions."""
+    if not value:
+        if count < 2:
+            return True
+        print("FAIL  requirements: several components are mapped but no `requirements` file is configured; "
+              "add a repository requirements file (REQ ids, acceptance, owner, status) before dispatching children")
+        return False
+    path = component_path(root, str(value))
+    if in_scratch(path):
+        print(f"FAIL  requirements: {path} is agent session scratch; keep it in a repository")
+        return False
+    if not path.is_file() or not path.read_text(encoding="utf-8-sig").strip():
+        print(f"FAIL  requirements: {value} is missing or empty")
+        return False
+    print(f"ok    requirements: {value}")
+    return True
+
+
 def components(root: Path, run_tests: bool) -> int:
     try:
         config = load_config(root)
@@ -197,7 +219,7 @@ def components(root: Path, run_tests: bool) -> int:
         print(f"FAIL  {error}")
     if errors:
         return 1
-    success = True
+    success = check_requirements(root, config.get("requirements"), len(items))
     for item in items:
         ok, path = check_component(root, item)
         success = ok and success
