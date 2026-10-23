@@ -55,6 +55,9 @@ explicit acceptance checks, permission boundaries, finite budgets and recovery
 detail as needed. Durable WorkPackets still obey their existing schema and
 admission checks; this shorter prompt contract does not relax that API.
 
+Keep reusable workflow, verification and permission rules in Architrave; a
+project kickoff chiefly supplies the objective, requirements entry point,
+component refs and project-specific decisions, not a copy of the agent contract.
 The kickoff names only guidance actually needed for the task, using resolvable
 skills or verified source paths and repository instructions; parent skill
 context is not assumed inherited. Supply verified absolute paths when the host
@@ -109,6 +112,40 @@ contracts or design sources, implementation files, and nearby tests. Load large
 documents or broader history only when focused retrieval is insufficient.
 Handoffs and worker results are bounded summaries with source paths or artifact
 references; they do not duplicate transcripts or repository content.
+
+For a fresh multi-repo session, bootstrap from the repository requirements,
+correction rows and Handoff, not the old kickoff transcript. Verify current
+refs and acceptance evidence before dispatching dependency-ready bounded work
+under the existing claim/ownership rules. Historical source refs and old audit
+claims are not fresh runtime evidence; retain them as provenance and reobserve
+the actual target when current runtime acceptance is required. This grants no
+new runtime permissions.
+
+Use the existing `components` map and requirements/Handoff for component
+identity, not a parallel inventory. Alongside the canonical `repo`, record its
+execution role (which side/process runs it), working branch/base when non-default,
+and safe write remote. Verify these against the checkout, including its
+effective push remote and every push URL, using the existing components gate
+where configured. Do not assume the default branch contains rescued work or
+that `origin` is safe for private changes. Resolve rename redirects and confirm
+the current canonical repository identity before destructive GitHub operations;
+an unresolved mismatch blocks that operation, not a reason to guess or rewrite
+remotes. Preserve dirty work and other owners' branches.
+
+Distinguish a known-working precursor/lab/handwritten path from the intended
+generated/product path in the requirements/Handoff. Evidence identifies the
+source ref/artifact and entry point that actually ran; success on the precursor
+does not accept its replacement. Preserve the proven baseline until replacement
+passes the real-flow parity check in Delivery detail below.
+
+Within the mandate and host permissions, disable only the assigned scheduled
+automation when its work is accepted, superseded or its owner is archived,
+after checking current requirements and host ownership. Do not infer retirement
+from silence or cancel ongoing work merely because an owner is idle. Do not
+restart retired monitor loops without a new mandate. Preserve source and
+evidence; retirement is not permission for broad cleanup, archiving sessions
+or stopping unrelated processes. If host controls or authorization are
+unavailable, report the blocker instead of bypassing host lifecycle restrictions.
 
 ## Spec first, then the product path
 

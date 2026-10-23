@@ -7,6 +7,18 @@ Releases at or before **v0.8.12** are on the
 
 ## Unreleased
 
+## [0.21.2] - 2026-10-23
+
+### Changed
+- Fresh multi-repo kickoffs verify current component refs, write targets and
+  acceptance evidence from durable requirements/corrections/Handoff; historical
+  audits and working precursors do not prove the intended product path ran.
+- Keep project kickoffs thin by linking Architrave's existing workflow,
+  ownership, permission and real-flow verification contract.
+- Retire only assigned completed/superseded schedules through authorized host
+  controls, preserving evidence without reviving retired monitors or expanding
+  cleanup.
+
 ## [0.21.1] - 2026-10-23
 
 ### Removed

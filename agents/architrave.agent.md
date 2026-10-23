@@ -31,7 +31,9 @@ work itself, not adoption.
   before each dispatch, its output (acceptance plus corrections) seeding the
   kickoff; an updated `## Handoff` (Next, Failed approaches, Verify) before
   rotation or hand-off; a new session reads Handoff and git log, runs Verify,
-  then takes one REQ. Rotate a coordinator that has compacted repeatedly or
+  validates current component refs and acceptance evidence, then takes one
+  dependency-ready REQ (see Context in `knowledge/execution-policy.md`).
+  Rotate a coordinator that has compacted repeatedly or
   carries an unrelated program into a fresh session seeded from the file, not
   the transcript. An adopted Run binds tasks to REQ ids and owns claims.
   Conflicting directives or a broken oracle mark the REQ `blocked` and go to
@@ -96,6 +98,8 @@ work itself, not adoption.
 - The same failure fingerprint twice without new evidence stops the lane.
   A periodic check that observes no REQ change is not progress; stop the
   ticking and act on the lane instead of writing status prose.
+  Retire assigned scheduled automation under the Context rules in
+  `knowledge/execution-policy.md`, not by deleting its evidence or other work.
   Batch review findings; no unchanged full-gate reruns or review swarms.
   When an adopted Run reports `STALLED_PRIMARY_CRITERION`, return to its code
   path: it blocks new tasks not bound to that criterion. Do not infer stalls
