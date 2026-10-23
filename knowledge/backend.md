@@ -86,7 +86,7 @@ Some repos can optionally expose runtime truth through `config.ops` and tools su
 - Secret scan clean; no secret in diff/logs.
 - IaC: plan/policy clean; either no apply occurred, or the Run policy explicitly
 	allowed the target/operation and receipt plus live verification passed.
-Run via `gates/backend-checks.sh` (POSIX) / `gates/backend-checks.ps1` (Windows).
+Run via `python gates/gate_runner.py backend-checks` on any platform.
 
 ## 9. Evaluation (judge dimensions for the backend lane)
 The Adversarial Judge grades the backend lane on, in addition to the shared rubric: **contract conformance**, **data-migration safety + rollback**, **idempotency**, **least-privilege / IaC safety (default-deny, no secret leak)**, and **capability honesty**. Prefer **end-state evaluation at checkpoints** over turn-by-turn. A destructive migration without rollback, a secret in code/IaC, an ungranted apply, a missing/mismatched deployment receipt, or a contract the service cannot honor is an automatic **FAIL/Blocker**.

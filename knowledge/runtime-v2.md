@@ -13,9 +13,9 @@ the spec; the runtime never changes its acceptance on the owner's behalf.
 
 `task-add ... --req REQ-1 --owner lane-a` claims work (repeat `--req`; owner
 otherwise defaults to `RUN:TASK` and must match an existing file owner).
-Claims live in authenticated task events and canonical task state. Repository
-locking prevents different owners from claiming the same REQ across Runs in this
-checkout. Task completion, cancellation and `task-handoff RUN TASK` release them;
+Claims live in authenticated task events and canonical task state. A lock in the
+git common directory prevents different owners from claiming the same REQ across
+Runs in this checkout and all worktrees of the same clone. Task completion, cancellation and `task-handoff RUN TASK` release them;
 a worker's candidate return does not. `task-cancel RUN TASK` releases inactive
 work; observe active workers stopping first. Cancelled native workers release
 the claim, and retries must reclaim it. Status exposes `requirementsBindings`.
@@ -27,8 +27,8 @@ corrections across context resets. Admission limits remain unchanged.
 
 Before completion, reread the file: all REQs ever bound to Run tasks must now
 be `accepted`, including cancelled/deferred tasks, or `REQ_NOT_ACCEPTED` blocks
-completion. Existing code/evidence gates remain independent. Unconfigured repos
-are unchanged; separate checkouts do not share claims. See
+completion. Existing code/evidence gates remain independent. Without a `requirements`
+key `SPEC.md` is used when present; separate clones do not share claims. See
 [`docs/runtime-v2.md`](../docs/runtime-v2.md#requirements-binding) for CLI and errors.
 
 ## Architecture decision
@@ -42,8 +42,8 @@ are unchanged; separate checkouts do not share claims. See
 | Go | Excellent static binary/concurrency | New toolchain and substantially more code for the current local runtime | Rejected |
 | Shell + PowerShell | Already used for small gates | Unsafe duplication for structured transitions, recovery, process control, and event integrity | Rejected |
 
-Python contains all orchestration logic. Shell and PowerShell remain thin entry
-surfaces for small deterministic gates and v1 compatibility.
+Python contains all orchestration logic and every entrypoint; there are no shell
+or PowerShell launchers.
 
 ### Storage tournament
 

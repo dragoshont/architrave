@@ -66,4 +66,4 @@ design tweak ─▶ tokens (.tokens.json = SSOT) ─▶ translation (Style Dicti
 1. **Spec + Storybook only:** valid for early app work; set `designSource.spec` and Storybook path. Gates validate JSON/build/test; reconcile skips token generation.
 2. **Add a design map:** copy `kit/examples/design-map.stub.json` into the app repo and map real component/story/code names. This unlocks better grounding and anti-slop review without token tooling.
 3. **Add tokens:** copy or adapt `kit/examples/tokens.web-shadcn.tokens.json` or a platform-specific token file. Set `tokens` in `architrave.config.json`.
-4. **Add token build:** configure Style Dictionary, Terrazzo, or a repo-local generator and set `tokenBuild`. Now `gates/reconcile.*` can mechanically detect design↔code drift.
+4. **Add token build:** configure Style Dictionary, Terrazzo, or a repo-local generator and set `tokenBuild`. Now `gates/gate_runner.py reconcile` can mechanically detect design↔code drift.

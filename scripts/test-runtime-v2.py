@@ -7,6 +7,7 @@ import datetime as dt
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -344,6 +345,29 @@ class RuntimeV2Tests(unittest.TestCase):
         self.assertFalse(self.store.load(second)["tasks"][0]["requirementClaim"]["active"])
         self.bound_task(first, "replacement", owner="lane-c")
 
+    def test_requirements_claims_conflict_across_worktrees_of_one_clone(self):
+        self.requirements_fixture()
+        worktree = Path(self.temp.name) / "lane-b-worktree"
+        self.git("worktree", "add", "-q", "-b", "lane-b", str(worktree))
+        for name in ("architrave.config.json", "requirements.md"):
+            shutil.copy(self.repo / name, worktree / name)
+        first = self.create(risk="R0")["runId"]
+        self.bound_task(first, owner="lane-a")
+        main_store, self.store = self.store, RunStore(worktree)
+        try:
+            second = self.create(risk="R0")["runId"]
+            with self.assertRaises(RuntimeFailure) as error:
+                self.bound_task(second, owner="lane-b")
+            self.assertEqual("REQ_CLAIM_CONFLICT", error.exception.code)
+            self.assertEqual(str(self.repo.resolve()), error.exception.details["checkout"])
+            main_store.handoff_task(first, "bound")
+            self.bound_task(second, owner="lane-b")
+        finally:
+            self.store = main_store
+        with self.assertRaises(RuntimeFailure) as error:
+            self.bound_task(first, "again", owner="lane-a")
+        self.assertEqual("REQ_CLAIM_CONFLICT", error.exception.code)
+
     def test_requirements_claims_allow_same_owner_and_respect_document_owner(self):
         self.requirements_fixture(owner="lane-a")
         run = self.create(risk="R0")["runId"]
@@ -402,6 +426,54 @@ class RuntimeV2Tests(unittest.TestCase):
         state, done = self.store.verify(run)
         self.assertTrue(done)
         self.assertEqual("COMPLETED", state["status"])
+
+    def completion_fixture_run(self):
+        criterion = self.criterion(risk="R0")
+        criterion["blocking"] = False
+        run = self.store.create(goal="Fixture", outcome="Fixture", criteria=[criterion])["runId"]
+        self.bound_task(run)
+        self.store.handoff_task(run, "bound")
+        return run
+
+    def test_requirements_completion_fails_closed_when_source_removed(self):
+        self.requirements_fixture()
+        run = self.completion_fixture_run()
+        (self.repo / "architrave.config.json").write_text("{}", encoding="utf-8")
+        (self.repo / "requirements.md").unlink()
+        with self.assertRaises(RuntimeFailure) as error:
+            self.store.verify(run)
+        self.assertEqual("REQ_SOURCE_MISSING", error.exception.code)
+
+    def test_requirements_completion_accepts_owner_retired_scope(self):
+        self.requirements_fixture()
+        run = self.completion_fixture_run()
+        text = (self.repo / "requirements.md").read_text(encoding="utf-8")
+        text = text.replace("| REQ-1 | Deliver fixture | fixture test passes |  | open |",
+                            "| REQ-1 | Deliver fixture | fixture test passes |  | withdrawn |")
+        (self.repo / "requirements.md").write_text(text.replace("| C-1 | revise |", "| C-1 | retract |"),
+                                                   encoding="utf-8")
+        state, done = self.store.verify(run)
+        self.assertTrue(done)
+
+    def test_requirements_owner_reassignment_blocks_start_of_active_claim(self):
+        self.requirements_fixture()
+        run = self.create(risk="R0")["runId"]
+        self.bound_task(run, owner="lane-a")
+        self.requirements_fixture(owner="lane-b")
+        with self.assertRaises(RuntimeFailure) as error:
+            self.store.start_task(run, "bound", worker_id="worker")
+        self.assertEqual("REQ_CLAIM_CONFLICT", error.exception.code)
+
+    def test_prose_spec_md_is_not_adopted_as_requirements(self):
+        (self.repo / "SPEC.md").write_text("# API spec\n\nThe service returns JSON.\n", encoding="utf-8")
+        self.assertIsNone(self.store.requirements_document())
+        run = self.create(risk="R0")["runId"]
+        self.add_task(run, "unbound", risk="R0")
+        (self.repo / "SPEC.md").write_text(
+            "| ID | Requirement | Acceptance | Owner | Status | Evidence |\n|---|---|---|---|---|---|\n"
+            "| REQ-1 | Deliver | test passes | | open | |\n"
+            "\n## Handoff\nNext: deliver\nFailed approaches: none\nVerify: test\n", encoding="utf-8")
+        self.assertIn("REQ-1", self.store.requirements_document()[0])
 
     def test_requirements_invalid_file_fails_closed(self):
         self.requirements_fixture()

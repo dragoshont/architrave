@@ -26,8 +26,9 @@ Thoughtworks/Martin Fowler, Cognition) describes the same cure:
 
 ### One requirements file (the "ledger")
 
-Architrave reads `SPEC.md` at the repository root, or the file named by
-`"requirements"` in `architrave.config.json`. The file is a simple markdown table
+Architrave reads `SPEC.md` at the repository root when it contains a REQ table
+(`| ID | ... | Status |`), or the file named by `"requirements"` in
+`architrave.config.json`. A prose `SPEC.md` is left alone. The file is a simple markdown table
 (copy `kit/examples/requirements.md`). A small task needs one to three rows;
 read-only questions and one-line edits need none. `checks` and `quality-gate`
 validate the file whenever it exists, and a Run refuses tasks that are not bound

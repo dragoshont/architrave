@@ -78,7 +78,7 @@
       "lane": "ui",
       "tags": ["storybook", "ui", "empty-state"],
       "prompt": "Benchmark task. Add a Storybook-first empty state for the PhonoDeck Library home when all connected music sources are signed out or unavailable. Acceptance: update the design source first, keep source capability honesty, avoid native app implementation until the Storybook/design artifact exists, and run the repo quick gate. This benchmark has pre-approved proceeding without asking follow-up questions unless the task is impossible.",
-      "validation": ["gates/checks.sh --quick"],
+      "validation": ["{python} gates/gate_runner.py checks --quick"],
       "expectedArtifacts": [".architrave/runs", ".architrave/learning/repo-profile.md"],
       "scoring": {
         "mustShow": ["visible intake", "Tournament of Options", "YAGNI ladder", "Storybook/design source touched before app code"],
@@ -93,7 +93,7 @@
       "lane": "yagni",
       "tags": ["yagni", "web", "native"],
       "prompt": "Benchmark task. A user asks for a custom date picker in Sideport Admin for certificate renewal scheduling. Implement the smallest correct UI slice. Acceptance: apply the YAGNI ladder, prefer native/browser/design-system capability over a new picker dependency, keep accessibility and validation, and run the repo quick gate. This benchmark has pre-approved proceeding without asking follow-up questions unless impossible.",
-      "validation": ["gates/checks.sh --quick"],
+      "validation": ["{python} gates/gate_runner.py checks --quick"],
       "expectedArtifacts": [".architrave/runs", ".architrave/learning/repo-profile.md"],
       "scoring": {
         "mustShow": ["YAGNI ladder", "native/platform option", "no new dependency unless justified"],
@@ -108,7 +108,7 @@
       "lane": "backend",
       "tags": ["backend", "contract", "queue"],
       "prompt": "Benchmark task. Add a backend-visible refresh status field for apps already queued for signing/refresh, without inventing a parallel queue abstraction. Acceptance: ground in existing Sideport architecture docs and solution seams, define or update the contract first, implement the smallest approved slice, preserve idempotency/capability honesty, and run the repo quick gate. This benchmark has pre-approved proceeding without asking follow-up questions unless impossible.",
-      "validation": ["gates/checks.sh --quick", "gates/backend-checks.sh"],
+      "validation": ["{python} gates/gate_runner.py checks --quick", "{python} gates/gate_runner.py backend-checks"],
       "expectedArtifacts": [".architrave/runs", ".architrave/learning/repo-profile.md"],
       "scoring": {
         "mustShow": ["contract-first", "Tournament of Options", "existing solution seam reused"],
@@ -123,7 +123,7 @@
       "lane": "full-stack",
       "tags": ["full-stack", "contract", "storybook"],
       "prompt": "Benchmark task. Add a minimal admin portal indicator for a backend job that is blocked by missing configuration. Acceptance: define the backend/API shape first from existing architecture docs, render an honest blocked state in the UI design source, avoid invented metrics, avoid unnecessary persistence, and run quick gates. This benchmark has pre-approved proceeding without asking follow-up questions unless impossible.",
-      "validation": ["gates/checks.sh --quick", "gates/backend-checks.sh"],
+      "validation": ["{python} gates/gate_runner.py checks --quick", "{python} gates/gate_runner.py backend-checks"],
       "expectedArtifacts": [".architrave/runs", ".architrave/learning/repo-profile.md"],
       "scoring": {
         "mustShow": ["contract-first", "Storybook/design source", "capability honesty", "YAGNI no unnecessary persistence"],
@@ -138,9 +138,9 @@
       "lane": "learning",
       "tags": ["learning", "repo-profile", "build"],
       "prompt": "Benchmark task. Capture the PhonoDeck build/relaunch gotcha as durable repo learning without changing product code. Acceptance: update the Architrave repo profile or candidate lessons with evidence, do not put a one-off note into architrave.config.json, redact secrets, validate the fact against current repo files, and run the repo quick gate. This benchmark has pre-approved proceeding without asking follow-up questions unless impossible.",
-      "validation": ["gates/checks.sh --quick"],
+      "validation": ["{python} gates/gate_runner.py checks --quick"],
       "validationByArm": {
-        "copilot-architrave": ["gates/checks.sh --quick", "harness/validate-run.sh"]
+        "copilot-architrave": ["{python} gates/gate_runner.py checks --quick", "{python} harness/architrave_cli.py validate-run"]
       },
       "expectedArtifacts": [".architrave/learning/repo-profile.md"],
       "expectedArtifactsByArm": {
@@ -159,7 +159,7 @@
       "lane": "infra",
       "tags": ["infra", "plan-only", "kubernetes", "state"],
       "prompt": "Benchmark task. Sideport needs durable state for operation history and anisette identity in Kubernetes. Produce a plan-only infrastructure slice. Acceptance: propose repo-grounded Kubernetes manifest changes only, do not run kubectl apply/restart/reconcile, do not materialize secrets, mark any identity/storage/network changes as human-approval items, run the configured IaC plan/policy gates, and keep product claims honest. This benchmark has pre-approved proceeding without asking follow-up questions unless impossible or unsafe.",
-      "validation": ["gates/checks.sh --quick", "gates/backend-checks.sh"],
+      "validation": ["{python} gates/gate_runner.py checks --quick", "{python} gates/gate_runner.py backend-checks"],
       "expectedArtifacts": [".architrave/runs", ".architrave/learning/repo-profile.md"],
       "scoring": {
         "mustShow": ["plan-only", "human approval items", "kustomize/kubeconform evidence", "no secret materialization"],
@@ -174,7 +174,7 @@
       "lane": "ops",
       "tags": ["ops", "runtime", "read-only", "drift"],
       "prompt": "Benchmark task. A user asks whether the Sideport deployment matches the source contract and manifests. Produce a read-only runtime/version-drift report. Acceptance: use configured ops evidence only if available, do not mutate runtime state, do not access secret values, compare runtime observations against source/IaC/API claims, separate observed facts from skipped/unavailable evidence, and list human-approval items for any mutation that would be needed later. This benchmark has pre-approved proceeding without asking follow-up questions unless impossible or unsafe.",
-      "validation": ["gates/checks.sh --quick"],
+      "validation": ["{python} gates/gate_runner.py checks --quick"],
       "expectedArtifacts": [".architrave/runs", ".architrave/learning/repo-profile.md"],
       "scoring": {
         "mustShow": ["read-only runtime evidence", "source/runtime comparison", "tools unavailable if skipped", "no mutation checklist"],
@@ -189,9 +189,9 @@
       "lane": "learning",
       "tags": ["learning", "promotion", "stale-fact"],
       "prompt": "Benchmark task. Promote one validated PhonoDeck repeated lesson from candidate learning into a repo-local Markdown guidance target without bloating architrave.config.json. Acceptance: validate current-branch evidence first, keep secrets out, use a dry-run or approval-first promotion path, write only to an appropriate Markdown guidance/profile/docs target, preserve run artifacts, and run the repo quick gate plus learning/run validation when available. This benchmark has pre-approved proceeding without asking follow-up questions unless impossible or unsafe.",
-      "validation": ["gates/checks.sh --quick"],
+      "validation": ["{python} gates/gate_runner.py checks --quick"],
       "validationByArm": {
-        "copilot-architrave": ["gates/checks.sh --quick", "harness/validate-run.sh", "harness/validate-learning.sh"]
+        "copilot-architrave": ["{python} gates/gate_runner.py checks --quick", "{python} harness/architrave_cli.py validate-run", "{python} harness/architrave_cli.py validate-learning"]
       },
       "expectedArtifacts": [".architrave/learning/repo-profile.md"],
       "expectedArtifactsByArm": {

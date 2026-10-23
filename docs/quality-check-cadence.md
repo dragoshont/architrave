@@ -3,7 +3,7 @@
 0.14.1 no longer installs or refreshes an automatic PostToolUse quality command.
 **Executable logic remains:** profile/config validity, existing configured
 design-source/map/token JSON validity and configured product-copy rules.
-Optional/missing-reference behavior and public shell/PowerShell/`--hook-json`
+Optional/missing-reference behavior and `--hook-json`
 quality-gate compatibility are unchanged.
 
 Agents and the lead skill MUST explicitly run:

@@ -1,7 +1,7 @@
 name: release
 
 # Push a tag vX.Y.Z to cut a release. The tag must match the version already bumped
-# into the manifests (scripts/bump-version.sh) — this re-runs the full gate, enforces
+# into the manifests (scripts/bump_version.py) — this re-runs the full gate, enforces
 # tag↔manifest agreement, then publishes a GitHub Release with auto-generated notes.
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   validate:
-    name: POSIX manifests and fixtures
+    name: Python manifests and fixtures
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -24,17 +24,22 @@ jobs:
           node-version: 22
 
       - name: Validate manifests, kit JSON, schema, frontmatter, version sync
-        run: ./scripts/check-manifests.sh
+        run: python scripts/check_manifests.py
 
       - name: Tag must match manifest version
+        shell: python
         run: |
-          tag="${GITHUB_REF_NAME#v}"
-          man="$(jq -r '.version' plugin.json)"
-          if [ "$tag" != "$man" ]; then
-            echo "::error::tag v$tag != manifest version $man — run scripts/bump-version.sh $tag, commit, then re-tag" >&2
-            exit 1
-          fi
-          echo "tag matches manifest version: $man"
+          import json
+          import os
+          from pathlib import Path
+          import sys
+
+          tag = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+          version = json.loads(Path("plugin.json").read_text(encoding="utf-8"))["version"]
+          if tag != version:
+              print(f"::error::tag v{tag} != manifest version {version} — run python scripts/bump_version.py {tag}, commit, then re-tag", file=sys.stderr)
+              raise SystemExit(1)
+          print(f"tag matches manifest version: {version}")
 
   session-browser:
     name: Session browser accessibility and layout
@@ -62,8 +67,8 @@ jobs:
           name: session-browser-contract
           path: ${{ runner.temp }}/architrave-session-visual
 
-  powershell-harness:
-    name: PowerShell harness and gate fixtures
+  windows-python:
+    name: Windows Python harness and gate fixtures
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@v5
@@ -73,50 +78,45 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-      - name: Validate Python canonical paths and compatibility shims
-        shell: powershell
-        run: |
-          python scripts/test_install_update.py
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python scripts/test-native-host.py
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python scripts/test-opencode-host.py
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python scripts/test-components.py
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python scripts/test-native-review.py
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node --experimental-vm-modules scripts/test-native-review.mjs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python scripts/test-quality-cadence.py
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python scripts/test-ribbon.py
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python scripts/test-legibility.py -k web_requires_health -k repeated_and_independent -k refreshed_visual
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node --experimental-vm-modules scripts/test-ribbon.mjs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node --experimental-vm-modules scripts/test-session-companion.mjs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-config-profiles.ps1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-validate-run.ps1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-validate-learning.ps1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-promote-lesson.ps1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-promote-lesson-picker.ps1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-mark-stale-learning.ps1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-semantic-learning.ps1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-gates.ps1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Installer safety fixtures
+        run: python scripts/test_install_update.py
+      - name: Native host fixtures
+        run: python scripts/test-native-host.py
+      - name: OpenCode host fixtures
+        run: python scripts/test-opencode-host.py
+      - name: Component fixtures
+        run: python scripts/test-components.py
+      - name: Native review fixtures
+        run: python scripts/test-native-review.py
+      - name: Native review transport fixtures
+        run: node --experimental-vm-modules scripts/test-native-review.mjs
+      - name: Quality cadence fixtures
+        run: python scripts/test-quality-cadence.py
+      - name: Route ribbon fixtures
+        run: python scripts/test-ribbon.py
+      - name: Targeted legibility fixtures
+        run: python scripts/test-legibility.py -k web_requires_health -k repeated_and_independent -k refreshed_visual
+      - name: Route ribbon renderer fixtures
+        run: node --experimental-vm-modules scripts/test-ribbon.mjs
+      - name: Session companion fixtures
+        run: node --experimental-vm-modules scripts/test-session-companion.mjs
+      - name: Configuration profile fixtures
+        run: python scripts/test-config-profiles.py
+      - name: Run validator fixtures
+        run: python scripts/test-validate-run.py
+      - name: Learning validator fixtures
+        run: python scripts/test-improvement.py ValidationTests
+      - name: Lesson promotion fixtures
+        run: python scripts/test-improvement.py PromotionTests
+      - name: Stale and semantic learning fixtures
+        run: python scripts/test-learning-tools.py
+      - name: Gate fixtures
+        run: python scripts/test-gates.py
+      - name: Manifest scanner fixtures
+        run: python scripts/test-manifest-scanner.py
 
   release:
-    needs: [validate, powershell-harness, session-browser]
+    needs: [validate, windows-python, session-browser]
     runs-on: ubuntu-latest
     permissions:
       contents: write

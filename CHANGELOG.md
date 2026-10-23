@@ -7,6 +7,41 @@ Releases at or before **v0.8.12** are on the
 
 ## Unreleased
 
+## [0.21.0] - 2026-10-23
+
+### Removed
+- **Python only.** Every `.sh` and `.ps1` launcher is gone: gates, harness
+  helpers, installer, release and test scripts. Run them with Python instead:
+  `python gates/gate_runner.py <gate>`, `python harness/architrave_cli.py <command>`,
+  `python harness/improvement.py <action>`, `python tools/install_update.py install|update`.
+  Windows needs only Python; PowerShell-style flag aliases (`-Quick`, `-Profile`, …)
+  and the installer's `--entrypoint` option are removed.
+
+### Changed
+- The four shell-only learning helpers are now Python subcommands of
+  `harness/architrave_cli.py` (`init-run`, `mark-stale-learning`,
+  `semantic-learning-review`, `apply-semantic-learning-findings`); jq is no longer needed.
+- Command launching on Windows falls back to `cmd`, never PowerShell.
+- `install_update.py update` removes the previously installed `gates/` and
+  `harness/` launchers; user-owned scripts are left alone.
+- The manifest validator rejects any tracked `.sh`/`.ps1` outside vendored skills.
+
+## [0.20.1] - 2026-10-23
+
+### Fixed
+- Requirement claims now coordinate every worktree of one clone through a shared
+  lock and checkout registry under the git common directory (separate clones are
+  still not coordinated).
+- A prose `SPEC.md` is no longer adopted as the requirements file; only one with a
+  `| ID | ... | Status |` table is.
+- Completion fails closed with `REQ_SOURCE_MISSING` when bound tasks exist but the
+  requirements file is gone; withdrawn/superseded REQs count as resolved.
+- Starting an already-claimed task re-checks the file's owner column.
+- Gate failure logs go to a private per-user directory, keep the newest 20 and
+  sanitise component names; PowerShell recipes emit UTF-8.
+- Improvement ledger: retiring a global instruction needs owner approval; CLI
+  writes use compare-and-swap so concurrent edits are not lost.
+
 ## [0.20.0] - 2026-10-23
 
 ### Changed

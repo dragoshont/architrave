@@ -1,5 +1,5 @@
 # Architrave — pre-installs the gate dependencies the Copilot cloud agent needs
-# so it can run gates/checks.sh in its ephemeral environment.
+# so it can run `python gates/gate_runner.py checks` in its ephemeral environment.
 # Docs: https://docs.github.com/copilot/how-tos/use-copilot-agents/cloud-agent/customize-the-agent-environment
 #
 # The job MUST be named `copilot-setup-steps`. Add your project's own build/test

@@ -15,20 +15,20 @@ defaults to deny; explicit Run policy may authorize a bounded target and operati
 ## What's here
 - `agents/` — fourteen optional roles: **Architrave**, **CTO**, **Product Research**, **Operations UX**, **UX Architect**, **UI Visual**, **Platform Design**, **Service Architect**, **Backend Planner**, **Backend Implementer**, **Infra Engineer**, **Runtime Observer**, **Tournament Analyst**, and **Adversarial Judge**. Shared `.agent.md` format across VS Code / Copilot CLI / the Copilot app / Claude Code; role availability is not a reason to spawn.
 - `SPEC.md` — Architrave's own requirements (dogfooded by `checks`).
-- `gates/` — deterministic gates as **`.sh` + `.ps1` pairs** (`checks`, `reconcile`, `quality-gate`, `backend-checks`; `components`, `requirements`, `message-lint` via Python) + `rubric.md` (the judge's rubric). No automatic hook definitions are packaged.
-- `harness/` — durable run-artifact helpers (`init-run`, `validate-run`, `semantic-review`, semantic learning review/recovery) as `.sh` + `.ps1` pairs plus schemas, and the Python Run v2 state machine, worker/workspace adapters, invariants, product legibility, and v1/v2 validation.
+- `gates/` — deterministic gates in one Python CLI, `gate_runner.py` (`checks`, `reconcile`, `quality-gate`, `backend-checks`, `components`, `requirements`, `message-lint`) + `rubric.md` (the judge's rubric). No automatic hook definitions are packaged.
+- `harness/` — durable run-artifact helpers (`init-run`, `validate-run`, `semantic-review`, semantic learning review/recovery) as `architrave_cli.py` subcommands plus schemas, and the Python Run v2 state machine, worker/workspace adapters, invariants, product legibility, and v1/v2 validation.
 - `knowledge/` — platform packs (`apple.md`, `microsoft.md`, `web.md`) + `backend.md` + `operations-ux.md` + `design-tokens.md` + `execution-policy.md` + `learning-loop.md` + `yagni.md` + `runtime-v2.md` for durable control-plane semantics.
 - `kit/` — `architrave.config.schema.json` (the per-repo config keystone) + `examples/`.
 - `plugin.json` + `.github/plugin/marketplace.json` — Copilot agent-plugin + self-hosting marketplace.
 - `.codex-plugin/plugin.json` + `skills/` + `.codex/` — eight Architrave plugin-only Codex/ChatGPT skills (including explicit-only agent, skill, and MCP authoring) plus six vendored MIT/Apache-2.0 skills (sources and licences in README) plus generated project roles. Adoption copies roles only with `--codex` / `-Codex`.
-- `templates/` + `tools/install.{sh,ps1}` — the per-repo installer and what it injects.
+- `templates/` + `tools/install_update.py` — the per-repo installer and what it injects.
 
 ## Conventions when changing the kit
-- Keep Python as the sole substantive cross-platform implementation. `.sh` and
-  `.ps1` compatibility entrypoints may only discover Python and forward argv,
-  stdout/stderr, and exit codes to the same Python CLI. Gate exits remain
-  PASS=0 / FAIL=1 / BLOCK=2 / DRIFT=1 where applicable.
-- **Keep install/update logic canonical in `tools/install_update.py`** — the four public `.sh` / `.ps1` entrypoints are Python-discovery/exec shims only; managed-path safety and adversarial fixtures live in Python.
+- **Python only.** Every gate, harness command, installer and test is a Python
+  CLI invoked as `python <file>.py`; do not add `.sh` or `.ps1` entrypoints
+  (the validator rejects them; vendored skill assets are the only exception).
+  Gate exits remain PASS=0 / FAIL=1 / BLOCK=2 / DRIFT=1 where applicable.
+- **Keep install/update logic canonical in `tools/install_update.py`** — managed-path safety and adversarial fixtures live there.
 - **Agents and gates are config-driven** — resolve everything through `architrave.config.json`; never hard-code a stack or a path.
 - **Thin supervision** — direct work first; the host owns sessions, context,
   routing and lifecycle. `workers.maxParallel` active children (default three, max eight), depth one, exclusive
@@ -52,6 +52,6 @@ defaults to deny; explicit Run policy may authorize a bounded target and operati
 - Run focused runtime suites with `python3 scripts/test-runtime-v2.py`,
   `test-worker-adapters.py`, `test-invariant-engine.py`, `test-legibility.py`,
   `test-workspaces.py`, and `test-longbuild-runtime.py`.
-- Smoke-test the gates against a config with `gates/checks.sh --quick`.
+- Smoke-test the gates against a config with `python3 gates/gate_runner.py checks --quick`.
 - Test repository profiles with `scripts/test-config-profiles.sh` and installers with `python3 scripts/test_install_update.py`.
 - Test plugin load: `copilot plugin install "$PWD"` → `copilot plugin list` → `copilot plugin uninstall architrave`.

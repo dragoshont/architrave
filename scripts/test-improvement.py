@@ -43,9 +43,8 @@ class LearningFixture(unittest.TestCase):
 
     def cli(self, *args, code=0, launcher=None):
         argv = [sys.executable, str(ROOT / "harness/improvement.py")]
-        if launcher:
-            argv = (["pwsh", "-NoProfile", "-File", str(ROOT / f"harness/{launcher}.ps1")]
-                    if os.name == "nt" else ["bash", str(ROOT / f"harness/{launcher}.sh")])
+        if launcher and launcher != "improvement":
+            argv.append(launcher)
         result = subprocess.run([*argv, *args, "--repo", str(self.root)], capture_output=True, text=True)
         self.assertEqual(result.returncode, code, result.stdout + result.stderr)
         return result
@@ -111,6 +110,21 @@ class ImprovementTests(LearningFixture):
             self.cli("approve", identifier, "--by", "Owner", code=2)
             self.cli("approve", identifier, "--by", "Owner", "--owner-approved")
             self.assertTrue(self.rows()[-1]["owner_approved"])
+
+    def test_retiring_global_instruction_requires_owner(self):
+        self.propose(kind="retire", target="AGENTS.md")
+        self.checks()
+        self.cli("approve", "P1", "--by", "Human", code=2)
+        self.cli("approve", "P1", "--by", "Owner", "--owner-approved")
+
+    def test_stale_load_modify_save_is_rejected(self):
+        self.propose()
+        expected = improvement.ledger_digest(self.root)
+        rows = improvement.load_proposals(self.root)
+        self.propose(identifier="P2")
+        with self.assertRaisesRegex(ValueError, "changed concurrently"):
+            improvement.save_proposals(self.root, rows, expected)
+        self.assertEqual(["P1", "P2"], [row["id"] for row in self.rows()])
 
     def test_windows_style_global_path_requires_owner(self):
         self.propose(kind="instruction", target="agents\\lead.agent.md")
@@ -214,8 +228,7 @@ class PromotionTests(LearningFixture):
 
 class ValidationTests(LearningFixture):
     def test_validator_launcher(self):
-        argv = (["pwsh", "-NoProfile", "-File", str(ROOT / "harness/validate-learning.ps1")]
-                if os.name == "nt" else ["bash", str(ROOT / "harness/validate-learning.sh")])
+        argv = [sys.executable, str(ROOT / "harness/architrave_cli.py"), "validate-learning"]
         result = subprocess.run([*argv, str(self.root)], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("ARCHITRAVE-LEARNING: PASS", result.stdout)

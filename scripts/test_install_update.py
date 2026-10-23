@@ -123,9 +123,9 @@ class InstallUpdateTests(unittest.TestCase):
         application.mkdir()
         knowledge.mkdir()
 
-        self.run_cli("install", "--entrypoint", "windows", str(application))
+        self.run_cli("install", str(application))
         application_first = snapshot(application)
-        self.run_cli("install", "--entrypoint", "windows", str(application))
+        self.run_cli("install", str(application))
         self.assertEqual(snapshot(application), application_first)
         application_config = json.loads((application / "architrave.config.json").read_text())
         self.assertEqual(application_config["platform"], "web")
@@ -139,8 +139,6 @@ class InstallUpdateTests(unittest.TestCase):
             "install",
             "--profile",
             "knowledge",
-            "--entrypoint",
-            "posix",
             str(knowledge),
         )
         knowledge_first = snapshot(knowledge)
@@ -148,8 +146,6 @@ class InstallUpdateTests(unittest.TestCase):
             "install",
             "--profile",
             "knowledge",
-            "--entrypoint",
-            "posix",
             str(knowledge),
         )
         self.assertEqual(snapshot(knowledge), knowledge_first)
@@ -1267,34 +1263,24 @@ class InstallUpdateTests(unittest.TestCase):
         self.assertEqual(b"before", product.read_bytes())
         self.assertFalse((target / ".architrave-install-transaction").exists())
 
-    def test_public_entrypoints_are_python_only_launch_shims(self) -> None:
-        install_sh = (ROOT / "tools/install.sh").read_text(encoding="utf-8")
-        update_sh = (ROOT / "tools/update.sh").read_text(encoding="utf-8")
-        install_ps1 = (ROOT / "tools/install.ps1").read_text(encoding="utf-8")
-        update_ps1 = (ROOT / "tools/update.ps1").read_text(encoding="utf-8")
-        for content in (install_sh, update_sh, install_ps1, update_ps1):
-            self.assertIn("install_update.py", content)
-            self.assertIn("https://www.python.org/downloads/", content)
-            self.assertNotIn("managed-paths", content.lower())
-            self.assertNotIn("ManagedPaths", content)
-            self.assertIn("sys.version_info", content)
-        self.assertLess(len(install_sh.splitlines()), 20)
-        self.assertLess(len(update_sh.splitlines()), 20)
-        self.assertLess(len(install_ps1.splitlines()), 25)
-        self.assertLess(len(update_ps1.splitlines()), 25)
-        self.assertLess(
-            install_sh.index("command -v python3"),
-            install_sh.index("command -v python "),
-        )
-        self.assertLess(install_ps1.index("Get-Command py"), install_ps1.index("'python3'"))
-        for removed in (
-            "tools/managed-paths.sh",
-            "tools/ManagedPaths.ps1",
-            "scripts/test-managed-paths.ps1",
-            "scripts/test-installers.sh",
-            "scripts/test-installers.ps1",
-        ):
-            self.assertFalse((ROOT / removed).exists(), f"obsolete paired implementation remains: {removed}")
+    def test_kit_ships_no_shell_or_powershell_entrypoints(self) -> None:
+        tracked = subprocess.run(["git", "ls-files", "*.sh", "*.ps1"], cwd=ROOT, check=True,
+                                 capture_output=True, text=True).stdout.split()
+        self.assertEqual([path for path in tracked if not path.startswith("skills/")], [])
+
+    def test_update_retires_previously_installed_shims(self) -> None:
+        target = self.workspace / "legacy shims"
+        target.mkdir()
+        self.run_cli("install", str(target))
+        legacy = ["gates/checks.sh", "gates/quality-gate.ps1", "harness/validate-run.sh", "harness/init-run.ps1"]
+        for relative in legacy:
+            (target / relative).write_text("#!/bin/sh\nexec python3 gate_runner.py\n")
+        (target / "gates/custom.sh").write_text("user owned\n")
+        self.run_cli("update", str(target))
+        for relative in legacy:
+            self.assertFalse((target / relative).exists(), relative)
+        self.assertTrue((target / "gates/custom.sh").is_file())
+        self.assertTrue((target / "gates/gate_runner.py").is_file())
 
     def test_transaction_rolls_back_each_injected_replacement(self) -> None:
         target = self.workspace / "transaction target"

@@ -650,10 +650,8 @@ class NativeHostTests(unittest.TestCase):
         self.assertEqual("REQUIREMENTS_INVALID", error.exception.code)
 
     def test_official_install_config_quick_gate(self):
-        install = ROOT / "tools" / ("install.ps1" if sys.platform == "win32" else "install.sh")
-        argv = (["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(install)]
-                if sys.platform == "win32" else ["sh", str(install)])
-        result = subprocess.run([*argv, str(self.repo)], capture_output=True, text=True)
+        result = subprocess.run([sys.executable, str(ROOT / "tools" / "install_update.py"), "install", str(self.repo)],
+                                capture_output=True, text=True)
         self.assertEqual(0, result.returncode, result.stderr)
         config = {
             "platform": "web", "stack": "other",
@@ -662,10 +660,8 @@ class NativeHostTests(unittest.TestCase):
             "workers": {"defaultAdapter": "native", "enabledAdapters": ["native", "shell"]},
         }
         (self.repo / "architrave.config.json").write_text(json.dumps(config), encoding="utf-8")
-        gate = self.repo / "gates" / ("checks.ps1" if sys.platform == "win32" else "checks.sh")
-        argv = (["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(gate), "-Quick"]
-                if sys.platform == "win32" else [str(gate), "--quick"])
-        result = subprocess.run(argv, cwd=self.repo, capture_output=True, text=True)
+        result = subprocess.run([sys.executable, str(self.repo / "gates" / "gate_runner.py"), "checks", "--quick"],
+                                cwd=self.repo, capture_output=True, text=True)
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("ARCHITRAVE-CHECKS: PASS", result.stdout)
 

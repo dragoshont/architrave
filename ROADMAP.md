@@ -1,5 +1,11 @@
 # Roadmap
 
+## v0.20.1 - Review hardening
+
+- [x] Cross-worktree requirement claims; prose SPEC.md not adopted; fail-closed missing source.
+- [x] Private rotated gate logs; improvement ledger owner gate and compare-and-swap.
+- [ ] Live Copilot smoke of REQ-bound native dispatch (SPEC REQ-08).
+
 ## v0.20.0 - Spec-driven core restored
 
 - [x] Spec-first contract by default; `SPEC.md` default requirements file validated by `checks` and `quality-gate`.
@@ -147,9 +153,9 @@
 - [x] Native tool-blocking hooks removed; explicit tool admission/source/evidence checks and passive Ribbon/companion event observation retained.
 - [x] `harness/init-run.*` + `validate-run.*` + `semantic-review.*` — durable run artifacts, learning notes, and optional judge prompt helper.
 
-> **Cross-platform:** every gate ships thin POSIX `.sh` and PowerShell `.ps1`
-> launchers for the same canonical Python CLI. Both preserve PASS / FAIL / BLOCK /
-> DRIFT exit codes (0 / 1 / 2 / 1); macOS needs no PowerShell. Copied core paths
+> **Cross-platform:** since 0.21.0 every gate, harness command and installer is
+> invoked directly as Python (the earlier `.sh`/`.ps1` launchers listed above were
+> removed). Exit codes stay PASS / FAIL / BLOCK / DRIFT (0 / 1 / 2 / 1). Copied core paths
 > support Python 3.9+, while optional Codex role adoption requires Python 3.11+.
 
 ## Milestone 4 — Distribution
@@ -210,7 +216,7 @@
 - [x] LongBuild fixture/scenarios, recovery/external/parallel/deployment-policy
 	dogfood, repeat metrics, false-PASS and intervention reporting.
 - [x] Existing config/plugin/install paths remain compatible; v1 and v2 validators
-	run through paired POSIX/PowerShell entrypoints.
+	run through the Python CLI (`harness/architrave_cli.py`).
 
 ### Release-readiness evidence still external
 
