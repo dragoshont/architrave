@@ -52,6 +52,7 @@ required = {
     "retirement respects host": (execution, "If host controls or authorization are unavailable, report the blocker"),
     "lead routes scheduled retirement": (agent, "Retire assigned scheduled automation under the Context rules"),
     "document thin kickoff": (long_programs, "Link the Architrave contract rather than copying its workflow, verification and permission rules"),
+    "document accepted retirement": (long_programs, "Retire only assigned schedules whose work is accepted, superseded or whose owner is archived"),
     "child explicit skill handoff": (agent, "Do not assume a subagent or sidebar session inherited parent skill context"),
     "portable worker guidance": (execution, "not a new WorkPacket schema or host-specific preload field"),
     "worker no nested supervision": (work_skill, "No child spawning"),
