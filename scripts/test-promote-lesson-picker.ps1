@@ -1,35 +1,19 @@
-#!/usr/bin/env pwsh
 [CmdletBinding()]
-param()
-$ErrorActionPreference = 'Stop'
-$Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-Set-Location $Root
-$Tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("architrave-picker-" + [guid]::NewGuid().ToString('N'))
-New-Item -ItemType Directory -Force -Path $Tmp | Out-Null
-try {
-  $Repo = Join-Path $Tmp 'repo'
-  New-Item -ItemType Directory -Force -Path (Join-Path $Repo '.architrave/learning'),(Join-Path $Repo 'harness') | Out-Null
-  Copy-Item harness/validate-learning.ps1,harness/promote-lesson.ps1,harness/promote-lesson-picker.ps1 -Destination (Join-Path $Repo 'harness')
-  Copy-Item harness/*.py -Destination (Join-Path $Repo 'harness')
-  Set-Content -Path (Join-Path $Repo '.architrave/learning/repo-profile.md') -Value '# Repo Profile' -Encoding utf8
-  Set-Content -Path (Join-Path $Repo '.architrave/learning/repo-lessons.md') -Encoding utf8 -Value @'
-# Lessons
-
-| Lesson | Evidence | Occurrences | Validated | Proposed Target | Status |
-|---|---|---:|---|---|---|
-| Run quick gates before release | test | 2 | yes | docs | candidate |
-| Keep secrets out of artifacts | test | 2 | yes | docs | candidate |
-'@
-  Push-Location $Repo
-  try {
-    & ./harness/promote-lesson-picker.ps1 -Index 2 -Target docs/guide.md *> $null; if ($LASTEXITCODE -ne 0) { throw 'dry run failed' }
-    Write-Host 'ok   picker-dry-run'
-    & ./harness/promote-lesson-picker.ps1 -Index 1 -Target docs/guide.md -Apply *> $null; if ($LASTEXITCODE -ne 0) { throw 'apply failed' }
-    if ((Get-Content docs/guide.md -Raw) -notmatch 'Run quick gates') { throw 'lesson missing' }
-    Write-Host 'ok   picker-apply'
-    & ./harness/promote-lesson-picker.ps1 -Index 99 -Target docs/guide.md *> $null; if ($LASTEXITCODE -eq 0) { throw 'missing index passed' }
-    Write-Host 'ok   picker-missing-index'
-  } finally { Pop-Location }
+param([Parameter(ValueFromRemainingArguments=$true)][string[]]$Forwarded)
+$root = Split-Path $MyInvocation.MyCommand.Path -Parent
+$candidates = @(
+  [pscustomobject]@{ Name = 'py'; Prefix = @('-3') },
+  [pscustomobject]@{ Name = 'python3'; Prefix = @() },
+  [pscustomobject]@{ Name = 'python'; Prefix = @() }
+)
+foreach ($candidate in $candidates) {
+  $command = Get-Command $candidate.Name -ErrorAction SilentlyContinue
+  if (-not $command) { continue }
+  $prefix = @($candidate.Prefix)
+  & $command.Source @prefix -c 'import sys; raise SystemExit(0 if sys.version_info[0] == 3 else 1)' *> $null
+  if ($LASTEXITCODE -ne 0) { continue }
+  & $command.Source @prefix (Join-Path $root 'test-improvement.py') PromotionTests.test_dry_run_apply_and_picker PromotionTests.test_executable_check_or_explicit_prose_justification_required PromotionTests.test_invalid_target_missing_and_stale_lesson @Forwarded
+  exit $LASTEXITCODE
 }
-finally { Remove-Item -Recurse -Force $Tmp -ErrorAction SilentlyContinue }
-exit 0
+[Console]::Error.WriteLine('test-promote-lesson-picker: Python 3 is required. Install from https://www.python.org/downloads/windows/ and enable the Python launcher or add Python to PATH.')
+exit 2

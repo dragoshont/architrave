@@ -7,10 +7,12 @@ import argparse
 import contextlib
 import io
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,6 +52,9 @@ def load_config(root: Path) -> dict[str, object]:
     return value
 
 
+GATE_TAIL_LINES = 40
+
+
 def run_recipe(root: Path, name: str, recipe: object) -> bool:
     if not isinstance(recipe, str) or not recipe.strip():
         return True
@@ -59,9 +64,25 @@ def run_recipe(root: Path, name: str, recipe: object) -> bool:
     except LaunchError as exc:
         print(f"FAIL  {name} ({exc})")
         return False
-    process = subprocess.run(command, cwd=root, check=False)
+    process = subprocess.run(
+        command, cwd=root, check=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, encoding="utf-8", errors="replace",
+    )
+    output = process.stdout or ""
+    if os.environ.get("ARCHITRAVE_GATE_VERBOSE") == "1":
+        print(output, end="")
     if process.returncode:
-        print(f"FAIL  {name} (exit {process.returncode})")
+        lines = output.splitlines()
+        log = tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", prefix=f"architrave-{name}-", suffix=".log", delete=False
+        )
+        with log:
+            log.write(output)
+        if os.environ.get("ARCHITRAVE_GATE_VERBOSE") != "1":
+            if len(lines) > GATE_TAIL_LINES:
+                print(f"... {len(lines) - GATE_TAIL_LINES} earlier lines in {log.name}")
+            print("\n".join(lines[-GATE_TAIL_LINES:]))
+        print(f"FAIL  {name} (exit {process.returncode}; full log: {log.name})")
         return False
     print(f"ok    {name}")
     return True
@@ -256,6 +277,17 @@ def parse_requirements(text: str) -> tuple[dict[str, dict[str, str]], list[dict[
     return reqs, corrections, errors
 
 
+DEFAULT_REQUIREMENTS = "SPEC.md"
+
+
+def configured_requirements(root: Path, config: dict[str, object]) -> object:
+    """Spec-driven default: the configured file, else SPEC.md at the repository root when present."""
+    value = config.get("requirements")
+    if value:
+        return value
+    return DEFAULT_REQUIREMENTS if (root / DEFAULT_REQUIREMENTS).is_file() else None
+
+
 def requirements_path(root: Path, value: object) -> tuple[Path | None, str | None]:
     path = component_path(root, str(value))
     if in_scratch(path):
@@ -288,12 +320,12 @@ def check_requirements(root: Path, value: object, count: int) -> bool:
 def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bool) -> int:
     """Validate the requirements file; optionally check a lane claim or program completion."""
     try:
-        value = load_config(root).get("requirements")
+        value = configured_requirements(root, load_config(root))
     except ValueError as exc:
         print(f"requirements: {exc}", file=sys.stderr)
         return 2
     if not value:
-        print("requirements: none configured - skipping (PASS)")
+        print(f"requirements: no `requirements` configured and no {DEFAULT_REQUIREMENTS} - skipping (PASS)")
         return 0
     path, error = requirements_path(root, value)
     if error:
@@ -348,7 +380,7 @@ def components(root: Path, run_tests: bool) -> int:
         print(f"FAIL  {error}")
     if errors:
         return 1
-    success = check_requirements(root, config.get("requirements"), len(items))
+    success = check_requirements(root, configured_requirements(root, config), len(items))
     for item in items:
         ok, path = check_component(root, item)
         success = ok and success
@@ -445,6 +477,9 @@ def checks(root: Path, quick: bool) -> int:
         if not check_json_reference(root, config.get("tokens"), "tokens"):
             return 1
     if not check_product_copy(root, config):
+        return 1
+    spec = configured_requirements(root, config)
+    if spec and not check_requirements(root, spec, 0):
         return 1
     if quick:
         print("ARCHITRAVE-CHECKS: PASS")

@@ -24,7 +24,7 @@ RunStore.add_task = lambda self, run_id, task, actor="coordinator": _fixture_add
     self, run_id, {"pushback": "KEEP:test fixture", **task}, actor)
 from worker_adapters import command_for, execute_work_packet
 from workspaces import WorkspaceManager
-from native_host import routing_observation
+from native_host import routing_observation, requirements_kickoff
 
 
 class NativeHostTests(unittest.TestCase):
@@ -565,7 +565,7 @@ class NativeHostTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def task(self, adapter="native", execution=None, budget=None):
+    def task(self, adapter="native", execution=None, budget=None, reqs=None, max_attempts=1):
         state = self.store.create(
             run_id="fixture", goal="Bounded native worker", outcome="Verified fixture",
             autonomy_scope="approved-program",
@@ -576,9 +576,78 @@ class NativeHostTests(unittest.TestCase):
         self.store.add_task(state["runId"], {
             "id": "adoption-check", "objective": "Read the fixture README; return a candidate.",
             "workerProfile": adapter, "acceptanceCriteria": ["FIX"], "risk": "R0",
+            "reqs": reqs, "maxAttempts": max_attempts,
             "workPacket": {"execution": execution, **({"budget": budget} if budget else {})},
         })
         return state["runId"], "adoption-check"
+
+    def requirements_task(self, *, max_attempts=1):
+        (self.repo / "architrave.config.json").write_text(json.dumps({"requirements": "requirements.md"}), encoding="utf-8")
+        (self.repo / "requirements.md").write_text(
+            "| ID | Requirement | Acceptance | Owner | Status | Evidence |\n"
+            "|---|---|---|---|---|---|\n"
+            "| REQ-1 | Render fixture | fixture test passes | | open | |\n"
+            "| REQ-10 | Other fixture | other test passes | | open | |\n"
+            "\n## Corrections\n| ID | Type | Target | Change |\n|---|---|---|---|\n"
+            "| C-1 | revise | REQ-1 | Do not recreate the discarded implementation |\n"
+            "| C-10 | add | REQ-10 | Keep the additional owner correction |\n"
+            "\n## Handoff\nNext: fixture\nFailed approaches: discarded implementation\nVerify: fixture test\n", encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=self.repo, check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-qm", "requirements fixture"], cwd=self.repo, check=True, capture_output=True)
+        return self.task(reqs=["REQ-1"], max_attempts=max_attempts)
+
+    def test_requirements_native_transport_requires_explicit_canonical_ids(self):
+        run, task_id = self.requirements_task()
+        for reqs, code in ((None, "REQ_BINDING_REQUIRED"), ([], "REQ_BINDING_REQUIRED"),
+                           (["REQ-missing"], "REQ_UNKNOWN"), (["REQ-10"], "REQ_BINDING_MISMATCH")):
+            request = {"repo": str(self.repo), "action": "dispatch", "runId": run,
+                       "taskId": task_id, "owner": "host", "reqs": reqs}
+            result = subprocess.run([sys.executable, str(ROOT / "harness/native_host.py")],
+                input=json.dumps(request) + "\n", capture_output=True, text=True, timeout=30)
+            self.assertEqual(1, result.returncode, result.stderr)
+            self.assertEqual(code, json.loads(result.stdout)["error"]["code"])
+        self.assertEqual([], self.store.load(run)["workers"])
+        self.assertIsNone(self.store.load(run)["tasks"][0]["workspace"])
+
+    def test_requirements_native_prompt_prepends_acceptance_and_all_corrections_and_cancel_releases(self):
+        run, task_id = self.requirements_task(max_attempts=2)
+        requirements = self.repo / "requirements.md"
+        requirements.write_text(requirements.read_text(encoding="utf-8").replace(
+            "Do not recreate the discarded implementation", "Newest correction: do not recreate the discarded implementation"), encoding="utf-8")
+        messages = [
+            {"repo": str(self.repo), "action": "dispatch", "runId": run, "taskId": task_id,
+             "owner": "host", "reqs": ["REQ-1"]},
+            {"status": "admitted", "hostTaskId": "host-task"},
+            {"hostTaskId": "host-task", "hostStatus": "cancelled", "text": "cancelled"},
+        ]
+        result = subprocess.run([sys.executable, str(ROOT / "harness/native_host.py")],
+            input="".join(json.dumps(message) + "\n" for message in messages),
+            capture_output=True, text=True, timeout=30)
+        self.assertEqual(1, result.returncode, result.stderr)
+        prepared, bound, finished = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual("prepared", prepared["status"])
+        self.assertTrue(prepared["prompt"].startswith("Requirements binding"))
+        self.assertIn("Acceptance: fixture test passes", prepared["prompt"])
+        self.assertIn("Newest correction: do not recreate the discarded implementation", prepared["prompt"])
+        self.assertIn("Keep the additional owner correction", prepared["prompt"])
+        self.assertEqual("bound", bound["status"])
+        self.assertEqual("cancelled", finished["result"]["observedHostStatus"])
+        state = self.store.load(run)
+        self.assertEqual("READY", state["tasks"][0]["status"])
+        self.assertFalse(state["tasks"][0]["requirementClaim"]["active"])
+        self.assertIn("requirementsReleased", self.store.events(run)[-1]["payload"])
+        self.store.start_task(run, task_id, worker_id="next-owner", retry_hypothesis="Resume after observed cancellation")
+        self.assertTrue(self.store.load(run)["tasks"][0]["requirementClaim"]["active"])
+
+    def test_requirements_context_reloads_corrections_and_unconfigured_repo_is_unchanged(self):
+        run, task_id = self.task()
+        task = self.store.load(run)["tasks"][0]
+        self.assertEqual("", requirements_kickoff(self.store, task, None))
+        # A newly configured repository cannot dispatch an old unbound task.
+        (self.repo / "architrave.config.json").write_text(json.dumps({"requirements": "missing.md"}), encoding="utf-8")
+        with self.assertRaises(RuntimeFailure) as error:
+            self.store.begin_native_worker(run, task_id, host_owner="host")
+        self.assertEqual("REQUIREMENTS_INVALID", error.exception.code)
 
     def test_official_install_config_quick_gate(self):
         install = ROOT / "tools" / ("install.ps1" if sys.platform == "win32" else "install.sh")
@@ -884,6 +953,14 @@ for(const owner of ["early-admission","retained-delivery"]) {
 }
 host.rpc.tasks.list=()=>new Promise(()=>{});
 const dispatch=options.tools.find(tool=>tool.name==="architrave_native_dispatch");
+const batch=options.tools.find(tool=>tool.name==="architrave_native_batch");
+assert.equal(dispatch.parameters.properties.reqs.type,"array");
+assert.equal(batch.parameters.properties.reqs.type,"object");
+const realDispatch=dispatch.handler, packets=[];
+dispatch.handler=async args=>{packets.push(args);return {textResultForLlm:"{}",resultType:"success"};};
+await batch.handler({repo:"repo",run_id:"r",task_ids:["a","b"],reqs:{a:["REQ-1"],b:["REQ-2"]}},{sessionId:"root"});
+assert.deepEqual(packets.map(packet=>packet.reqs),[["REQ-1"],["REQ-2"]]);
+dispatch.handler=realDispatch;
 for(let i=0;i<8;i++) void dispatch.handler({repo:"unused",run_id:"r",task_id:String(i)},{sessionId:"root"});
 assert.equal(Object.hasOwn(options,"hooks"),false);
 await assert.rejects(dispatch.handler({},{sessionId:"root"}),/CHILD_LIMIT/);

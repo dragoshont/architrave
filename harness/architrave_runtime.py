@@ -442,6 +442,146 @@ class RunStore:
         self.__objective_capability = object()
         self.__policy_capability = object()
 
+    def requirements_document(self) -> tuple[dict[str, dict[str, str]], list[dict[str, str]]] | None:
+        config_path = self.repository / "architrave.config.json"
+        try:
+            config = json.loads(config_path.read_text(encoding="utf-8-sig")) if config_path.is_file() else {}
+            if not isinstance(config, dict):
+                config = {}
+            if "requirements" not in config:
+                if not (self.repository / "SPEC.md").is_file():
+                    return None
+                config = {"requirements": "SPEC.md"}
+            value = config["requirements"]
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError("requirements must name a repository file")
+            path = (self.repository / value).resolve()
+            path.relative_to(self.repository)
+            gate_path = str(Path(__file__).resolve().parents[1] / "gates")
+            if gate_path not in sys.path:
+                sys.path.insert(0, gate_path)
+            from gate_runner import parse_requirements, requirements_path
+            _, error = requirements_path(self.repository, value)
+            if error:
+                raise ValueError(error)
+            rows, corrections, errors = parse_requirements(path.read_text(encoding="utf-8-sig"))
+            if errors:
+                raise ValueError("; ".join(errors))
+            return rows, corrections
+        except (OSError, ValueError, TypeError) as exc:
+            raise RuntimeFailure("REQUIREMENTS_INVALID", f"cannot load requirements: {exc}") from exc
+
+    def validate_requirement_binding(self, reqs: Any) -> list[str]:
+        document = self.requirements_document()
+        if reqs is None:
+            reqs = []
+        if (not isinstance(reqs, list) or any(not isinstance(rid, str) or not re.fullmatch(
+                r"REQ-[A-Za-z0-9_.-]+", rid) for rid in reqs) or len(reqs) != len(set(reqs))):
+            raise RuntimeFailure("REQ_BINDING_INVALID", "reqs must be a unique list of REQ ids")
+        if document is not None:
+            if not reqs:
+                raise RuntimeFailure("REQ_BINDING_REQUIRED", "configured requirements require task/WorkPacket reqs")
+            rows, _ = document
+            for rid in reqs:
+                if rid not in rows:
+                    raise RuntimeFailure("REQ_UNKNOWN", f"unknown requirement: {rid}")
+                status = rows[rid]["status"].lower()
+                if status in {"accepted", "superseded", "withdrawn"}:
+                    raise RuntimeFailure("REQ_NOT_ACTIVE", f"{rid} is {status}; do not dispatch it")
+        return list(reqs)
+
+    def _validate_task_requirements(self, task: dict[str, Any]) -> None:
+        self.validate_requirement_binding(task.get("reqs"))
+        if task.get("reqs", []) != task["workPacket"].get("reqs", []):
+            raise RuntimeFailure("REQ_BINDING_MISMATCH", "task and WorkPacket reqs must match")
+
+    def requirements_context(self, task: dict[str, Any]) -> str:
+        self._validate_task_requirements(task)
+        document = self.requirements_document()
+        if document is None:
+            return ""
+        rows, corrections = document
+        lines = ["Requirements binding (current repository source; owner corrections govern):"]
+        for rid in task["reqs"]:
+            row = rows[rid]
+            lines.append(f"{rid}: {row['requirement']}\nAcceptance: {row['acceptance']}")
+        # Include all corrections, including additions and owner-wide instructions.
+        for correction in corrections:
+            lines.append(f"Correction {correction['id']} ({correction['type']}, "
+                         f"{correction['target']}): {correction['change']}")
+        return "\n".join(lines) + "\n\n"
+
+    def _assert_requirements_accepted(self, state: dict[str, Any]) -> None:
+        document = self.requirements_document()
+        if document is None:
+            return
+        rows, _ = document
+        bound = {rid for task in state["tasks"] for rid in task.get("reqs", [])}
+        pending = sorted(rid for rid in bound if rid not in rows or rows[rid]["status"].lower() != "accepted")
+        if pending:
+            raise RuntimeFailure("REQ_NOT_ACCEPTED", "Run completion requires accepted requirements", details={"reqs": pending})
+
+    def _sync_requirement_claims(self, state: dict[str, Any], *, event_type: str,
+                                 task_id: str | None, payload: dict[str, Any]) -> None:
+        claimed, released = [], []
+        for task in state["tasks"]:
+            claim = task.get("requirementClaim")
+            if claim is None:
+                continue
+            terminal = task["status"] in TERMINAL_TASK_STATUSES or state["status"] in {"COMPLETED", "CANCELLED"}
+            release = terminal or payload.get("releaseRequirements") and task["id"] == task_id
+            if claim["active"] and release:
+                claim["active"] = False
+                released.append({"taskId": task["id"], "owner": claim["owner"], "reqs": task["reqs"]})
+            if (release or claim["active"] or task["id"] != task_id
+                    or event_type not in {"task.created", "task.started"}):
+                continue
+            self._validate_task_requirements(task)
+            document = self.requirements_document()
+            if document is None:
+                continue
+            rows, _ = document
+            for rid in task["reqs"]:
+                if rows[rid]["owner"] and rows[rid]["owner"] != claim["owner"]:
+                    raise RuntimeFailure("REQ_CLAIM_CONFLICT", f"{rid} is owned by {rows[rid]['owner']} in requirements")
+            others = [state]
+            for directory in sorted(self.runs_root.iterdir()):
+                if directory.name != state["runId"] and (directory / "run.json").is_file():
+                    others.append(self.load(directory.name))
+            for other in others:
+                for existing in other["tasks"]:
+                    if other["runId"] == state["runId"] and existing["id"] == task["id"]:
+                        continue
+                    active = existing.get("requirementClaim") or {}
+                    overlap = sorted(set(task["reqs"]).intersection(existing.get("reqs", [])))
+                    if active.get("active") and overlap and active["owner"] != claim["owner"]:
+                        raise RuntimeFailure("REQ_CLAIM_CONFLICT", "requirements already claimed by another owner",
+                                             details={"reqs": overlap, "owner": active["owner"], "runId": other["runId"]})
+            claim["active"] = True
+            claimed.append({"taskId": task["id"], "owner": claim["owner"], "reqs": task["reqs"]})
+        if claimed:
+            payload["requirementsClaimed"] = claimed
+        if released:
+            payload["requirementsReleased"] = released
+
+    def handoff_task(self, run_id: str, task_id: str, *, cancel: bool = False,
+                     actor: str = "coordinator") -> dict[str, Any]:
+        def mutate(state: dict[str, Any]) -> dict[str, Any]:
+            task = find_task(state, task_id)
+            if task["status"] == "RUNNING" or any(
+                    worker["status"] == "RUNNING" and worker["taskId"] == task_id for worker in state["workers"]):
+                raise RuntimeFailure("REQ_OWNER_RUNNING", "stop and observe the owning worker before releasing its requirements")
+            if task["status"] in TERMINAL_TASK_STATUSES:
+                raise RuntimeFailure("TASK_TERMINAL", "cannot hand off or cancel a terminal task")
+            if task.get("sideEffect") and task["sideEffect"]["state"] in {"PENDING", "UNCERTAIN"}:
+                raise RuntimeFailure("RECONCILIATION_REQUIRED", "reconcile side effects before handoff")
+            task["status"] = "CANCELLED" if cancel else "DEFERRED"
+            task["lease"] = None
+            state["status"] = derive_run_status(state)
+            return {"taskId": task_id}
+        return self._transaction(run_id, mutate, event_type="task.cancelled" if cancel else "task.handed_off",
+                                 actor=actor, task_id=task_id)
+
     def _runtime_key(self, *, create: bool = False) -> bytes:
         if create and not self.key_path.exists():
             self.key_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1154,6 +1294,8 @@ class RunStore:
         payload: dict[str, Any] | None = None,
         evidence_refs: Sequence[str] = (),
     ) -> dict[str, Any]:
+        if state["status"] == "COMPLETED":
+            self._assert_requirements_accepted(state)
         sanitized = redact(state)
         state.clear()
         state.update(sanitized)
@@ -1182,12 +1324,13 @@ class RunStore:
         evidence_refs: Sequence[str] = (),
     ) -> dict[str, Any]:
         run_dir = self.run_dir(run_id)
-        with FileLock(run_dir / ".run.lock"):
+        with FileLock(self.runs_root / ".requirements.lock"), FileLock(run_dir / ".run.lock"):
             _, state = self._load_locked(run_id)
             before_state = copy.deepcopy(state)
             before_policy = copy.deepcopy(state["policy"])
             before_objective = copy.deepcopy(state["objective"])
             payload = mutate(state) or {}
+            self._sync_requirement_claims(state, event_type=event_type, task_id=task_id, payload=payload)
             objective_authorization = payload.pop("_objectiveAuthorization", None)
             policy_authorization = payload.pop("_policyAuthorization", None)
             if event_type == "policy.amended" or state["policy"] != before_policy:
@@ -2353,6 +2496,19 @@ class RunStore:
                     "difference": state["reuseBaseline"]["difference"],
                     "evidenceRefs": list(state["reuseBaseline"]["evidenceRefs"]),
                 }
+            packet_reqs = (task.get("workPacket") or {}).get("reqs")
+            reqs = self.validate_requirement_binding(task.get("reqs", packet_reqs))
+            if packet_reqs is not None and packet_reqs != reqs:
+                raise RuntimeFailure("REQ_BINDING_MISMATCH", "task and WorkPacket reqs must match")
+            if reqs:
+                normalized["reqs"] = reqs
+                normalized["workPacket"]["reqs"] = list(reqs)
+                owner = task.get("owner")
+                if owner is None:
+                    owner = f"{run_id}:{task_id}"
+                if not isinstance(owner, str) or not owner.strip() or len(owner) > 257:
+                    raise RuntimeFailure("REQ_OWNER_INVALID", "requirement owner must be a non-empty string up to 257 characters")
+                normalized["requirementClaim"] = {"owner": owner, "active": False}
             state["tasks"].append(normalized)
             validate_task_graph(state["tasks"])
             state["status"] = "PLANNING" if state["status"] == "CREATED" else state["status"]
@@ -2706,6 +2862,7 @@ class RunStore:
         preflight_observation: dict[str, Any] | None = None
         snapshot = self.load(run_id)
         snapshot_task = find_task(snapshot, task_id)
+        self._validate_task_requirements(snapshot_task)
         pushback = snapshot_task.get("pushback")
         if pushback is None and snapshot["focus"].get("pushbackRequired"):
             raise RuntimeFailure("PUSHBACK_MISSING", "record a KEEP/CUT/DEFER push-back verdict before starting this task")
@@ -2790,6 +2947,7 @@ class RunStore:
                     "cannot start a task while the Run is paused; call resume() explicitly first",
                 )
             task = find_task(state, task_id)
+            self._validate_task_requirements(task)
             reset = feasibility_status(state, task)
             if reset and (reset["expired"] or reset["decision"] not in {"CONTINUE", "BOUNDED_GO"}):
                 raise RuntimeFailure("FEASIBILITY_STOP", "lane reset prevents dispatch", details=reset)
@@ -3245,6 +3403,7 @@ class RunStore:
 
         state = self.load(run_id)
         task = find_task(state, task_id)
+        self._validate_task_requirements(task)
         if task.get("loop", {}).get("stopped"):
             raise RuntimeFailure("REPEATED_FAILURE", "native admission cannot bypass a repeated-failure stop")
         if task["workerProfile"] not in {"native", "copilot", "claude", "codex"}:
@@ -3397,6 +3556,7 @@ class RunStore:
             current["status"] = derive_run_status(current)
             return {
                 "workerId": worker["id"], "hostTaskId": host_task_id, "candidateStatus": result["status"],
+                "releaseRequirements": host_status == "cancelled",
                 "reason": canonical_json(redact({
                     "hostStatus": host_status, "errors": errors,
                     "budgetStop": (host_observation or {}).get("budgetStop"),
@@ -5680,6 +5840,16 @@ def validate_run(state: dict[str, Any]) -> None:
         raise RuntimeFailure("RUN_INVALID", "active lane limit exceeded")
     validate_task_graph(state["tasks"])
     for task in state["tasks"]:
+        reqs = task.get("reqs", [])
+        if (not isinstance(reqs, list) or any(not isinstance(rid, str) or not re.fullmatch(
+                r"REQ-[A-Za-z0-9_.-]+", rid) for rid in reqs) or len(reqs) != len(set(reqs))
+                or reqs != task["workPacket"].get("reqs", [])):
+            raise RuntimeFailure("RUN_INVALID", "invalid task/WorkPacket requirement binding")
+        claim = task.get("requirementClaim")
+        if claim is not None and (not isinstance(claim, dict) or not reqs
+                or not isinstance(claim.get("owner"), str) or not claim["owner"].strip()
+                or len(claim["owner"]) > 257 or type(claim.get("active")) is not bool):
+            raise RuntimeFailure("RUN_INVALID", "invalid requirement claim")
         if task["risk"] not in RISK_CLASSES or task["status"] not in TASK_STATUSES:
             raise RuntimeFailure("RUN_INVALID", f"task {task['id']} risk or status is invalid")
         reset = task.get("feasibility")
@@ -6520,6 +6690,10 @@ def state_summary(state: dict[str, Any]) -> dict[str, Any]:
                            "automaticRepair": False, "humanHoldsPreserved": True,
                            "action": "owner-bound objective/path correction and explicit resume/reconciliation; never substitute chat PASS"},
     }
+    bindings = {task["id"]: {"reqs": task["reqs"], "claim": task.get("requirementClaim")}
+                for task in state["tasks"] if task.get("reqs")}
+    if bindings:
+        summary["requirementsBindings"] = bindings
     missing_pushback = [task["id"] for task in state["tasks"]
                         if "pushback" not in task and task.get("objectiveVersion") == state["objective"]["version"]]
     if missing_pushback:
@@ -6644,6 +6818,10 @@ def build_parser() -> argparse.ArgumentParser:
     execute.add_argument("--recipe", choices=["quick", "build", "test", "ci", "task"], default="test")
     execute.add_argument("--ci-run-id", type=int)
 
+    for action in ("task-handoff", "task-cancel"):
+        release = subparsers.add_parser(action)
+        release.add_argument("run_id")
+        release.add_argument("task_id")
     task_add = subparsers.add_parser("task-add")
     task_add.add_argument("run_id")
     task_add.add_argument("--id", required=True)
@@ -6656,6 +6834,8 @@ def build_parser() -> argparse.ArgumentParser:
     task_add.add_argument("--tool", action="append", default=[])
     task_add.add_argument("--risk", choices=sorted(RISK_CLASSES), default="R1")
     task_add.add_argument("--lane", default="product")
+    task_add.add_argument("--req", action="append", default=[], help="bound REQ id (repeatable)")
+    task_add.add_argument("--owner", help="requirement claim owner; defaults to RUN:TASK")
     task_add.add_argument("--work-kind", choices=sorted(WORK_KINDS), default="product")
     task_add.add_argument("--change-kind", choices=["normal", "replacement-architecture", "new-compatibility-constraint"], default="normal")
     task_add.add_argument("--operation", action="append", default=[])
@@ -6948,6 +7128,8 @@ def cli(argv: Sequence[str] | None = None) -> int:
                     product_evidence_refs=args.evidence,
                 )
             )
+        elif command in {"task-handoff", "task-cancel"}:
+            output = state_summary(store.handoff_task(args.run_id, args.task_id, cancel=command == "task-cancel"))
         elif command == "task-add":
             side_effect = None
             if args.side_effect:
@@ -6968,6 +7150,8 @@ def cli(argv: Sequence[str] | None = None) -> int:
                     "tools": args.tool,
                     "risk": args.risk,
                     "lane": args.lane,
+                    "reqs": args.req,
+                    "owner": args.owner,
                     "workKind": args.work_kind,
                     "changeKind": args.change_kind,
                     "operations": args.operation,

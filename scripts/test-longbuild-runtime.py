@@ -14,7 +14,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "harness"))
 
-from architrave_runtime import RunStore, missing_gate_requirements
+from architrave_runtime import RunStore, RuntimeFailure, missing_gate_requirements
 from worker_adapters import workspace_fingerprint
 
 _fixture_add_task = RunStore.add_task
@@ -47,6 +47,32 @@ class LongBuildRuntimeTests(unittest.TestCase):
             capture_output=True,
             text=True,
         ).stdout.strip()
+
+    def test_requirements_bound_to_cancelled_tasks_still_prevent_false_program_done(self):
+        config_path = self.repo / "architrave.config.json"
+        config = json.loads(config_path.read_text(encoding="utf-8")) if config_path.is_file() else {}
+        config["requirements"] = "requirements.md"
+        config_path.write_text(json.dumps(config), encoding="utf-8")
+        requirements = self.repo / "requirements.md"
+        text = ("| ID | Requirement | Acceptance | Owner | Status | Evidence |\n"
+                "|---|---|---|---|---|---|\n"
+                "| REQ-1 | Complete program slice | program test | | open | |\n"
+                "\n## Handoff\nNext: complete slice\nFailed approaches: none\nVerify: program test\n")
+        requirements.write_text(text, encoding="utf-8")
+        state = self.store.create(goal="Requirements-backed program", outcome="Verified program", criteria=[{
+            "id": "FLOW", "description": "Program", "scope": "program", "risk": "R0",
+            "verificationType": "deterministic", "blocking": False}])
+        run = state["runId"]
+        self.store.add_task(run, {"id": "slice", "objective": "Complete slice", "risk": "R0",
+                                 "acceptanceCriteria": ["FLOW"], "reqs": ["REQ-1"]})
+        self.store.handoff_task(run, "slice", cancel=True)
+        with self.assertRaises(RuntimeFailure) as error:
+            self.store.verify(run)
+        self.assertEqual("REQ_NOT_ACCEPTED", error.exception.code)
+        requirements.write_text(text.replace("| open | |", "| accepted | program test log |"), encoding="utf-8")
+        state, complete = self.store.verify(run)
+        self.assertTrue(complete)
+        self.assertEqual("COMPLETED", state["status"])
 
     def add_task(
         self,

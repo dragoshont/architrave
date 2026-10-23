@@ -16,9 +16,10 @@ release checks cannot be waived because a tool or target is unavailable.
 2. **Semantic gate (LLM‑as‑judge):** this rubric, applied adversarially according to `knowledge/execution-policy.md`, by one independent reviewer for R3/R4 (two of different families, both PASS, only when `review.crossFamily` is true). R2 uses one fresh-context reviewer. Low-risk mechanical work may close with deterministic evidence only when every acceptance criterion is mechanically decided and no semantic/high-risk floor applies. Model choice belongs to the user and host.
 
 ## Before grading
-Reuse the request or existing product contract and its acceptance criteria.
-Derive only missing checks needed to decide the result; do not require a new
-intake, specification or acceptance matrix. Load only relevant repository
+Grade against the repository requirements file (config `requirements`, else
+`SPEC.md`): its REQ rows, acceptance and correction rows. Derive only missing
+checks needed to decide the result; do not require other intake or planning
+documents. Load only relevant repository
 sources and rubric dimensions. For knowledge work, do not invent a UI lane.
 
 ## Rubric dimensions
@@ -26,8 +27,11 @@ Score each **Pass / Concern / Fail** with a severity and cite evidence (a spec l
 
 1. **Spec & acceptance‑criteria conformance** — every requested criterion met;
    no scope drift; honest about unfinished work. Grade the behavior against the
-   existing request/contract. Missing intake or planning documents alone are
-   not findings; scope mistakes and unverified claims are.
+   REQ rows and their acceptance. Non-trivial work without REQ rows with testable
+   acceptance is a Major finding. Claiming done while an in-scope REQ is not
+   `accepted` with evidence, or acting on an owner correction that was never
+   recorded as a correction row, is a Blocker. Missing other planning documents
+   are not findings; scope mistakes and unverified claims are.
 2. **Tournament & recommended-plan quality** — a full tournament is required for
    architecture/dependency choices, systemic failures, migrations, data loss,
    security, deployment, or materially ambiguous options. Routine bounded
@@ -39,7 +43,8 @@ Score each **Pass / Concern / Fail** with a severity and cite evidence (a spec l
    resumability or external operations. Use canonical API-owned state, events,
    truthful checkpoints and required evidence; views are on-demand projections,
    not additional files to maintain. Ordinary direct source work does not need
-   a Run, acceptance matrix or phase ledger merely because it is non-trivial.
+   a Run or phase ledger merely because it is non-trivial; the requirements file
+   is its spec and acceptance record.
    Required scoped mutation grants, consent, receipts and uncertain-side-effect
    recovery remain mandatory. Repeating completed work, manual state edits or
    false completion is a Blocker.

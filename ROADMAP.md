@@ -1,11 +1,19 @@
 # Roadmap
 
+## v0.20.0 - Spec-driven core restored
+
+- [x] Spec-first contract by default; `SPEC.md` default requirements file validated by `checks` and `quality-gate`.
+- [x] Runtime-owned REQ binding and claims in the Run EventLog; completion refused until bound REQs are accepted.
+- [x] Gate output hygiene (tail plus full log on failure).
+- [x] Improvement proposals with before/after evidence, human approval and per-model harness pruning review.
+- [x] README full capability set.
+
 ## v0.18.0 - Long-program requirements ledger
 
 - [x] `requirements` gate: REQ table with testable acceptance, evidence for accepted, typed owner corrections, required Handoff (Next / Failed approaches / Verify).
 - [x] `--claim` refuses duplicate or closed lanes and seeds kickoffs; `--done` decides program completion.
 - [x] Contract: get-bearings start, blocked-to-owner escalation, code outranks notes; executable-first lesson promotion and human-gated skill changes.
-- [ ] Runtime-owned claims in the Run EventLog; gate output hygiene; per-model harness pruning review.
+- [x] Runtime-owned claims in the Run EventLog; gate output hygiene; per-model harness pruning review (0.20.0).
 
 ## Next - OpenCode sessions and upfront challenge
 

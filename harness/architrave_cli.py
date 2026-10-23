@@ -101,6 +101,9 @@ def tournament_review(run_dir: Path, execute: bool, result_path: Path | None = N
     }, indent=2))
     return 0
 def main(argv: list[str] | None = None) -> int:
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments[:1] == ["runtime"]:
+        return runtime_cli(arguments[2:] if arguments[1:2] == ["--"] else arguments[1:])
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
     runtime = subparsers.add_parser("runtime")

@@ -7,6 +7,19 @@ Releases at or before **v0.8.12** are on the
 
 ## Unreleased
 
+## [0.20.0] - 2026-10-23
+
+### Changed
+- **Spec-driven by default again.** The lead contract, rubric, execution policy, skills, AGENTS stanza and every manifest description now lead with spec-driven development: non-trivial work starts from REQ rows with testable acceptance in `SPEC.md` (or config `requirements`), work traces to REQ ids, owner corrections are typed rows recorded before acting, and done means `requirements --done` passes. This restores the spec-first core removed in 0.11.1.
+- The requirements gate defaults to `SPEC.md`; `checks` and `quality-gate` validate the requirements file whenever one exists.
+- Gate recipes print only `ok` on success and the last 40 lines plus a full-log path on failure (`ARCHITRAVE_GATE_VERBOSE=1` restores passthrough).
+- README leads with the spec-driven workflow and lists the full capability set.
+
+### Added
+- Run v2 REQ binding: tasks and WorkPackets carry `reqs`; with a requirements file the runtime rejects unbound, unknown or closed REQs, records claims in the EventLog, refuses duplicate claims and refuses Run completion until bound REQs are accepted. Native dispatch requires `reqs` and seeds the kickoff with acceptance and corrections.
+- `harness/improvement.py` (`propose`, `check --phase before|after`, `approve`, `list`, `prune-review --model`): self-improvement proposals need executable-first promotion, before/after evidence and human approval; global instruction targets need `--owner-approved`; per-model harness pruning review.
+- `SPEC.md` for Architrave itself.
+
 ## [0.19.0] - 2026-10-23
 
 ### Added

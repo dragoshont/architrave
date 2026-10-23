@@ -4,6 +4,33 @@ Load this pack for non-trivial, multi-task, resumable, deployment-aware, or
 runtime-verified work. The runtime is a local control plane, not a deployment
 platform and not a workflow language for shell commands.
 
+## Requirements binding
+
+When config names a `requirements` file, tasks/WorkPackets need matching `reqs`.
+The runtime reuses the requirements gate's parser, rejecting absent or unknown
+ids and accepted, superseded or withdrawn work before dispatch. The file remains
+the spec; the runtime never changes its acceptance on the owner's behalf.
+
+`task-add ... --req REQ-1 --owner lane-a` claims work (repeat `--req`; owner
+otherwise defaults to `RUN:TASK` and must match an existing file owner).
+Claims live in authenticated task events and canonical task state. Repository
+locking prevents different owners from claiming the same REQ across Runs in this
+checkout. Task completion, cancellation and `task-handoff RUN TASK` release them;
+a worker's candidate return does not. `task-cancel RUN TASK` releases inactive
+work; observe active workers stopping first. Cancelled native workers release
+the claim, and retries must reclaim it. Status exposes `requirementsBindings`.
+
+Native dispatch needs the canonical `reqs` list; batch needs a `reqs` map keyed
+by its `task_ids`. Python validates each packet before admission. Child prompts
+prepend current acceptance text and all correction rows, preserving owner
+corrections across context resets. Admission limits remain unchanged.
+
+Before completion, reread the file: all REQs ever bound to Run tasks must now
+be `accepted`, including cancelled/deferred tasks, or `REQ_NOT_ACCEPTED` blocks
+completion. Existing code/evidence gates remain independent. Unconfigured repos
+are unchanged; separate checkouts do not share claims. See
+[`docs/runtime-v2.md`](../docs/runtime-v2.md#requirements-binding) for CLI and errors.
+
 ## Architecture decision
 
 ### Runtime language tournament

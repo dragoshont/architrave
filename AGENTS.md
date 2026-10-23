@@ -1,6 +1,9 @@
 # AGENTS.md — Architrave
 
-Architrave is a **cross-platform, judge-gated durable software-build control plane** for
+Architrave is a **spec-driven, cross-platform, judge-gated durable software-build control plane**.
+Every non-trivial task starts as REQ rows with testable acceptance in the repository
+requirements file (config `requirements`, else `SPEC.md`); work traces to REQ ids and is
+done only when they are accepted with evidence. It covers
 knowledge/automation, UI, backend, full-stack, plan-only infrastructure, optional
 runtime observation/verification, adaptive execution intent, and durable
 learning/audit artifacts. It is distributed as a Copilot / Claude / Codex /
@@ -11,7 +14,8 @@ defaults to deny; explicit Run policy may authorize a bounded target and operati
 
 ## What's here
 - `agents/` — fourteen optional roles: **Architrave**, **CTO**, **Product Research**, **Operations UX**, **UX Architect**, **UI Visual**, **Platform Design**, **Service Architect**, **Backend Planner**, **Backend Implementer**, **Infra Engineer**, **Runtime Observer**, **Tournament Analyst**, and **Adversarial Judge**. Shared `.agent.md` format across VS Code / Copilot CLI / the Copilot app / Claude Code; role availability is not a reason to spawn.
-- `gates/` — deterministic gates as **`.sh` + `.ps1` pairs** (`checks`, `reconcile`, `quality-gate`, `backend-checks`) + `rubric.md` (the judge's rubric). No automatic hook definitions are packaged.
+- `SPEC.md` — Architrave's own requirements (dogfooded by `checks`).
+- `gates/` — deterministic gates as **`.sh` + `.ps1` pairs** (`checks`, `reconcile`, `quality-gate`, `backend-checks`; `components`, `requirements`, `message-lint` via Python) + `rubric.md` (the judge's rubric). No automatic hook definitions are packaged.
 - `harness/` — durable run-artifact helpers (`init-run`, `validate-run`, `semantic-review`, semantic learning review/recovery) as `.sh` + `.ps1` pairs plus schemas, and the Python Run v2 state machine, worker/workspace adapters, invariants, product legibility, and v1/v2 validation.
 - `knowledge/` — platform packs (`apple.md`, `microsoft.md`, `web.md`) + `backend.md` + `operations-ux.md` + `design-tokens.md` + `execution-policy.md` + `learning-loop.md` + `yagni.md` + `runtime-v2.md` for durable control-plane semantics.
 - `kit/` — `architrave.config.schema.json` (the per-repo config keystone) + `examples/`.

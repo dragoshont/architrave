@@ -144,6 +144,30 @@ class ComponentGate(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("2 active REQs are not accepted: REQ-01, REQ-04", out)
 
+    def test_spec_md_is_the_default_requirements_file_and_checks_validate_it(self):
+        (self.hub / "architrave.config.json").write_text(json.dumps(
+            {"kind": "knowledge", "build": "true", "test": "true"}))
+
+        def gate(*args):
+            process = subprocess.run([sys.executable, str(RUNNER), *args, "--repo", str(self.hub)],
+                                     capture_output=True, text=True, check=False)
+            return process.returncode, process.stdout + process.stderr
+
+        code, out = gate("requirements")
+        self.assertEqual(code, 0, out)
+        self.assertIn("no SPEC.md - skipping", out)
+        (self.hub / "SPEC.md").write_text(EXAMPLE.read_text())
+        code, out = gate("requirements")
+        self.assertEqual(code, 0, out)
+        self.assertIn("ARCHITRAVE-REQUIREMENTS: PASS", out)
+        self.assertEqual(gate("checks", "--quick")[0], 0)
+        (self.hub / "SPEC.md").write_text("# Requirements\n- REQ-01\n")
+        code, out = gate("checks", "--quick")
+        self.assertEqual(code, 1, out)
+        self.assertIn("no requirements table", out)
+        code, out = gate("quality-gate")
+        self.assertEqual(code, 2, out)
+
     def test_private_push_remote_passes(self):
         engine = checkout(self.base / "engine", "https://github.com/me/public-fork.git")
         git(engine, "remote", "add", "private", "https://github.com/me/engine-private.git")
@@ -240,6 +264,22 @@ class ComponentGate(unittest.TestCase):
         self.assertEqual(process.returncode, 0)
         self.assertIn("none configured", process.stdout)
 
+
+    def test_failing_recipe_prints_tail_and_keeps_full_log(self):
+        noisy = python_command("-c \"import sys; [print('line', i) for i in range(100)]; sys.exit(3)\"")
+        config = {"kind": "knowledge", "build": noisy, "test": "true"}
+        (self.hub / "architrave.config.json").write_text(json.dumps(config))
+        process = subprocess.run(
+            [sys.executable, str(RUNNER), "checks", "--repo", str(self.hub)],
+            capture_output=True, text=True, check=False,
+        )
+        out = process.stdout + process.stderr
+        self.assertEqual(process.returncode, 1, out)
+        self.assertIn("line 99", out)
+        self.assertNotIn("line 5\n", out)
+        log = out.split("full log: ", 1)[1].split(")", 1)[0]
+        self.assertIn("line 0\n", Path(log).read_text())
+        Path(log).unlink()
 
 if __name__ == "__main__":
     unittest.main()

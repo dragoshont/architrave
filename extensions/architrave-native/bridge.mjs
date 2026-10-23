@@ -217,6 +217,7 @@ const tools = [
     name: "architrave_native_dispatch",
     description: "Dispatch one bounded canonical WorkPacket through the joined host. Candidate only; independent gates required. Model pin only when explicitly supplied by the user; otherwise host inheritance.",
     parameters: { type: "object", properties: { ...identitySchema,
+      reqs: { type: "array", items: { type: "string", pattern: "^REQ-[A-Za-z0-9_.-]+$" }, minItems: 1, uniqueItems: true, description: "Canonical task REQ ids; required when repository requirements are configured" },
       owner_handle: { type: "string", description: "Optional retained idle owner already bound to this same canonical task/objective; never repurpose another task's context" },
       model: { type: "string", description: "Optional explicit USER-requested host model pin; omit to inherit host settings" },
       retry_hypothesis: { type: "string", description: "New bounded hypothesis required for an intentional retry without new observed evidence" },
@@ -233,7 +234,7 @@ const tools = [
       if (args.owner_handle && !tasks.some(task => task.id === args.owner_handle && task.type === "agent" && task.status === "idle")) {
         throw new Error("Existing owner must be an idle native agent in the current joined host session");
       }
-      const connection = pipe({ ...request(args, "dispatch", invocation), retryHypothesis: args.retry_hypothesis,
+      const connection = pipe({ ...request(args, "dispatch", invocation), reqs: args.reqs, retryHypothesis: args.retry_hypothesis,
         ownerHandle: args.owner_handle });
       let hostTaskId;
       let timeout;
@@ -484,10 +485,11 @@ tools.push({
   parameters: { type: "object", properties: {
     repo: identitySchema.repo, run_id: identitySchema.run_id,
     task_ids: { type: "array", items: { type: "string" }, minItems: 2, maxItems: 8, uniqueItems: true },
+    reqs: { type: "object", additionalProperties: { type: "array", items: { type: "string", pattern: "^REQ-[A-Za-z0-9_.-]+$" }, minItems: 1, uniqueItems: true }, description: "REQ ids keyed by task id; each task needs an entry when requirements are configured" },
   }, required: ["repo", "run_id", "task_ids"], additionalProperties: false },
   handler: async (args, invocation) => {
     const results = await Promise.all(args.task_ids.map(task_id =>
-      tools[0].handler({ repo: args.repo, run_id: args.run_id, task_id }, invocation)));
+      tools[0].handler({ repo: args.repo, run_id: args.run_id, task_id, reqs: args.reqs?.[task_id] }, invocation)));
     return { textResultForLlm: JSON.stringify(results.map(item => JSON.parse(item.textResultForLlm))),
       resultType: results.some(item => item.resultType === "failure") ? "failure" : "success" };
   },

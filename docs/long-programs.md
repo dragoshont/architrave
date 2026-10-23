@@ -1,7 +1,10 @@
 # Long programs, in plain language
 
-This page explains how Architrave keeps a long, multi-session build on track and
-why. It summarises the research behind version 0.18.0 (sources at the end).
+This page explains how Architrave keeps work on track, from a one-hour task to a
+multi-week, multi-session build, and why. Since 0.20.0 this is the default for
+every non-trivial task, not a special long-program mode: the requirements file
+is the spec. It summarises the research behind versions 0.18.0–0.20.0 (sources
+at the end).
 
 ## The problem we hit
 
@@ -23,8 +26,12 @@ Thoughtworks/Martin Fowler, Cognition) describes the same cure:
 
 ### One requirements file (the "ledger")
 
-Set `"requirements": "SPEC.md"` in `architrave.config.json`. The file is a simple
-markdown table (copy `kit/examples/requirements.md`):
+Architrave reads `SPEC.md` at the repository root, or the file named by
+`"requirements"` in `architrave.config.json`. The file is a simple markdown table
+(copy `kit/examples/requirements.md`). A small task needs one to three rows;
+read-only questions and one-line edits need none. `checks` and `quality-gate`
+validate the file whenever it exists, and a Run refuses tasks that are not bound
+to open REQ ids and refuses to finish while they are not accepted.
 
 | ID | Requirement | Acceptance | Owner | Status | Evidence |
 |---|---|---|---|---|---|

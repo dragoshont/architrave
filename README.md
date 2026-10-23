@@ -1,15 +1,37 @@
 # Architrave
 
-Architrave helps Copilot, Claude Code, and Codex work from the system you already
-have: your code, design components, architecture docs, and tests. Describe the
-change you want. It works directly on small tasks, splits independent work into
-scoped child sessions when useful, and brings the results back for checks and
-review.
+Architrave is a spec-driven development control plane for coding agents
+(Copilot, Claude Code, Codex, OpenCode). Every non-trivial task starts as a few
+requirement rows with testable acceptance in a repository file (`SPEC.md` or the
+configured `requirements`). Work, child sessions, owner corrections and
+hand-offs are traced to those REQ ids, and work is done only when the REQs are
+accepted with evidence. Around that spec it adds durable resumable Runs,
+bounded multi-session supervision, deterministic and judge-gated verification,
+specialist roles grounded in your design system, contracts and runtime, and a
+learning loop that turns repeated failures into checks.
 
-Use it for a UI change, a backend feature, a full-stack project, or work on docs,
-skills, and automation. The plugin supplies the instructions and specialist
-roles; the optional repository kit adds configured checks, resumable task
-records, and reviewable learning.
+It works from the system you already have: your code, design components,
+architecture docs and tests. Small tasks stay direct; independent work splits
+into scoped child sessions and comes back for checks and review. The plugin
+supplies the contract, roles and skills; the optional repository kit adds
+configured gates, durable Run records and reviewable learning. See the
+[full capability set](#full-capability-set) and the plain-language guide to
+[long programs](docs/long-programs.md).
+
+## Spec-driven workflow
+
+1. **Specify.** The request becomes REQ rows in `SPEC.md`: id, requirement,
+   testable acceptance, owner, status. A bounded task needs one to three rows;
+   read-only questions and one-line edits are exempt.
+2. **Build and trace.** Commits, child kickoffs, hand-offs and reports name
+   their REQ ids. When you change your mind, the change is recorded as a typed
+   correction row (`add`, `revise`, `retract`, `supersede`) before the agent
+   acts on it, so it survives context compaction and session restarts.
+3. **Verify.** `accepted` needs evidence. `python gates/gate_runner.py
+   requirements --done` passes only when every active REQ is accepted, and the
+   independent review grades against the same rows.
+4. **Hand off.** The `## Handoff` note (Next, Failed approaches, Verify) lets a
+   fresh session resume in minutes without retrying dead ends.
 
 ![Workflow diagram: a request and repository context lead to direct work or up to three scoped child sessions, then integration, checks, and a result; a dashed deployment-only branch adds scoped approval and live verification](assets/workflow.svg)
 
@@ -343,6 +365,83 @@ MCP servers. Checks must be configured and invoked; Architrave does not intercep
 every host tool call. Worktrees and scope checks separate changes but are not an
 OS security sandbox. Infrastructure starts as plan-only work; applying changes
 requires permission for the target and operation.
+
+## Full capability set
+
+Everything Architrave ships, grouped by area. Paths point at the source of truth.
+
+### Specification and requirements
+- Requirements file with REQ rows (id, requirement, acceptance, owner, status, evidence), typed correction rows and a Handoff note — `kit/examples/requirements.md`, `SPEC.md` default or config `requirements`.
+- `requirements` gate: validates the table, testable acceptance, evidence for accepted rows, corrections for superseded or withdrawn rows, correction targets and the Handoff note; `--claim <ids> --owner <lane>` refuses duplicate, accepted or closed lanes and prints acceptance plus corrections for the kickoff; `--done` decides completion — `gates/gate_runner.py`.
+- `checks` and `quality-gate` validate the requirements file whenever one exists, and `components` fails a multi-component program without one — `gates/gate_runner.py`.
+- Run v2 binds tasks to REQ ids, records claims as events and refuses completion while bound REQs are not accepted — `harness/architrave_runtime.py`, `docs/runtime-v2.md`.
+- Upfront challenge at intake: contradictions, risky assumptions and better approaches are named before work starts — `agents/architrave.agent.md`.
+- Tournament of Options for architecture, migration, security, data-loss and recurring-failure decisions, with "do nothing" and "smallest viable" baselines — `skills/architrave-tournament/`, `agents/tournament-analyst.agent.md`.
+- YAGNI ladder as a gate: delete, reuse, platform feature, then the smallest new code — `knowledge/yagni.md`.
+
+### Supervision and multi-session work
+- One lead owns integration; children get an objective, owned scope, REQ ids and expected result, and return compact results — `agents/architrave.agent.md`, `knowledge/execution-policy.md`.
+- Child cap `workers.maxParallel` (default 3, up to 8), depth one, exclusive mutable ownership, enforced in the runtime and native dispatch — `harness/architrave_runtime.py`, `extensions/architrave-native/bridge.mjs`.
+- App-native child sessions in the Copilot app, native subagents in CLIs; never shells out to another agent harness — `harness/platform_launch.py`.
+- Component map: one writer per component repository, push only to its own repo, never upstream, service tests before UI tests — `gates/gate_runner.py components`, `kit/examples/coordination.architrave.json`.
+- Destination preflight: a child verifies repository, workspace and branch before writing — `skills/architrave-work/SKILL.md`.
+- Repeated-failure stop: the same failure fingerprint twice without new evidence stops the lane; a stalled primary criterion blocks unrelated new tasks — `harness/architrave_runtime.py` (`STALLED_PRIMARY_CRITERION`).
+- Coordinator rotation into a fresh session seeded from the requirements file, not the transcript — `agents/architrave.agent.md`.
+- CTO role for an established stall, scope or budget decision, or a feasibility reset with a finite evidence window — `agents/cto.agent.md`, `skills/architrave-cto/`.
+
+### Durable Runs and recovery
+- Run v2 state machine with API-owned state, authenticated event log, checkpoints and a rolling recovery snapshot; phase and status views are projections — `harness/architrave_runtime.py`, `knowledge/runtime-v2.md`.
+- Task graph with dependencies, WorkPackets, worker completion recorded separately from task PASS, objective versioning, primary criterion and milestones — `harness/architrave_runtime.py` (`task-add`, `primary-set`, `criterion-set`, `milestone-advance`, `objective-replace`).
+- `WAITING_EXTERNAL` checkpoints for human sign-in, approvals and external systems, resolved only by trusted actors — `knowledge/runtime-v2.md`.
+- Default-deny mutation: infrastructure and runtime changes need scoped grants, target attestation, receipts, reconciliation of uncertain side effects and live verification — `harness/architrave_runtime.py` (`policy-check`, `reconcile-side-effect`, `target-attest`).
+- Worker adapters (native host, command, external) and git-backed isolated workspaces with collect, integrate and cleanup — `harness/worker_adapters.py`, `harness/workspaces.py`.
+- Invariant engine for declarative product and safety invariants — `harness/invariant_engine.py`.
+- Run v1 to v2 migration — `docs/migration-run-v1-v2.md`; validation — `harness/validate_run_v2.py`, `harness/validate-run.{sh,ps1}`.
+- Long-build runtime guidance — `docs/longbuild.md`.
+
+### Native host bridge (Copilot)
+- `architrave_native_dispatch` and `_batch` (2–8 pre-decomposed packets) dispatch bounded WorkPackets through the joined host with owner binding, child limits, source binding and REQ acceptance in the kickoff — `extensions/architrave-native/bridge.mjs`.
+- `architrave_native_status`, `_cancel` (through the real owner, never a fabricated result) and `_recover` (closes orphaned records without replaying side effects).
+- `architrave_native_gate` runs stored commands or observes configured workflows bound to the source, task and objective; `architrave_native_review` runs one fresh source-bound semantic review and admits only observed results — `docs/native-semantic-review.md`.
+
+### Verification and review
+- Deterministic gates with Python implementation and `.sh`/`.ps1` entrypoints: `checks`, `reconcile` (design tokens against code), `quality-gate`, `backend-checks` (build, tests, migration safety, secret scan, IaC plan and policy, never apply), `components`, `requirements`, `message-lint` (owner-message identifiers) — `gates/`.
+- Risk-scaled verification: R0/R1 deterministic, R2 one fresh-context reviewer, R3 adds real end-to-end or runtime evidence, R4 adds security and policy review; cross-family review with `review.crossFamily` — `gates/rubric.md`, `knowledge/execution-policy.md`.
+- Adversarial Judge with a PASS, REVISE or FAIL rubric covering spec conformance, root cause, YAGNI, UX, visual fidelity, accessibility, backend security, runtime and evidence — `agents/adversarial-judge.agent.md`, `gates/rubric.md`.
+- Semantic and tournament review launchers for Copilot, Claude or both — `harness/semantic-review.{sh,ps1}`, `harness/tournament-review.{sh,ps1}`.
+- Application legibility: health, release and deployment checks against the deployed artifact — `harness/legibility.py`, `docs/application-legibility.md`.
+- Explicit quality cadence rather than automatic hooks, plus safe retirement of legacy hooks — `docs/quality-check-cadence.md`.
+
+### Specialist roles and grounding
+- Fourteen roles: Architrave, CTO, Product Research, Operations UX, UX Architect, UI Visual, Platform Design, Service Architect, Backend Planner, Backend Implementer, Infra Engineer, Runtime Observer, Tournament Analyst and Adversarial Judge — `agents/`.
+- UI grounded in Storybook or the configured design source, design map and tokens; platform packs for Apple HIG, Microsoft Fluent 2/WinUI and Web/WCAG 2.2; native constitutions — `knowledge/apple.md`, `knowledge/microsoft.md`, `knowledge/web.md`, `knowledge/design-tokens.md`, `constitution-apple.md`, `constitution-windows.md`.
+- Backend grounded in architecture docs and API/data contracts, with reversible migrations and rollback plans — `knowledge/backend.md`.
+- Operations UX for onboarding, offboarding, inventories, uploads, roles, health, diagnostics, jobs and degraded states — `knowledge/operations-ux.md`.
+- Repository profiles: application (UI, backend, IaC, runtime lanes) and `kind: knowledge` for docs, skills and automation repositories — `kit/architrave.config.schema.json`, `kit/examples/`.
+
+### Learning and self-improvement
+- Four memory stores with a candidate-lesson queue, promotion after repeated occurrences and human approval — `knowledge/learning-loop.md`, `harness/promote-lesson*.{sh,ps1}`.
+- Executable-first promotion, improvement proposals approved only with before/after evidence and a human, and a harness pruning review per model release — `harness/improvement.py`, `knowledge/learning-loop.md`.
+- Stale-fact guards: deterministic link checks, semantic review of prose claims and exact-line `UNVALIDATED:` marking — `harness/mark-stale-learning.*`, `harness/semantic-learning-review.*`.
+- Learning validation with a secret scan — `harness/validate_learning.py`.
+
+### Skills
+- Architrave skills: `architrave`, `architrave-work`, `architrave-cto`, `architrave-tournament`, `architrave-review`, `architrave-agent-authoring`, `architrave-skill-authoring`, `architrave-mcp-integration` — `skills/`.
+- Vendored third-party skills (see [Third-party skills](#third-party-skills)): `verification-before-completion`, `systematic-debugging`, `subagent-driven-development`, `writing-skills`, `skill-creator`, `webapp-testing`.
+
+### Observability
+- Route Ribbon canvas: route, blockers, children and evidence from canonical snapshots; Session companion: activity, model, effort and context usage — `docs/route-ribbon.md`, `harness/ribbon.py`.
+
+### Install, update and hosts
+- Plugin for Copilot CLI/app, VS Code, Claude Code and Codex/ChatGPT; OpenCode host adapter — `plugin.json`, `.claude-plugin/`, `.codex-plugin/`, `harness/opencode_host.py`.
+- Per-repository installer: `install`, `update`, `executor-install`, `native-host-install`, `canvas-install`, `companion-install`, `retire-hooks`, `adoption-status`; atomic, hash-pinned, symlink-safe writes — `tools/install_update.py`.
+- Windows and PowerShell parity for every public entrypoint — `gates/*.ps1`, `harness/*.ps1`, `tools/*.ps1`.
+- Codex project roles generated from the agents — `tools/codex-roles.py`, `.codex/agents/`.
+
+### Benchmarks and research
+- Scenario and routing benchmarks with a judge rubric, results schema and human-review procedure — `benchmarks/`.
+- Orchestration audit and a measured spec-driven footprint trial — `docs/orchestration-audit.md`, `scripts/measure-basic-sh-sdd.py`.
+- Research behind the long-program design, with sources — `docs/long-programs.md`, `benchmarks/RESEARCH.md`.
 
 ## Further reading
 
