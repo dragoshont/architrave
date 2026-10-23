@@ -150,6 +150,27 @@ The plugin also packages these focused skills:
 Authoring skills are used when you ask for authoring work, not during routine
 tool use.
 
+### Third-party skills
+
+These skills are vendored unchanged from their upstream repositories. Each
+folder keeps its upstream licence file (`LICENSE` or `LICENSE.txt`), and the
+copyright stays with the original authors.
+
+| Skill | When to use it | Source | Licence |
+|---|---|---|---|
+| `verification-before-completion` | Run the proving command and read its output before claiming work is done. | [obra/superpowers](https://github.com/obra/superpowers) @ `2ce8aa1` | MIT, © 2025 Jesse Vincent |
+| `systematic-debugging` | Find the root cause before proposing a fix for a bug or failing test. | [obra/superpowers](https://github.com/obra/superpowers) @ `2ce8aa1` | MIT, © 2025 Jesse Vincent |
+| `subagent-driven-development` | Run a plan task by task with fresh subagents and a two-stage review (spec, then quality). | [obra/superpowers](https://github.com/obra/superpowers) @ `2ce8aa1` | MIT, © 2025 Jesse Vincent |
+| `writing-skills` | Write or improve skills test-first. | [obra/superpowers](https://github.com/obra/superpowers) @ `2ce8aa1` | MIT, © 2025 Jesse Vincent |
+| `skill-creator` | Create skills, run evals and benchmarks, and tune descriptions. | [anthropics/skills](https://github.com/anthropics/skills) @ `dbd4588` | Apache-2.0, © Anthropic |
+| `webapp-testing` | Test local web apps end to end with Playwright. | [anthropics/skills](https://github.com/anthropics/skills) @ `dbd4588` | Apache-2.0, © Anthropic |
+
+Where these overlap with Architrave, the Architrave contract and the configured
+gates take precedence. For example, the `requirements` gate decides "done", and
+the child cap applies to subagent dispatch. Anthropic's document skills
+(docx/pdf/pptx/xlsx) are source-available rather than open source, so they are
+not bundled.
+
 ## Install the plugin
 
 Install Architrave in an agent client you already use.
