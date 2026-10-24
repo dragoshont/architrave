@@ -75,7 +75,11 @@ python gates/gate_runner.py requirements --claim REQ-01,REQ-04 --owner ui-lane
 The command refuses if another lane already owns one of those items, or if it is
 already accepted, superseded or withdrawn. When it passes, its output (each
 item's acceptance test plus any corrections) becomes the start of the helper's
-instructions. You can run up to 8 helpers (`workers.maxParallel`, default 3).
+instructions. It writes the owner and changes `open` to `claimed`, preserving
+already active statuses. The single coordinator commits that change before
+dispatch; this is not a cross-branch lock. A second lane on that committed
+ledger fails. An adopted Run still owns its own cross-worktree reservations.
+You can run up to 8 helpers (`workers.maxParallel`, default 3).
 
 ### A handoff note instead of a lost conversation
 
@@ -101,8 +105,11 @@ python gates/gate_runner.py requirements --handoff
 It fails if the file has uncommitted changes, or if this checkout's git-ignored
 SDD ledger (`.superpowers/sdd/*/progress.md`) recorded progress after the last
 commit of the file, and it warns about such a ledger in another worktree. The
-successor starts from that commit, runs the same command, and continues the
-same file. Notes kept only in one worktree are lost or duplicated when work moves
+successor starts from that commit, runs
+`python gates/gate_runner.py requirements --handoff --expect <predecessor-sha>`,
+and continues the same file. `--expect` requires that commit in HEAD's ancestry
+(unknown, unrelated and stale commits fail); it does not prove semantic evidence.
+Notes kept only in one worktree are lost or duplicated when work moves
 to another worktree or branch; Anthropic's harness, Spec Kit, Kiro, Codex
 ExecPlans and beads all keep this state in committed files for that reason.
 
@@ -124,6 +131,7 @@ Retire only assigned schedules whose work is accepted, superseded or whose
 owner is archived, through authorized host controls; preserve source/evidence
 and do not revive retired monitors. See the Context section of
 `knowledge/execution-policy.md` for identity, evidence and lifecycle boundaries.
+Saving or replacing a session automation prompt resets its next run time; edit the schedule rarely.
 
 ### "Done" means done
 
@@ -133,7 +141,9 @@ python gates/gate_runner.py requirements --done
 
 This passes only when every active requirement is accepted with evidence.
 Progress is measured by accepted requirements, not by how many check-ins or
-reports were produced.
+reports were produced. The gate checks non-empty evidence, not its truth:
+CTO oversight verifies current source/commit and primary-criterion observations;
+accepted-count growth alone proves nothing.
 
 ### Conflicts go to the owner
 
@@ -158,7 +168,7 @@ and your approval. Rules that a newer model no longer needs get removed.
 
 ## Bundled third-party skills
 
-Architrave ships these well-maintained public skills, unchanged and with their
+Architrave ships these well-maintained public skills with their
 licences. The README lists sources and licences.
 
 - `verification-before-completion` and `systematic-debugging` from
@@ -173,6 +183,8 @@ licences. The README lists sources and licences.
 It also ships `subagent-driven-development` and `writing-skills` (obra/superpowers,
 MIT). Avoid unbounded "keep looping until done" plugins, and audit any other
 third-party skill before installing it.
+The SDD Setup/resuming guidance is locally adapted to make its scratch ledger a cache
+subordinate to the committed requirements Handoff.
 
 ## Sources
 

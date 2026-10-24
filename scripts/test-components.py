@@ -171,6 +171,76 @@ class ComponentGate(unittest.TestCase):
         code, out = gate("quality-gate")
         self.assertEqual(code, 2, out)
 
+    def test_claim_records_ownership_and_second_lane_cannot_claim(self):
+        example = EXAMPLE.read_text()
+        code, out = self.requirements(example, "--claim", "REQ-04", "--owner", "first")
+        self.assertEqual(code, 0, out)
+        spec = self.hub / "SPEC.md"
+        claimed = spec.read_text()
+        self.assertIn("| first | claimed |", claimed)
+        self.assertIn("commit before dispatch", out)
+        code, out = self.requirements(claimed, "--claim", "REQ-04", "--owner", "second")
+        self.assertEqual(code, 1, out)
+        self.assertIn("already owned by first", out)
+        self.assertEqual(spec.read_text(), claimed)
+        for flags in (("--claim", "REQ-04,REQ-77", "--owner", "first"),
+                      ("--claim", "REQ-04"), ("--claim", "", "--owner", "first"),
+                      ("--claim", "REQ-04", "--owner", "bad|owner"),
+                      ("--claim", "REQ-04", "--owner", "bad\nowner")):
+            code, out = self.requirements(example, *flags)
+            self.assertNotEqual(code, 0, out)
+            self.assertEqual(spec.read_text(), example)
+
+    def test_handoff_expected_commit_rejects_stale_successor(self):
+        commit = ("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qm")
+        git(self.hub, "init", "-q", "-b", "main")
+        self.requirements(EXAMPLE.read_text())
+        git(self.hub, "add", ".")
+        git(self.hub, *commit, "initial")
+        sibling = self.base / "successor"
+        git(self.hub, "worktree", "add", "-qb", "successor", str(sibling))
+        spec = self.hub / "SPEC.md"
+        spec.write_text(spec.read_text() + "\nPredecessor handoff\n")
+        git(self.hub, "add", "SPEC.md")
+        git(self.hub, *commit, "handoff")
+        expected = subprocess.check_output(["git", "-C", str(self.hub), "rev-parse", "HEAD"],
+                                           text=True).strip()
+
+        def gate(path, *flags):
+            p = subprocess.run([sys.executable, str(RUNNER), "requirements", "--repo", str(path),
+                                *flags], capture_output=True, text=True)
+            return p.returncode, p.stdout + p.stderr
+
+        self.assertEqual(gate(sibling, "--handoff")[0], 0, "legacy check cannot detect stale successor")
+        code, out = gate(sibling, "--handoff", "--expect", expected)
+        self.assertEqual(code, 1, out)
+        self.assertIn("does not contain expected handoff commit", out)
+        for invalid in ("f" * 40, "--all", "HEAD", ""):
+            code, out = gate(self.hub, "--handoff", f"--expect={invalid}")
+            self.assertEqual(code, 1, out)
+        self.assertEqual(gate(self.hub, "--expect", expected)[0], 1, "--expect requires --handoff")
+        self.assertEqual(gate(self.hub, "--handoff", "--expect", expected)[0], 0)
+        git(self.hub, *commit, "descendant", "--allow-empty")
+        self.assertEqual(gate(self.hub, "--handoff", "--expect", expected)[0], 0)
+        # A different root commit is known locally, but not part of this checkout's history.
+        git(sibling, "checkout", "-q", "--orphan", "unrelated")
+        git(sibling, *commit, "unrelated")
+        unrelated = subprocess.check_output(["git", "-C", str(sibling), "rev-parse", "HEAD"],
+                                            text=True).strip()
+        self.assertEqual(gate(self.hub, "--handoff", "--expect", unrelated)[0], 1)
+
+    def test_evidence_and_product_dirt_are_semantic_not_ledger_proof(self):
+        git(self.hub, "init", "-q", "-b", "main")
+        accepted = EXAMPLE.read_text().replace("| in-progress | |", "| accepted | trust me |").replace(
+            "| | open | |", "| | accepted | trust me |")
+        self.assertEqual(self.requirements(accepted, "--done")[0], 0)
+        git(self.hub, "add", ".")
+        git(self.hub, "-c", "user.name=t", "-c", "user.email=t@example.invalid",
+            "commit", "-qm", "unverified evidence")
+        (self.hub / "product.py").write_text("raise RuntimeError('unfinished product')\n")
+        code, out = self.requirements(accepted, "--handoff")
+        self.assertEqual(code, 0, out)  # CTO must verify source/criterion; ledger parsing cannot.
+
     def test_explicit_requirements_operations_fail_without_a_ledger(self):
         config = self.hub / "architrave.config.json"
         config.write_text("{}")

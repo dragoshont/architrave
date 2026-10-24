@@ -25,6 +25,7 @@ tournament_skill = (root / "skills/architrave-tournament/SKILL.md").read_text(en
 review_skill = (root / "skills/architrave-review/SKILL.md").read_text(encoding="utf-8")
 work_skill = (root / "skills/architrave-work/SKILL.md").read_text(encoding="utf-8")
 long_programs = (root / "docs/long-programs.md").read_text(encoding="utf-8")
+sdd_skill = (root / "skills/subagent-driven-development/SKILL.md").read_text(encoding="utf-8")
 tournament_agent = (root / "agents/tournament-analyst.agent.md").read_text(encoding="utf-8")
 generator = (root / "scripts/generate-codex-agents.py").read_text(encoding="utf-8")
 codex_roles = "\n".join(
@@ -32,6 +33,20 @@ codex_roles = "\n".join(
 )
 
 required = {
+    "claim persists before dispatch": (agent, "records owner and claimed status; commit that change before dispatch"),
+    "successor pins predecessor": (agent, "`--handoff --expect <predecessor-sha>`"),
+    "execution pins predecessor": (execution, "`--handoff --expect <predecessor-sha>`"),
+    "SDD cache authority": (sdd_skill, "cache subordinate to the committed requirements Handoff"),
+    "SDD recovery authority": (sdd_skill, "Rebuild it from that Handoff and git log, never create a second source of truth"),
+    "CTO current coordinator": (cto_agent, "Identify the current coordinator and its committed ledger"),
+    "CTO predecessor reports stale": (cto_agent, "never steer from old or predecessor coordinator reports"),
+    "CTO source-bound evidence": (cto_agent, "accepted evidence must reference the current source or commit and the primary criterion"),
+    "CTO counts not proof": (cto_agent, "Growth in the accepted count is not proof"),
+    "CTO same pass action": (cto_agent, "Act on obvious loops and idle owners with dependency-ready unclaimed REQs in the same pass"),
+    "CTO stall timing limited": (cto_agent, "The three-pass rule applies only to criterion stalls"),
+    "CTO mandate dispatch comparison": (cto_agent, "Compare the latest verbatim owner objective and holds with what was actually dispatched"),
+    "CTO corrections require change": (cto_agent, "Send a correction only with new evidence or a different concrete action"),
+    "host automation reset warning": (long_programs, "Saving or replacing a session automation prompt resets its next run time; edit the schedule rarely"),
     "fresh refs before resuming": (agent, "validates current component refs and acceptance evidence"),
     "commit-based rotation": (agent, "committed with `requirements --handoff` passing, before rotation or hand-off"),
     "scratch is not the ledger": (agent, "Worktree-local scratch such as SDD `progress.md` is a cache, never the ledger"),
@@ -200,6 +215,15 @@ for name, (text, phrase) in required.items():
         missing.append(f"whitespace-sensitive rule: {name}")
 if contains_guidance("scoped permission is mandatory", "scoped permission is optional"):
     missing.append("guidance matcher accepts substantive changes")
+for text, stale in (
+    (sdd_skill, "Create the ledger with its identity as the first line"),
+    (sdd_skill, "trust the ledger and `git log` over your own recollection"),
+    (cto_agent, "never the same correction twice"),
+    (cto_agent, "three passes without a criterion delta"),
+    (long_programs, "successor starts from that commit, runs the same command"),
+):
+    if contains_guidance(text, stale):
+        missing.append(f"stale lessons contract: {stale}")
 for name, text in (("skill", lead_skill), ("stanza", stanza)):
     if len(text.split()) > 200:
         missing.append(f"{name} duplicates too much of the lead contract")

@@ -7,6 +7,17 @@ Releases at or before **v0.8.12** are on the
 
 
 
+## 0.21.7
+
+- `requirements --claim` now writes ownership and `claimed` status for open rows;
+  commit before dispatch from one coordinator. Conflicting sequential claims fail.
+- `requirements --handoff --expect <predecessor-sha>` rejects stale successors.
+  SDD scratch is a cache subordinate to committed requirements Handoff.
+- CTO oversight acts on loops/idle ready owners in the same pass, verifies
+  current-coordinator state, verbatim owner scope/holds and source-bound criterion
+  evidence, and sends corrections only with new evidence or action.
+- Document automation prompt edits resetting the next run time.
+
 ## 0.21.6
 
 - CTO oversight also checks claims against commits and evidence, breaks loops

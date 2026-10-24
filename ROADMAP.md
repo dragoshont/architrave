@@ -1,5 +1,13 @@
 # Roadmap
 
+## v0.21.7 - Supervision lessons (REQ-16 through REQ-19)
+
+- [x] Persist gate claims in the coordinator's requirements file before commit/dispatch.
+- [x] Bind successor handoff to the predecessor SHA; SDD scratch is only a cache.
+- [x] Same-pass loop/idle-owner corrections, current-coordinator and verbatim-mandate checks,
+  source-bound evidence rather than accepted-count inflation, rare automation edits.
+- [ ] Locally verified no-CI release and Copilot/Codex/native installs.
+
 ## v0.20.1 - Review hardening
 
 - [x] Cross-worktree requirement claims; prose SPEC.md not adopted; fail-closed missing source.
