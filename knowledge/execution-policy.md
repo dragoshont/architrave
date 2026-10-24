@@ -119,7 +119,7 @@ worktree-local scratch (SDD `progress.md`, canvases, session notes). Before
 rotating, commit Handoff and pass `python gates/gate_runner.py requirements
 --handoff`; it fails on uncommitted requirements or newer progress stranded in
 this checkout's SDD ledger and warns about one in a sibling worktree. Start the
-successor from that commit, have it run `--handoff` first and fold any warned
+successor from that commit, have it run `--handoff --expect <predecessor-sha>` first and fold any warned
 ledger into the same file; never start a second ledger. The predecessor names
 the successor, commit and open REQs once, then stops relaying; that hand-off is
 not a completion claim.

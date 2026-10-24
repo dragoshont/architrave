@@ -107,24 +107,23 @@ partner's explicit consent.
 
 Conversation memory does not survive compaction. In real sessions,
 controllers that lost their place have re-dispatched entire completed task
-sequences — the single most expensive failure observed. Track progress in
-a ledger file, not only in todos.
+sequences — the single most expensive failure observed. The repository
+requirements file and its committed Handoff are the recovery authority, not todos.
 
 - Each plan owns a workspace: at skill start, run this skill's
   `bash scripts/sdd-workspace PLAN_FILE` — it prints the plan's git-ignored
   directory (under `<repo-root>/.superpowers/sdd/`), home to
-  every artifact for THIS plan: ledger, briefs, reports, review packages.
+  temporary artifacts for THIS plan: cached ledger, briefs, reports, review packages.
   Another plan's directory is never yours to read or write.
-- Check for this plan's ledger at `<workspace>/progress.md`. If one exists,
-  read [references/resuming.md](references/resuming.md) before anything
-  else: it says whose ledger it is and where to resume.
-- Create the ledger with its identity as the first line:
-  `# SDD ledger — plan: <plan file path>`.
-- The ledger is your recovery map: the commits it names exist in git even
-  when your context no longer remembers creating them. After compaction,
-  trust the ledger and `git log` over your own recollection.
+- Read the committed requirements Handoff and git log first; on rotation run
+  `requirements --handoff --expect <predecessor-sha>`.
+- `<workspace>/progress.md` is an optional cache subordinate to the committed requirements Handoff.
+  Rebuild it from that Handoff and git log, never create a second source of truth.
+  If it contains newer uncommitted work, reconcile into REQ Evidence/Handoff
+  and commit before dispatch or rotation; never discard unfurled work.
+  Existing caches also follow [references/resuming.md](references/resuming.md).
 - `git clean -fdx` will destroy the workspace (it's git-ignored scratch); if
-  that happens, recover from `git log`.
+  that happens, recover from the committed requirements Handoff and `git log`.
 
 Read the plan once, note its context and Global Constraints, and create a
 todo per task. If the plan names a Spec, read that too: the spec is the

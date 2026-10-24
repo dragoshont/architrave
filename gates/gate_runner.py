@@ -368,7 +368,7 @@ def plan_ledgers(checkout: Path, plan: str) -> list[Path]:
     return found
 
 
-def handoff_errors(root: Path, path: Path) -> list[str]:
+def handoff_errors(root: Path, path: Path, expect: str | None = None) -> list[str]:
     """Durable hand-off: committed requirements and no newer state stranded in a worktree-local ledger."""
     root = root.resolve()
     try:
@@ -378,6 +378,15 @@ def handoff_errors(root: Path, path: Path) -> list[str]:
     errors = []
     if git(root, "rev-parse", "--is-inside-work-tree") != "true":
         return [f"--handoff: {root} is not a git checkout; the ledger cannot travel to another worktree"]
+    if expect is not None:
+        if not re.fullmatch(r"[0-9a-fA-F]{7,40}", expect):
+            errors.append("--expect needs a commit SHA (7-40 hexadecimal characters)")
+        elif not git(root, "rev-parse", "--verify", f"{expect}^{{commit}}"):
+            errors.append(f"--expect: unknown handoff commit {expect}; fetch the predecessor commit first")
+        elif subprocess.run(["git", "merge-base", "--is-ancestor", expect, "HEAD"], cwd=root,
+                            capture_output=True, check=False).returncode != 0:
+            errors.append(f"--expect: HEAD does not contain expected handoff commit {expect}; "
+                          "start from the predecessor's committed handoff")
     if git(root, "status", "--porcelain", "--", plan):
         errors.append(f"--handoff: {plan} has uncommitted changes; commit it so the next session's checkout has it")
     if not git(root, "log", "-1", "--format=%h", "--", plan):
@@ -411,15 +420,16 @@ def handoff_errors(root: Path, path: Path) -> list[str]:
 
 
 def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bool,
-                      requested_root: Path | None = None, handoff: bool = False) -> int:
-    """Validate the requirements file; optionally check a lane claim or program completion."""
+                      requested_root: Path | None = None, handoff: bool = False,
+                      expect: str | None = None) -> int:
+    """Validate the ledger; record coordinator-owned claims only after every check passes."""
     try:
         value = configured_requirements(root, load_config(root))
     except ValueError as exc:
         print(f"requirements: {exc}", file=sys.stderr)
         return 2
     if not value:
-        if claim is not None or done or handoff:
+        if claim is not None or done or handoff or expect is not None:
             print(f"FAIL  requirements: no requirements ledger resolves for --claim/--done/--handoff; "
                   f"resolved root: {root}; config: {root / 'architrave.config.json'}. "
                   "Configure `requirements` or add a SPEC.md requirements table at the resolved root.")
@@ -442,11 +452,23 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
         print(f"FAIL  requirements: {error}")
         print("ARCHITRAVE-REQUIREMENTS: FAIL")
         return 1
-    reqs, corrections, errors = parse_requirements(path.read_text(encoding="utf-8-sig"))
-    if claim:
-        if not owner:
+    text = path.read_text(encoding="utf-8-sig")
+    reqs, corrections, errors = parse_requirements(text)
+    ids = [part.strip() for part in (claim or "").split(",") if part.strip()]
+    if expect is not None and not handoff:
+        errors.append("--expect requires --handoff")
+    if claim is not None:
+        if not ids:
+            errors.append("--claim needs at least one REQ id")
+        if handoff or done:
+            errors.append("--claim cannot be combined with --handoff or --done; commit claims before dispatch")
+        if not owner or not owner.strip():
             errors.append("--claim needs --owner (the lane/session that will own these REQs)")
-        for rid in [part.strip() for part in claim.split(",") if part.strip()]:
+        elif any(c in owner for c in "|\r\n"):
+            errors.append("--owner must be a single Markdown table cell without pipes or newlines")
+        else:
+            owner = owner.strip()
+        for rid in ids:
             row = reqs.get(rid)
             if row is None:
                 errors.append(f"claim {rid}: not in {value}")
@@ -462,11 +484,35 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
                     if rid in item["target"]:
                         print(f"        correction {item['id']} ({item['type']}): {item['change']}")
     if handoff:
-        errors.extend(handoff_errors(root, path))
+        errors.extend(handoff_errors(root, path, expect))
     if done:
         pending = [rid for rid, row in reqs.items() if row["status"].lower() in REQ_ACTIVE - {"accepted"}]
         if pending:
             errors.append(f"not done: {len(pending)} active REQs are not accepted: {', '.join(pending[:20])}")
+    if claim is not None and not errors:
+        lines = []
+        in_requirements = False
+        for line in text.splitlines(keepends=True):
+            cells = line.strip().split("|")
+            if not line.strip().startswith("|"):
+                in_requirements = False
+            elif [cell.strip().lower() for cell in cells[1:7]] == list(REQ_COLUMNS):
+                in_requirements = True
+            if in_requirements and len(cells) >= 8 and cells[1].strip() in ids:
+                rid = cells[1].strip()
+                row = reqs[rid]
+                row["owner"] = owner
+                if row["status"].lower() == "open":
+                    row["status"] = "claimed"
+                cells[4], cells[5] = f" {owner} ", f" {row['status']} "
+                line = "|".join(cells) + ("\n" if line.endswith("\n") else "")
+            lines.append(line)
+        try:
+            path.write_text("".join(lines), encoding="utf-8")
+        except OSError as exc:
+            errors.append(f"--claim: cannot write {path}: {exc}")
+        else:
+            print(f"ok    recorded claims in {value}; commit before dispatch (single coordinator writer)")
     for item in errors:
         print(f"FAIL  requirements: {item}")
     counts: dict[str, int] = {}
@@ -682,11 +728,12 @@ def main() -> int:
     parser.add_argument("--test", action="store_true", help="components: run service then ui tests")
     parser.add_argument("--hook-json", action="store_true")
     parser.add_argument("--repo", default=".")
-    parser.add_argument("--claim", help="requirements: comma-separated REQ ids a new lane will own")
+    parser.add_argument("--claim", help="requirements: record owner/claimed status for comma-separated REQ ids; commit before dispatch")
     parser.add_argument("--owner", help="requirements: lane/session owner for --claim")
     parser.add_argument("--done", action="store_true", help="requirements: fail unless every active REQ is accepted")
     parser.add_argument("--handoff", action="store_true",
                         help="requirements: fail unless hand-off state is committed and not stranded in a worktree ledger")
+    parser.add_argument("--expect", help="requirements --handoff: require this predecessor commit SHA in HEAD history")
     parser.add_argument("--file", help="message-lint: text file to check (default stdin)")
     args = parser.parse_args()
     if args.gate == "message-lint":
@@ -712,7 +759,7 @@ def main() -> int:
     if args.gate == "components":
         return components(root, args.test)
     if args.gate == "requirements":
-        return requirements_gate(root, args.claim, args.owner, args.done, Path(args.repo), args.handoff)
+        return requirements_gate(root, args.claim, args.owner, args.done, Path(args.repo), args.handoff, args.expect)
     return quality(root, args.hook_json)
 
 

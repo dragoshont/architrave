@@ -1,10 +1,18 @@
 # Roadmap
 
-## v0.21.7 - Proportional execution repairs
+## v0.21.8 - Proportional execution repairs (REQ-20 through REQ-23)
 
 - [x] Lead and CTO remove invented snapshot, circular checkpoint and duplicate phase-approval gates while preserving real host/Run/consent boundaries.
 - [x] Supported target-only window navigation stays with the exclusive input owner; missing UI evidence does not deny an independent CLI path.
 - [x] Adjacent worker, backend, infra, observer and rubric contracts distinguish precautions from constraints and activity from observed delivery.
+
+## v0.21.7 - Supervision lessons (REQ-16 through REQ-19)
+
+- [x] Persist gate claims in the coordinator's requirements file before commit/dispatch.
+- [x] Bind successor handoff to the predecessor SHA; SDD scratch is only a cache.
+- [x] Same-pass loop/idle-owner corrections, current-coordinator and verbatim-mandate checks,
+  source-bound evidence rather than accepted-count inflation, rare automation edits.
+- [x] Locally verified no-CI release and Copilot/Codex/native installs (PR #27, v0.21.7).
 
 ## v0.20.1 - Review hardening
 

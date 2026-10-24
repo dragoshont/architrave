@@ -28,11 +28,12 @@ work itself, not adoption.
   passes; measure progress by accepted REQs, not ticks, receipts or checkpoints.
 - Long programs (more than one repository, more than one day or more than two
   children) also need: `requirements --claim <ids> --owner <lane>` passing
-  before each dispatch, its output (acceptance plus corrections) seeding the
+  before each dispatch; it records owner and claimed status; commit that change before dispatch,
+  its output (acceptance plus corrections) seeding the
   kickoff; an updated `## Handoff` (Next, Failed approaches, Verify),
   committed with `requirements --handoff` passing, before rotation or hand-off.
   Worktree-local scratch such as SDD `progress.md` is a cache, never the ledger.
-  The successor starts from that commit, runs `--handoff`, continues the same
+  The successor starts from that commit, runs `--handoff --expect <predecessor-sha>`, continues the same
   file (never a second ledger); the predecessor reports the successor once and
   stops relaying. A new session reads Handoff and git log, runs Verify,
   validates current component refs and acceptance evidence, then takes one
