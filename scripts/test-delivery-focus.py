@@ -37,6 +37,10 @@ codex_roles = "\n".join(
 )
 
 required = {
+    "lead signing grant reuse": (agent, "Reuse scoped owner signing authorization"),
+    "cto duplicate signing gates": (cto_agent, "Remove duplicate signing approval gates"),
+    "cto skill signing reuse": (cto_skill, "Reuse existing scoped signing grants"),
+    "rubric signing reuse": (rubric, "Repeated signing approval for a current matching owner grant"),
     "cto active edits are not handoff": (cto_agent, "A dirty ledger during active editing is not by itself broken coordination"),
     "cto hold resolution": (cto_agent, "Resolved holds stay resolved"),
     "lead hold resolution": (agent, "Superseded Handoff/Verify text must not resurrect a resolved blocker"),
@@ -243,6 +247,21 @@ required = {
 missing = [name for name, (text, phrase) in required.items() if not contains_guidance(text, phrase)]
 # These fixtures protect instruction contracts, not live agent/tool behavior.
 precaution_scenarios = {
+    "existing identity standing build sign stage grant": (
+        execution,
+        ("Reuse the current owner grant for the existing signing identity and bounded build/sign/stage workflow",
+         "Persist the scoped owner direction in existing requirements corrections",
+         "Do not manually edit canonical Run policy",
+         "Check target, identity, operations, limits, expiry and revocation",
+         "Do not ask for fresh signing or phase approval on every repeat build"),
+        ("Signing always requires fresh owner approval",)),
+    "signing grant does not expand operations or bypass keychain": (
+        execution,
+        ("A new identity, keychain access-policy change, distribution, notarization, publication, installation or daemon change needs coverage in the grant",
+         "Actual host/keychain confirmation cannot be bypassed",
+         "Never read, export or log signing secrets or key material",
+         "Local identities and project-specific grants stay in the target project's records"),
+        ("Standing signing consent authorizes arbitrary repositories",)),
     "authorized install, optional snapshot declined": (
         execution,
         ("When the owner accepts proceeding without an optional fresh VM snapshot",

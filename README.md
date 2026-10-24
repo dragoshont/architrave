@@ -146,7 +146,12 @@ session automation; Architrave itself has no scheduler. Each pass:
   purchases, accounts, security bypass, destructive cleanup, release, CI).
   Run checkpoints, confirmation-required operations, scoped grants and typed
   trusted checkpoints (signing, MFA, safe write target, human judgment) always
-  stay with you;
+  stay with you; these are actual checkpoints, not a fresh-consent rule for
+  every signing invocation. The lead reuses a current scoped owner grant for
+  existing-identity build/sign/stage work; CTO removes duplicate signing gates.
+  New identities, keychain policy, distribution/notarization/publication and
+  install/daemon changes need coverage in that grant. Host/keychain prompts
+  remain mandatory; signing secrets and key material are never read or exported;
 - nudges coordinators to run more ready work in parallel without duplicate
   owners, sending at most one message per session per pass.
 

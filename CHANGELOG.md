@@ -5,6 +5,17 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## 0.21.9
+
+- Lead and CTO reuse current scoped owner authorization, including standing
+  permission, for existing-identity build/sign/stage work instead of requesting
+  signing approval for every repeat build. Persist grants through existing
+  corrections and required Run policy APIs; check scope/limits/expiry/revocation.
+- New identities, keychain policy, distribution/notarization/publication and
+  install/daemon changes need grant coverage. Actual host/keychain prompts and
+  trusted Run checkpoints remain mandatory; no key-material access or portable
+  project-specific signing permission (REQ-24).
+
 ## 0.21.8
 
 - Lead and CTO choose the smallest useful authorized action: no invented fresh

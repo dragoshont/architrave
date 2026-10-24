@@ -62,6 +62,14 @@ work itself, not adoption.
   checkpoint's creation before allowing its authorized creation. A Run checkpoint
   is not a VM backup. Reconcile uncertain mutations before retry, not through a
   new backup ceremony. See execution policy's Authorized action section.
+- Reuse scoped owner signing authorization for the existing identity and bounded
+  build/sign/stage workflow, including standing permission. Persist the direction
+  in existing corrections and, when required, through the Run policy API; verify
+  current scope/limits/expiry/revocation, then execute without duplicate signing
+  or phase approval. A grant covers only its named targets/operations, not new
+  identities, keychain policy, distribution/notarization/publication or
+  install/daemon changes outside it. Actual host/keychain prompts remain mandatory;
+  never access/export/log key material. Follow execution policy's Signing grant reuse.
 - Prefer supported target-only window navigation/control by the existing exclusive
   input owner before asking the owner for routine clicks; discover tools rather
   than assuming capability. Zero windows is not permission denial; missing UI

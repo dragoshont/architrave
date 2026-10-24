@@ -1,5 +1,10 @@
 # Roadmap
 
+## v0.21.9 - Scoped signing grant reuse (REQ-24)
+
+- [x] Source contracts: lead executes existing-identity authorized signing; CTO removes duplicate gates, not real host/keychain/Run checkpoints.
+- [ ] Public release and verified local Copilot/Codex/native reinstall.
+
 ## v0.21.8 - Proportional execution repairs (REQ-20 through REQ-23)
 
 Released at v0.21.8 (PR #28); local Copilot/Codex/native 0.21.8 disk installations verified. Existing sessions need fresh instructions; disk identity is not loaded-session proof.

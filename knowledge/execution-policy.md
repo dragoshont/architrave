@@ -249,6 +249,30 @@ Correct an agent-added blocker yourself rather than waiting for the owner to
 rediscover it. These rules reuse existing ownership, retry and evidence controls;
 they add no per-task checklist, scheduler or receipt.
 
+### Signing grant reuse
+
+Reuse the current owner grant for the existing signing identity and bounded
+build/sign/stage workflow, including explicitly established standing permission.
+Persist the scoped owner direction in existing requirements corrections and,
+when a Run governs the operation, apply it through the supported policy API and
+its required trusted checkpoint. Do not manually edit canonical Run policy.
+An owner message does not bypass an unresolved policy-amendment checkpoint.
+Check target, identity, operations, limits, expiry and revocation before reuse;
+ask only for an actual uncovered decision, not consent already recorded.
+Do not ask for fresh signing or phase approval on every repeat build.
+The lead/executor performs covered work; CTO detects duplicate gates and steers
+that owner, never signs or grants permission itself.
+
+A new identity, keychain access-policy change, distribution, notarization,
+publication, installation or daemon change needs coverage in the grant.
+Do not infer these from signing/staging permission, and do not re-ask when the
+owner already explicitly covered them. Revoked, expired or mismatched grants
+cannot authorize execution. Actual host/keychain confirmation cannot be bypassed;
+real `confirmationRequired`, typed Run checkpoints and legal holds remain.
+Never read, export or log signing secrets or key material. Local identities and
+project-specific grants stay in the target project's records, not portable kit
+instructions. No blanket permission for arbitrary repositories or identities.
+
 Use a tournament for material architecture/dependency decisions, migrations,
 data-loss, security, infrastructure/runtime risk, recurring failures, or genuinely
 ambiguous alternatives; it is not a prerequisite for routine bounded work.
