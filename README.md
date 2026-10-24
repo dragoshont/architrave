@@ -115,6 +115,35 @@ it is not an idle timer.
 See the [runtime guide](docs/runtime-v2.md) and
 [execution policy](knowledge/execution-policy.md).
 
+### Program oversight (CTO)
+
+When you run several long programs at once, ask the CTO to watch them, for
+example "review these threads every 30 minutes". The schedule is a host
+session automation; Architrave itself has no scheduler. Each pass:
+
+- measures progress against each program's real goal, such as a game observed
+  rendering, and treats commits, audits and status messages as activity only;
+- runs `requirements --handoff` so each program keeps one committed ledger,
+  and checks that every finished task has its gates, one independent review
+  and recorded evidence;
+- compares what sessions said they did with commits and evidence, and flags
+  claims without proof or promised steps never taken;
+- spots loops (the same failure, audit or message repeated) and breaks them
+  with one different concrete action, or parks the path;
+- answers routine questions and needless approval requests within the agreed
+  direction, and queues decisions only you can make (consent, credentials,
+  purchases, accounts, security bypass, destructive cleanup, release, CI).
+  Run checkpoints, confirmation-required operations, scoped grants and typed
+  trusted checkpoints (signing, MFA, safe write target, human judgment) always
+  stay with you;
+- nudges coordinators to run more ready work in parallel without duplicate
+  owners, sending at most one message per session per pass.
+
+It never edits code. Each pass ends with a table per program and an owner
+queue. Committed requirements and Handoff notes are the shared state across
+worktrees and branches; host session messages steer live work. See
+[`agents/cto.agent.md`](agents/cto.agent.md).
+
 ## See what is happening
 
 The Copilot package includes two companion panels for hosts that support

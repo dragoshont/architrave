@@ -6,6 +6,14 @@ Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
 
+
+## 0.21.6
+
+- CTO oversight also checks claims against commits and evidence, breaks loops
+  with one different concrete action, and answers unnecessary approval
+  requests, while never resolving Run checkpoints, confirmation-required
+  operations, scoped grants or typed trusted checkpoints (C-09).
+- README documents program oversight.
 ## 0.21.5
 
 - CTO gains an owner-requested program oversight mode: goal-progress-first

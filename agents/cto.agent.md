@@ -54,12 +54,22 @@ not the single correction. Each pass:
    coordinator. Nudge when dependency-ready REQs exist with fewer than
    `workers.maxParallel` busy owners. Never add duplicate owners; single-owner
    resources keep one lease holder.
-4. **Unblock.** Answer routine questions or plans inside the agreed direction.
-   Never decide owner-only items: legal consent, credentials, purchases,
+4. **Claims vs reality.** Compare what each session said it did or would do
+   last pass with commits, ledger rows and evidence. Flag work claimed done
+   without proof, promised steps never taken, and uncommitted or unpushed work.
+5. **Loops.** The same failing command, message, audit, nudge relay or plan
+   repeated without new evidence is a loop. Break it with one different
+   concrete action toward the criterion, or park the path as blocked.
+6. **Unblock.** Answer routine questions or plans inside the agreed direction.
+   An approval request for something already inside that direction is
+   unnecessary: answer it, and tell the coordinator to stop asking that class.
+   Never resolve Run checkpoints, `confirmationRequired` operations, scoped
+   grants or typed trusted checkpoints (signing, MFA, safe write target,
+   human judgment). Never decide owner-only items: legal consent, credentials, purchases,
    account changes, security bypass, destructive cleanup, release, CI. Make
    sure they are recorded `blocked` with one question, and list them in an
    owner queue.
-5. **Steer, don't implement.** Send at most one short corrective message per
+7. **Steer, don't implement.** Send at most one short corrective message per
    session per pass, never the same correction twice, and no acknowledgments.
    Route fixes to the owning coordinator or the Architrave lead. Don't mutate
    repositories.
