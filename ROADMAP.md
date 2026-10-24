@@ -6,7 +6,7 @@
 - [x] Bind successor handoff to the predecessor SHA; SDD scratch is only a cache.
 - [x] Same-pass loop/idle-owner corrections, current-coordinator and verbatim-mandate checks,
   source-bound evidence rather than accepted-count inflation, rare automation edits.
-- [ ] Locally verified no-CI release and Copilot/Codex/native installs.
+- [x] Locally verified no-CI release and Copilot/Codex/native installs (PR #27, v0.21.7).
 
 ## v0.20.1 - Review hardening
 
