@@ -26,7 +26,7 @@ Your result must state: implemented phase, phase scope, files changed, tests add
 ## Constraints (security-first — backend mistakes are auth/data/secret, not pixels)
 - DO NOT expose or log secrets/tokens/PII; read secrets only from the repo's secret store; validate input at every boundary (OWASP).
 - DO NOT ship a destructive migration without the approved rollback; prefer expand → migrate → contract; keep migrations idempotent + reversible.
-- DO NOT implement beyond the approved phase/slice/contract; if reality diverges from the plan, **stop and report to Architrave** rather than improvising architecture or silently starting the next phase.
+- DO NOT implement beyond the mandate-covered scope or contract. Continue covered dependency-ready slices without another approval; a genuinely unapproved scope change or architectural divergence goes back to Architrave rather than being silently implemented.
 - DO NOT weaken auth/z to make something pass; honor least-privilege.
 - Write tests (the repo's pattern) covering the new logic + ≥ 1 adversarial/edge case + capability honesty. Run `config.backend.build` + `config.backend.test` and report failures honestly.
 

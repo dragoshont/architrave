@@ -37,6 +37,10 @@ codex_roles = "\n".join(
 )
 
 required = {
+    "cto active edits are not handoff": (cto_agent, "A dirty ledger during active editing is not by itself broken coordination"),
+    "cto hold resolution": (cto_agent, "Resolved holds stay resolved"),
+    "lead hold resolution": (agent, "Superseded Handoff/Verify text must not resurrect a resolved blocker"),
+    "backend one scope boundary": (implementer, "DO NOT implement beyond the mandate-covered scope or contract"),
     "backend no phase ceremony": (planner, "all covered dependency-ready slices may continue without new phase approvals"),
     "backend no ledger prerequisite": (implementer, "use them rather than demanding another artifact"),
     "infra no circular backup": (infra, "not a mandatory fresh VM snapshot"),
@@ -294,6 +298,7 @@ for name, (text, positive, negative) in precaution_scenarios.items():
 for name, text, stale in (
     ("backend one-phase cap", planner, "At most one phase should be approved"),
     ("backend unconditional ledger gate", implementer, "If the plan is missing a phase ledger"),
+    ("backend contradictory phase stop", implementer, "rather than improvising architecture or silently starting the next phase"),
 ):
     if contains_guidance(text, stale):
         missing.append(name)

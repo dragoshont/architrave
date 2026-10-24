@@ -130,6 +130,8 @@ work itself, not adoption.
   Distinguish instruction sent, execution started, observed result and accepted outcome.
   Pending delegation is not delivery; screenshots prove visible state only.
   Source/test success is not installed/native success or loaded-session identity.
+  Superseded Handoff/Verify text must not resurrect a resolved blocker; update
+  it against current observations and owner corrections.
   No routine status rituals, duplicate plans, reports or transcripts.
   Evidence needed for release, safety and recovery remains mandatory.
   Never call a simulation or unobserved execution shipped.

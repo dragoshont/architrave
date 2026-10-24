@@ -2,6 +2,8 @@
 
 ## v0.21.8 - Proportional execution repairs (REQ-20 through REQ-23)
 
+Source-complete; public release and local installation pending.
+
 - [x] Lead and CTO remove invented snapshot, circular checkpoint and duplicate phase-approval gates while preserving real host/Run/consent boundaries.
 - [x] Supported target-only window navigation stays with the exclusive input owner; missing UI evidence does not deny an independent CLI path.
 - [x] Adjacent worker, backend, infra, observer and rubric contracts distinguish precautions from constraints and activity from observed delivery.
