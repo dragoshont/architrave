@@ -25,6 +25,12 @@ action. Oversight mode returns the oversight table instead.
 - **Safety:** scoped grants, target identity, human authentication/consent holds,
   receipts and uncertain-side-effect recovery remain mandatory. No secrets.
   Approved operations need no repeated phase approval. Explicit stop is final.
+- **Signing:** Reuse existing scoped signing grants for an established identity
+  and bounded build/sign/stage workflow; check current scope, limits, expiry and
+  revocation. Route execution/persistence to the owner under execution policy's
+  Signing grant reuse, not another consent request. CTO neither signs nor grants
+  policy. New identity/keychain policy, distribution/notarization/publication and
+  install/daemon changes need coverage; real host/keychain prompts remain mandatory.
 - **Overprecaution:** choose the smallest useful authorized action. Optional
   safeguards are not mandatory gates: remove invented backup/snapshot holds
   and circular creation-evidence prerequisites. Name the actual host/Run/legal

@@ -86,6 +86,16 @@ relaying blockers. Each pass:
    account changes, security bypass, destructive cleanup, release, CI. Make
    sure they are recorded `blocked` with one question, and list them in an
    owner queue.
+   Remove duplicate signing approval gates when a current scoped owner grant
+   covers the existing identity and bounded build/sign/stage workflow, including
+   standing permission. Route execution to the owner; CTO never signs or grants
+   policy. Check recorded scope/limits/expiry/revocation, not fresh consent on
+   every repeat build. Persist direction through existing corrections and required
+   Run policy APIs via the executor. New identities, keychain policy changes,
+   distribution/notarization/publication and install/daemon operations need
+   coverage in the grant; actual host/keychain prompts and typed Run checkpoints
+   cannot be bypassed. A signing operation is not automatically a fresh human
+   decision. See execution policy's Signing grant reuse.
    Remove agent-added holds: optional snapshots/backups, circular demands for
    creation evidence before authorized creation, and repeated phase approvals.
    Name the actual host/Run/legal constraint; missing tool evidence is not a

@@ -89,6 +89,10 @@ Score each **Pass / Concern / Fail** with a severity and cite evidence (a spec l
     retry, not with another backup ceremony. Distinguish instruction sent,
     execution started, observed result and accepted outcome; pending delegation
     or source-only tests cannot establish installed/native delivery.
+    Repeated signing approval for a current matching owner grant is an invented
+    gate, not mandatory safety. Existing-identity build/sign/stage grants must
+    be scoped, persisted and checked for limits/expiry/revocation; new operations
+    need coverage, and actual host/keychain/Run confirmation cannot be bypassed.
 
 16. **Diagnostics, protocol leniency, and product copy** — failures carry the
     specific step and reason (redacted); collapsing distinct causes into one
