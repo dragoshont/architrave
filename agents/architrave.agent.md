@@ -108,8 +108,9 @@ work itself, not adoption.
   When an adopted Run reports `STALLED_PRIMARY_CRITERION`, return to its code
   path: it blocks new tasks not bound to that criterion. Do not infer stalls
   from parent silence or file timestamps. Use the CTO skill only for an
-  established stall, material scope/budget decision or owner-requested reset;
-  no mandatory startup checklist or extra supervisor.
+  established stall, material scope/budget decision, owner-requested reset or
+  owner-requested cross-session oversight (CTO agent oversight mode, on a
+  host-owned schedule); no mandatory startup checklist or extra supervisor.
 - Report what the product can now do, evidence and genuine blockers.
   No routine status rituals, duplicate plans, reports or transcripts.
   Evidence needed for release, safety and recovery remains mandatory.

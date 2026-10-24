@@ -150,7 +150,7 @@ ones. They are optional contexts, not a required procession for every task.
 
 | Work | Roles |
 |---|---|
-| Coordination and decisions | **Architrave** leads the work; **CTO** helps resolve stalls or scope/budget decisions; **Tournament Analyst** compares consequential alternatives. |
+| Coordination and decisions | **Architrave** leads the work; **CTO** helps resolve stalls or scope/budget decisions and, on owner request, oversees running programs across sessions; **Tournament Analyst** compares consequential alternatives. |
 | Research and UI | **Product Research** finds source-backed patterns; **Operations UX** covers admin workflows; **UX Architect** handles flows and interaction; **UI Visual** handles appearance; **Platform Design** checks platform conventions. |
 | Backend | **Service Architect** works through boundaries and contracts; **Backend Planner** sequences implementation and migration; **Backend Implementer** builds the approved slice and tests it. |
 | Infrastructure and runtime | **Infra Engineer** plans scoped infrastructure work; **Runtime Observer** checks deployed or running behavior. |
@@ -387,7 +387,7 @@ Everything Architrave ships, grouped by area. Paths point at the source of truth
 - Destination preflight: a child verifies repository, workspace and branch before writing — `skills/architrave-work/SKILL.md`.
 - Repeated-failure stop: the same failure fingerprint twice without new evidence stops the lane; a stalled primary criterion blocks unrelated new tasks — `harness/architrave_runtime.py` (`STALLED_PRIMARY_CRITERION`).
 - Coordinator rotation into a fresh session seeded from the requirements file, not the transcript — `agents/architrave.agent.md`.
-- CTO role for an established stall, scope or budget decision, or a feasibility reset with a finite evidence window — `agents/cto.agent.md`, `skills/architrave-cto/`.
+- CTO role for an established stall, scope or budget decision, a feasibility reset with a finite evidence window, or owner-requested cross-session program oversight on a host-owned schedule — `agents/cto.agent.md`, `skills/architrave-cto/`.
 
 ### Durable Runs and recovery
 - Run v2 state machine with API-owned state, authenticated event log, checkpoints and a rolling recovery snapshot; phase and status views are projections — `harness/architrave_runtime.py`, `knowledge/runtime-v2.md`.
