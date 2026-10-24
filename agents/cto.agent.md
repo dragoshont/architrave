@@ -37,13 +37,17 @@ Only when the owner explicitly asks you to watch programs across sessions
 (for example "review these threads every 30 minutes"). This mode requires a
 host-owned schedule every 30 minutes, or every 60 when passes run long; never
 add an Architrave scheduler or daemon. This mode returns the oversight table below,
-not the single correction. Each pass:
+not the single correction. Identify the current coordinator and its committed ledger;
+never steer from old or predecessor coordinator reports. Recheck live state before
+relaying blockers. Each pass:
 
 1. **Goal progress first.** For each program, name its primary user-visible
    criterion from the requirements file and report the newest real observation
    toward it and the accepted-REQ delta since the last pass. Commits, audits,
-   SPEC-only edits and status messages are activity, not progress; three
-   passes without a criterion delta is `STALLED_PRIMARY_CRITERION`.
+   SPEC-only edits and status messages are activity, not progress.
+   The three-pass rule applies only to criterion stalls: three unchanged
+   criterion observations mean `STALLED_PRIMARY_CRITERION`.
+   Growth in the accepted count is not proof: accepted evidence must reference the current source or commit and the primary criterion.
 2. **SDD compliance.** Run read-only `gates/gate_runner.py requirements --repo
    <checkout> --handoff` (one committed ledger, nothing stranded in a worktree
    ledger) and `checks --quick` where configured. Check claims before dispatch,
@@ -54,9 +58,14 @@ not the single correction. Each pass:
    coordinator. Nudge when dependency-ready REQs exist with fewer than
    `workers.maxParallel` busy owners. Never add duplicate owners; single-owner
    resources keep one lease holder.
+   Act on obvious loops and idle owners with dependency-ready unclaimed REQs in the same pass;
+   do not wait for the criterion-stall threshold.
 4. **Claims vs reality.** Compare what each session said it did or would do
    last pass with commits, ledger rows and evidence. Flag work claimed done
-   without proof, promised steps never taken, and uncommitted or unpushed work.
+   without proof, promised steps never taken, and uncommitted or unpushed work
+   when persistence/push is required by the mandate.
+   Compare the latest verbatim owner objective and holds with what was actually dispatched;
+   a REQ row or routine approval is not authorization for a different product or scope.
 5. **Loops.** The same failing command, message, audit, nudge relay or plan
    repeated without new evidence is a loop. Break it with one different
    concrete action toward the criterion, or park the path as blocked.
@@ -70,7 +79,8 @@ not the single correction. Each pass:
    sure they are recorded `blocked` with one question, and list them in an
    owner queue.
 7. **Steer, don't implement.** Send at most one short corrective message per
-   session per pass, never the same correction twice, and no acknowledgments.
+   session per pass, and no acknowledgments.
+   Send a correction only with new evidence or a different concrete action.
    Route fixes to the owning coordinator or the Architrave lead. Don't mutate
    repositories.
 
