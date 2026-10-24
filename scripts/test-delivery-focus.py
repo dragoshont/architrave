@@ -94,6 +94,21 @@ required = {
     "stanza delegates contract": (stanza, "not both copies"),
     "cto agent routes": (cto_agent, "never implements"),
     "cto skill outcome": (cto_skill, "Outcome over ceremony"),
+    "cto oversight on request": (cto_agent, "Only when the owner explicitly asks you to watch programs across sessions"),
+    "cto oversight goal first": (cto_agent, "Commits, audits,\n   SPEC-only edits and status messages are activity, not progress"),
+    "cto oversight ledger gate": (cto_agent, "--handoff` (one committed ledger"),
+    "cto oversight review per task": (cto_agent, "one independent review and a committed REQ Evidence/Handoff"),
+    "cto oversight owner-only": (cto_agent, "Never decide owner-only items"),
+    "cto oversight no implement": (cto_agent, "Steer, don't implement"),
+    "cto oversight host schedule": (cto_agent, "add an Architrave scheduler or daemon"),
+    "cto skill oversight": (cto_skill, "Oversight (owner-requested only)"),
+    "lead routes cto oversight": (agent, "owner-requested cross-session oversight"),
+    "cto oversight output mode": (cto_agent, "This mode returns the oversight table below,\nnot the single correction"),
+    "cto single correction scoped": (cto_agent, "Outside oversight mode, return exactly one short correction"),
+    "cto oversight cadence": (cto_agent, "This mode requires a\nhost-owned schedule every 30 minutes, or every 60 when passes run long"),
+    "cto oversight gate scope": (cto_agent, "its configured and risk-floor gates"),
+    "cto skill correction scoped": (cto_skill, "then (outside oversight mode) one\ncorrection"),
+    "cto oversight quality gates": (cto_agent, "`quality-gate` where\n   required"),
     "cto skill push-back": (cto_skill, "KEEP/CUT/DEFER verdict"),
     "scope discipline": (agent, "Owner corrections replace old scope"),
     "tournament skill baselines": (tournament_skill, 'include a "do nothing" baseline and a "smallest viable" option'),
@@ -228,6 +243,17 @@ for path in canonical_files:
     ):
         if forbidden in text:
             missing.append(f"{path.relative_to(root)} still contains {forbidden}")
+
+for text, stale in (
+    (cto_skill, "Report only what is off, then one correction"),
+    (cto_agent, "\nReturn exactly one short correction"),
+    (cto_agent, "may wake you"),
+    (cto_agent, "acceptance run, one independent review"),
+    (agent, "owner-requested reset; no mandatory startup checklist"),
+):
+    found = stale in text if stale.startswith("\n") else contains_guidance(text, stale)
+    if found:
+        missing.append(f"stale CTO contract text: {stale.strip()}")
 
 runtime = (root / "harness" / "architrave_runtime.py").read_text(encoding="utf-8")
 if '"model": value.get("model")' in runtime:

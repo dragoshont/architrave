@@ -5,6 +5,14 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+
+## 0.21.5
+
+- CTO gains an owner-requested program oversight mode: goal-progress-first
+  passes across host sessions on a host-owned 30/60-minute schedule, ledger
+  `--handoff` and gate checks, safe parallelism nudges, routine unblocking with
+  an owner-only queue, at most one steering message per session per pass;
+  it still never implements (REQ-15, C-08).
 ## Unreleased
 
 ## [0.21.4] - 2026-10-24

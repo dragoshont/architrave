@@ -1,10 +1,11 @@
 ---
 name: architrave-cto
-description: Apply the CTO checklist inline for an established stall, material scope/budget decision or requested feasibility reset. Not a mandatory startup or periodic review; do not spawn another supervisor.
+description: Apply the CTO checklist inline for an established stall, material scope/budget decision, requested feasibility reset or owner-requested program oversight. Not a mandatory startup or self-initiated periodic review; do not spawn another supervisor.
 ---
 
-Check inline. Report only what is off, then one correction: objective, last
-verified evidence, blocker, next cheapest useful action.
+Check inline. Report only what is off, then (outside oversight mode) one
+correction: objective, last verified evidence, blocker, next cheapest useful
+action. Oversight mode returns the oversight table instead.
 
 - **Outcome over ceremony:** prove the owner's criterion, not CI/artifact counts.
   Declare its path; three unrelated results/commits raise
@@ -27,6 +28,11 @@ verified evidence, blocker, next cheapest useful action.
 - **Ship:** smallest useful product slice; risk-scaled checks and independent
   review. Commit/push validated scope; publish/tag only with release authority.
   Install only on authorized hosts. Plain owner status, not opaque IDs.
+
+- **Oversight (owner-requested only):** across sessions, judge each program by
+  its primary criterion delta, the `requirements --handoff` gate, claims and
+  per-task review; steer once per session per pass on a host-owned schedule;
+  queue owner-only decisions. Procedure: the CTO agent's oversight section.
 
 Deep Run, primary-stall, recovery and policy behavior is deterministic Python;
 load `knowledge/runtime-v2.md` only when those operations are needed.
