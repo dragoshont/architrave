@@ -247,6 +247,14 @@ required = {
 missing = [name for name, (text, phrase) in required.items() if not contains_guidance(text, phrase)]
 # These fixtures protect instruction contracts, not live agent/tool behavior.
 precaution_scenarios = {
+    "expired revoked or mismatched signing grant": (
+        execution,
+        ("Revoked, expired or mismatched grants cannot authorize execution",),
+        ("An expired or revoked grant may still execute",)),
+    "separate grant already covers install": (
+        execution,
+        ("do not re-ask when the owner already explicitly covered them",),
+        ("Always re-ask even when the owner already covered it",)),
     "existing identity standing build sign stage grant": (
         execution,
         ("Reuse the current owner grant for the existing signing identity and bounded build/sign/stage workflow",
