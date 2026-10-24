@@ -2,7 +2,7 @@
 
 ## v0.21.8 - Proportional execution repairs (REQ-20 through REQ-23)
 
-Source-complete; public release and local installation pending.
+Released at v0.21.8 (PR #28); local Copilot/Codex/native 0.21.8 disk installations verified. Existing sessions need fresh instructions; disk identity is not loaded-session proof.
 
 - [x] Lead and CTO remove invented snapshot, circular checkpoint and duplicate phase-approval gates while preserving real host/Run/consent boundaries.
 - [x] Supported target-only window navigation stays with the exclusive input owner; missing UI evidence does not deny an independent CLI path.
