@@ -79,6 +79,16 @@ Score each **Pass / Concern / Fail** with a severity and cite evidence (a spec l
     Blocker when it displaces an available product acceptance criterion.
     Rewriting known-working behavior without a recorded reference and a parity
     test on the real flow before hardening is a Major concern.
+    Invented precaution gates (fresh VM backups for routine authorized experiments,
+    evidence of creation before authorized creation, duplicate phase approvals)
+    are Major, and Blockers when they displace an available acceptance action.
+    Preserve real host/Run/legal/destructive-operation constraints. Prefer supported
+    target-only window navigation by the existing exclusive input owner; missing
+    windows is not policy denial and does not invalidate independent CLI capability.
+    A screenshot is not VM recovery proof. Reconcile timed-out mutations before
+    retry, not with another backup ceremony. Distinguish instruction sent,
+    execution started, observed result and accepted outcome; pending delegation
+    or source-only tests cannot establish installed/native delivery.
 
 16. **Diagnostics, protocol leniency, and product copy** — failures carry the
     specific step and reason (redacted); collapsing distinct causes into one

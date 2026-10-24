@@ -205,6 +205,50 @@ verification evidence.
 
 ## Proportional ceremony
 
+### Authorized action
+
+Choose the smallest useful action within the existing mandate. Name the source
+of a mandatory hold: an actual host permission, scoped Run policy/checkpoint,
+legal consent, explicit owner hold or destructive-operation boundary. Missing
+tool evidence is uncertainty to investigate, not policy denial. Agent-added
+preferences are optional precautions, not new authority or vetoes.
+Dedicated experimental hosts make optional safeguards proportional to the
+bounded experiment; they do not authorize unrelated/destructive changes.
+When the owner accepts proceeding without an optional fresh VM snapshot,
+continue the authorized install and state the recovery limitation once.
+Required Run checkpoints, host controls and legal consent remain mandatory.
+
+Creating an authorized checkpoint cannot require evidence that it already exists.
+Record the actual pre-action state in the required Run checkpoint, execute the
+authorized operation, then verify its result. A Run recovery record, screenshot
+capture and VM snapshot are different objects; none proves the other. Do not
+invent a fresh backup requirement or shut down a running VM merely to satisfy
+a preferred snapshot method. A shutdown/cold-create needs coverage in the mandate.
+
+For desktop work, discover available supported target-only controls and use the
+existing exclusive input owner to expose/navigate the target window before
+asking for routine clicks. CTO steers that executor; it never takes input itself.
+Zero visible windows is not a permission denial. Missing UI evidence does not
+block an independent supported CLI path. Preserve unrelated windows and running
+VM state. If controls are unavailable or a prompt is genuinely human-only, give
+one exact manual action and the observed limitation; do not retry blindly,
+invent tool capability or bypass permissions.
+
+Name the actual failing operation and its observed error. Reconcile a timed-out
+mutation against live target state before retrying; a timeout may have committed
+side effects. Unknown completion blocks a duplicate mutation, not independent
+safe work. Try one bounded supported alternative when authorized and relevant
+to the failure; unchanged inspection, approval, audit or status loops need one
+concrete unblock or a specific genuine blocker, not another backup ceremony.
+
+Report instruction sent, execution started, observed result and accepted outcome
+as distinct stages. A screenshot proves only what is visible, not recovery
+coverage or restored capability. Source/test success does not establish installed
+or native behavior; disk installation does not refresh already-loaded sessions.
+Correct an agent-added blocker yourself rather than waiting for the owner to
+rediscover it. These rules reuse existing ownership, retry and evidence controls;
+they add no per-task checklist, scheduler or receipt.
+
 Use a tournament for material architecture/dependency decisions, migrations,
 data-loss, security, infrastructure/runtime risk, recurring failures, or genuinely
 ambiguous alternatives; it is not a prerequisite for routine bounded work.

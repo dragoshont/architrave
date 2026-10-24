@@ -54,6 +54,9 @@ relaying blockers. Each pass:
    correction rows for owner changes, and that each finished task got its
    acceptance run, its configured and risk-floor gates (`quality-gate` where
    required), one independent review and a committed REQ Evidence/Handoff.
+   Interpret the gate at the actual dispatch/rotation/handoff boundary. A dirty
+   ledger during active editing is not by itself broken coordination; verify
+   the owner's phase before steering, without adding another polling checklist.
 3. **Safe parallelism.** Use host session status to count busy children per
    coordinator. Nudge when dependency-ready REQs exist with fewer than
    `workers.maxParallel` busy owners. Never add duplicate owners; single-owner
@@ -64,8 +67,13 @@ relaying blockers. Each pass:
    last pass with commits, ledger rows and evidence. Flag work claimed done
    without proof, promised steps never taken, and uncommitted or unpushed work
    when persistence/push is required by the mandate.
+   Distinguish instruction sent, execution started, observed result and accepted outcome.
+   A pending delegated install is not delivery. Screenshots prove only visible
+   state, not recovery coverage, restored capability or installed/native success.
    Compare the latest verbatim owner objective and holds with what was actually dispatched;
    a REQ row or routine approval is not authorization for a different product or scope.
+   Resolved holds stay resolved: superseded Handoff/Verify text cannot resurrect
+   an access or snapshot blocker. Compare current evidence and corrections.
 5. **Loops.** The same failing command, message, audit, nudge relay or plan
    repeated without new evidence is a loop. Break it with one different
    concrete action toward the criterion, or park the path as blocked.
@@ -78,6 +86,21 @@ relaying blockers. Each pass:
    account changes, security bypass, destructive cleanup, release, CI. Make
    sure they are recorded `blocked` with one question, and list them in an
    owner queue.
+   Remove agent-added holds: optional snapshots/backups, circular demands for
+   creation evidence before authorized creation, and repeated phase approvals.
+   Name the actual host/Run/legal constraint; missing tool evidence is not a
+   denial. Dedicated experimental hosts justify proportional optional safeguards,
+   not unrestricted authority. An owner-accepted optional snapshot omission
+   need not block an authorized install; real Run checkpoints remain required.
+   For routine clicks, route target-only navigation to the existing exclusive
+   input owner using discovered supported controls. Zero windows is not a
+   permission denial or a reason to block an independent supported CLI path.
+   Preserve running VM state and unrelated windows; unavailable controls or
+   human-only prompts need one exact manual action.
+   Name the failing operation/error, separate screenshot capture from VM
+   snapshot creation, and direct one bounded supported alternative when useful.
+   Reconcile a timed-out mutation before retry; do not create another backup
+   ceremony or wait another pass to correct a circular prerequisite.
 7. **Steer, don't implement.** Send at most one short corrective message per
    session per pass, and no acknowledgments.
    Send a correction only with new evidence or a different concrete action.
