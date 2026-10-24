@@ -98,6 +98,17 @@ its real blockers are known, and keep the task list to implementation, checks,
 integration, and actual dependencies. The lead reports what the product can do
 now and what proves it, not how many plans, tests, or receipts exist.
 
+The lead and CTO challenge invented precaution gates: optional backups or VM
+snapshots do not block routine already-authorized experiments, and phase
+boundaries do not request the same approval again. Dedicated experimental hosts
+make optional safeguards proportional, not unrestricted. Actual host permissions,
+Run checkpoints, consent and destructive-operation boundaries still apply.
+For routine desktop steps the lead prefers supported target-only window control
+through the existing exclusive input owner; CTO steers that owner, never takes
+input. Missing windows is not permission denial. Reports distinguish instructions
+sent, execution started, observed results and accepted outcomes; screenshots and
+passing source tests do not prove installed/native success.
+
 Independent tasks can continue while another waits for sign-in, signing,
 consent, or another human decision. Scoped permissions and recorded deployment
 results keep external actions separate from ordinary code edits. Uncertain

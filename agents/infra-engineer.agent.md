@@ -33,6 +33,10 @@ Open `architrave.config.json` → `iac`: `kind` (kubernetes / bicep / terraform 
 - Treat identity, network, destructive data, signing, and secret-store changes
 	as R4. Honor `confirmationRequired` and ExternalCheckpoint policy.
 - Reproduce the repo's IaC kind/conventions; do NOT introduce a new IaC tool.
+- A Run checkpoint records pre-side-effect state, not a mandatory fresh VM
+  snapshot. Do not invent backup gates or require completed-creation evidence
+  before an authorized checkpoint can be created. Keep actual Run policy,
+  rollback and confirmation requirements; use execution policy's Authorized action guidance.
 
 ## Output
 Return the IaC diff, plan/what-if, policy results, blast radius, Run policy

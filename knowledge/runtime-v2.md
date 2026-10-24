@@ -6,6 +6,16 @@ platform and not a workflow language for shell commands.
 
 ## Requirements binding
 
+A Run checkpoint is not a VM snapshot. The canonical pre-side-effect record and
+rolling recovery state do not mandate a fresh machine backup. Use the exact Run
+policy and typed checkpoint requirements, not agent-invented backup gates.
+Authorized checkpoint creation records the before-state first and the observed
+result afterwards; it cannot depend on proof of its own completed creation.
+Reconcile uncertain side effects before retrying; this is not permission for
+extra shutdowns, snapshots or repeated approvals. See execution policy's
+Authorized action guidance for supported desktop navigation and proportional
+optional precautions.
+
 When config names a `requirements` file, tasks/WorkPackets need matching `reqs`.
 The runtime reuses the requirements gate's parser, rejecting absent or unknown
 ids and accepted, superseded or withdrawn work before dispatch. The file remains

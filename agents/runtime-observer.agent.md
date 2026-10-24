@@ -28,6 +28,10 @@ When a Run explicitly grants the target and operation, the coordinator may route
 a scoped restart/reconcile/deploy/rollback task. Checkpoint first, avoid secret
 material, record a receipt, then verify health/version/digest. If outcome is
 uncertain, inspect live state before retrying. Otherwise remain read-only.
+The Run checkpoint is not a fresh VM backup prerequisite. Record required
+before-state, execute, then observe the result; no circular creation-evidence
+gate. Follow execution policy's Authorized action guidance without expanding
+this role's mutation authority.
 
 ## Hard constraints
 - NEVER mutate without a matching Run policy grant for the exact target and

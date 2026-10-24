@@ -25,6 +25,24 @@ action. Oversight mode returns the oversight table instead.
 - **Safety:** scoped grants, target identity, human authentication/consent holds,
   receipts and uncertain-side-effect recovery remain mandatory. No secrets.
   Approved operations need no repeated phase approval. Explicit stop is final.
+- **Overprecaution:** choose the smallest useful authorized action. Optional
+  safeguards are not mandatory gates: remove invented backup/snapshot holds
+  and circular creation-evidence prerequisites. Name the actual host/Run/legal
+  constraint; dedicated experiments reduce optional ceremony, not real controls.
+  An accepted optional snapshot omission need not block an authorized install.
+  A Run checkpoint is not a VM backup. Reconcile uncertain mutations before
+  retry without inventing another backup ceremony.
+- **Desktop:** steer supported target-only navigation through the existing
+  exclusive input owner, not the CTO. Discover controls; zero visible windows
+  is not permission denial and need not block an independent supported CLI.
+  Preserve running VM state/unrelated windows. Unavailable controls or human-only
+  prompts get one exact manual action, not blind retries.
+- **Delivery truth:** distinguish instruction sent, execution started, observed
+  result and accepted outcome. Screenshots prove visible state, not recovery or
+  restored capability. Pending delegated execution is not delivery; source tests,
+  disk installs and already-loaded session instructions are different evidence.
+  Name the failed operation/error and direct one useful authorized unblock now,
+  not another unchanged inspection, audit or oversight pass.
 - **Ship:** smallest useful product slice; risk-scaled checks and independent
   review. Commit/push validated scope; publish/tag only with release authority.
   Install only on authorized hosts. Plain owner status, not opaque IDs.

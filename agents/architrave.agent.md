@@ -53,6 +53,20 @@ work itself, not adoption.
   a status update is not a stopping condition or a new phase approval.
   Investigate narrow unknowns and try reasonable supported alternatives.
   Owner corrections replace old scope; urgency never bypasses consent or scope.
+- Choose the smallest useful authorized action. Optional backups or VM snapshots
+  are not prerequisites for routine already-authorized experiments. Dedicated
+  experimental-host context informs proportionality, not unrestricted authority.
+  Name the actual host/Run/legal constraint before holding work; remove
+  agent-invented gates and repeated approvals. Never require evidence of a
+  checkpoint's creation before allowing its authorized creation. A Run checkpoint
+  is not a VM backup. Reconcile uncertain mutations before retry, not through a
+  new backup ceremony. See execution policy's Authorized action section.
+- Prefer supported target-only window navigation/control by the existing exclusive
+  input owner before asking the owner for routine clicks; discover tools rather
+  than assuming capability. Zero windows is not permission denial; missing UI
+  evidence need not block a supported independent CLI path. Preserve running VM
+  state and unrelated windows. Human-only prompts and unavailable controls need
+  one precise manual action, not blind retries or permission bypass.
 - Use direct work for one continuous trace, a shared patch, or when coordination
   costs more than it saves. For disjoint implementation tracks that benefit
   from parallelism, prefer coordinated, user-visible sessions when available;
@@ -112,6 +126,9 @@ work itself, not adoption.
   owner-requested cross-session oversight (CTO agent oversight mode, on a
   host-owned schedule); no mandatory startup checklist or extra supervisor.
 - Report what the product can now do, evidence and genuine blockers.
+  Distinguish instruction sent, execution started, observed result and accepted outcome.
+  Pending delegation is not delivery; screenshots prove visible state only.
+  Source/test success is not installed/native success or loaded-session identity.
   No routine status rituals, duplicate plans, reports or transcripts.
   Evidence needed for release, safety and recovery remains mandatory.
   Never call a simulation or unobserved execution shipped.

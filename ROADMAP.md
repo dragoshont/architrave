@@ -1,5 +1,11 @@
 # Roadmap
 
+## v0.21.7 - Proportional execution repairs
+
+- [x] Lead and CTO remove invented snapshot, circular checkpoint and duplicate phase-approval gates while preserving real host/Run/consent boundaries.
+- [x] Supported target-only window navigation stays with the exclusive input owner; missing UI evidence does not deny an independent CLI path.
+- [x] Adjacent worker, backend, infra, observer and rubric contracts distinguish precautions from constraints and activity from observed delivery.
+
 ## v0.20.1 - Review hardening
 
 - [x] Cross-worktree requirement claims; prose SPEC.md not adopted; fail-closed missing source.

@@ -27,11 +27,39 @@ work_skill = (root / "skills/architrave-work/SKILL.md").read_text(encoding="utf-
 long_programs = (root / "docs/long-programs.md").read_text(encoding="utf-8")
 tournament_agent = (root / "agents/tournament-analyst.agent.md").read_text(encoding="utf-8")
 generator = (root / "scripts/generate-codex-agents.py").read_text(encoding="utf-8")
+planner = (root / "agents/backend-planner.agent.md").read_text(encoding="utf-8")
+implementer = (root / "agents/backend-implementer.agent.md").read_text(encoding="utf-8")
+infra = (root / "agents/infra-engineer.agent.md").read_text(encoding="utf-8")
+observer = (root / "agents/runtime-observer.agent.md").read_text(encoding="utf-8")
 codex_roles = "\n".join(
     path.read_text(encoding="utf-8") for path in sorted((root / ".codex/agents").glob("*.toml"))
 )
 
 required = {
+    "backend no phase ceremony": (planner, "all covered dependency-ready slices may continue without new phase approvals"),
+    "backend no ledger prerequisite": (implementer, "use them rather than demanding another artifact"),
+    "infra no circular backup": (infra, "not a mandatory fresh VM snapshot"),
+    "observer no circular backup": (observer, "no circular creation-evidence gate"),
+    "lead proportional action": (agent, "smallest useful authorized action"),
+    "lead no invented snapshot": (agent, "Optional backups or VM snapshots are not prerequisites"),
+    "lead desktop owner": (agent, "existing exclusive input owner"),
+    "lead evidence stages": (agent, "instruction sent, execution started, observed result and accepted outcome"),
+    "policy precaution source": (execution, "Name the source of a mandatory hold"),
+    "policy circular checkpoint": (execution, "Creating an authorized checkpoint cannot require evidence that it already exists"),
+    "policy experimental host": (execution, "Dedicated experimental hosts make optional safeguards proportional"),
+    "policy skipped snapshot": (execution, "When the owner accepts proceeding without an optional fresh VM snapshot"),
+    "policy window discovery": (execution, "Zero visible windows is not a permission denial"),
+    "policy independent CLI": (execution, "Missing UI evidence does not block an independent supported CLI path"),
+    "policy timeout": (execution, "Reconcile a timed-out mutation against live target state before retrying"),
+    "policy screenshot truth": (execution, "A screenshot proves only what is visible"),
+    "policy manual fallback": (execution, "one exact manual action"),
+    "cto remove invented holds": (cto_agent, "Remove agent-added holds"),
+    "cto desktop steering": (cto_agent, "route target-only navigation to the existing exclusive input owner"),
+    "cto stage truth": (cto_agent, "instruction sent, execution started, observed result and accepted outcome"),
+    "cto skill precautions": (cto_skill, "Optional safeguards are not mandatory gates"),
+    "worker proportionality": (work_skill, "Do not invent backup, snapshot or phase-approval prerequisites"),
+    "runtime checkpoint distinction": (runtime_pack, "A Run checkpoint is not a VM snapshot"),
+    "rubric overprecaution": (rubric, "Invented precaution gates"),
     "fresh refs before resuming": (agent, "validates current component refs and acceptance evidence"),
     "commit-based rotation": (agent, "committed with `requirements --handoff` passing, before rotation or hand-off"),
     "scratch is not the ledger": (agent, "Worktree-local scratch such as SDD `progress.md` is a cache, never the ledger"),
@@ -194,6 +222,66 @@ required = {
 }
 
 missing = [name for name, (text, phrase) in required.items() if not contains_guidance(text, phrase)]
+# These fixtures protect instruction contracts, not live agent/tool behavior.
+precaution_scenarios = {
+    "authorized install, optional snapshot declined": (
+        execution,
+        ("When the owner accepts proceeding without an optional fresh VM snapshot",
+         "continue the authorized install", "Required Run checkpoints, host controls and legal consent remain mandatory"),
+        ("Always require a fresh VM snapshot before installation",)),
+    "checkpoint creation needs before-state, not its own result": (
+        execution,
+        ("Creating an authorized checkpoint cannot require evidence that it already exists",
+         "Record the actual pre-action state", "then verify its result"),
+        ("Require fresh-checkpoint creation proof before permitting checkpoint creation",)),
+    "zero windows, supported independent CLI": (
+        execution,
+        ("Zero visible windows is not a permission denial",
+         "Missing UI evidence does not block an independent supported CLI path",
+         "existing exclusive input owner", "Preserve unrelated windows and running VM state"),
+        ("Zero windows means permission denied", "Ask the owner to click before trying supported window controls")),
+    "human-only prompt or no control": (
+        execution,
+        ("If controls are unavailable or a prompt is genuinely human-only",
+         "one exact manual action", "do not retry blindly"),
+        ("Bypass human-only prompts",)),
+    "RPC timeout may have created snapshot": (
+        execution,
+        ("Reconcile a timed-out mutation against live target state before retrying",
+         "Unknown completion blocks a duplicate mutation, not independent safe work"),
+        ("Retry timed-out mutations immediately",)),
+    "delegated install still pending": (
+        agent,
+        ("instruction sent, execution started, observed result and accepted outcome",
+         "Pending delegation is not delivery", "Source/test success is not installed/native success"),
+        ("An instruction sent proves delivery",)),
+}
+
+
+def scenario_supported(text, required_phrases, forbidden_phrases):
+    return all(contains_guidance(text, phrase) for phrase in required_phrases) and not any(
+        contains_guidance(text, phrase) for phrase in forbidden_phrases
+    )
+
+
+for name, (text, positive, negative) in precaution_scenarios.items():
+    if not scenario_supported(text, positive, negative):
+        missing.append(f"precaution scenario: {name}")
+    normalized = " ".join(text.split())
+    for phrase in positive:
+        mutant = normalized.replace(" ".join(phrase.split()), "REMOVED", 1)
+        if scenario_supported(mutant, positive, negative):
+            missing.append(f"scenario misses removed rule: {name}: {phrase}")
+    for phrase in negative:
+        if scenario_supported(text + "\n" + phrase, positive, negative):
+            missing.append(f"scenario accepts contradictory rule: {name}: {phrase}")
+
+for name, text, stale in (
+    ("backend one-phase cap", planner, "At most one phase should be approved"),
+    ("backend unconditional ledger gate", implementer, "If the plan is missing a phase ledger"),
+):
+    if contains_guidance(text, stale):
+        missing.append(name)
 for name, (text, phrase) in required.items():
     reflowed = "\n\t".join(text.split())
     if contains_guidance(text, phrase) != contains_guidance(reflowed, phrase):

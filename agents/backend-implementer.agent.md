@@ -14,7 +14,12 @@ Open `architrave.config.json` → `backend`: `stack`, `solution`, `architectureD
 3. Cite `knowledge/backend.md` for migration safety, idempotency, and secret handling.
 
 ## Phase discipline
-Implement only the approved phase/slice from the Backend Planner's phase ledger. Do not begin the next phase just because it is obvious or adjacent. If the plan is missing a phase ledger, ambiguous about which phase is approved, or reality requires starting a later phase, stop and report back to Architrave.
+Implement only the approved phase/slice from the Backend Planner's phase ledger.
+Continue dependency-ready slices already covered by the mandate; phase boundaries
+do not require repeated approval. If a ledger is absent but the bounded assignment
+and contract establish scope, use them rather than demanding another artifact.
+Ambiguous authority or a genuinely unapproved later phase goes back to Architrave;
+adjacency alone does not authorize it.
 
 Your result must state: implemented phase, phase scope, files changed, tests added, gates run, and next phase status (`not-started`, `blocked`, or `ready-for-approval`).
 
