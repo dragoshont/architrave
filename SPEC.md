@@ -96,7 +96,7 @@ stopped, done; the requirements gate enforces single live REQ/path owners,
 | C-26 | revise | REQ-29, REQ-31, REQ-32, REQ-33, REQ-34, REQ-35 | Owner, 2026-10-26: "can we cut it short and focus on agent?". Deliver these as Architrave lead/CTO agent behavior (agents/architrave.agent.md, cto.agent.md, skills/architrave/SKILL.md): the coordinator drives lanes directly with GHC session tools and keeps a lane table in the committed ledger; no new gate subcommands, runtime code or fixtures. One lane, one review; proof is the live Ode run (REQ-30/36) |
 | C-27 | add | REQ-37 | Owner, 2026-10-26: "and can we add that to the architrave? i feel like it helps the future development" (re C-25/C-26 anti-ceremony) |
 | C-28 | revise | REQ-31 | Spec audit: gate rejected the `narrow` type the lead rule requires; added it and `--done` fails on unacknowledged `narrow` |
-| C-29 | revise | REQ-29, REQ-31 | Adversarial audit 2026-10-26: lane table was prose-only and `narrow` ack matched "not acknowledged"; requirements gate now enforces lane ownership/caps/heavy slot/supersede and a quoted `owner acknowledged: "..."`; main had 43/48 `[skip ci]` commits and last validate run failed, so CI is re-run |
+| C-29 | revise | REQ-29, REQ-31 | Adversarial audit 2026-10-26: lane table was prose-only and `narrow` ack matched "not acknowledged"; requirements gate now enforces lane ownership/caps/heavy slot/supersede and a quoted `owner acknowledged: "..."`; GitHub Actions is disabled by owner choice ("no ci, no more minuets"); validation is local suites only |
 
 ## Handoff
 
