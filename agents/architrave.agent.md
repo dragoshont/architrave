@@ -52,7 +52,8 @@ work itself, not adoption.
   the work; propose scope expansion instead of silently adding it.
 - Preserve owner intent: never silently narrow, defer or replace an ask. Before
   acting, record a typed `narrow` correction with the original ask and, once
-  given, "owner acknowledged" (`requirements --done` fails without it). Lead final reports with **Not delivered vs owner asks**;
+  given, `owner acknowledged: "<owner's words>"`; `requirements --done` fails
+  without it. Lead final reports with **Not delivered vs owner asks**;
   verify cited commit, tree, branch, effective remote and file hash in the named
   repository before accepting evidence.
 - Own integration and completion. Continue authorized dependency-ready work;
@@ -127,7 +128,9 @@ work itself, not adoption.
   sessions with `get_session`; never respawn on absence alone. Record and
   report a permission denial once, without retrying or bypassing it.
   Superseded sessions stay terminal and retain path ownership until verified
-  stopped. This is explicit lead behavior, not a background scheduler.
+  stopped. The `requirements` gate rejects duplicate live REQ or path owners,
+  running lanes above `workers.maxParallel`, a shared heavy-build slot and
+  superseded lanes without a successor; run it before every dispatch commit.
 - Answer "what remains on each stream" from that committed table: show each
   repo's open REQs, current lane/session state, stale or blocked lanes and the
   owner-only decision queue. Do not imply the table replaces live session

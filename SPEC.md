@@ -57,7 +57,9 @@ the Markdown table remains parseable. `preflight evidence` records the exact
 host permission error when denied. `preflight reported` is committed as `yes`
 after the coordinator reports that denial once. A `superseded` lane keeps its
 session ID until the coordinator verifies it is stopped; it cannot be
-dispatched or resurrected.
+dispatched or resurrected. States: ready, running, blocked, idle, superseded,
+stopped, done; the requirements gate enforces single live REQ/path owners,
+`workers.maxParallel` running lanes and one running heavy build.
 
 | Lane | Repo | Project ID | Branch | Push target | REQ IDs | Depends on | Session ID | Assignment ID | State | Mutable paths | Heavy build | Preflight | Preflight evidence | Preflight reported | Owner-only decisions | Superseded by |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -94,6 +96,7 @@ dispatched or resurrected.
 | C-26 | revise | REQ-29, REQ-31, REQ-32, REQ-33, REQ-34, REQ-35 | Owner, 2026-10-26: "can we cut it short and focus on agent?". Deliver these as Architrave lead/CTO agent behavior (agents/architrave.agent.md, cto.agent.md, skills/architrave/SKILL.md): the coordinator drives lanes directly with GHC session tools and keeps a lane table in the committed ledger; no new gate subcommands, runtime code or fixtures. One lane, one review; proof is the live Ode run (REQ-30/36) |
 | C-27 | add | REQ-37 | Owner, 2026-10-26: "and can we add that to the architrave? i feel like it helps the future development" (re C-25/C-26 anti-ceremony) |
 | C-28 | revise | REQ-31 | Spec audit: gate rejected the `narrow` type the lead rule requires; added it and `--done` fails on unacknowledged `narrow` |
+| C-29 | revise | REQ-29, REQ-31 | Adversarial audit 2026-10-26: lane table was prose-only and `narrow` ack matched "not acknowledged"; requirements gate now enforces lane ownership/caps/heavy slot/supersede and a quoted `owner acknowledged: "..."`; main had 43/48 `[skip ci]` commits and last validate run failed, so CI is re-run |
 
 ## Handoff
 
@@ -106,5 +109,5 @@ Previous release: REQ-24 accepted/released at https://github.com/dragoshont/arch
 Previous release: REQ-20..23 accepted and released at https://github.com/dragoshont/architrave/releases/tag/v0.21.8 (PR #28, merge/tag e2dd902503e0bf0c9e1ba958db0a63e5d33f4cf9). Downloaded tar.gz SHA256 2d39edd8182ee21c7619a62c0892ff679cb07f2dad6d4d668268db4e37d3ba69 and zip afc379e8548b7cf9a7eb6df2ce557bb131313221d3a5213da20b5f660dc235ce pass SHA256SUMS; both archive formats' changed files match merged source. Copilot and Codex each reported one public enabled 0.21.8 identity at that release; native all 15 pins verified. Full local manifest/browser checks and independent review passed. No VM/desktop work performed. Detailed evidence remains in history; current installation identities are above.
 
 Previous release: REQ-16..19 accepted at v0.21.7 (PR #27, af18af928cec19a412ffb566145d8aaeac6d3f0b); full release/install evidence remains in git history. Their IDs were preserved when this repair branch's overlapping REQs were remapped to REQ-20..23.
-Failed approaches: blank lines split new REQ/correction rows away from their table headers (independent review REVISE); repaired and verified all 19 rows/C-10 are parsed and --done fails while REQ-19 is pending. Immediate merge after a second push briefly returned not mergeable; refreshed GitHub state was CLEAN/MERGEABLE and merge succeeded. Extracted kit requirements validation in agent scratch correctly fails the existing repository-location guard; installed behavior was instead exercised in isolated temporary git repositories. A single shared timestamp across worktrees missed divergent siblings and rebases; git-ignored per-worktree ledgers duplicate on rotation.
+Failed approaches: blank lines split new REQ/correction rows away from their table headers (independent review REVISE); repaired and verified all 19 rows/C-10 are parsed and --done fails while REQ-19 is pending. Immediate merge after a second push briefly returned not mergeable; refreshed GitHub state was CLEAN/MERGEABLE and merge succeeded. Extracted kit requirements validation in agent scratch correctly fails the existing repository-location guard; installed behavior was instead exercised in isolated temporary git repositories. A single shared timestamp across worktrees missed divergent siblings and rebases; git-ignored per-worktree ledgers duplicate on rotation. Text-only lane rules (C-26) left multi-lane safety unenforced (C-29).
 Verify: for this Architrave checkout, run `python3 gates/gate_runner.py requirements --handoff`, `python3 gates/gate_runner.py quality-gate`, and `python3 scripts/check_manifests.py`. Run `requirements --done --handoff` only against the live Ode program ledger for REQ-30; this SPEC has unrelated open REQs.

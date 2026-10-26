@@ -295,6 +295,58 @@ def parse_requirements(text: str) -> tuple[dict[str, dict[str, str]], list[dict[
     return reqs, corrections, errors
 
 
+LANE_COLUMNS = ("lane", "repo", "project id", "branch", "push target", "req ids", "depends on", "session id",
+                "assignment id", "state", "mutable paths", "heavy build", "preflight", "preflight evidence",
+                "preflight reported", "owner-only decisions", "superseded by")
+LANE_STATES = {"ready", "running", "blocked", "idle", "superseded", "stopped", "done"}
+NARROW_ACK = re.compile(r"owner acknowledged:\s*[\"\u201c]\S", re.I)
+
+
+def lane_errors(text: str, reqs: dict[str, dict[str, str]], max_parallel: int) -> list[str]:
+    """Enforce the committed GHC lane table: one live owner per REQ and path, caps and terminal supersede."""
+    errors: list[str] = []
+    lanes = [dict(zip(LANE_COLUMNS, cells + [""] * len(LANE_COLUMNS)))
+             for table in markdown_tables(text) if [c.lower() for c in table[0]][:3] == ["lane", "repo", "project id"]
+             for cells in table[1:]]
+    live = [lane for lane in lanes if lane["state"].lower() not in {"stopped", "done"}]
+    req_owner: dict[str, str] = {}
+    paths: list[tuple[str, str, str]] = []
+    for lane in lanes:
+        name, state = lane["lane"], lane["state"].lower()
+        if state not in LANE_STATES:
+            errors.append(f"lane {name} state {lane['state']!r} is not one of {', '.join(sorted(LANE_STATES))}")
+        if state == "superseded" and lane["superseded by"] in {"", "-"}:
+            errors.append(f"lane {name} is superseded without 'Superseded by'")
+        try:
+            if not isinstance(json.loads(lane["owner-only decisions"] or "[]"), list):
+                raise ValueError
+        except ValueError:
+            errors.append(f"lane {name} 'Owner-only decisions' is not a JSON array")
+        for rid in re.findall(r"REQ-[A-Za-z0-9_.-]+", lane["req ids"]):
+            if rid not in reqs:
+                errors.append(f"lane {name} references unknown {rid}")
+    for lane in live:
+        for rid in re.findall(r"REQ-[A-Za-z0-9_.-]+", lane["req ids"]):
+            if rid in req_owner:
+                errors.append(f"{rid} is owned by live lanes {req_owner[rid]} and {lane['lane']}")
+            req_owner[rid] = lane["lane"]
+        for raw in lane["mutable paths"].split(","):
+            path = raw.strip().strip("/")
+            if path in {"", "-"}:
+                continue
+            for repo, other, owner in paths:
+                if repo == lane["repo"] and (path == other or path.startswith(other + "/") or other.startswith(path + "/")):
+                    errors.append(f"lanes {owner} and {lane['lane']} both own {lane['repo']}:{path}")
+            paths.append((lane["repo"], path, lane["lane"]))
+    running = [lane for lane in live if lane["state"].lower() == "running"]
+    if len(running) > max_parallel:
+        errors.append(f"{len(running)} running lanes exceed workers.maxParallel={max_parallel}")
+    heavy = [lane["lane"] for lane in running if lane["heavy build"].lower() == "yes"]
+    if len(heavy) > 1:
+        errors.append(f"heavy-build slot held by several running lanes: {', '.join(heavy)}")
+    return errors
+
+
 DEFAULT_REQUIREMENTS = "SPEC.md"
 REQ_TABLE_HEADER = re.compile(r"^\|\s*ID\s*\|.*\|\s*Status\s*\|", re.IGNORECASE | re.MULTILINE)
 
@@ -454,6 +506,8 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
         return 1
     text = path.read_text(encoding="utf-8-sig")
     reqs, corrections, errors = parse_requirements(text)
+    workers = load_config(root).get("workers") or {}
+    errors.extend(lane_errors(text, reqs, int(workers.get("maxParallel", 3)) if isinstance(workers, dict) else 3))
     ids = [part.strip() for part in (claim or "").split(",") if part.strip()]
     if expect is not None and not handoff:
         errors.append("--expect requires --handoff")
@@ -489,8 +543,8 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
         pending = [rid for rid, row in reqs.items() if row["status"].lower() in REQ_ACTIVE - {"accepted"}]
         if pending:
             errors.append(f"not done: {len(pending)} active REQs are not accepted: {', '.join(pending[:20])}")
-        unacked = [c["id"] for c in corrections if c["type"].lower() == "narrow"
-                   and not re.search(r"\backnowledged\b", c["change"], re.I)]
+        unacked = [c["id"] for c in corrections
+                   if c["type"].lower() == "narrow" and not NARROW_ACK.search(c["change"])]
         if unacked:
             errors.append(f"not done: narrow corrections lack owner acknowledgement: {', '.join(unacked)}")
     if claim is not None and not errors:

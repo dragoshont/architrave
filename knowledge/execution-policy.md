@@ -159,8 +159,11 @@ assignment IDs and state to the ledger. After restart, reconcile against
 sessions; those states never trigger automatic respawn or completion. Record
 the exact permission denial and report it once; never retry unchanged or bypass
 host permissions. A superseded lane is not resurrected, and its mutable paths
-remain owned until its session is verified stopped. This is explicit lead
-behavior, not a daemon or polling loop.
+remain owned until its session is verified stopped. Lane states are `ready`,
+`running`, `blocked`, `idle`, `superseded`, `stopped` and `done`; only
+`stopped` and `done` release ownership. `python gates/gate_runner.py
+requirements` enforces this table. This is explicit lead behavior, not a daemon
+or polling loop.
 
 Run `python gates/gate_runner.py components` before each dispatch and resolve
 the branch's effective push target before the first write: when `origin` is a

@@ -148,8 +148,33 @@ class ComponentGate(unittest.TestCase):
         narrowed = example.replace("| C-01 | supersede |", "| C-02 | narrow | REQ-01 | Owner asked X; doing Y |\n| C-01 | supersede |")
         code, out = self.requirements(narrowed, "--done")
         self.assertIn("narrow corrections lack owner acknowledgement: C-02", out)
-        code, out = self.requirements(narrowed.replace("doing Y", "doing Y; owner acknowledged"), "--done")
+        code, out = self.requirements(narrowed.replace("doing Y", "doing Y; owner not acknowledged"), "--done")
+        self.assertIn("lack owner acknowledgement: C-02", out)
+        code, out = self.requirements(narrowed.replace("doing Y", 'doing Y; owner acknowledged: "fine, Y"'), "--done")
         self.assertNotIn("lack owner acknowledgement", out)
+
+    def test_lane_table_enforces_single_live_owner_caps_and_supersede(self):
+        header = ("\n| Lane | Repo | Project ID | Branch | Push target | REQ IDs | Depends on | Session ID | "
+                  "Assignment ID | State | Mutable paths | Heavy build | Preflight | Preflight evidence | "
+                  "Preflight reported | Owner-only decisions | Superseded by |\n" + "|---" * 17 + "|\n")
+
+        def lane(name, state, reqs, paths, heavy="no", sup="-", decisions="[]"):
+            return (f"| {name} | me/app | p1 | b | private | {reqs} | - | s | a | {state} | {paths} | "
+                    f"{heavy} | ok | - | no | {decisions} | {sup} |\n")
+
+        example = EXAMPLE.read_text()
+        good = example + header + lane("L1", "running", "REQ-01", "src/ui", "yes") + lane("L2", "stopped", "REQ-01", "src/ui")
+        code, out = self.requirements(good)
+        self.assertEqual(code, 0, out)
+        bad = (example + header + lane("L1", "running", "REQ-01", "src", "yes") + lane("L2", "running", "REQ-01,REQ-99", "src/ui", "yes")
+               + lane("L3", "running", "REQ-04", "docs") + lane("L4", "running", "-", "x") + lane("L5", "superseded", "-", "-")
+               + lane("L6", "paused", "-", "-", decisions="{}"))
+        code, out = self.requirements(bad)
+        self.assertEqual(code, 1, out)
+        for text in ("REQ-01 is owned by live lanes L1 and L2", "lanes L1 and L2 both own me/app:src/ui",
+                     "unknown REQ-99", "4 running lanes exceed workers.maxParallel=3", "heavy-build slot held by several",
+                     "L5 is superseded without", "L6 state 'paused'", "L6 'Owner-only decisions' is not a JSON array"):
+            self.assertIn(text, out)
 
     def test_spec_md_is_the_default_requirements_file_and_checks_validate_it(self):
         (self.hub / "architrave.config.json").write_text(json.dumps(
