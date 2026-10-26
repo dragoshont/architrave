@@ -82,6 +82,7 @@ RUNTIME_TESTS = (
     'scripts/test-native-review.py',
     'scripts/test-quality-cadence.py',
     'scripts/test-ribbon.py',
+    'scripts/test-program-board.py',
     'scripts/test-invariant-engine.py',
     'scripts/test-legibility.py',
     'scripts/test-workspaces.py',

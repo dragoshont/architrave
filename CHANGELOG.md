@@ -5,7 +5,16 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
-## 0.21.15
+## 0.21.16
+
+- Program board: `python harness/program_board.py --ledger <dir> --session <coordinator-id> --output board.html`
+  renders a compact side-panel page for the browser canvas: overview, one
+  rectangle per lane with a square per REQ coloured by ledger status, and how
+  the coordinator and its child sessions ran over time with each session's
+  tokens, peak context against the limit, and model and wall minutes. Reads the requirements file and local
+  session logs only. Replaces the Route Ribbon as the lead's default panel; the
+  Route Ribbon stays for adopted Runs.
+
 
 - Delegated work defaults to visible child sessions (Copilot app sidebar via
   `create_session`) without the owner asking; hidden native subagents only for

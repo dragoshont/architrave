@@ -201,8 +201,13 @@ extensions and canvases:
 
 | Panel | What it shows |
 |---|---|
+| **Program board** | For a coordinated program, a compact side-panel view: overview, one rectangle per lane with a square per REQ coloured by ledger status, and how the coordinator and its child sessions ran over time with each session's tokens, peak context against the limit, and model and wall minutes. Generated on request with `python harness/program_board.py` and opened in the browser canvas — [docs](docs/program-board.md). |
 | **Session companion** | Session activity, host-reported model and effort, context usage, and expandable SDK subagent rows with names, roles, assigned work, and lifecycle status. App-native child-session rows are not yet exposed by the host integration. |
 | **Route Ribbon** | Run snapshots showing the route, workstreams, blockers, stops, retries, and evidence, with completed work kept separate from verified product results. |
+
+Session companion and Route Ribbon are extension canvases; the Route Ribbon
+needs an adopted Run. The Program board needs only a requirements file with a
+lane table and local session logs.
 
 The session companion observes host events without recurring model calls.
 It follows the host theme, supports keyboard navigation and reduced motion,

@@ -102,7 +102,7 @@ Do not reload this contract or preload the table. Read only the relevant source:
 | Material competing options | `architrave-tournament` |
 | Stall or feasibility decision | `architrave-cto` inline, not another agent |
 | Durable knowledge update | `knowledge/learning-loop.md` |
-| Optional panels | `docs/route-ribbon.md` |
+| Program board (lanes, sessions, tokens, time) | `docs/program-board.md`; Run panels `docs/route-ribbon.md` |
 
 Use adopted canonical Runs when resumability or external operations require
 them, never solely because work is "non-trivial". Without adoption, use supported
