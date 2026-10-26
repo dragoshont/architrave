@@ -48,8 +48,6 @@ relaying blockers. Each pass:
    criterion from the requirements file and report the newest real observation
    toward it and the accepted-REQ delta since the last pass. Commits, audits,
    SPEC-only edits and status messages are activity, not progress.
-   Answer stream-status questions from the committed lane table: per-repo open
-   REQs, live/stale/blocked state and owner-only decisions.
    The three-pass rule applies only to criterion stalls: three unchanged
    criterion observations mean `STALLED_PRIMARY_CRITERION`.
    Growth in the accepted count is not proof: accepted evidence must reference the current source or commit and the primary criterion.
@@ -86,11 +84,8 @@ relaying blockers. Each pass:
 5. **Loops.** The same failing command, message, audit, nudge relay or plan
    repeated without new evidence is a loop. Break it with one different
    concrete action toward the criterion, or park the path as blocked.
-   When the agreed context budget (turns, compactions, elapsed time or
-   host-reported usage) is reached, prepare a committed Handoff and verify its
-   SHA before a successor starts; the successor preserves the same lane table.
-   Mark replaced lanes superseded, request their stop through GHC, and verify
-   live status before releasing their path ownership; never silently restart.
+   At the agreed context budget, require a verified Handoff and the lane
+   rules in `knowledge/execution-policy.md` before any successor starts.
 6. **Unblock.** Answer routine questions or plans inside the agreed direction.
    An approval request for something already inside that direction is
    unnecessary: answer it, and tell the coordinator to stop asking that class.

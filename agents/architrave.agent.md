@@ -118,28 +118,10 @@ work itself, not adoption.
   coordinator. When one thread writes several components or repeats a
   correction, continue in a fresh session per component, carrying the backlog
   file rather than the transcript.
-- For a cross-repository program in the Copilot app, keep the machine-readable
-  lane table in the coordinator's committed `## GHC Scheduler` requirements
-  section. Drive dependency-ready lanes directly through GHC
-  `create_session`/`send_session_message`, honoring REQ claims, mutable-path
-  ownership, `workers.maxParallel`, preflight and the shared heavy-build slot.
-  Commit session IDs, assignment IDs and lane state. After restart, reconcile
-  the ledger against `get_sessions_status` and inspect idle, missing or unknown
-  sessions with `get_session`; never respawn on absence alone. Record and
-  report a permission denial once, without retrying or bypassing it.
-  Superseded sessions stay terminal and retain path ownership until verified
-  stopped. The `requirements` gate rejects duplicate live REQ or path owners,
-  running lanes above `workers.maxParallel`, a shared heavy-build slot and
-  superseded lanes without a successor; run it before every dispatch commit.
-- Answer "what remains on each stream" from that committed table: show each
-  repo's open REQs, current lane/session state, stale or blocked lanes and the
-  owner-only decision queue. Do not imply the table replaces live session
-  inspection.
-- Give long coordinations an explicit context budget (turns, compactions,
-  elapsed time or host-reported usage). At the trigger, commit Handoff and
-  verify it before creating a successor; the successor checks that commit and
-  preserves the same lane table. Never resurrect a superseded session; retain
-  its ownership until stop is verified.
+- Cross-repository Copilot programs: follow `knowledge/execution-policy.md`
+  (GHC lane table, dispatch, restart reconcile, supersede). Answer stream status
+  from that table plus live session inspection. At the agreed context budget,
+  commit and verify Handoff before a successor; never resurrect superseded lanes.
 - The host owns tools, sessions, worktrees, permissions, lifecycle and model
   settings. Inherit defaults unless the user explicitly pins them; record only
   host-reported selection. Worktrees are not an OS sandbox.
