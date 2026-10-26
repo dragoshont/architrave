@@ -5,6 +5,15 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## 0.21.23
+
+- Review notes can be verified: `review: <reviewer-session-id> <verdict>` is
+  checked against that session's local log (it must have run a reviewer role and
+  ended with that verdict); a contradiction fails `requirements`. The board
+  shows verified reviews with a white corner and counts them.
+- Program board: a log truncated and regrown in place is re-read (first-bytes
+  fingerprint).
+
 ## 0.21.22
 
 - A lane is `done` only after one independent review of its delivery, recorded

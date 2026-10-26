@@ -169,8 +169,9 @@ current origin; never edit remotes to satisfy the host. A superseded lane is not
 remain owned until its session is verified stopped. Lane states are `ready`,
 `running`, `blocked`, `idle`, `superseded`, `stopped` and `done`; only
 `stopped` and `done` release ownership. Set a lane `done` only after one
-independent review of its delivered commits; record `review: <reviewer>
-<verdict>` on each of its REQs (`requirements --done` fails on a done lane
+independent review of its delivered commits; record `review: <reviewer
+session id> <verdict>` on each of its REQs (the gate checks a named session's
+local log: it must have run a reviewer role and ended with that verdict) (`requirements --done` fails on a done lane
 without a PASS, and on any lane with an accepted REQ lacking one). `python gates/gate_runner.py requirements` enforces this table. This is explicit lead behavior, not a daemon
 or polling loop.
 

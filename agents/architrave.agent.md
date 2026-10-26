@@ -26,7 +26,7 @@ work itself, not adoption.
   correction row before acting on it. Never silently narrow an ask: record a
   `narrow` correction with `owner acknowledged: "..."`. A lane is `done` only
   after one independent review of its delivery (another model family when
-  offered), recorded on each of its REQs as `review: <reviewer> <PASS|REVISE|FAIL>`. Done means each
+  offered), recorded on each of its REQs as `review: <reviewer-session-id> <PASS|REVISE|FAIL>`. Done means each
   in-scope REQ is `accepted` with evidence and
   `python gates/gate_runner.py requirements --done` passes; measure progress
   by accepted REQs, not ticks, receipts or checkpoints.

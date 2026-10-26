@@ -70,7 +70,9 @@ def read_session(sid: str, since: datetime | None = None) -> dict | None:
     key = (sid, since)
     state = STATE.get(key)
     stat = path.stat()
-    size, identity = stat.st_size, (stat.st_ino, stat.st_dev)
+    with path.open("rb") as handle:
+        head = handle.read(256)
+    size, identity = stat.st_size, (stat.st_ino, stat.st_dev, head)
     if state is None or size < state["offset"] or state.get("identity") != identity:
         state = STATE[key] = fresh_state(sid)
         state["identity"] = identity
@@ -233,6 +235,8 @@ def build(ledger: Path, coordinator: str) -> dict:
                         if isinstance(c, dict) and isinstance(c.get("path"), str)]
     repos = [r for r in repos if gate.git(r, "rev-parse", "--git-dir") is not None]
     reviewed = {rid for rid, r in reqs.items() if gate.review_passed(r["evidence"])}
+    verified = {rid for rid in reviewed if any(
+        v == "PASS" and gate.review_session(who, v)[0] == "verified" for who, v in gate.review_notes(reqs[rid]["evidence"])[-1:])}
     unverified = {rid for rid, r in reqs.items() if r["status"].lower() == "accepted" and not evidence_resolves(r["evidence"], repos)}
     laned = {rid.upper() for lane in lanes for rid in re.findall(r"REQ-[A-Za-z0-9_.-]+", lane["req ids"], re.I)}
     loose = [rid for rid, r in reqs.items() if rid not in laned and r["status"].lower() not in gate.REQ_CLOSED]
@@ -269,7 +273,7 @@ def build(ledger: Path, coordinator: str) -> dict:
     seen = {x["id"].lower() for x in sessions}
     remote = [lane for sid, lane in lane_by_session.items() if sid.lower() not in seen and lane["state"].lower() not in {"superseded", "stopped"}]
     return {"ledger": ledger, "commit": commit, "reqs": reqs, "lanes": lanes, "sessions": sessions, "remote": remote,
-            "lane_by_session": lane_by_session, "errors": errors, "unverified": unverified, "reviewed": reviewed, "generated": datetime.now(timezone.utc)}
+            "lane_by_session": lane_by_session, "errors": errors, "unverified": unverified, "reviewed": reviewed, "verified": verified, "generated": datetime.now(timezone.utc)}
 
 
 def timeline(sessions: list[dict], lane_by_session: dict, remote: list[dict] = ()) -> str:
@@ -328,7 +332,7 @@ def render(data: dict) -> str:
     accepted = sum(1 for r in active_req.values() if r["status"].lower() == "accepted")
     total_in, total_out = sum(s["input"] for s in sessions), sum(s["output"] for s in sessions)
     total_cached = sum(s["cached"] for s in sessions)
-    unverified, reviewed = data["unverified"], data["reviewed"]
+    unverified, reviewed, verified = data["unverified"], data["reviewed"], data["verified"]
     unreviewed_accepted = [r for r in active_req if active_req[r]["status"].lower() == "accepted" and r not in reviewed]
     active = sum(s["active_min"] for s in sessions)
     wall = ((max(s["end"] for s in sessions) - sessions[0]["start"]).total_seconds() / 60) if sessions else 0
@@ -336,7 +340,8 @@ def render(data: dict) -> str:
     stats = [("REQs accepted", f"{accepted}/{len(active_req)}"),
              ("gate", "PASS" if not data["errors"] else f"{len(data['errors'])} issues"),
              ("accepted, evidence unresolved", str(len(unverified & set(active_req)))),
-             ("accepted, not reviewed", str(len(unreviewed_accepted))), ("lanes running", f"{running}/{len(lanes)}"),
+             ("accepted, not reviewed", str(len(unreviewed_accepted))),
+             ("PASS reviews verified", f"{len(verified & set(active_req))}/{len(reviewed & set(active_req))}"), ("lanes running", f"{running}/{len(lanes)}"),
              ("sessions", str(len(sessions))), ("tokens new/cache/out", f"{num(total_in)}/{num(total_cached)}/{num(total_out)}"),
              ("model min, all sessions", f"{active:.0f}"), ("program min", f"{wall:.0f}")]
     overview = "".join(f"<div><b>{esc(v)}</b><span>{esc(k)}</span></div>" for k, v in stats)
@@ -346,8 +351,8 @@ def render(data: dict) -> str:
         delivered = {r for r in ids if lane["state"].lower() == "done" and r in reqs
                      and reqs[r]["status"].lower() not in gate.REQ_CLOSED | {"accepted", "blocked"}}
         squares = "".join(
-            f"<button class='sq {'delivered' if r in delivered else REQ_TONE.get(reqs[r]['status'].lower(), 'open') if r in reqs else 'open'}{' warn' if r in unverified else ''}{' rev' if r in reviewed else ''}' "
-            f"data-d='{esc(r)} · {esc(reqs[r]['status'] if r in reqs else 'unknown')}{' · delivered by this lane, awaiting acceptance' if r in delivered else ''}{' · no evidence commit resolves' if r in unverified else ''}{' · reviewed' if r in reviewed else ' · not reviewed'} · {esc((reqs[r]['requirement'] if r in reqs else '')[:160])}' "
+            f"<button class='sq {'delivered' if r in delivered else REQ_TONE.get(reqs[r]['status'].lower(), 'open') if r in reqs else 'open'}{' warn' if r in unverified else ''}{' rev' if r in reviewed else ''}{' vrf' if r in verified else ''}' "
+            f"data-d='{esc(r)} · {esc(reqs[r]['status'] if r in reqs else 'unknown')}{' · delivered by this lane, awaiting acceptance' if r in delivered else ''}{' · no evidence commit resolves' if r in unverified else ''}{' · review verified in its session log' if r in verified else ' · reviewed (note only)' if r in reviewed else ' · not reviewed'} · {esc((reqs[r]['requirement'] if r in reqs else '')[:160])}' "
             f"aria-label='{esc(r)} {esc(reqs[r]['status'] if r in reqs else 'unknown')}'></button>" for r in ids)
         done = sum(1 for r in ids if r in reqs and reqs[r]["status"].lower() == "accepted")
         rev = sum(1 for r in ids if r in reviewed)
@@ -371,7 +376,7 @@ h1{margin:0;font-size:17px;font-weight:650;letter-spacing:-.02em}h2{margin:16px 
 .box{background:#1b2632;border:1px solid #7a8c9e;padding:5px 6px 6px}.box.blocked{border-color:#f08895}.box.done{border-color:#38aa6b}.box.gone{opacity:.45}
 .box h3{margin:0;font-size:10.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.box p{margin:0 0 4px;font-size:9px;color:#bacada}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,11px);gap:1px}
-.sq{width:11px;height:11px;padding:0;border:0;cursor:pointer}.sq.warn{box-shadow:inset 0 0 0 2px #d6aa4b}.delivered{background:repeating-linear-gradient(135deg,#38aa6b 0 2px,#1b2632 2px 4px)}.sq{position:relative}.sq.rev::after{content:"";position:absolute;right:0;top:0;border-style:solid;border-width:0 5px 5px 0;border-color:transparent #fff transparent transparent}.box.unrev{border-color:#d6aa4b;box-shadow:inset 0 0 0 1px #d6aa4b}.rot{fill:#d6aa4b}.rv{fill:#38aa6b}.nrv{fill:#8fa1b3}.remote{fill:none;stroke:#506071;stroke-dasharray:3 2}.issues{margin:6px 0 0;padding-left:16px;font-size:10px;color:#f0a0aa}.sq:hover,.sq:focus-visible,.sq.sel{outline:1.5px solid #fff;outline-offset:0}
+.sq{width:11px;height:11px;padding:0;border:0;cursor:pointer}.sq.warn{box-shadow:inset 0 0 0 2px #d6aa4b}.delivered{background:repeating-linear-gradient(135deg,#38aa6b 0 2px,#1b2632 2px 4px)}.sq{position:relative}.sq.rev::after{content:"";position:absolute;right:0;top:0;border-style:solid;border-width:0 5px 5px 0;border-color:transparent #8fa1b3 transparent transparent}.sq.vrf::after{border-color:transparent #fff transparent transparent}.box.unrev{border-color:#d6aa4b;box-shadow:inset 0 0 0 1px #d6aa4b}.rot{fill:#d6aa4b}.rv{fill:#38aa6b}.nrv{fill:#8fa1b3}.remote{fill:none;stroke:#506071;stroke-dasharray:3 2}.issues{margin:6px 0 0;padding-left:16px;font-size:10px;color:#f0a0aa}.sq:hover,.sq:focus-visible,.sq.sel{outline:1.5px solid #fff;outline-offset:0}
 #detail{min-height:28px;margin:8px 0 0;padding-top:6px;border-top:1px solid #415064;font-size:11px;color:#c6d4e1;overflow-wrap:anywhere}
 .timeline{width:100%;display:block}.timeline .label{fill:#edf3f8;font-size:8.5px;font-weight:600}.timeline .sub{fill:#9fb0c1;font-size:6.5px}.timeline .tick{fill:#8fa1b3;font-size:6.5px}.lane-bg,.gauge{fill:#1b2632}.turn{fill:#0b1016;opacity:.55}.ctxfill{fill:#d6aa4b}.tokfill{fill:#479bc1}
 footer{font-size:9px;color:#8fa1b3;margin-top:10px;line-height:1.5}

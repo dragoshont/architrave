@@ -282,6 +282,36 @@ Verify: `make e2e`
         code, out = self.requirements(example + closed, "--done")
         self.assertNotIn("lacks a PASS review on REQ-03", out)
 
+    def test_review_note_naming_a_session_is_checked_against_its_log(self):
+        home = self.base / "copilot"
+        def session(sid, agent, said):
+            folder = home / "session-state" / sid
+            folder.mkdir(parents=True)
+            (folder / "events.jsonl").write_text("\n".join(json.dumps(e) for e in [
+                {"type": "subagent.selected", "data": {"agentName": agent}},
+                {"type": "assistant.message", "data": {"content": f"**{said}** with notes"}}]) + "\n")
+        session("aaaaaaaa-1111-2222-3333-444444444444", "architrave:adversarial-judge", "PASS")
+        session("bbbbbbbb-1111-2222-3333-444444444444", "architrave:adversarial-judge", "REVISE")
+        session("cccccccc-1111-2222-3333-444444444444", "architrave:backend-implementer", "PASS")
+        example = EXAMPLE.read_text()
+        row = "commit abc1234, test log ci/123"
+        old = os.environ.get("COPILOT_HOME")
+        os.environ["COPILOT_HOME"] = str(home)
+        try:
+            code, out = self.requirements(example.replace(row, row + "; review: aaaaaaaa PASS"))
+            self.assertEqual(code, 0, out)
+            code, out = self.requirements(example.replace(row, row + "; review: bbbbbbbb PASS"))
+            self.assertIn("ended with REVISE, not PASS", out)
+            code, out = self.requirements(example.replace(row, row + "; review: cccccccc PASS"))
+            self.assertIn("not a reviewer role", out)
+            code, out = self.requirements(example.replace(row, row + "; review: dddddddd PASS"))
+            self.assertEqual(code, 0, out)
+        finally:
+            if old is None:
+                os.environ.pop("COPILOT_HOME", None)
+            else:
+                os.environ["COPILOT_HOME"] = old
+
     def test_spec_md_is_the_default_requirements_file_and_checks_validate_it(self):
         (self.hub / "architrave.config.json").write_text(json.dumps(
             {"kind": "knowledge", "build": "true", "test": "true"}))

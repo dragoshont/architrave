@@ -142,6 +142,9 @@ class Parsing(unittest.TestCase):
             replaced.write_text(usage("2026-10-26T11:00:00Z", 10000, 128000) * 3)
             replaced.replace(log)
             self.assertEqual(pb.read_session(sid)["calls"], 3, "a replaced file is re-read from the start")
+            with log.open("w") as handle:
+                handle.write(usage("2026-10-26T12:00:00Z", 20000, 128000) * 5)
+            self.assertEqual(pb.read_session(sid)["calls"], 5, "a truncated and regrown file is re-read")
             headroom = "55555555-5555-5555-5555-555555555555"
             (Path(tmp) / "session-state" / headroom).mkdir()
             (Path(tmp) / "session-state" / headroom / "events.jsonl").write_text(

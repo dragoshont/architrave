@@ -254,6 +254,46 @@ def section(text: str, title: str) -> str:
 REVIEW_NOTE = re.compile(r"(?:^|[;,])\s*review:\s*([^;|,]*)")
 
 
+REVIEWER_ROLE = re.compile(r"adversarial-judge|code-review|rubber-duck|security-review|architrave-review|judge", re.I)
+REVIEW_CHECKS: dict[tuple[str, str], tuple[str, str | None]] = {}
+
+
+def review_session(reviewer: str, verdict: str) -> tuple[str, str | None]:
+    """Check a `review: <session-id> <verdict>` note against the reviewer session's local log.
+
+    Returns ("verified", None), ("unknown", None) when no local log can be checked, or ("contradicted", reason).
+    """
+    if not re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f-]{1,28})?", reviewer.lower()):
+        return "unknown", None
+    key = (reviewer.lower(), verdict)
+    if key in REVIEW_CHECKS:
+        return REVIEW_CHECKS[key]
+    home = Path(os.environ.get("COPILOT_HOME", Path.home() / ".copilot")) / "session-state"
+    logs = [p / "events.jsonl" for p in home.glob(reviewer.lower() + "*") if (p / "events.jsonl").is_file()] if home.is_dir() else []
+    result: tuple[str, str | None] = ("unknown", None)
+    if len(logs) == 1:
+        role, said = None, None
+        for line in logs[0].open(encoding="utf-8", errors="ignore"):
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            data = event.get("data") if isinstance(event, dict) and isinstance(event.get("data"), dict) else {}
+            if event.get("type") == "subagent.selected" and role is None:
+                role = str(data.get("agentName") or "")
+            elif event.get("type") == "assistant.message":
+                found = re.search(r"\b(PASS|REVISE|FAIL)\b", str(data.get("content") or ""))
+                said = found.group(1) if found else said
+        if not role or not REVIEWER_ROLE.search(role):
+            result = ("contradicted", f"session {reviewer} ran {role or 'no agent role'}, not a reviewer role")
+        elif said != verdict:
+            result = ("contradicted", f"session {reviewer} ended with {said or 'no verdict'}, not {verdict}")
+        else:
+            result = ("verified", None)
+    REVIEW_CHECKS[key] = result
+    return result
+
+
 def review_passed(evidence: str) -> bool:
     """True when the latest well-formed review note is PASS."""
     return [v for _r, v in review_notes(evidence) if v][-1:] == ["PASS"]
@@ -312,6 +352,10 @@ def parse_requirements(text: str) -> tuple[dict[str, dict[str, str]], list[dict[
         for reviewer, verdict in notes:
             if verdict is None:
                 errors.append(f"{rid} review note must read 'review: <reviewer> <PASS|REVISE|FAIL>'")
+                continue
+            check, reason = review_session(reviewer, verdict)
+            if check == "contradicted":
+                errors.append(f"{rid} review note contradicts the session log: {reason}")
             elif who(reviewer) and who(reviewer) == who(row["owner"]):
                 errors.append(f"{rid} review by {reviewer} is not independent of the owner")
         verdicts = [v for _r, v in notes if v]

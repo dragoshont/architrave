@@ -47,10 +47,10 @@ flagged. A fresh session on a small-window model is never flagged. Rotation step
 ## Review marks
 
 - Session row: grey ✓ when the session ran a reviewer agent (adversarial judge, code review, rubber duck, security review or `architrave-review`); ○ when none. It shows that a review ran, not its verdict.
-- Square: white corner only when the REQ's latest `review: <reviewer> <verdict>` note (at the start of the cell or after `;` or `,`) is PASS. Findings verifiers do not count.
+- Square: a corner when the REQ's latest `review: <reviewer> <verdict>` note (at the start of the cell or after `;` or `,`) is PASS — white when the note names a reviewer session whose local log shows a reviewer role ending in PASS, grey when the note can't be checked. Findings verifiers do not count. The overview shows how many PASS reviews are verified.
 - Lane: "reviewed k/n"; a gold border and "review missing" when a `done` lane has any open REQ, or any lane has an accepted REQ, without a PASS review (withdrawn and superseded REQs are skipped). This is the same rule `requirements --done` enforces for ledger lanes; the "Not in a lane" box only gets the gold border for accepted, unreviewed REQs.
 - Review notes attach to REQs, not lanes: one PASS on a REQ covers every lane that lists it. The overview counts accepted but unreviewed REQs.
-- The `requirements` gate parses every note, requires the latest to be PASS for an accepted REQ, and rejects a reviewer named like the REQ's owner. Who reviewed is still self-reported in the ledger.
+- The `requirements` gate parses every note, requires the latest to be PASS for an accepted REQ, and rejects a reviewer named like the REQ's owner. A note naming a session (8+ hex characters) is checked against that session's local log, and a contradiction fails the gate; notes naming anything else, or sessions logged on another machine, stay unverified.
 
 ## Checks and limits
 
