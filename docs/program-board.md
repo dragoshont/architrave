@@ -29,6 +29,10 @@ starts it for every non-trivial task.
 
 It is dense by design and fits a narrow side panel; there are no tables.
 
+## Completion
+
+A session whose last action was the host's "Task completed" (no model turn after it) shows a green bar and "task completed", even if its lane row is not yet updated. A later turn makes it active again.
+
 ## Review marks
 
 - Session row: ✓ when the session ran a reviewer (adversarial judge, code review, rubber duck, security review or `architrave-review`); ○ when it ran none. Hover for which.

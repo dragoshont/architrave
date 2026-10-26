@@ -46,7 +46,8 @@ class ProgramBoard(unittest.TestCase):
                 {"type": "session.start", "timestamp": "2026-10-26T10:00:00Z", "data": {"startTime": "2026-10-26T10:00:00Z", "selectedModel": "m"}},
                 {"type": "tool.execution_start", "timestamp": "2026-10-26T10:01:00Z", "data": {"toolName": "create_session", "toolCallId": "c1", "arguments": {"name": "L1 app", "kickoff": {"agent": "architrave:backend-implementer"}}}},
                 {"type": "tool.execution_complete", "timestamp": "2026-10-26T10:01:05Z", "data": {"toolCallId": "c1", "result": f"Created session (id: {CHILD})"}},
-                {"type": "session.usage_record", "timestamp": "2026-10-26T10:02:00Z", "data": {"usage": usage}}])
+                {"type": "session.usage_record", "timestamp": "2026-10-26T10:02:00Z", "data": {"usage": usage}},
+                {"type": "session.task_complete", "timestamp": "2026-10-26T10:02:30Z", "data": {}}])
             events(state / CHILD, [
                 {"type": "session.start", "timestamp": "2026-10-26T10:01:10Z", "data": {"startTime": "2026-10-26T10:01:10Z"}},
                 {"type": "assistant.turn_start", "timestamp": "2026-10-26T10:02:00Z", "data": {}},
@@ -74,6 +75,8 @@ class ProgramBoard(unittest.TestCase):
             self.assertIn("backend-implementer", page)
             self.assertIn("reviewed by code-review", page)
             self.assertIn("no reviewer run", page)
+            self.assertIn("coordinator · task completed", page)
+            self.assertIn("running · idle", page)
             self.assertIn("sq done rev", page)
             self.assertIn("box active unrev", page)
             self.assertIn("reviewed 1/2", page)

@@ -5,7 +5,12 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
-## 0.21.18
+## 0.21.19
+
+- Program board: a session whose last action was the host's "Task completed"
+  (no model turn after it) shows a green bar and "task completed", even before
+  its lane row is updated; a later turn makes it active again.
+
 
 - Review marks on the program board: session rows show ✓ when the session ran
   a reviewer (○ when none); REQ squares get a white corner when independently

@@ -58,7 +58,7 @@ def read_session(sid: str, since: datetime | None = None) -> dict | None:
     if not path.is_file():
         return None
     info = {"id": sid, "start": None, "end": None, "turns": [], "calls": 0, "input": 0, "cached": 0, "output": 0,
-            "max_context": 0, "context_limit": 0, "model": None, "agent": None, "children": [], "reviews": set()}
+            "max_context": 0, "context_limit": 0, "model": None, "agent": None, "children": [], "reviews": set(), "completed": None, "turn_after_complete": False}
     pending: dict[str, tuple[str, str | None]] = {}
     turn_open = None
     for line in path.open(encoding="utf-8", errors="ignore"):
@@ -93,6 +93,10 @@ def read_session(sid: str, since: datetime | None = None) -> dict | None:
             info["reviews"].add(str(data["arguments"]["agent_type"]))
         elif kind == "assistant.turn_start":
             turn_open = stamp
+            if info["completed"]:
+                info["turn_after_complete"] = True
+        elif kind == "session.task_complete":
+            info["completed"], info["turn_after_complete"] = stamp, False
         elif kind == "assistant.turn_end" and turn_open and stamp:
             info["turns"].append((turn_open, stamp))
             turn_open = None
@@ -129,13 +133,15 @@ def read_session(sid: str, since: datetime | None = None) -> dict | None:
     info["active_min"] = sum((b - a).total_seconds() for a, b in info["turns"]) / 60
     info["wall_min"] = ((info["end"] - info["start"]).total_seconds() / 60) if info["start"] and info["end"] else 0
     info["idle_min"] = ((datetime.now(timezone.utc) - info["end"]).total_seconds() / 60) if info["end"] else None
+    info["done"] = bool(info["completed"]) and not info["turn_after_complete"]
     return info
 
 
 def state_of(s: dict, lane: dict) -> str:
     label = lane.get("state") or ("coordinator" if s.get("name") == "Coordinator" else "")
     idle = s.get("idle_min")
-    activity = "no log" if idle is None else "active now" if idle < 10 else f"idle {idle:.0f} min"
+    activity = ("task completed" if s.get("done") else "no log" if idle is None
+                else "active now" if idle < 10 else f"idle {idle:.0f} min")
     return f"{label} · {activity}" if label else activity
 
 
@@ -231,7 +237,7 @@ def timeline(sessions: list[dict], lane_by_session: dict, remote: list[dict] = (
     for i, s in enumerate(timed):
         y = 16 + i * row
         lane = lane_by_session.get(s["id"]) or {}
-        tone = LANE_TONE.get(lane.get("state", "").lower(), "active")
+        tone = "done" if s.get("done") else LANE_TONE.get(lane.get("state", "").lower(), "active")
         x = left + max((s["start"] - t0).total_seconds(), 0) / span * width
         w = max((s["end"] - max(s["start"], t0)).total_seconds() / span * width, 2)
         marks = "".join(f"<rect class='turn' x='{left + (a - t0).total_seconds() / span * width:.1f}' y='{y + 2}' "
