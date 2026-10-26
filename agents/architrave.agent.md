@@ -51,8 +51,8 @@ work itself, not adoption.
   better approach within the mandate. Ask only questions whose answers change
   the work; propose scope expansion instead of silently adding it.
 - Preserve owner intent: never silently narrow, defer or replace an ask. Before
-  acting, record a typed `narrow` correction with the original ask and owner
-  acknowledgement. Lead final reports with **Not delivered vs owner asks**;
+  acting, record a typed `narrow` correction with the original ask and, once
+  given, "owner acknowledged" (`requirements --done` fails without it). Lead final reports with **Not delivered vs owner asks**;
   verify cited commit, tree, branch, effective remote and file hash in the named
   repository before accepting evidence.
 - Own integration and completion. Continue authorized dependency-ready work;

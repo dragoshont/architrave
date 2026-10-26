@@ -145,6 +145,11 @@ class ComponentGate(unittest.TestCase):
         code, out = self.requirements(example, "--done")
         self.assertEqual(code, 1)
         self.assertIn("2 active REQs are not accepted: REQ-01, REQ-04", out)
+        narrowed = example.replace("| C-01 | supersede |", "| C-02 | narrow | REQ-01 | Owner asked X; doing Y |\n| C-01 | supersede |")
+        code, out = self.requirements(narrowed, "--done")
+        self.assertIn("narrow corrections lack owner acknowledgement: C-02", out)
+        code, out = self.requirements(narrowed.replace("doing Y", "doing Y; owner acknowledged"), "--done")
+        self.assertNotIn("lack owner acknowledgement", out)
 
     def test_spec_md_is_the_default_requirements_file_and_checks_validate_it(self):
         (self.hub / "architrave.config.json").write_text(json.dumps(

@@ -227,7 +227,7 @@ def check_component(root: Path, item: dict[str, object]) -> tuple[bool, Path | N
 REQ_COLUMNS = ("id", "requirement", "acceptance", "owner", "status", "evidence")
 REQ_ACTIVE = {"open", "claimed", "in-progress", "blocked", "accepted"}
 REQ_CLOSED = {"superseded", "withdrawn"}
-CORRECTION_TYPES = {"add", "revise", "retract", "supersede"}
+CORRECTION_TYPES = {"add", "revise", "retract", "supersede", "narrow"}
 HANDOFF_FIELDS = ("next", "failed approaches", "verify")
 
 
@@ -489,6 +489,10 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
         pending = [rid for rid, row in reqs.items() if row["status"].lower() in REQ_ACTIVE - {"accepted"}]
         if pending:
             errors.append(f"not done: {len(pending)} active REQs are not accepted: {', '.join(pending[:20])}")
+        unacked = [c["id"] for c in corrections if c["type"].lower() == "narrow"
+                   and not re.search(r"\backnowledged\b", c["change"], re.I)]
+        if unacked:
+            errors.append(f"not done: narrow corrections lack owner acknowledgement: {', '.join(unacked)}")
     if claim is not None and not errors:
         lines = []
         in_requirements = False
