@@ -1,0 +1,4 @@
+[{"case":"H1","verdict":"REVISE","lost":["S3","S4","S5","S6","S8"],"unverified":[]},
+{"case":"H2","verdict":"PASS","lost":[],"unverified":[]},
+{"case":"H3","verdict":"REVISE","lost":["S4"],"unverified":["S1","S3"]},
+{"case":"H4","verdict":"REVISE","lost":["S1"],"unverified":[]}]
