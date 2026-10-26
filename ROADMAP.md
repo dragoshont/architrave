@@ -3,7 +3,7 @@
 ## v0.21.10 - Multi-repository lanes (REQ-25 through REQ-28)
 
 - [x] Policy and lead contract: single-repository batch, one writer per component repository, effective push targets, child capability preflight, shared build/disk slot.
-- [ ] Public release and verified local Copilot/Codex/native reinstall.
+- [x] Public v0.21.10 release (PR #30) and verified local Copilot/Codex/native 0.21.10 reinstall; fresh sessions needed for loaded instructions.
 
 ## v0.21.9 - Scoped signing grant reuse (REQ-24)
 
