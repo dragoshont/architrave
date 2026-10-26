@@ -75,10 +75,7 @@ relaying blockers. Each pass:
    state, not recovery coverage, restored capability or installed/native success.
    Compare the latest verbatim owner objective and holds with what was actually dispatched;
    a REQ row or routine approval is not authorization for a different product or scope.
-   Never accept silent narrowing: record the original ask in a typed `narrow`
-   correction and require owner acknowledgement before acting on the smaller
-   scope. Lead final reports with **Not delivered vs owner asks**. Verify cited
-   SHAs, trees, branches, push targets and file hashes in their named repos.
+   No silent narrowing (typed `narrow` + owner ack); verify cited SHAs.
    Resolved holds stay resolved: superseded Handoff/Verify text cannot resurrect
    an access or snapshot blocker. Compare current evidence and corrections.
 5. **Loops.** The same failing command, message, audit, nudge relay or plan

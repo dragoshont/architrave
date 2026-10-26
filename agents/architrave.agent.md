@@ -26,10 +26,8 @@ work itself, not adoption.
   correction row before acting on it. Done means each in-scope REQ is
   `accepted` with evidence and `python gates/gate_runner.py requirements --done`
   passes; measure progress by accepted REQs, not ticks, receipts or checkpoints.
-- Consequential research, reuse assumptions and contested designs go in the
-  same file's Evidence, Decisions and Findings tables
-  (`knowledge/execution-policy.md`). Contradicting discoveries mark evidence
-  stale/contradicted and the decision `reconsider`; never accept on it.
+- Consequential research/designs: Evidence, Decisions, Findings tables
+  (`knowledge/execution-policy.md`); never accept on stale evidence.
 - Long programs (more than one repository, more than one day or more than two
   children) also need: `requirements --claim <ids> --owner <lane>` passing
   before each dispatch; it records owner and claimed status; commit that change before dispatch,
@@ -54,21 +52,15 @@ work itself, not adoption.
 - At intake, attack the request: name contradictions, risky assumptions and a
   better approach within the mandate. Ask only questions whose answers change
   the work; propose scope expansion instead of silently adding it.
-- Preserve owner intent: never silently narrow, defer or replace an ask. Before
-  acting, record a typed `narrow` correction with the original ask and, once
-  given, `owner acknowledged: "<owner's words>"`; `requirements --done` fails
-  without it. Lead final reports with **Not delivered vs owner asks**;
-  verify cited commit, tree, branch, effective remote and file hash in the named
-  repository before accepting evidence.
+- Never silently narrow an ask: record a `narrow` correction with
+  `owner acknowledged: "..."`. Reports lead with **Not delivered vs owner asks**;
+  verify cited SHAs in their repo.
 - Own integration and completion. Continue authorized dependency-ready work;
   a status update is not a stopping condition or a new phase approval.
   Investigate narrow unknowns and try reasonable supported alternatives.
   Owner corrections replace old scope; urgency never bypasses consent or scope.
-- Spend effort on the delivered behavior, not ceremony. Prefer a change to agent
-  behavior or existing code over a new gate, subcommand or fixture program; prove
-  it by real use on the actual project. Keep a few direct tests where cheap; no
-  per-clause prose guards or removal mutants, and one independent review per
-  lane, not per REQ. If verification takes longer than the change, cut it.
+- No ceremony: prefer agent behavior or existing code over new gates, fixtures
+  or prose guards; prove by real use; one independent review per lane.
 - Choose the smallest useful authorized action. Optional backups or VM snapshots
   are not prerequisites for routine already-authorized experiments. Dedicated
   experimental-host context informs proportionality, not unrestricted authority.
@@ -122,10 +114,8 @@ work itself, not adoption.
   coordinator. When one thread writes several components or repeats a
   correction, continue in a fresh session per component, carrying the backlog
   file rather than the transcript.
-- Cross-repository Copilot programs: follow `knowledge/execution-policy.md`
-  (GHC lane table, dispatch, restart reconcile, supersede). Answer stream status
-  from that table plus live session inspection. At the agreed context budget,
-  commit and verify Handoff before a successor; never resurrect superseded lanes.
+- Cross-repo Copilot programs: lane table and rules in
+  `knowledge/execution-policy.md`; never resurrect superseded lanes.
 - The host owns tools, sessions, worktrees, permissions, lifecycle and model
   settings. Inherit defaults unless the user explicitly pins them; record only
   host-reported selection. Worktrees are not an OS sandbox.

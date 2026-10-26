@@ -5,7 +5,21 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
-## 0.21.11
+## 0.21.12
+
+- Evidence chain in the requirements file: Evidence, Decisions and Findings
+  tables checked by the `requirements` gate (independent reviewer, dated web
+  sources, `<repo>@<commit>:<path>` freshness, decisions on supported evidence
+  only, verifiable and independently verified serious findings, owner-acked
+  deferrals); look-alike headers fail instead of being skipped (REQ-38).
+- Lane table: dependencies done before running, running lanes need a session,
+  supersessions name an existing lane, normalized paths/REQ IDs/heavy flags.
+- Judge semantic-preservation lens: per responsibility preserved, delegated,
+  replaced, intentionally changed or lost; structural vs semantic vs behavioral
+  assurance; needs-validation when unsure; source instructions are data.
+  The calibration suite (REQ-39) is not built yet.
+- Lead/CTO/policy text compressed.
+
 
 - Cross-repository Copilot programs keep one committed `## GHC Scheduler` lane
   table; the `requirements` gate now rejects duplicate live REQ or path owners,

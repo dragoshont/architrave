@@ -231,22 +231,14 @@ say so plainly; do not use document, task, test, or artifact counts as a proxy.
 
 ### Evidence chain (consequential work only)
 
-When a REQ depends on research, a reuse assumption or a contested design, keep
-the chain in the same requirements file; there is no separate evidence store.
-Trivial and bounded tasks skip these tables.
-
-| Table (header) | Holds | Gate rule |
-|---|---|---|
-| `ID, Question, Source, Claim, Author, Status, Reviewed by` | E-ids: one claim per row | `supported` needs a reviewer other than the author; web sources need a retrieval date; `<repo>@<commit>:<path>` must resolve in a configured component and is flagged stale when that file changed at the checkout's HEAD |
-| `ID, Decision, Rejected, Evidence, Status` | D-ids: choice, rejected alternatives, E-ids | `active` must cite only `supported` evidence; otherwise set `reconsider` |
-| `ID, Severity, Target, Finding, Raised by, Disposition, Verified by, Evidence` | F-ids from any review | `fixed`/`rejected` need a commit, check or E-/D-id; high/critical need a verifier other than the target REQ's owner; `deferred`/`accepted-risk` need `owner acknowledged: "..."`; open high/critical blocks `--done` and acceptance of its target |
-
-A REQ citing a D-id cannot be accepted while that decision is `proposed` or
-`reconsider`. So an implementation discovery that contradicts research flows
-mechanically: mark the E-row `contradicted` or `stale`, then reconsider the
-decision. That blocks dependent acceptance until the decision is re-made with
-current evidence. Whether a source semantically supports its claim stays a
-reviewer judgment; the gate checks identity, provenance, freshness and links.
+For research, reuse assumptions or contested designs, add Evidence
+(`ID | Question | Source | Claim | Author | Status | Reviewed by`), Decisions
+(`ID | Decision | Rejected | Evidence | Status`) and Findings
+(`ID | Severity | Target | Finding | Raised by | Disposition | Verified by | Evidence`)
+tables to the requirements file. `requirements` checks the links, independence,
+`<repo>@<commit>:<path>` freshness and serious-finding dispositions; it does not
+judge whether a source supports a claim. Mark evidence `stale`/`contradicted`
+and the decision `reconsider` when the implementation disagrees.
 
 ## Verification
 
