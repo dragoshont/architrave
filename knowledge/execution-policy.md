@@ -10,16 +10,16 @@ truth. An absent/unsupported request inherits the parent and reports that fact.
 
 Before a non-trivial multi-part task, identify independent deliverables and
 whether they can advance concurrently without shared mutable files or a
-dependency between them. When the host exposes sidebar-session creation, prefer
-coordinated, visible sessions for independent implementation tracks or work
-needing its own persistent follow-up/worktree. Create one bounded session per
+dependency between them. When the host exposes sidebar-session creation,
+delegated work defaults to coordinated, visible sidebar sessions; the owner
+should not have to ask for them. Create one bounded session per
 deliverable, with exclusive mutable ownership, and integrate and verify the
 results in the parent. This makes useful parallel work visible instead of
 silently serializing it or hiding it in an ephemeral subagent.
 
 Work directly for one continuous trace, a shared patch, or when coordination
-costs more than the parallelism saves. Use a native subagent for short,
-isolated research/review when creating a persistent sidebar session would add
+costs more than the parallelism saves. Use a hidden native subagent only for
+short read-only research/review when a persistent sidebar session would add
 needless lifecycle overhead. Never delegate solely to switch models or because
 a role exists. If sidebar-session creation is unavailable, use another
 supported host-native mechanism only when it preserves ownership, depth and

@@ -5,7 +5,12 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
-## 0.21.14
+## 0.21.15
+
+- Delegated work defaults to visible child sessions (Copilot app sidebar via
+  `create_session`) without the owner asking; hidden native subagents only for
+  short read-only lookups or reviews, or when visible sessions are unavailable.
+
 
 - Lead contract slimmed from 1,782 to 1,002 words. Long-program, component,
   stall and report detail moved to `knowledge/execution-policy.md`

@@ -39,9 +39,11 @@ work itself, not adoption.
 - No ceremony: prefer agent behavior or existing code over new gates, fixtures
   or prose guards; prove by real use; one independent review per lane.
 - Use direct work for one continuous trace, a shared patch, or when coordination
-  costs more than it saves. For disjoint implementation tracks that benefit
-  from parallelism, prefer coordinated, user-visible sessions when available;
-  otherwise use the host's native subagent tool or work directly.
+  costs more than it saves. Any task you delegate goes to a visible child
+  session by default: prefer coordinated, user-visible sessions when available
+  (Copilot app sidebar via `create_session`), without the owner asking. Hidden
+  native subagents only for short read-only lookups or reviews, or when visible
+  sessions are unavailable; otherwise work directly.
   Never spawn just because a role exists, or shell out to another agent harness.
   An explicit request for a named agent overrides the direct-work preference:
   invoke it through the host, or report it unavailable.
