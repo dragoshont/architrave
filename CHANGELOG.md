@@ -7,12 +7,26 @@ Releases at or before **v0.8.12** are on the
 
 ## 0.21.23
 
-- Review notes can be verified: `review: <reviewer-session-id> <verdict>` is
-  checked against that session's local log (it must have run a reviewer role and
-  ended with that verdict); a contradiction fails `requirements`. The board
-  shows verified reviews with a white corner and counts them.
-- Program board: a log truncated and regrown in place is re-read (first-bytes
-  fingerprint).
+- Review notes can name the reviewer session: `review: <session-uuid> <verdict>`
+  (digit-first UUIDs included) is checked against
+  `session-state/<uuid>/events.jsonl` — exact directory, kickoff agent selected
+  before the first turn must be a reviewer role (exact name), and the verdict of
+  the session's last report (task_complete summary or message to another
+  session; an explicit `Verdict:` wins) must match; earlier notes naming the
+  same session need only match one of its reports. A contradiction fails
+  `requirements`.
+- Where local session logs exist, `requirements --done` and the board's
+  "review missing" count only verified PASS notes; role names and sessions from
+  other machines no longer close a lane. Elsewhere notes stay unverified and
+  accepted. This catches mistakes, not deliberate forgery.
+- `review.crossFamily` is enforced at `--done`: a reviewer session of the lane
+  session's model family leaves a gap.
+- One cap rule for gate and board: `workers.maxParallel` clamps to 20; zero,
+  negative or non-integer values fail.
+- Board: overview counts lanes missing a review (matches `--done`); session
+  facts are cached by log size and mtime and evidence lookups cache only hits,
+  so `--watch` sees new verdicts; a log truncated and regrown in place is
+  re-read (first-bytes fingerprint); docs say current context, not peak.
 
 ## 0.21.22
 

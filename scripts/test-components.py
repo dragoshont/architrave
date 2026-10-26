@@ -101,9 +101,10 @@ class ComponentGate(unittest.TestCase):
         (self.hub / "SPEC.md").write_text(text)
         (self.hub / "architrave.config.json").write_text(json.dumps(
             {"kind": "knowledge", "build": "true", "test": "true", "requirements": "SPEC.md"}))
+        home = getattr(self, "copilot_home", self.base / "no-copilot")
         process = subprocess.run(
             [sys.executable, str(RUNNER), "requirements", "--repo", str(self.hub), *flags],
-            capture_output=True, text=True, check=False,
+            capture_output=True, text=True, check=False, env=dict(os.environ, COPILOT_HOME=str(home)),
         )
         return process.returncode, process.stdout + process.stderr
 
@@ -283,34 +284,41 @@ Verify: `make e2e`
         self.assertNotIn("lacks a PASS review on REQ-03", out)
 
     def test_review_note_naming_a_session_is_checked_against_its_log(self):
-        home = self.base / "copilot"
-        def session(sid, agent, said):
-            folder = home / "session-state" / sid
+        self.copilot_home = self.base / "copilot"
+        def session(sid, agent, *said):
+            folder = self.copilot_home / "session-state" / sid
             folder.mkdir(parents=True)
-            (folder / "events.jsonl").write_text("\n".join(json.dumps(e) for e in [
-                {"type": "subagent.selected", "data": {"agentName": agent}},
-                {"type": "assistant.message", "data": {"content": f"**{said}** with notes"}}]) + "\n")
-        session("aaaaaaaa-1111-2222-3333-444444444444", "architrave:adversarial-judge", "PASS")
-        session("bbbbbbbb-1111-2222-3333-444444444444", "architrave:adversarial-judge", "REVISE")
-        session("cccccccc-1111-2222-3333-444444444444", "architrave:backend-implementer", "PASS")
+            events = [{"type": "session.start", "data": {"selectedModel": "claude-x"}},
+                      {"type": "subagent.selected", "data": {"agentName": agent}},
+                      {"type": "assistant.turn_start", "data": {}}]
+            events += [{"type": "assistant.message", "data": {"content": text}} for text in said]
+            (folder / "events.jsonl").write_text("\n".join(json.dumps(e) for e in events) + "\n")
+        good = "342c39ea-ac1f-42f2-84c8-687165d62ead"
+        session(good, "architrave:adversarial-judge", "**PASS** with notes")
+        session("1bbbbbbb-1111-2222-3333-444444444444", "architrave:adversarial-judge",
+                "A PASS needs all criteria met. Verdict: REVISE")
+        session("2ccccccc-1111-2222-3333-444444444444", "architrave:backend-implementer", "**PASS**")
+        session("3ddddddd-1111-2222-3333-444444444444", "my-prejudged-implementer", "**PASS**")
         example = EXAMPLE.read_text()
         row = "commit abc1234, test log ci/123"
-        old = os.environ.get("COPILOT_HOME")
-        os.environ["COPILOT_HOME"] = str(home)
-        try:
-            code, out = self.requirements(example.replace(row, row + "; review: aaaaaaaa PASS"))
-            self.assertEqual(code, 0, out)
-            code, out = self.requirements(example.replace(row, row + "; review: bbbbbbbb PASS"))
-            self.assertIn("ended with REVISE, not PASS", out)
-            code, out = self.requirements(example.replace(row, row + "; review: cccccccc PASS"))
+        code, out = self.requirements(example.replace(row, row + f"; review: {good} PASS"))
+        self.assertEqual(code, 0, out)
+        code, out = self.requirements(example.replace(row, row + "; review: 1bbbbbbb-1111-2222-3333-444444444444 PASS"))
+        self.assertIn("ended with REVISE, not PASS", out)
+        for spoof in ("2ccccccc-1111-2222-3333-444444444444", "3ddddddd-1111-2222-3333-444444444444"):
+            code, out = self.requirements(example.replace(row, row + f"; review: {spoof} PASS"))
             self.assertIn("not a reviewer role", out)
-            code, out = self.requirements(example.replace(row, row + "; review: dddddddd PASS"))
-            self.assertEqual(code, 0, out)
-        finally:
-            if old is None:
-                os.environ.pop("COPILOT_HOME", None)
-            else:
-                os.environ["COPILOT_HOME"] = old
+        code, out = self.requirements(example.replace(row, row + f"; review: {good}. PASS"))
+        self.assertIn("review note must read", out)
+        lane = ("\n| Lane | Repo | Project ID | Branch | Push target | REQ IDs | Depends on | Session ID | Assignment ID | State | "
+                "Mutable paths | Heavy build | Preflight | Preflight evidence | Preflight reported | Owner-only decisions | Superseded by |\n"
+                + "|---" * 17 + "|\n| L1 | me/app | p | b | private | REQ-02 | - | - | - | done | src | no | ok | - | no | [] | - |\n")
+        code, out = self.requirements(example.replace(row, row + "; review: judge PASS") + lane, "--done")
+        self.assertIn("lane L1 (done) lacks a PASS review on REQ-02", out, "unverifiable notes do not count where logs exist")
+        code, out = self.requirements(example.replace(row, row + f"; review: {good} PASS") + lane, "--done")
+        self.assertNotIn("lacks a PASS review", out)
+        code, out = self.requirements(example.replace(row, row + "; review: deadbeef-0000-0000-0000-000000000000 PASS") + lane, "--done")
+        self.assertIn("lacks a PASS review on REQ-02", out, "a session not logged here is unverified")
 
     def test_spec_md_is_the_default_requirements_file_and_checks_validate_it(self):
         (self.hub / "architrave.config.json").write_text(json.dumps(
@@ -687,6 +695,79 @@ Verify: `make e2e`
         self.assertLess(len(list(directory.glob("*.log"))), gate_runner.GATE_LOG_KEEP)
         for leftover in directory.glob("rotation-test-*.log"):
             leftover.unlink()
+
+class ReviewVerification(unittest.TestCase):
+    def setUp(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("gate_runner_unit", RUNNER)
+        self.gate = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.gate)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.home = Path(self.tmp.name)
+        self.old = os.environ.get("COPILOT_HOME")
+        os.environ["COPILOT_HOME"] = str(self.home)
+
+    def tearDown(self):
+        if self.old is None:
+            os.environ.pop("COPILOT_HOME", None)
+        else:
+            os.environ["COPILOT_HOME"] = self.old
+        self.tmp.cleanup()
+
+    def log(self, sid, events):
+        folder = self.home / "session-state" / sid
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "events.jsonl").write_text("\n".join(json.dumps(e) for e in events) + "\n")
+
+    def test_role_is_the_kickoff_agent_and_prefix_folders_do_not_match(self):
+        sid = "aaaaaaaa-1111-2222-3333-444444444444"
+        self.log(sid, [{"type": "assistant.turn_start", "data": {}},
+                       {"type": "subagent.selected", "data": {"agentName": "architrave:adversarial-judge"}},
+                       {"type": "assistant.message", "data": {"content": "Verdict: PASS"}}])
+        self.assertEqual(self.gate.review_session(sid, "PASS")[0], "contradicted", "a mid-session switch is not the role")
+        self.log("bbbbbbbb-1111-2222-3333-444444444444-decoy", [
+            {"type": "subagent.selected", "data": {"agentName": "architrave:adversarial-judge"}},
+            {"type": "assistant.message", "data": {"content": "Verdict: PASS"}}])
+        self.assertEqual(self.gate.review_session("bbbbbbbb-1111-2222-3333-444444444444", "PASS")[0], "unknown")
+        self.assertEqual(self.gate.review_session("bbbbbbbb", "PASS")[0], "unknown", "an ID prefix is never looked up")
+
+    def test_verdict_line_wins_and_cache_follows_the_log(self):
+        sid = "cccccccc-1111-2222-3333-444444444444"
+        judge = {"type": "subagent.selected", "data": {"agentName": "architrave:adversarial-judge"}}
+        self.log(sid, [judge, {"type": "assistant.message", "data": {"content": "**FAIL** on two items"}}])
+        self.assertEqual(self.gate.review_session(sid, "PASS")[0], "contradicted")
+        time.sleep(0.01)
+        self.log(sid, [judge, {"type": "assistant.message", "data": {"content": "**FAIL** on two items"}},
+                       {"type": "assistant.message", "data": {"content": "Fixed; re-run to get PASS.\nVerdict: PASS"}}])
+        self.assertEqual(self.gate.review_session(sid, "PASS")[0], "verified", "a grown log is re-read")
+        report = "eeeeeeee-2222-2222-3333-444444444444"
+        self.log(report, [judge, {"type": "session.task_complete", "data": {"summary": "**Verdict: REVISE.** Sent the review."}},
+                          {"type": "assistant.message", "data": {"content": "The overview shows gate PASS while --done fails."}}])
+        self.assertEqual(self.gate.session_facts(report)["verdict"], "REVISE", "narration never overrides the report")
+        self.log(report, [judge, {"type": "tool.execution_start", "data": {"toolName": "send_session_message",
+                          "arguments": {"message": "**Re-review of 6e2b42d: PASS.** All findings fixed."}}}])
+        self.assertEqual(self.gate.session_facts(report)["verdict"], "PASS")
+        self.log(report, [judge, {"type": "session.task_complete", "data": {"summary": "Verdict: REVISE"}},
+                          {"type": "session.task_complete", "data": {"summary": "Re-review: PASS"}}])
+        self.assertEqual(self.gate.review_session(report, "REVISE", final=False)[0], "verified", "an earlier round")
+        self.assertEqual(self.gate.review_session(report, "REVISE")[0], "contradicted", "the latest note is the final verdict")
+        self.assertEqual(self.gate.review_session(report, "FAIL", final=False)[0], "contradicted")
+
+    def test_cross_family_and_parallel_cap(self):
+        lane_sid, review_sid = "dddddddd-1111-2222-3333-444444444444", "eeeeeeee-1111-2222-3333-444444444444"
+        self.log(lane_sid, [{"type": "session.start", "data": {"selectedModel": "claude-opus-5.5"}}])
+        self.log(review_sid, [{"type": "session.start", "data": {"selectedModel": "claude-sonnet-5"}},
+                              {"type": "subagent.selected", "data": {"agentName": "architrave:adversarial-judge"}},
+                              {"type": "assistant.message", "data": {"content": "Verdict: PASS"}}])
+        lane = {"req ids": "REQ-01", "state": "done", "session id": lane_sid}
+        reqs = {"REQ-01": {"status": "accepted", "evidence": f"commit abc; review: {review_sid} PASS"}}
+        self.assertEqual(self.gate.lane_review_gaps(lane, reqs, strict=True), [])
+        self.assertEqual(self.gate.lane_review_gaps(lane, reqs, strict=True, cross_family=True), ["REQ-01 (same model family)"])
+        for value, expected in ((5, (5, None)), (25, (20, None))):
+            self.assertEqual(self.gate.parallel_cap({"workers": {"maxParallel": value}}), expected)
+        for bad in (0, -1, True, "8"):
+            self.assertIsNotNone(self.gate.parallel_cap({"workers": {"maxParallel": bad}})[1], bad)
+
 
 if __name__ == "__main__":
     unittest.main()

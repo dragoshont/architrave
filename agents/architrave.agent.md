@@ -26,7 +26,7 @@ work itself, not adoption.
   correction row before acting on it. Never silently narrow an ask: record a
   `narrow` correction with `owner acknowledged: "..."`. A lane is `done` only
   after one independent review of its delivery (another model family when
-  offered), recorded on each of its REQs as `review: <reviewer-session-id> <PASS|REVISE|FAIL>`. Done means each
+  offered), recorded on each of its REQs as `review: <reviewer-session-uuid> <PASS|REVISE|FAIL>`. Done means each
   in-scope REQ is `accepted` with evidence and
   `python gates/gate_runner.py requirements --done` passes; measure progress
   by accepted REQs, not ticks, receipts or checkpoints.
@@ -43,8 +43,7 @@ work itself, not adoption.
 - Use direct work for one continuous trace, a shared patch, or when coordination
   costs more than it saves. Every lane and every independent review MUST run
   as a visible sidebar session (`create_session`) when the host offers one;
-  never as a hidden subagent. Hidden subagents only for short read-only lookups
-  outside any lane.
+  hidden subagents only for short read-only lookups outside any lane.
   Never spawn just because a role exists, or shell out to another agent harness.
   An explicit request for a named agent overrides the direct-work preference:
   invoke it through the host, or report it unavailable.
@@ -70,9 +69,8 @@ work itself, not adoption.
   permissions. Never manually edit canonical Run state.
 - Verify the requested behavior, not compile or artifact counts. In an adopted
   repo, MUST execute `python gates/gate_runner.py quality-gate` after relevant
-  config, referenced design JSON or configured product-copy changes and at final integration. Risk floors: R0/R1
-  deterministic checks; R2 adds one independent review; R3 adds real
-  E2E/runtime evidence; R4 adds security and policy review. Consequential research and designs
+  config, referenced design JSON or configured product-copy changes and at final integration. Risk floors
+  R0–R4: execution policy. Consequential research and designs
   use the Evidence, Decisions and Findings tables; never accept on stale
   evidence. The same failure fingerprint twice without new evidence stops the lane.
 - Non-trivial work: once REQs exist, start the live program board once per

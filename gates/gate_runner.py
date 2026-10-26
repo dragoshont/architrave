@@ -254,68 +254,143 @@ def section(text: str, title: str) -> str:
 REVIEW_NOTE = re.compile(r"(?:^|[;,])\s*review:\s*([^;|,]*)")
 
 
-REVIEWER_ROLE = re.compile(r"adversarial-judge|code-review|rubber-duck|security-review|architrave-review|judge", re.I)
-REVIEW_CHECKS: dict[tuple[str, str], tuple[str, str | None]] = {}
+REVIEWER_ROLE = re.compile(r"(?:architrave:)?(?:adversarial-judge|code-review|rubber-duck|security-review|architrave-review)", re.I)
+SESSION_UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+SESSION_FACTS: dict[tuple[str, int, float], dict[str, str | None]] = {}
+EXPLICIT_VERDICT = re.compile(r"verdict\W{0,6}(PASS|REVISE|FAIL)\b", re.I)
 
 
-def review_session(reviewer: str, verdict: str) -> tuple[str, str | None]:
+def session_home() -> Path:
+    return Path(os.environ.get("COPILOT_HOME", Path.home() / ".copilot")) / "session-state"
+
+
+def session_facts(session: str) -> dict[str, str | None] | None:
+    """Kickoff role, model and final verdict of a local session log, or None when it is not logged here."""
+    log = session_home() / session.lower() / "events.jsonl"
+    if not SESSION_UUID.fullmatch(session.lower()) or not log.is_file():
+        return None
+    stat = log.stat()
+    key = (session.lower(), stat.st_size, stat.st_mtime)
+    if key not in SESSION_FACTS:
+        role = model = None
+        messages: list[str] = []
+        reports: list[str] = []
+        started = False
+        with log.open(encoding="utf-8", errors="ignore") as handle:
+            for line in handle:
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(event, dict):
+                    continue
+                data = event.get("data") if isinstance(event.get("data"), dict) else {}
+                kind = event.get("type")
+                if kind == "session.start" and isinstance(data.get("selectedModel"), str):
+                    model = data["selectedModel"]
+                elif kind == "subagent.selected" and not started and role is None:
+                    role = str(data.get("agentName") or "")
+                elif kind == "assistant.turn_start":
+                    started = True
+                elif kind == "assistant.message" and isinstance(data.get("content"), str):
+                    messages.append(data["content"])
+                elif kind == "session.task_complete" and isinstance(data.get("summary"), str):
+                    reports.append(data["summary"])
+                elif kind == "tool.execution_start" and data.get("toolName") == "send_session_message":
+                    arguments = data.get("arguments") if isinstance(data.get("arguments"), dict) else {}
+                    reports.append(str(arguments.get("message") or ""))
+        said = None
+        said_all = []
+        # The verdict is the reviewer's last report (task_complete or a message to another session); narration
+        # counts only without reports and only when it opens with the verdict.
+        for text in reports or messages:
+            explicit = EXPLICIT_VERDICT.findall(text)
+            found = explicit[-1] if explicit else None
+            if not found:
+                lead = re.search(r"\b(PASS|REVISE|FAIL)\b", text[:160]) if reports else re.match(r"\W*(PASS|REVISE|FAIL)\b", text)
+                found = lead.group(1) if lead else None
+            if found:
+                said = found.upper()
+                said_all.append(said)
+        SESSION_FACTS.clear() if len(SESSION_FACTS) > 512 else None
+        SESSION_FACTS[key] = {"role": role, "model": model, "verdict": said, "verdicts": " ".join(said_all)}
+    return SESSION_FACTS[key]
+
+
+def review_session(reviewer: str, verdict: str, final: bool = True) -> tuple[str, str | None]:
     """Check a `review: <session-id> <verdict>` note against the reviewer session's local log.
 
-    Returns ("verified", None), ("unknown", None) when no local log can be checked, or ("contradicted", reason).
+    ("verified", None); ("unknown", None) when the reviewer is not a session logged on this machine;
+    ("contradicted", reason) when the log shows a different role or verdict. A final note (the latest naming
+    this session) must match the session's last report; an earlier one only one of its reports (a re-review).
     """
-    if not re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f-]{1,28})?", reviewer.lower()):
+    facts = session_facts(reviewer)
+    if facts is None:
         return "unknown", None
-    key = (reviewer.lower(), verdict)
-    if key in REVIEW_CHECKS:
-        return REVIEW_CHECKS[key]
-    home = Path(os.environ.get("COPILOT_HOME", Path.home() / ".copilot")) / "session-state"
-    logs = [p / "events.jsonl" for p in home.glob(reviewer.lower() + "*") if (p / "events.jsonl").is_file()] if home.is_dir() else []
-    result: tuple[str, str | None] = ("unknown", None)
-    if len(logs) == 1:
-        role, said = None, None
-        for line in logs[0].open(encoding="utf-8", errors="ignore"):
-            try:
-                event = json.loads(line)
-            except ValueError:
-                continue
-            data = event.get("data") if isinstance(event, dict) and isinstance(event.get("data"), dict) else {}
-            if event.get("type") == "subagent.selected" and role is None:
-                role = str(data.get("agentName") or "")
-            elif event.get("type") == "assistant.message":
-                found = re.search(r"\b(PASS|REVISE|FAIL)\b", str(data.get("content") or ""))
-                said = found.group(1) if found else said
-        if not role or not REVIEWER_ROLE.search(role):
-            result = ("contradicted", f"session {reviewer} ran {role or 'no agent role'}, not a reviewer role")
-        elif said != verdict:
-            result = ("contradicted", f"session {reviewer} ended with {said or 'no verdict'}, not {verdict}")
-        else:
-            result = ("verified", None)
-    REVIEW_CHECKS[key] = result
-    return result
+    role = facts["role"] or ""
+    if not REVIEWER_ROLE.fullmatch(role):
+        return "contradicted", f"session {reviewer[:8]} ran {role or 'no agent role'}, not a reviewer role"
+    if final and facts["verdict"] != verdict or not final and verdict not in (facts["verdicts"] or "").split():
+        return "contradicted", f"session {reviewer[:8]} ended with {facts['verdict'] or 'no verdict'}, not {verdict}"
+    return "verified", None
 
 
-def review_passed(evidence: str) -> bool:
-    """True when the latest well-formed review note is PASS."""
-    return [v for _r, v in review_notes(evidence) if v][-1:] == ["PASS"]
+def strict_reviews() -> bool:
+    """On a host that keeps local session logs, completion requires session-verified reviews."""
+    return session_home().is_dir()
 
 
-def lane_review_gaps(lane: dict[str, str], reqs: dict[str, dict[str, str]]) -> list[str]:
-    """REQs in a lane that still need a PASS review: all open ones in a done lane, accepted ones anywhere."""
+def review_passed(evidence: str, strict: bool = False) -> bool:
+    """True when the latest well-formed review note is PASS (and, when strict, verified in its session log)."""
+    notes = [(who_, v) for who_, v in review_notes(evidence) if v]
+    if not notes or notes[-1][1] != "PASS":
+        return False
+    return not strict or review_session(notes[-1][0], "PASS")[0] == "verified"
+
+
+def model_family(model: str | None) -> str:
+    return re.split(r"[-:/]", (model or "").lower())[0]
+
+
+def lane_review_gaps(lane: dict[str, str], reqs: dict[str, dict[str, str]], strict: bool = False,
+                     cross_family: bool = False) -> list[str]:
+    """REQs in a lane still needing a PASS review: all open ones in a done lane, accepted ones anywhere.
+
+    Strict (local session logs present): the latest PASS must be verified in its reviewer session log, and with
+    `review.crossFamily` the reviewer's model family must differ from the lane session's.
+    """
     gaps = []
+    lane_model = (session_facts(lane.get("session id", "")) or {}).get("model") if cross_family else None
     for rid in dict.fromkeys(r.upper() for r in re.findall(r"REQ-[A-Za-z0-9_.-]+", lane["req ids"], re.I)):
         row = reqs.get(rid)
-        if not row or row["status"].lower() in REQ_CLOSED or review_passed(row["evidence"]):
+        if not row or row["status"].lower() in REQ_CLOSED:
             continue
-        if lane["state"].lower() == "done" or row["status"].lower() == "accepted":
+        if lane["state"].lower() != "done" and row["status"].lower() != "accepted":
+            continue
+        if not review_passed(row["evidence"], strict):
             gaps.append(rid)
+        elif cross_family and lane_model:
+            reviewer = [w for w, v in review_notes(row["evidence"]) if v][-1]
+            if model_family((session_facts(reviewer) or {}).get("model")) == model_family(lane_model):
+                gaps.append(f"{rid} (same model family)")
     return gaps
+
+
+def parallel_cap(config: dict[str, object]) -> tuple[int, str | None]:
+    """workers.maxParallel clamped to 1..20 (default 3); an error string when it is not a positive integer."""
+    workers = config.get("workers") or {}
+    value = workers.get("maxParallel", 3) if isinstance(workers, dict) else 3
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return 3, f"workers.maxParallel {value!r} is not a positive integer"
+    return min(value, 20), None
 
 
 def review_notes(evidence: str) -> list[tuple[str, str | None]]:
     """Every `review: <reviewer> <verdict>` note in order; verdict None when malformed."""
     notes = []
     for note in REVIEW_NOTE.finditer(evidence):
-        match = re.fullmatch(r"([A-Za-z][\w:.@/-]*)\s+(PASS|REVISE|FAIL)\b.*", note.group(1).strip(), re.I)
+        match = re.fullmatch(r"([A-Za-z][\w:.@/-]*|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
+                             r"\s+(PASS|REVISE|FAIL)\b.*", note.group(1).strip(), re.I)
         notes.append((match.group(1), match.group(2).upper()) if match else (note.group(1).strip(), None))
     return notes
 
@@ -349,11 +424,12 @@ def parse_requirements(text: str) -> tuple[dict[str, dict[str, str]], list[dict[
         if status == "accepted" and not row["evidence"]:
             errors.append(f"{rid} is accepted without evidence")
         notes = review_notes(row["evidence"])
-        for reviewer, verdict in notes:
+        for index, (reviewer, verdict) in enumerate(notes):
             if verdict is None:
                 errors.append(f"{rid} review note must read 'review: <reviewer> <PASS|REVISE|FAIL>'")
                 continue
-            check, reason = review_session(reviewer, verdict)
+            final = all(later.lower() != reviewer.lower() for later, _v in notes[index + 1:])
+            check, reason = review_session(reviewer, verdict, final)
             if check == "contradicted":
                 errors.append(f"{rid} review note contradicts the session log: {reason}")
             elif who(reviewer) and who(reviewer) == who(row["owner"]):
@@ -776,13 +852,9 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
     errors.extend(more)
     for note in notes:
         print(f"note  {note}")
-    workers = config.get("workers") or {}
     errors.extend(header_errors(text))
-    try:
-        max_parallel = min(20, int(workers.get("maxParallel", 3))) if isinstance(workers, dict) else 3
-    except (TypeError, ValueError):
-        errors.append(f"workers.maxParallel {workers.get('maxParallel')!r} is not an integer")
-        max_parallel = 3
+    max_parallel, cap_error = parallel_cap(config)
+    errors.extend([cap_error] if cap_error else [])
     errors.extend(lane_errors(text, reqs, max_parallel))
     ids = [part.strip() for part in (claim or "").split(",") if part.strip()]
     if expect is not None and not handoff:
@@ -826,7 +898,8 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
         if blockers:
             errors.append(f"not done: open serious findings: {', '.join(blockers)}")
         for lane in ledger_table(text, ("lane", "repo", "project id"), LANE_COLUMNS):
-            unreviewed = lane_review_gaps(lane, reqs)
+            unreviewed = lane_review_gaps(lane, reqs, strict_reviews(), bool((config.get("review") or {}).get("crossFamily"))
+                                          if isinstance(config.get("review"), dict) else False)
             if unreviewed:
                 errors.append(f"not done: lane {lane['lane']} ({lane['state']}) lacks a PASS review on {', '.join(unreviewed)}")
     if claim is not None and not errors:

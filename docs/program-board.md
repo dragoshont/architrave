@@ -25,7 +25,7 @@ starts it for every non-trivial task.
 |---|---|
 | Overview: accepted REQs, running lanes, sessions, tokens, model and wall minutes | Requirements file and local session logs |
 | Lanes: one rectangle per lane, one square per REQ (green accepted, green hatching delivered by a done lane but not yet accepted, blue claimed, red blocked, grey open); select a square for its requirement | `## GHC Scheduler` lane table and REQ rows |
-| How the sessions ran: per session a time bar (first to last event, dark marks for model turns), agent, model/wall minutes, live state, a peak-context gauge against the model limit and a token gauge | `~/.copilot/session-state/<id>/events.jsonl` of the coordinator and the child sessions it created with `create_session` |
+| How the sessions ran: per session a time bar (first to last event, dark marks for model turns), agent, model/wall minutes, live state, a current-context gauge (latest prompt size) against the model limit and a token gauge | `~/.copilot/session-state/<id>/events.jsonl` of the coordinator and the child sessions it created with `create_session` |
 
 It is dense by design and fits a narrow side panel; there are no tables.
 
@@ -50,7 +50,9 @@ flagged. A fresh session on a small-window model is never flagged. Rotation step
 - Square: a corner when the REQ's latest `review: <reviewer> <verdict>` note (at the start of the cell or after `;` or `,`) is PASS — white when the note names a reviewer session whose local log shows a reviewer role ending in PASS, grey when the note can't be checked. Findings verifiers do not count. The overview shows how many PASS reviews are verified.
 - Lane: "reviewed k/n"; a gold border and "review missing" when a `done` lane has any open REQ, or any lane has an accepted REQ, without a PASS review (withdrawn and superseded REQs are skipped). This is the same rule `requirements --done` enforces for ledger lanes; the "Not in a lane" box only gets the gold border for accepted, unreviewed REQs.
 - Review notes attach to REQs, not lanes: one PASS on a REQ covers every lane that lists it. The overview counts accepted but unreviewed REQs.
-- The `requirements` gate parses every note, requires the latest to be PASS for an accepted REQ, and rejects a reviewer named like the REQ's owner. A note naming a session (8+ hex characters) is checked against that session's local log, and a contradiction fails the gate; notes naming anything else, or sessions logged on another machine, stay unverified.
+- The `requirements` gate parses every note, requires the latest to be PASS for an accepted REQ, and rejects a reviewer named like the REQ's owner. A note naming a full session UUID is checked against `session-state/<uuid>/events.jsonl`: the kickoff agent (selected before the first turn) must be a reviewer role, and the verdict of the session's last report (its `task_complete` summary or a message it sent another session; an explicit `Verdict:` wins) must match. Earlier notes naming the same session (a re-review) need only match one of its reports. A contradiction fails the gate. Reuse a reviewer session only to re-review the same delivery.
+- Where local session logs exist (the Copilot app and CLI), `requirements --done` and the board's "review missing" count only verified PASS notes, so role names and sessions from other machines do not close a lane. On hosts without those logs every note is unverified and accepted as written.
+- This catches mistakes and stale claims, not deliberate forgery: an agent that can write files can fake a log.
 
 ## Checks and limits
 

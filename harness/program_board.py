@@ -41,7 +41,7 @@ def when(value: str | None) -> datetime | None:
 
 
 SPAWN_TOOLS = {"create_session", "open_pr_session", "open_issue_session", "fork_session"}
-REVIEWER = re.compile(r"adversarial-judge|code-review|rubber-duck|security-review|architrave-review|judge", re.I)
+REVIEWER = gate.REVIEWER_ROLE
 SESSION_ID = re.compile(r"\b([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\b")
 
 
@@ -121,12 +121,12 @@ def consume(state: dict, line: bytes, since: datetime | None) -> None:
         name = data.get("agentName") if isinstance(data.get("agentName"), str) else None
         if not info["turns"] and state["turn_open"] is None:
             info["agent"] = name
-        elif name and REVIEWER.search(name):
+        elif name and REVIEWER.fullmatch(name):
             info["reviews"].add(name)
-    elif kind == "skill.invoked" and REVIEWER.search(str(data.get("name") or data.get("skillName") or "")):
+    elif kind == "skill.invoked" and REVIEWER.fullmatch(str(data.get("name") or data.get("skillName") or "")):
         info["reviews"].add(str(data.get("name") or data.get("skillName")))
     elif kind == "tool.execution_start" and data.get("toolName") == "task" and isinstance(data.get("arguments"), dict) \
-            and REVIEWER.search(str(data["arguments"].get("agent_type", ""))):
+            and REVIEWER.fullmatch(str(data["arguments"].get("agent_type", ""))):
         info["reviews"].add(str(data["arguments"]["agent_type"]))
     elif kind == "assistant.turn_start":
         state["turn_open"] = stamp
@@ -214,9 +214,8 @@ def evidence_resolves(evidence: str, repos: list[Path]) -> bool:
     for sha in re.findall(r"(?<![0-9a-fA-F])[0-9a-fA-F]{7,40}(?![0-9a-fA-F])", evidence):
         for repo in repos:
             key = (str(repo), sha)
-            if key not in RESOLVED:
-                RESOLVED[key] = gate.git(repo, "cat-file", "-e", f"{sha}^{{commit}}") is not None
-            if RESOLVED[key]:
+            if key in RESOLVED or gate.git(repo, "cat-file", "-e", f"{sha}^{{commit}}") is not None:
+                RESOLVED[key] = True
                 return True
     return False
 
@@ -228,15 +227,16 @@ def build(ledger: Path, coordinator: str) -> dict:
     lanes = gate.ledger_table(text, ("lane", "repo", "project id"), gate.LANE_COLUMNS)
     config = gate.load_config(ledger) if (ledger / "architrave.config.json").is_file() else {}
     more, _blockers, _notes = gate.chain_errors(ledger, text, reqs, config)
-    workers = config.get("workers") or {}
-    cap = workers.get("maxParallel", 3) if isinstance(workers, dict) else 3
-    errors += more + gate.header_errors(text) + gate.lane_errors(text, reqs, min(cap, 20) if isinstance(cap, int) else 3)
+    cap, cap_error = gate.parallel_cap(config)
+    errors += more + gate.header_errors(text) + gate.lane_errors(text, reqs, cap) + ([cap_error] if cap_error else [])
     repos = [ledger] + [gate.component_path(ledger, c["path"]) for c in config.get("components") or []
                         if isinstance(c, dict) and isinstance(c.get("path"), str)]
     repos = [r for r in repos if gate.git(r, "rev-parse", "--git-dir") is not None]
     reviewed = {rid for rid, r in reqs.items() if gate.review_passed(r["evidence"])}
-    verified = {rid for rid in reviewed if any(
-        v == "PASS" and gate.review_session(who, v)[0] == "verified" for who, v in gate.review_notes(reqs[rid]["evidence"])[-1:])}
+    verified = {rid for rid, r in reqs.items() if gate.review_passed(r["evidence"], strict=True)}
+    strict = gate.strict_reviews()
+    review_cfg = config.get("review") if isinstance(config.get("review"), dict) else {}
+    cross = bool(review_cfg.get("crossFamily"))
     unverified = {rid for rid, r in reqs.items() if r["status"].lower() == "accepted" and not evidence_resolves(r["evidence"], repos)}
     laned = {rid.upper() for lane in lanes for rid in re.findall(r"REQ-[A-Za-z0-9_.-]+", lane["req ids"], re.I)}
     loose = [rid for rid, r in reqs.items() if rid not in laned and r["status"].lower() not in gate.REQ_CLOSED]
@@ -273,7 +273,8 @@ def build(ledger: Path, coordinator: str) -> dict:
     seen = {x["id"].lower() for x in sessions}
     remote = [lane for sid, lane in lane_by_session.items() if sid.lower() not in seen and lane["state"].lower() not in {"superseded", "stopped"}]
     return {"ledger": ledger, "commit": commit, "reqs": reqs, "lanes": lanes, "sessions": sessions, "remote": remote,
-            "lane_by_session": lane_by_session, "errors": errors, "unverified": unverified, "reviewed": reviewed, "verified": verified, "generated": datetime.now(timezone.utc)}
+            "lane_by_session": lane_by_session, "errors": errors, "unverified": unverified, "reviewed": reviewed, "verified": verified,
+            "strict": strict, "cross": cross, "generated": datetime.now(timezone.utc)}
 
 
 def timeline(sessions: list[dict], lane_by_session: dict, remote: list[dict] = ()) -> str:
@@ -339,6 +340,8 @@ def render(data: dict) -> str:
     running = sum(1 for lane in lanes if lane["state"].lower() == "running")
     stats = [("REQs accepted", f"{accepted}/{len(active_req)}"),
              ("gate", "PASS" if not data["errors"] else f"{len(data['errors'])} issues"),
+             ("lanes missing a review (blocks --done)", str(sum(1 for lane in lanes if not lane.get("synthetic")
+                                                                 and gate.lane_review_gaps(lane, reqs, data["strict"], data["cross"])))),
              ("accepted, evidence unresolved", str(len(unverified & set(active_req)))),
              ("accepted, not reviewed", str(len(unreviewed_accepted))),
              ("PASS reviews verified", f"{len(verified & set(active_req))}/{len(reviewed & set(active_req))}"), ("lanes running", f"{running}/{len(lanes)}"),
@@ -356,7 +359,7 @@ def render(data: dict) -> str:
             f"aria-label='{esc(r)} {esc(reqs[r]['status'] if r in reqs else 'unknown')}'></button>" for r in ids)
         done = sum(1 for r in ids if r in reqs and reqs[r]["status"].lower() == "accepted")
         rev = sum(1 for r in ids if r in reviewed)
-        missing = bool(gate.lane_review_gaps(lane, reqs)) and not lane.get("synthetic")
+        missing = bool(gate.lane_review_gaps(lane, reqs, data["strict"], data["cross"])) and not lane.get("synthetic")
         risky = missing or (lane.get("synthetic") and any(
             r in reqs and reqs[r]["status"].lower() == "accepted" and r not in reviewed for r in ids))
         tone = LANE_TONE.get(lane["state"].lower(), "open")
