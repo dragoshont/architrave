@@ -33,6 +33,10 @@ It is dense by design and fits a narrow side panel; there are no tables.
 
 A session whose last action was the host's "Task completed" (no model turn after it) shows a green bar and "task completed", even if its lane row is not yet updated. A later turn makes it active again.
 
+## Rotation flags
+
+A gold ↻ after a session name and "rotate soon/now" in its row mark sessions whose context is getting large (≥30% / ≥45% of the limit, ≥300k tokens, or two compactions). `<output>.rotate.json` lists them for the coordinator; the rotation steps are in `knowledge/execution-policy.md` (Context rotation).
+
 ## Review marks
 
 - Session row: ✓ when the session ran a reviewer (adversarial judge, code review, rubber duck, security review or `architrave-review`); ○ when it ran none. Hover for which.

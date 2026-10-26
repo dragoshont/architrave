@@ -367,6 +367,27 @@ separate acceptance matrix. Required deployment grants, checkpoints, receipts,
 release evidence and recovery are unchanged; unavailable support cannot waive
 them.
 
+### Context rotation
+
+The program board flags a session "rotate soon" at peak context ≥ 30% of its
+limit or ≥ 300k tokens, and "rotate now" at ≥ 45% or two compactions
+(`<board>.rotate.json` lists them). The trigger is mechanical; no reviewer
+decides it. Between turns, for a "rotate now" child:
+
+1. Tell it to commit code and `## Handoff` (Next, Failed approaches, Verify),
+   pass `requirements --handoff`, push, and report the SHA.
+2. Start a successor with `create_session`, workspace `worktree`, `base_branch`
+   = that branch, the same role, and a kickoff naming only REQ ids, the SHA and
+   "run `requirements --handoff --expect <sha>`, read Handoff and git log, run
+   Verify". Never pass the transcript; uncommitted work does not move.
+3. Move the claim (`--claim <ids> --owner <successor lane>`) before the
+   successor writes; archive the predecessor only after `--expect` passes.
+
+Never rotate a child that is waiting on a permission prompt. For a mid-REQ
+rotation, have the adversarial judge check that the Handoff carries the
+predecessor's failed approaches. Remote children and the coordinator's own
+rotation still need the owner.
+
 ## Lead detail (on demand)
 
 Moved from the always-on lead contract; read when the situation applies.

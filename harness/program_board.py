@@ -58,7 +58,7 @@ def read_session(sid: str, since: datetime | None = None) -> dict | None:
     if not path.is_file():
         return None
     info = {"id": sid, "start": None, "end": None, "turns": [], "calls": 0, "input": 0, "cached": 0, "output": 0,
-            "max_context": 0, "context_limit": 0, "model": None, "agent": None, "children": [], "reviews": set(), "completed": None, "turn_after_complete": False}
+            "max_context": 0, "context_limit": 0, "model": None, "agent": None, "children": [], "reviews": set(), "completed": None, "turn_after_complete": False, "compactions": 0}
     pending: dict[str, tuple[str, str | None]] = {}
     turn_open = None
     for line in path.open(encoding="utf-8", errors="ignore"):
@@ -95,6 +95,8 @@ def read_session(sid: str, since: datetime | None = None) -> dict | None:
             turn_open = stamp
             if info["completed"]:
                 info["turn_after_complete"] = True
+        elif kind == "session.compaction_start":
+            info["compactions"] += 1
         elif kind == "session.task_complete":
             info["completed"], info["turn_after_complete"] = stamp, False
         elif kind == "assistant.turn_end" and turn_open and stamp:
@@ -134,15 +136,19 @@ def read_session(sid: str, since: datetime | None = None) -> dict | None:
     info["wall_min"] = ((info["end"] - info["start"]).total_seconds() / 60) if info["start"] and info["end"] else 0
     info["idle_min"] = ((datetime.now(timezone.utc) - info["end"]).total_seconds() / 60) if info["end"] else None
     info["done"] = bool(info["completed"]) and not info["turn_after_complete"]
+    frac = info["max_context"] / info["context_limit"] if info["context_limit"] else 0
+    info["rotate"] = None if info["done"] else ("hard" if frac >= 0.45 or info["compactions"] >= 2
+                                                else "soft" if frac >= 0.30 or info["max_context"] >= 300_000 else None)
     return info
 
 
 def state_of(s: dict, lane: dict) -> str:
     label = lane.get("state") or ("coordinator" if s.get("name") == "Coordinator" else "")
     idle = s.get("idle_min")
+    rotate = {"hard": " · rotate now", "soft": " · rotate soon"}.get(s.get("rotate") or "", "")
     activity = ("task completed" if s.get("done") else "no log" if idle is None
                 else "active now" if idle < 10 else f"idle {idle:.0f} min")
-    return f"{label} · {activity}" if label else activity
+    return (f"{label} · {activity}" if label else activity) + rotate
 
 
 def esc(value: object) -> str:
@@ -250,7 +256,8 @@ def timeline(sessions: list[dict], lane_by_session: dict, remote: list[dict] = (
             f"<g><title>{esc(s['name'])}: {s['wall_min']:.0f} min wall, {s['active_min']:.0f} min model; "
             f"{('reviewed by ' + ', '.join(sorted(s['reviews']))) if s['reviews'] else 'no reviewer run'}; {s['calls']} calls; {s['input']:,} fresh in, {s['cached']:,} cached, {s['output']:,} out tokens; peak context {s['max_context']:,} of {s['context_limit']:,}</title>"
             f"<text class='label' x='0' y='{y + 8}'>{esc(s['name'] if len(s['name']) <= 15 else s['name'][:14] + '…')}"
-            f"<tspan class='{'rv' if s['reviews'] else 'nrv'}'> {'✓' if s['reviews'] else '○'}</tspan></text>"
+            f"<tspan class='{'rv' if s['reviews'] else 'nrv'}'> {'✓' if s['reviews'] else '○'}</tspan>"
+            f"{'<tspan class=rot> ↻</tspan>' if s.get('rotate') else ''}</text>"
             f"<text class='sub' x='0' y='{y + 19}'>{esc(agent[:22])}</text>"
             f"<rect class='lane-bg' x='{left}' y='{y}' width='{width}' height='10'/>"
             f"<rect class='track {tone}' x='{x:.1f}' y='{y}' width='{w:.1f}' height='10'/>{marks}"
@@ -318,7 +325,7 @@ h1{margin:0;font-size:17px;font-weight:650;letter-spacing:-.02em}h2{margin:16px 
 .box{background:#1b2632;border:1px solid #7a8c9e;padding:5px 6px 6px}.box.blocked{border-color:#f08895}.box.done{border-color:#38aa6b}.box.gone{opacity:.45}
 .box h3{margin:0;font-size:10.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.box p{margin:0 0 4px;font-size:9px;color:#bacada}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,11px);gap:1px}
-.sq{width:11px;height:11px;padding:0;border:0;cursor:pointer}.sq.warn{box-shadow:inset 0 0 0 2px #d6aa4b}.sq{position:relative}.sq.rev::after{content:"";position:absolute;right:0;top:0;border-style:solid;border-width:0 5px 5px 0;border-color:transparent #fff transparent transparent}.box.unrev{border-color:#d6aa4b;box-shadow:inset 0 0 0 1px #d6aa4b}.rv{fill:#38aa6b}.nrv{fill:#8fa1b3}.remote{fill:none;stroke:#506071;stroke-dasharray:3 2}.issues{margin:6px 0 0;padding-left:16px;font-size:10px;color:#f0a0aa}.sq:hover,.sq:focus-visible,.sq.sel{outline:1.5px solid #fff;outline-offset:0}
+.sq{width:11px;height:11px;padding:0;border:0;cursor:pointer}.sq.warn{box-shadow:inset 0 0 0 2px #d6aa4b}.sq{position:relative}.sq.rev::after{content:"";position:absolute;right:0;top:0;border-style:solid;border-width:0 5px 5px 0;border-color:transparent #fff transparent transparent}.box.unrev{border-color:#d6aa4b;box-shadow:inset 0 0 0 1px #d6aa4b}.rot{fill:#d6aa4b}.rv{fill:#38aa6b}.nrv{fill:#8fa1b3}.remote{fill:none;stroke:#506071;stroke-dasharray:3 2}.issues{margin:6px 0 0;padding-left:16px;font-size:10px;color:#f0a0aa}.sq:hover,.sq:focus-visible,.sq.sel{outline:1.5px solid #fff;outline-offset:0}
 #detail{min-height:28px;margin:8px 0 0;padding-top:6px;border-top:1px solid #415064;font-size:11px;color:#c6d4e1;overflow-wrap:anywhere}
 .timeline{width:100%;display:block}.timeline .label{fill:#edf3f8;font-size:8.5px;font-weight:600}.timeline .sub{fill:#9fb0c1;font-size:6.5px}.timeline .tick{fill:#8fa1b3;font-size:6.5px}.lane-bg,.gauge{fill:#1b2632}.turn{fill:#0b1016;opacity:.55}.ctxfill{fill:#d6aa4b}.tokfill{fill:#479bc1}
 footer{font-size:9px;color:#8fa1b3;margin-top:10px;line-height:1.5}
@@ -383,6 +390,8 @@ def main() -> int:
                 tmp = out.with_suffix(f".{os.getpid()}.tmp")
                 tmp.write_text(render(data), encoding="utf-8")
                 tmp.replace(out)
+                out.with_suffix(".rotate.json").write_text(json.dumps(
+                    {x["id"]: x["rotate"] for x in data["sessions"] if x["rotate"]}, indent=1), encoding="utf-8")
                 print(f"program-board: {len(data['lanes'])} lanes, {len(data['sessions'])} sessions -> {out}", flush=True)
                 newest = max((x["end"] for x in data["sessions"]), default=None)
             except Exception as exc:  # keep the last good board, report, retry next interval

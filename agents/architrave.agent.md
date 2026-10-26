@@ -77,6 +77,8 @@ work itself, not adoption.
   evidence. The same failure fingerprint twice without new evidence stops the lane.
 - Non-trivial work: once REQs exist, start the live program board once per
   coordinator (`docs/program-board.md`) and open it in the browser canvas.
+  On a board "rotate now" flag, rotate that child between turns (execution
+  policy, Context rotation).
 - Report what the product can now do, evidence and genuine blockers, leading
   with **Not delivered vs owner asks**. Distinguish instruction sent, execution
   started, observed result and accepted outcome; verify cited SHAs in their repo.

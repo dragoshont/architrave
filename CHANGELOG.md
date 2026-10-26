@@ -5,7 +5,16 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
-## 0.21.19
+## 0.21.20
+
+- Context rotation: the program board flags sessions "rotate soon" (peak
+  context ≥30% of limit or ≥300k) and "rotate now" (≥45% or two compactions),
+  with a gold ↻ and a `<board>.rotate.json` list. The execution policy gives
+  the rotation steps: Handoff and push, worktree successor from that SHA with
+  `--expect`, claim move, archive after. Mechanical trigger; the judge only
+  checks Handoff quality for mid-REQ rotations. Based on a feasibility study of
+  the live Ode sessions.
+
 
 - Program board: a session whose last action was the host's "Task completed"
   (no model turn after it) shows a green bar and "task completed", even before

@@ -48,12 +48,14 @@ class ProgramBoard(unittest.TestCase):
                 {"type": "tool.execution_complete", "timestamp": "2026-10-26T10:01:05Z", "data": {"toolCallId": "c1", "result": f"Created session (id: {CHILD})"}},
                 {"type": "session.usage_record", "timestamp": "2026-10-26T10:02:00Z", "data": {"usage": usage}},
                 {"type": "session.task_complete", "timestamp": "2026-10-26T10:02:30Z", "data": {}}])
+            big = {"inputTokens": 120000, "cacheReadTokens": 0, "outputTokens": 10, "maxPromptTokens": 200000, "model": "m"}
             events(state / CHILD, [
                 {"type": "session.start", "timestamp": "2026-10-26T10:01:10Z", "data": {"startTime": "2026-10-26T10:01:10Z"}},
                 {"type": "assistant.turn_start", "timestamp": "2026-10-26T10:02:00Z", "data": {}},
                 {"type": "subagent.selected", "timestamp": "2026-10-26T10:02:30Z", "data": {"agentName": "code-review"}},
                 {"type": "session.usage_record", "timestamp": "2026-10-26T10:03:00Z", "data": {"usage": usage}},
                 {"type": "assistant.turn_end", "timestamp": "2026-10-26T10:12:00Z", "data": {}},
+                {"type": "session.usage_record", "timestamp": "2026-10-26T10:11:30Z", "data": {"usage": big}},
                 1, {"type": "x", "data": [1]}, {"type": "tool.execution_start", "timestamp": 5, "data": {"toolName": "create_session", "arguments": "str"}},
                 {"type": "session.usage_record", "timestamp": "2026-10-26T10:11:00Z", "data": {"usage": {"inputTokens": "n/a"}}}])
             out = base / "board.html"
@@ -68,7 +70,7 @@ class ProgramBoard(unittest.TestCase):
             self.assertNotIn("sq done warn' data-d='REQ-1", page)
             self.assertIn("L2-remote", page)
             self.assertIn("not logged on this machine", page)
-            self.assertIn("tok 10k new · 40k cache · 900 out", page)
+            self.assertIn("tok 130k new · 40k cache · 910 out", page)
             self.assertIn("class='sq done", page)
             self.assertIn("class='sq blocked'", page)
             self.assertIn("L1 app", page)
@@ -77,6 +79,8 @@ class ProgramBoard(unittest.TestCase):
             self.assertIn("no reviewer run", page)
             self.assertIn("coordinator · task completed", page)
             self.assertIn("running · idle", page)
+            self.assertIn("rotate now", page)
+            self.assertIn(CHILD, out.with_suffix(".rotate.json").read_text())
             self.assertIn("sq done rev", page)
             self.assertIn("box active unrev", page)
             self.assertIn("reviewed 1/2", page)
