@@ -5,6 +5,24 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## 0.21.11
+
+- Cross-repository Copilot programs keep one committed `## GHC Scheduler` lane
+  table; the `requirements` gate now rejects duplicate live REQ or path owners,
+  running lanes above `workers.maxParallel`, more than one running heavy build,
+  superseded lanes without a successor, malformed owner-decision JSON and
+  non-UUID session IDs (REQ-29).
+- Owner intent: a typed `narrow` correction is accepted, and `requirements
+  --done` fails until it quotes `owner acknowledged: "..."` (REQ-31).
+- Lead/CTO behavior for verified evidence SHAs, context-budget rotation,
+  per-stream status and cancel/supersede, stated once in the execution policy
+  (REQ-32..35).
+- A turn started by `send_session_message` cannot show the owner a permission
+  prompt; dispatch only to sessions whose tools already work, have the owner
+  start the turn, or do the work in the coordinator.
+- Anti-ceremony is standing behavior: live use on the real project over fixture
+  programs, prose guards and per-REQ reviews (REQ-37).
+
 ## 0.21.10
 
 - Multi-repository programs: native batch, Run claims and mutable-path
