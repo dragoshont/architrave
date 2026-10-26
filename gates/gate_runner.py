@@ -299,7 +299,7 @@ LANE_COLUMNS = ("lane", "repo", "project id", "branch", "push target", "req ids"
                 "assignment id", "state", "mutable paths", "heavy build", "preflight", "preflight evidence",
                 "preflight reported", "owner-only decisions", "superseded by")
 LANE_STATES = {"ready", "running", "blocked", "idle", "superseded", "stopped", "done"}
-NARROW_ACK = re.compile(r"owner acknowledged:\s*[\"\u201c]\S", re.I)
+OWNER_ACK = re.compile(r"owner acknowledged:\s*[\"\u201c]\S", re.I)
 
 
 def lane_errors(text: str, reqs: dict[str, dict[str, str]], max_parallel: int) -> list[str]:
@@ -340,6 +340,13 @@ def lane_errors(text: str, reqs: dict[str, dict[str, str]], max_parallel: int) -
                 if repo == lane["repo"] and (path == other or path.startswith(other + "/") or other.startswith(path + "/")):
                     errors.append(f"lanes {owner} and {lane['lane']} both own {lane['repo']}:{path}")
             paths.append((lane["repo"], path, lane["lane"]))
+    states = {lane["lane"]: lane["state"].lower() for lane in lanes}
+    for lane in lanes:
+        if lane["state"].lower() != "running":
+            continue
+        for dep in (d.strip() for d in lane["depends on"].split(",")):
+            if dep not in {"", "-"} and states.get(dep) != "done":
+                errors.append(f"lane {lane['lane']} is running before dependency {dep} is done ({states.get(dep, 'missing')})")
     running = [lane for lane in live if lane["state"].lower() == "running"]
     if len(running) > max_parallel:
         errors.append(f"{len(running)} running lanes exceed workers.maxParallel={max_parallel}")
@@ -347,6 +354,132 @@ def lane_errors(text: str, reqs: dict[str, dict[str, str]], max_parallel: int) -
     if len(heavy) > 1:
         errors.append(f"heavy-build slot held by several running lanes: {', '.join(heavy)}")
     return errors
+
+
+EVIDENCE_STATES = {"unverified", "supported", "contradicted", "stale", "superseded"}
+DECISION_STATES = {"proposed", "active", "reconsider", "superseded"}
+FINDING_SEVERITIES = {"low", "medium", "high", "critical"}
+FINDING_DISPOSITIONS = {"open", "fixed", "rejected", "accepted-risk", "deferred"}
+GIT_SOURCE = re.compile(r"\b([A-Za-z0-9_.-]+)@([0-9a-f]{7,40}):([^\s|,;]+)")
+VERIFIABLE = re.compile(r"\b[0-9a-f]{7,40}\b|\b[ED]-[A-Za-z0-9_.-]+\b|`[^`]+`")
+
+
+def ledger_table(text: str, prefix: tuple[str, ...], columns: tuple[str, ...]) -> list[dict[str, str]]:
+    return [dict(zip(columns, cells + [""] * len(columns)))
+            for table in markdown_tables(text) if tuple(c.lower() for c in table[0][:len(prefix)]) == prefix
+            for cells in table[1:]]
+
+
+def ref_ids(text: str, kind: str) -> list[str]:
+    return re.findall(rf"\b{kind}-[A-Za-z0-9_.]+(?:-[A-Za-z0-9_.]+)*\b", text)
+
+
+def git_source_errors(root: Path, sid: str, source: str, status: str, repos: dict[str, Path]) -> tuple[list[str], list[str]]:
+    """Resolve `<repo>@<commit>:<path>` sources; a changed file at the repo's HEAD makes the claim stale."""
+    errors: list[str] = []
+    notes: list[str] = []
+    for name, commit, rel in GIT_SOURCE.findall(source):
+        repo = repos.get(name)
+        if repo is None or git(repo, "rev-parse", "--git-dir") is None:
+            notes.append(f"{sid}: {name} checkout not configured here; source {name}@{commit}:{rel} unverified")
+            continue
+        if git(repo, "cat-file", "-e", f"{commit}^{{commit}}") is None:
+            errors.append(f"{sid} source commit {name}@{commit} does not resolve")
+            continue
+        cited = git(repo, "rev-parse", f"{commit}:{rel}")
+        if cited is None:
+            errors.append(f"{sid} source {rel} is absent at {name}@{commit}")
+            continue
+        if subprocess.run(["git", "-C", str(repo), "merge-base", "--is-ancestor", commit, "HEAD"],
+                          capture_output=True, check=False).returncode:
+            notes.append(f"{sid}: {name} HEAD does not contain {commit}; freshness of {rel} unverified here")
+            continue
+        current = git(repo, "rev-parse", f"HEAD:{rel}")
+        if current != cited and status not in {"stale", "superseded", "contradicted"}:
+            errors.append(f"{sid} source {name}:{rel} changed since {commit}; mark it stale and reconsider dependent decisions")
+    return errors, notes
+
+
+def chain_errors(root: Path, text: str, reqs: dict[str, dict[str, str]],
+                 config: dict[str, object]) -> tuple[list[str], list[str], list[str]]:
+    """Research -> decision -> requirement -> finding links: (errors, done-blockers, notes)."""
+    evidence = {row["id"]: row for row in ledger_table(
+        text, ("id", "question", "source"), ("id", "question", "source", "claim", "author", "status", "reviewed by"))}
+    decisions = {row["id"]: row for row in ledger_table(
+        text, ("id", "decision", "rejected"), ("id", "decision", "rejected", "evidence", "status"))}
+    findings = ledger_table(text, ("id", "severity", "target", "finding"),
+                            ("id", "severity", "target", "finding", "raised by", "disposition", "verified by", "evidence"))
+    errors: list[str] = []
+    blockers: list[str] = []
+    notes: list[str] = []
+    repos = {"self": root}
+    for item in config.get("components") or []:
+        if isinstance(item, dict) and isinstance(item.get("name"), str) and isinstance(item.get("path"), str):
+            repos[item["name"]] = component_path(root, item["path"])
+    known = set(reqs) | set(evidence) | set(decisions)
+    for eid, row in evidence.items():
+        status = row["status"].lower()
+        if status not in EVIDENCE_STATES:
+            errors.append(f"{eid} status {row['status']!r} is not one of {', '.join(sorted(EVIDENCE_STATES))}")
+        if not row["source"] or not row["claim"]:
+            errors.append(f"{eid} needs a source and the claim it supports")
+        if status == "supported":
+            reviewer = row["reviewed by"].strip()
+            if reviewer in {"", "-"} or reviewer.lower() == row["author"].strip().lower():
+                errors.append(f"{eid} is supported without an independent reviewer (not the author)")
+        if re.search(r"https?://", row["source"]) and not re.search(r"\d{4}-\d{2}-\d{2}", row["source"]):
+            errors.append(f"{eid} web source needs a retrieval date (YYYY-MM-DD)")
+        more, info = git_source_errors(root, eid, row["source"], status, repos)
+        errors += more
+        notes += info
+    for did, row in decisions.items():
+        status = row["status"].lower()
+        if status not in DECISION_STATES:
+            errors.append(f"{did} status {row['status']!r} is not one of {', '.join(sorted(DECISION_STATES))}")
+        if row["rejected"].strip() in {"", "-"}:
+            errors.append(f"{did} records no rejected alternatives")
+        cited = ref_ids(row["evidence"], "E")
+        for eid in cited:
+            if eid not in evidence:
+                errors.append(f"{did} cites unknown {eid}")
+        if status == "active":
+            if not cited:
+                errors.append(f"{did} is active without evidence")
+            weak = [e for e in cited if e in evidence and evidence[e]["status"].lower() != "supported"]
+            if weak:
+                errors.append(f"{did} is active but rests on {', '.join(f'{e} ({evidence[e]['status']})' for e in weak)}; set it to reconsider")
+    for rid, row in reqs.items():
+        for did in ref_ids(" ".join((row["requirement"], row["acceptance"], row["evidence"])), "D"):
+            if did not in decisions:
+                errors.append(f"{rid} cites unknown {did}")
+            elif row["status"].lower() == "accepted" and decisions[did]["status"].lower() in {"reconsider", "proposed"}:
+                errors.append(f"{rid} is accepted on {did}, which is {decisions[did]['status']}")
+    for row in findings:
+        fid, severity, disposition = row["id"], row["severity"].lower(), row["disposition"].lower()
+        if severity not in FINDING_SEVERITIES:
+            errors.append(f"{fid} severity {row['severity']!r} is not one of {', '.join(sorted(FINDING_SEVERITIES))}")
+        if disposition not in FINDING_DISPOSITIONS:
+            errors.append(f"{fid} disposition {row['disposition']!r} is not one of {', '.join(sorted(FINDING_DISPOSITIONS))}")
+        targets = ref_ids(row["target"], "REQ") + ref_ids(row["target"], "D") + ref_ids(row["target"], "E")
+        for target in targets:
+            if target not in known:
+                errors.append(f"{fid} targets unknown {target}")
+        serious = severity in {"high", "critical"}
+        if disposition in {"fixed", "rejected"} and not VERIFIABLE.search(row["evidence"]):
+            errors.append(f"{fid} is {disposition} without verifiable evidence (commit, E-/D- id or `command`); agreement is not evidence")
+        if serious and disposition in {"fixed", "rejected"}:
+            verifier = row["verified by"].strip().lower()
+            owners = {reqs[t]["owner"].strip().lower() for t in targets if t in reqs}
+            if verifier in {"", "-"} or verifier in owners:
+                errors.append(f"{fid} {severity} finding needs verification by someone other than the target's owner")
+        if serious and disposition in {"accepted-risk", "deferred"} and not OWNER_ACK.search(row["evidence"]):
+            errors.append(f"{fid} {severity} finding is {disposition} without a quoted owner acknowledgement")
+        if serious and disposition == "open":
+            blockers.append(fid)
+            for target in targets:
+                if target in reqs and reqs[target]["status"].lower() == "accepted":
+                    errors.append(f"{target} is accepted while {severity} finding {fid} is open")
+    return errors, blockers, notes
 
 
 DEFAULT_REQUIREMENTS = "SPEC.md"
@@ -508,7 +641,12 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
         return 1
     text = path.read_text(encoding="utf-8-sig")
     reqs, corrections, errors = parse_requirements(text)
-    workers = load_config(root).get("workers") or {}
+    config = load_config(root)
+    more, blockers, notes = chain_errors(root, text, reqs, config)
+    errors.extend(more)
+    for note in notes:
+        print(f"note  {note}")
+    workers = config.get("workers") or {}
     errors.extend(lane_errors(text, reqs, int(workers.get("maxParallel", 3)) if isinstance(workers, dict) else 3))
     ids = [part.strip() for part in (claim or "").split(",") if part.strip()]
     if expect is not None and not handoff:
@@ -546,9 +684,11 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
         if pending:
             errors.append(f"not done: {len(pending)} active REQs are not accepted: {', '.join(pending[:20])}")
         unacked = [c["id"] for c in corrections
-                   if c["type"].lower() == "narrow" and not NARROW_ACK.search(c["change"])]
+                   if c["type"].lower() == "narrow" and not OWNER_ACK.search(c["change"])]
         if unacked:
             errors.append(f"not done: narrow corrections lack owner acknowledgement: {', '.join(unacked)}")
+        if blockers:
+            errors.append(f"not done: open high/critical findings: {', '.join(blockers)}")
     if claim is not None and not errors:
         lines = []
         in_requirements = False

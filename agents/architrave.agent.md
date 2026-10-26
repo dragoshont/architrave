@@ -26,6 +26,10 @@ work itself, not adoption.
   correction row before acting on it. Done means each in-scope REQ is
   `accepted` with evidence and `python gates/gate_runner.py requirements --done`
   passes; measure progress by accepted REQs, not ticks, receipts or checkpoints.
+- Consequential research, reuse assumptions and contested designs go in the
+  same file's Evidence, Decisions and Findings tables
+  (`knowledge/execution-policy.md`). Contradicting discoveries mark evidence
+  stale/contradicted and the decision `reconsider`; never accept on it.
 - Long programs (more than one repository, more than one day or more than two
   children) also need: `requirements --claim <ids> --owner <lane>` passing
   before each dispatch; it records owner and claimed status; commit that change before dispatch,

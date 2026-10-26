@@ -1,22 +1,40 @@
 # Architrave
 
-Architrave is a spec-driven development control plane for coding agents
-(Copilot, Claude Code, Codex, OpenCode). Every non-trivial task starts as a few
-requirement rows with testable acceptance in a repository file (`SPEC.md` or the
-configured `requirements`). Work, child sessions, owner corrections and
-hand-offs are traced to those REQ ids, and work is done only when the REQs are
-accepted with evidence. Around that spec it adds durable resumable Runs,
-bounded multi-session supervision, deterministic and judge-gated verification,
-specialist roles grounded in your design system, contracts and runtime, and a
-learning loop that turns repeated failures into checks.
+**Research. Decide. Build. Challenge. Deliver.**
 
-It works from the system you already have: your code, design components,
-architecture docs and tests. Small tasks stay direct; independent work splits
-into scoped child sessions and comes back for checks and review. The plugin
-supplies the contract, roles and skills; the optional repository kit adds
-configured gates, durable Run records and reviewable learning. See the
-[full capability set](#full-capability-set) and the plain-language guide to
-[long programs](docs/long-programs.md).
+Architrave is a lean, multi-agent engineering orchestration framework that
+coordinates research, decisions, implementation and adversarial review across
+persistent sessions and multiple repositories, maintaining evidence and
+accountability from initial investigation to verified delivery. It runs as a
+plugin for Copilot, Claude Code, Codex and OpenCode, and uses the host's own
+sessions, tools and permissions rather than its own runtime.
+
+Everything lives in one committed requirements file (`SPEC.md` or the
+configured `requirements`), checked by one Python gate
+(`python gates/gate_runner.py requirements`). Simple tasks need only a few REQ
+rows; the extra tables below appear only for consequential work.
+
+| Stage | What the file records | What the gate enforces |
+|---|---|---|
+| **Research** | Evidence rows: question, source, claim, author, status, reviewer | A supported claim has a reviewer other than its author. Web sources carry a retrieval date. `<repo>@<commit>:<path>` sources resolve in a configured component and fail as stale once that file changes |
+| **Decide** | Decision rows: choice, rejected alternatives, evidence | An active decision rests only on supported evidence. A REQ can't be accepted on a decision under reconsideration |
+| **Build** | REQ rows, owner corrections and the cross-repository lane table | One live owner per REQ and path; running lanes within `workers.maxParallel`; one heavy build at a time; dependencies done before a lane runs; full session IDs; narrowing needs a quoted owner acknowledgement |
+| **Challenge** | Finding rows from any review: severity, disposition, verifier, evidence | A fix needs a commit, check or evidence id, never just agreement. A high finding needs a verifier other than the implementer. Deferral needs the owner's acknowledgement. Open high findings block completion |
+| **Deliver** | Accepted REQs with evidence and a committed `## Handoff` | `--done` fails while any REQ is unaccepted or a narrowing or high finding is unresolved. `--handoff` requires the committed state and its predecessor commit |
+
+The gate checks identity, provenance, freshness and links. Whether a source
+really supports its claim is the independent reviewer's call. The adversarial
+judge rebuilds high-risk claims from their sources and re-checks earlier
+audits, and agreement between agents never counts as evidence.
+
+**What is demonstrated and what is not.** In a live run on a multi-repository
+program, a coordinator committed the lane table, reused existing sessions, and
+dispatched lanes through the Copilot app. One child session delivered and
+passed independent review, and that whole chain is recorded in the program
+ledger. The gate caught a real file-ownership conflict and short session IDs.
+Two lanes could not run: a turn started by another session cannot show the
+owner a permission prompt. Sustained parallel delivery across many children
+(REQ-30/36) is **not yet proven**. Validation is local; hosted CI is off.
 
 ## Spec-driven workflow
 
@@ -25,13 +43,16 @@ configured gates, durable Run records and reviewable learning. See the
    read-only questions and one-line edits are exempt.
 2. **Build and trace.** Commits, child kickoffs, hand-offs and reports name
    their REQ ids. When you change your mind, the change is recorded as a typed
-   correction row (`add`, `revise`, `retract`, `supersede`) before the agent
-   acts on it, so it survives context compaction and session restarts.
+   correction row (`add`, `revise`, `retract`, `supersede`, `narrow`) before the
+   agent acts on it, so it survives context compaction and session restarts.
 3. **Verify.** `accepted` needs evidence. `python gates/gate_runner.py
    requirements --done` passes only when every active REQ is accepted, and the
    independent review grades against the same rows.
 4. **Hand off.** The `## Handoff` note (Next, Failed approaches, Verify) lets a
    fresh session resume in minutes without retrying dead ends.
+
+See the [full capability set](#full-capability-set) and the plain-language
+guide to [long programs](docs/long-programs.md).
 
 ![Workflow diagram: a request and repository context lead to direct work or up to three scoped child sessions, then integration, checks, and a result; a dashed deployment-only branch adds scoped approval and live verification](assets/workflow.svg)
 

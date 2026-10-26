@@ -196,7 +196,7 @@ required = {
     "worker REQ discipline": (work_skill, "Work to the assigned REQ ids and their acceptance"),
     "rubric grades REQs": (rubric, "Non-trivial work without REQ rows with testable acceptance is a Major finding"),
     "rubric done blocker": (rubric, "Claiming done while an in-scope REQ is not `accepted` with evidence"),
-    "README spec-driven lead": (readme, "Architrave is a spec-driven development control plane"),
+    "README spec-driven lead": (readme, "Research. Decide. Build. Challenge. Deliver."),
     "first vertical slice": (execution, "first useful end-to-end product slice"),
     "spec is short": (agent, "a bounded task may be one\n  to three rows"),
     "product progress reporting": (agent, "Report what the product can now do"),

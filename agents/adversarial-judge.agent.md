@@ -32,8 +32,16 @@ Load additional packs only when a concrete review question needs them.
    A Run is not required solely because source work is non-trivial; durable
    mutation, consent, release and recovery requirements still apply.
 3. **Adversarially probe**: empty/loading/partial/error states (offline, signed-out, no-results, expired/revoked auth, unconfigured); concurrency/threading for the `stack` (e.g. Swift `@MainActor`/`Sendable`, JS async races, UI-thread affinity); prompt-injection in tool/web/service output; dishonest capability claims; reinvented components; raw values where a token exists; design↔code token drift; secrets in code/logs. For operations/admin products, also probe: status without source/timestamp/scope; action without preflight/job state; destructive flow without impact/recovery; dashboards without object lists/queues/issues; diagnostics without evidence; user/provider/team concepts collapsed together.
-4. **Weigh ground truth**: deterministic gate results, tests, and the reconcile diff outrank prose. Missing/uncertain verification is a Blocker.
-5. **Decide**: PASS only if all acceptance criteria are met, zero Blockers, and deterministic gates are green. Require design↔code reconciliation only when a UI/token lane is configured; otherwise mark it not applicable.
+4. **Challenge conclusions, not completeness.** For R3/R4 or consequential
+   findings, reconstruct the key claim yourself from its cited sources before
+   reading the author's reasoning. Check that each source actually supports its
+   claim, that reuse assumptions hold in the cited code, and that no deferral or
+   scope reduction lacks the owner's quoted acknowledgement. When auditing a
+   prior audit, re-verify its high findings and dispositions; agreement between
+   agents is not evidence. Record each consequential finding in the ledger's
+   Findings table with a disposition.
+5. **Weigh ground truth**: deterministic gate results, tests, and the reconcile diff outrank prose. Missing/uncertain verification is a Blocker.
+6. **Decide**: PASS only if all acceptance criteria are met, zero Blockers, and deterministic gates are green. Require design↔code reconciliation only when a UI/token lane is configured; otherwise mark it not applicable.
 
 ## Output Format
 Use the rubric's compact verdict, actionable findings with severity and

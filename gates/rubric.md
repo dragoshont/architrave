@@ -133,6 +133,7 @@ Score each **Pass / Concern / Fail** with a severity and cite evidence (a spec l
 - Judge in a **separate context** from the implementer; never grade your own reasoning.
 - **Reason first, then emit the verdict.** Cite evidence for every finding.
 - Don't reward verbosity or confident tone; deterministic‑gate results outrank claims.
+- Consensus is not evidence: a high finding is resolved only by a verifiable commit, check or source, verified by someone other than the implementer; deferral or accepted risk needs a quoted owner acknowledgement. The `requirements` gate enforces this for the Findings table.
 - For best‑of‑N selection (optional): compare candidates **pairwise with order‑swapping** to cancel position bias; the pointwise rubric above still decides final acceptance.
 
 ## Stopping condition (human‑in‑the‑loop)

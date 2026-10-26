@@ -158,8 +158,8 @@ class ComponentGate(unittest.TestCase):
                   "Assignment ID | State | Mutable paths | Heavy build | Preflight | Preflight evidence | "
                   "Preflight reported | Owner-only decisions | Superseded by |\n" + "|---" * 17 + "|\n")
 
-        def lane(name, state, reqs, paths, heavy="no", sup="-", decisions="[]"):
-            return (f"| {name} | me/app | p1 | b | private | {reqs} | - | 6b5186b6-ee1d-49cf-9807-3f23139b3444 | a | {state} | {paths} | "
+        def lane(name, state, reqs, paths, heavy="no", sup="-", decisions="[]", dep="-"):
+            return (f"| {name} | me/app | p1 | b | private | {reqs} | {dep} | 6b5186b6-ee1d-49cf-9807-3f23139b3444 | a | {state} | {paths} | "
                     f"{heavy} | ok | - | no | {decisions} | {sup} |\n")
 
         example = EXAMPLE.read_text()
@@ -167,14 +167,85 @@ class ComponentGate(unittest.TestCase):
         code, out = self.requirements(good)
         self.assertEqual(code, 0, out)
         bad = (example + header + lane("L1", "running", "REQ-01", "src", "yes") + lane("L2", "running", "REQ-01,REQ-99", "src/ui", "yes")
-               + lane("L3", "running", "REQ-04", "docs") + lane("L4", "running", "-", "x") + lane("L5", "superseded", "-", "-")
+               + lane("L3", "running", "REQ-04", "docs") + lane("L4", "running", "-", "x") + lane("L5", "superseded", "-", "-") + lane("L7", "running", "-", "-", dep="L5")
                + lane("L6", "paused", "-", "-", decisions="{}").replace("6b5186b6-ee1d-49cf-9807-3f23139b3444", "6b5186b6"))
         code, out = self.requirements(bad)
         self.assertEqual(code, 1, out)
         for text in ("REQ-01 is owned by live lanes L1 and L2", "lanes L1 and L2 both own me/app:src/ui",
-                     "unknown REQ-99", "4 running lanes exceed workers.maxParallel=3", "heavy-build slot held by several",
+                     "unknown REQ-99", "5 running lanes exceed workers.maxParallel=3", "lane L7 is running before dependency L5 is done (superseded)", "heavy-build slot held by several",
                      "L5 is superseded without", "L6 state 'paused'", "L6 'Owner-only decisions' is not a JSON array", "L6 session ID '6b5186b6' is not a full"):
             self.assertIn(text, out)
+
+    def test_evidence_decision_finding_chain_across_repos_fails_closed(self):
+        backend = checkout(self.base / "backend", "git@github.com:me/backend.git")
+        (backend / "api.md").write_text("v1 route\n")
+        git(backend, "add", "api.md")
+        git(backend, "-c", "user.email=a@b", "-c", "user.name=a", "commit", "-qm", "v1")
+        cited = subprocess.run(["git", "-C", str(backend), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+        (self.hub / "architrave.config.json").write_text(json.dumps({
+            "kind": "knowledge", "build": "true", "test": "true", "requirements": "SPEC.md",
+            "components": [{"name": "backend", "repo": "me/backend", "path": "../backend"}]}))
+        ledger = f"""# Program
+| ID | Requirement | Acceptance | Owner | Status | Evidence |
+|---|---|---|---|---|---|
+| REQ-01 | Reuse backend route per D-1 | `make e2e` passes | app-lane | accepted | commit {cited} |
+
+| ID | Question | Source | Claim | Author | Status | Reviewed by |
+|---|---|---|---|---|---|---|
+| E-1 | Can the app reuse the route? | backend@{cited}:api.md | v1 route exists | research-a | supported | review-b |
+| E-2 | Vendor limits | https://example.com/limits (retrieved 2026-10-26) | 10 rps | research-a | unverified | - |
+
+| ID | Decision | Rejected | Evidence | Status |
+|---|---|---|---|---|
+| D-1 | Reuse the backend route | New service: duplicate state | E-1 | active |
+
+| ID | Severity | Target | Finding | Raised by | Disposition | Verified by | Evidence |
+|---|---|---|---|---|---|---|---|
+| F-1 | high | REQ-01 | Route lacks auth | judge | fixed | judge | `make e2e` at {cited} |
+
+## Handoff
+Next: ship
+Failed approaches: none
+Verify: `make e2e`
+"""
+
+        def run(text, *flags):
+            (self.hub / "SPEC.md").write_text(text)
+            process = subprocess.run([sys.executable, str(RUNNER), "requirements", "--repo", str(self.hub), *flags],
+                                     capture_output=True, text=True, check=False)
+            return process.returncode, process.stdout + process.stderr
+
+        code, out = run(ledger)
+        self.assertEqual(code, 0, out)
+        (backend / "api.md").write_text("v2 route, auth required\n")
+        git(backend, "-c", "user.email=a@b", "-c", "user.name=a", "commit", "-qam", "v2")
+        code, out = run(ledger)
+        self.assertEqual(code, 1)
+        self.assertIn("E-1 source backend:api.md changed since", out)
+        stale = ledger.replace("| research-a | supported | review-b |", "| research-a | stale | review-b |")
+        code, out = run(stale)
+        self.assertIn("D-1 is active but rests on E-1 (stale); set it to reconsider", out)
+        code, out = run(stale.replace("| E-1 | active |", "| E-1 | reconsider |"))
+        self.assertIn("REQ-01 is accepted on D-1, which is reconsider", out)
+        broken = (ledger.replace("| review-b |", "| research-a |")
+                  .replace("| judge | fixed | judge | `make e2e` at " + cited + " |", "| judge | fixed | app-lane | agreed by two agents |")
+                  .replace("| New service: duplicate state |", "| - |")
+                  .replace("(retrieved 2026-10-26)", ""))
+        code, out = run(broken)
+        for text in ("E-1 is supported without an independent reviewer", "D-1 records no rejected alternatives",
+                     "F-1 is fixed without verifiable evidence", "F-1 high finding needs verification by someone other",
+                     "E-2 web source needs a retrieval date"):
+            self.assertIn(text, out)
+        opened = stale.replace("| reconsider |", "| active |").replace("| stale | review-b |", "| supported | review-b |")
+        opened = opened.replace("| judge | fixed | judge |", "| judge | open | - |")
+        git(backend, "-c", "user.email=a@b", "-c", "user.name=a", "revert", "--no-edit", "HEAD")
+        code, out = run(opened, "--done")
+        self.assertIn("REQ-01 is accepted while high finding F-1 is open", out)
+        self.assertIn("open high/critical findings: F-1", out)
+        code, out = run(opened.replace("| open | - | `make e2e`", "| deferred | - | `make e2e`"))
+        self.assertIn("F-1 high finding is deferred without a quoted owner acknowledgement", out)
+        code, out = run(opened.replace("| open | - | `make e2e`", '| deferred | - | owner acknowledged: "after beta" `make e2e`'))
+        self.assertEqual(code, 0, out)
 
     def test_spec_md_is_the_default_requirements_file_and_checks_validate_it(self):
         (self.hub / "architrave.config.json").write_text(json.dumps(
