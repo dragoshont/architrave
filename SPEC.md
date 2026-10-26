@@ -97,6 +97,7 @@ stopped, done; the requirements gate enforces single live REQ/path owners,
 | C-27 | add | REQ-37 | Owner, 2026-10-26: "and can we add that to the architrave? i feel like it helps the future development" (re C-25/C-26 anti-ceremony) |
 | C-28 | revise | REQ-31 | Spec audit: gate rejected the `narrow` type the lead rule requires; added it and `--done` fails on unacknowledged `narrow` |
 | C-29 | revise | REQ-29, REQ-31 | Adversarial audit 2026-10-26: lane table was prose-only and `narrow` ack matched "not acknowledged"; requirements gate now enforces lane ownership/caps/heavy slot/supersede and a quoted `owner acknowledged: "..."`; GitHub Actions is disabled by owner choice ("no ci, no more minuets"); validation is local suites only |
+| C-30 | revise | REQ-30 | Live Ode run 2026-10-26 (dragos-core ea92f14): L1 dispatched via GHC, delivered private 76a2aa0f, review PASS; L2/L3 auto-denied because message-started turns cannot prompt the owner; short session IDs rejected by GHC (gate fixed 7afe1e1); shared-path conflict caught by gate. REQ-30 stays claimed: one lane proven, parallel lanes not |
 
 ## Handoff
 
