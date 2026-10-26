@@ -759,6 +759,10 @@ class ReviewVerification(unittest.TestCase):
         self.log(report, [judge, {"type": "session.task_complete", "data": {"summary":
                  "Found 3 blockers. I would only give a verdict: PASS once they are fixed."}}])
         self.assertIsNone(self.gate.session_facts(report)["verdict"], "a conditional mid-sentence verdict is no ruling")
+        for text, expected in (("PASS - manifests valid (pasted output)\n| PASS | table |\nVerdict: REVISE", "REVISE"),
+                               ("It's 'Verdict: PASS' they wrote.\n**REVISE** on two items", "REVISE"),
+                               ("Verdict: pass", "PASS"), ("Pass the gate first.", None)):
+            self.assertEqual(self.gate.ruling(text), expected, text)
         self.assertEqual(self.gate.review_session(report, "PASS")[0], "contradicted")
 
     def test_cross_family_and_parallel_cap(self):
@@ -775,6 +779,12 @@ class ReviewVerification(unittest.TestCase):
         self.assertIn("cross-family unverifiable", self.gate.lane_review_gaps(unlogged, reqs, strict=True, cross_family=True)[0])
         self.log(lane_sid, [{"type": "session.start", "data": {"selectedModel": "gpt-6-sol"}}])
         self.assertEqual(self.gate.lane_review_gaps(lane, reqs, strict=True, cross_family=True), [])
+        self.log(lane_sid, [{"type": "session.start", "data": {"selectedModel": "gpt-6-sol"}},
+                            {"type": "session.model_change", "data": {"newModel": "claude-opus-5.5"}}])
+        self.assertEqual(self.gate.lane_review_gaps(lane, reqs, strict=True, cross_family=True), ["REQ-01 (same model family)"],
+                         "a mid-session switch to the reviewer's family counts")
+        self.log(lane_sid, [{"type": "session.start", "data": {"selectedModel": "auto"}}])
+        self.assertIn("unverifiable", self.gate.lane_review_gaps(lane, reqs, strict=True, cross_family=True)[0], "auto may route anywhere")
         self.log(review_sid, [{"type": "subagent.selected", "data": {"agentName": "architrave:adversarial-judge"}},
                               {"type": "assistant.message", "data": {"content": "Verdict: PASS"}}])
         self.assertIn("cross-family unverifiable", self.gate.lane_review_gaps(lane, reqs, strict=True, cross_family=True)[0])

@@ -12,8 +12,9 @@ Releases at or before **v0.8.12** are on the
   `session-state/<uuid>/events.jsonl` — exact directory, kickoff agent selected
   before the first turn must be a reviewer role (exact name), and the ruling of
   the session's last report (task_complete summary or message to another
-  session) must match. A ruling is the first line opening with one; quoted,
-  backticked and `>` text and mid-sentence verdict words never count. Earlier
+  session) must match. A ruling is the first labelled line (`Verdict: X`), else the first line
+  opening with an upper-case verdict; quoted, backticked, `>` and table text
+  and mid-sentence verdict words never count. Earlier
   notes naming the same session need only match one of its reports; use a fresh
   reviewer session per delivery. A contradiction fails `requirements`.
 - Where local session logs exist, `requirements --done` and the board's
@@ -21,7 +22,8 @@ Releases at or before **v0.8.12** are on the
   other machines no longer close a lane. Elsewhere notes stay unverified and
   accepted. This catches mistakes, not deliberate forgery.
 - `review.crossFamily` is enforced at `--done` where logs exist: the lane's and
-  reviewer's model families must both be logged and differ.
+  reviewer's sessions must share no model family across every model they used
+  (`auto` or an unlogged model is unverifiable).
 - One cap rule: `workers.maxParallel` clamps to 20 in gate, board and Run
   runtime; zero, negative or non-integer values fail the gate and fall back to
   three at runtime.

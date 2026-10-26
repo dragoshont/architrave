@@ -257,20 +257,25 @@ REVIEW_NOTE = re.compile(r"(?:^|[;,])\s*review:\s*([^;|,]*)")
 REVIEWER_ROLE = re.compile(r"(?:architrave:)?(?:adversarial-judge|code-review|rubber-duck|security-review|architrave-review)", re.I)
 SESSION_UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 SESSION_FACTS: dict[tuple[str, int, float], dict[str, str | None]] = {}
-RULING = re.compile(r"^[^\w>]*(?:\(?[a-z0-9]\)\s*)?(?:(?i:(?:final\s+)?(?:verdict|outcome|result|ruling|(?:re-?)?review(?:\s+of\s+\S+)?))\W{0,6})?"
-                    r"(PASS|REVISE|FAIL)\b")
-QUOTED = re.compile(r"```.*?```|`[^`\n]*`|\"[^\"\n]*\"|\u201c[^\u201d\n]*\u201d", re.S)
+RULING_START = r"^[^\w>|]*(?:\(?[a-z0-9]\)\s*)?"
+LABELLED_RULING = re.compile(RULING_START + r"(?i:(?:final\s+)?(?:verdict|outcome|result|ruling|(?:re-?)?review(?:\s+of\s+\S+)?)"
+                             r"\W{0,6}(PASS|REVISE|FAIL))\b")
+BARE_RULING = re.compile(RULING_START + r"(PASS|REVISE|FAIL)\b")
+QUOTED = re.compile(r"```.*?```|`[^`\n]*`|\"[^\"\n]*\"|\u201c[^\u201d\n]*\u201d|(?<!\w)'[^'\n]*'(?!\w)", re.S)
 
 
 def ruling(text: str) -> str | None:
-    """The first line that opens with a ruling (`Verdict: REVISE`, `**PASS** on ...`, `Re-review of X: PASS`).
+    """A report's ruling: the first labelled line (`Verdict: REVISE`, `Re-review of X: PASS`), else the first line
+    opening with an upper-case verdict (`**PASS** on ...`).
 
-    Quoted, backticked, fenced and `>` lines are ignored, and a verdict word mid-sentence is never a ruling.
+    Quoted, backticked, fenced, `>` and table lines are ignored, and a verdict word mid-sentence is never a ruling.
     """
-    for line in QUOTED.sub("", text).splitlines():
-        found = RULING.match(line)
-        if found:
-            return found.group(1)
+    lines = QUOTED.sub("", text).splitlines()
+    for pattern in (LABELLED_RULING, BARE_RULING):
+        for line in lines:
+            found = pattern.match(line)
+            if found:
+                return found.group(1).upper()
     return None
 
 
@@ -289,6 +294,7 @@ def session_facts(session: str) -> dict[str, str | None] | None:
         role = model = None
         messages: list[str] = []
         reports: list[str] = []
+        models: list[str] = []
         started = False
         with log.open(encoding="utf-8", errors="ignore") as handle:
             for line in handle:
@@ -302,6 +308,9 @@ def session_facts(session: str) -> dict[str, str | None] | None:
                 kind = event.get("type")
                 if kind == "session.start" and isinstance(data.get("selectedModel"), str):
                     model = data["selectedModel"]
+                    models.append(model)
+                elif kind == "session.model_change" and isinstance(data.get("newModel"), str):
+                    models.append(data["newModel"])
                 elif kind == "subagent.selected" and not started and role is None:
                     role = str(data.get("agentName") or "")
                 elif kind == "assistant.turn_start":
@@ -323,7 +332,8 @@ def session_facts(session: str) -> dict[str, str | None] | None:
                 said = found
                 said_all.append(found)
         SESSION_FACTS.clear() if len(SESSION_FACTS) > 512 else None
-        SESSION_FACTS[key] = {"role": role, "model": model, "verdict": said, "verdicts": " ".join(said_all)}
+        SESSION_FACTS[key] = {"role": role, "model": model, "models": " ".join(models), "verdict": said,
+                              "verdicts": " ".join(said_all)}
     return SESSION_FACTS[key]
 
 
@@ -362,7 +372,17 @@ def review_passed(evidence: str, strict: bool = False) -> bool:
 
 
 def model_family(model: str | None) -> str:
-    return re.split(r"[-:/]", (model or "").lower())[0]
+    """Leading vendor/family token of a model id; "" when unknown or host-routed (`auto`)."""
+    family = re.split(r"[-:/]", (model or "").lower())[0]
+    return "" if family == "auto" else family
+
+
+def model_families(session: str) -> set[str] | None:
+    """Families of every model a logged session used; None when any is unknown or the session is not logged here."""
+    facts = session_facts(session)
+    models = (facts or {}).get("models") or ""
+    families = {model_family(m) for m in models.split()}
+    return families if families and all(families) else None
 
 
 def lane_review_gaps(lane: dict[str, str], reqs: dict[str, dict[str, str]], strict: bool = False,
@@ -370,10 +390,10 @@ def lane_review_gaps(lane: dict[str, str], reqs: dict[str, dict[str, str]], stri
     """REQs in a lane still needing a PASS review: all open ones in a done lane, accepted ones anywhere.
 
     Strict (local session logs present): the latest PASS must be verified in its reviewer session log, and with
-    `review.crossFamily` the reviewer's model family must differ from the lane session's.
+    `review.crossFamily` no model family the reviewer used may match one the lane session used.
     """
     gaps = []
-    lane_model = (session_facts(lane.get("session id", "")) or {}).get("model") if cross_family and strict else None
+    lane_families = model_families(lane.get("session id", "")) if cross_family and strict else None
     for rid in dict.fromkeys(r.upper() for r in re.findall(r"REQ-[A-Za-z0-9_.-]+", lane["req ids"], re.I)):
         row = reqs.get(rid)
         if not row or row["status"].lower() in REQ_CLOSED:
@@ -384,10 +404,10 @@ def lane_review_gaps(lane: dict[str, str], reqs: dict[str, dict[str, str]], stri
             gaps.append(rid)
         elif cross_family and strict:
             reviewer = [w for w, v in review_notes(row["evidence"]) if v][-1]
-            families = model_family(lane_model), model_family((session_facts(reviewer) or {}).get("model"))
-            if not all(families):
-                gaps.append(f"{rid} (cross-family unverifiable: lane or reviewer model not logged here)")
-            elif families[0] == families[1]:
+            reviewer_families = model_families(reviewer)
+            if lane_families is None or reviewer_families is None:
+                gaps.append(f"{rid} (cross-family unverifiable: a lane or reviewer model is auto or not logged here)")
+            elif lane_families & reviewer_families:
                 gaps.append(f"{rid} (same model family)")
     return gaps
 
