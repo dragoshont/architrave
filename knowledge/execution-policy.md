@@ -365,6 +365,64 @@ separate acceptance matrix. Required deployment grants, checkpoints, receipts,
 release evidence and recovery are unchanged; unavailable support cannot waive
 them.
 
+## Lead detail (on demand)
+
+Moved from the always-on lead contract; read when the situation applies.
+
+- Long programs (more than one repository, more than one day or more than two
+  children) also need: `requirements --claim <ids> --owner <lane>` passing
+  before each dispatch; it records owner and claimed status; commit that change before dispatch,
+  its output (acceptance plus corrections) seeding the
+  kickoff; an updated `## Handoff` (Next, Failed approaches, Verify),
+  committed with `requirements --handoff` passing, before rotation or hand-off.
+  Worktree-local scratch such as SDD `progress.md` is a cache, never the ledger.
+  The successor starts from that commit, runs `--handoff --expect <predecessor-sha>`, continues the same
+  file (never a second ledger); the predecessor reports the successor once and
+  stops relaying. A new session reads Handoff and git log, runs Verify,
+  validates current component refs and acceptance evidence, then takes one
+  dependency-ready REQ (see Context in `knowledge/execution-policy.md`).
+  Rotate a coordinator that has compacted repeatedly or
+  carries an unrelated program into a fresh session seeded from the file, not
+  the transcript. An adopted Run binds tasks to REQ ids and owns claims.
+  Conflicting directives or a broken oracle mark the REQ `blocked` and go to
+  the owner with an objective criterion; never negotiate them away between
+  children. Code and test output outrank notes and ledgers; on conflict fix
+  one and record a correction.
+  Map work to code/test owners in the existing task graph; necessary schemas,
+  fixtures and evidence belong with the work they serve, not separate phases.
+- With a `components` map, each writer owns one component and pushes only to
+  its `repo`; never to `upstream`, and never develop a component in session
+  scratch. Run `python gates/gate_runner.py components` before dispatch and
+  before claiming done. Native batch is single-repository: span repositories
+  with one writer session per component and one ledger. Prove a component
+  through its `service` check before
+  its `ui`/E2E check. Before dispatch, confirm the child can run its commands and
+  read its ledger, else inline the context or report the exact permission once;
+  heavy builds and disk floors are shared resources serialized by the
+  coordinator. When one thread writes several components or repeats a
+  correction, continue in a fresh session per component, carrying the backlog
+  file rather than the transcript.
+- The same failure fingerprint twice without new evidence stops the lane.
+  A periodic check that observes no REQ change is not progress; stop the
+  ticking and act on the lane instead of writing status prose.
+  Retire assigned scheduled automation under the Context rules in
+  `knowledge/execution-policy.md`, not by deleting its evidence or other work.
+  Batch review findings; no unchanged full-gate reruns or review swarms.
+  When an adopted Run reports `STALLED_PRIMARY_CRITERION`, return to its code
+  path: it blocks new tasks not bound to that criterion. Do not infer stalls
+  from parent silence or file timestamps. Use the CTO skill only for an
+  established stall, material scope/budget decision, owner-requested reset or
+  owner-requested cross-session oversight (CTO agent oversight mode, on a
+  host-owned schedule); no mandatory startup checklist or extra supervisor.
+- Pending delegation is not delivery; screenshots prove visible state only.
+  Source/test success is not installed/native success or loaded-session identity.
+  Superseded Handoff/Verify text must not resurrect a resolved blocker; update
+  it against current observations and owner corrections.
+  No routine status rituals, duplicate plans, reports or transcripts.
+  Evidence needed for release, safety and recovery remains mandatory.
+  Never call a simulation or unobserved execution shipped.
+
+
 ## Delivery detail (on demand)
 
 Schedule the smallest demonstrable user-visible vertical slice. Supporting
