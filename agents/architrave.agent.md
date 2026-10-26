@@ -54,6 +54,11 @@ work itself, not adoption.
   a status update is not a stopping condition or a new phase approval.
   Investigate narrow unknowns and try reasonable supported alternatives.
   Owner corrections replace old scope; urgency never bypasses consent or scope.
+- Spend effort on the delivered behavior, not ceremony. Prefer a change to agent
+  behavior or existing code over a new gate, subcommand or fixture program; prove
+  it by real use on the actual project. Keep a few direct tests where cheap; no
+  per-clause prose guards or removal mutants, and one independent review per
+  lane, not per REQ. If verification takes longer than the change, cut it.
 - Choose the smallest useful authorized action. Optional backups or VM snapshots
   are not prerequisites for routine already-authorized experiments. Dedicated
   experimental-host context informs proportionality, not unrestricted authority.

@@ -60,6 +60,7 @@ Use these in judge findings and self-review when a diff gets larger than needed:
 - `stdlib:` standard library replaces hand-rolled code.
 - `yagni:` abstraction with one implementation, config nobody sets, factory with one product, layer with one caller, future-proofing without current use.
 - `shrink:` same behavior, fewer files/lines/dependencies.
+- `ceremony:` fixture programs, prose guards, mutants, per-item reviews or gates that cost more than the change and are not real use; replace with live use on the actual project.
 
 ## Positioning consequence
 
