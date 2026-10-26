@@ -98,8 +98,13 @@ work itself, not adoption.
 - With a `components` map, each writer owns one component and pushes only to
   its `repo`; never to `upstream`, and never develop a component in session
   scratch. Run `python gates/gate_runner.py components` before dispatch and
-  before claiming done. Prove a component through its `service` check before
-  its `ui`/E2E check. When one thread writes several components or repeats a
+  before claiming done. Native batch is single-repository: span repositories
+  with one writer session per component and one ledger. Prove a component
+  through its `service` check before
+  its `ui`/E2E check. Before dispatch, confirm the child can run its commands and
+  read its ledger, else inline the context or report the exact permission once;
+  heavy builds and disk floors are shared resources serialized by the
+  coordinator. When one thread writes several components or repeats a
   correction, continue in a fresh session per component, carrying the backlog
   file rather than the transcript.
 - The host owns tools, sessions, worktrees, permissions, lifecycle and model

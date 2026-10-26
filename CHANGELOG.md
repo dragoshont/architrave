@@ -5,6 +5,22 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## 0.21.10
+
+- Multi-repository programs: native batch, Run claims and mutable-path
+  conflicts are single-repository, so a program keeps one committed ledger and
+  one isolated writer session per component repository, ordered by ledger REQ
+  dependencies, with the components gate before each dispatch (REQ-25).
+- Resolve each writer branch's effective push target before the first write;
+  pin private work with `branch.<name>.pushRemote` or `remote.pushDefault` and
+  never push it by naming a public `origin` (REQ-26).
+- Before assigning a child, confirm it can run its commands and read its
+  ledger; otherwise inline context or report the exact host permission once,
+  without respawning or bypassing the denial (REQ-27).
+- Heavy builds share one coordinator-owned slot and the free-disk floor; source
+  edits and built non-visual checks stay parallel; desktop input, installed
+  apps, VMs, signing and publication keep one owner each (REQ-28).
+
 ## 0.21.9
 
 - Lead and CTO reuse current scoped owner authorization, including standing
