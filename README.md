@@ -430,6 +430,7 @@ Everything Architrave ships, grouped by area. Paths point at the source of truth
 - Child cap `workers.maxParallel` (default 3, up to 8), depth one, exclusive mutable ownership, enforced in the runtime and native dispatch — `harness/architrave_runtime.py`, `extensions/architrave-native/bridge.mjs`.
 - App-native child sessions in the Copilot app, native subagents in CLIs; never shells out to another agent harness — `harness/platform_launch.py`.
 - Component map: one writer per component repository, push only to its own repo, never upstream, service tests before UI tests — `gates/gate_runner.py components`, `kit/examples/coordination.architrave.json`.
+- Multi-repository lanes: native batch and Run claims are single-repository, so a program runs one writer session per component repository from one ledger; resolve each branch's effective push target before writing, confirm a child can run its commands and read its ledger before assigning it, and serialize heavy builds against the free-disk floor — `knowledge/execution-policy.md`.
 - Destination preflight: a child verifies repository, workspace and branch before writing — `skills/architrave-work/SKILL.md`.
 - Repeated-failure stop: the same failure fingerprint twice without new evidence stops the lane; a stalled primary criterion blocks unrelated new tasks — `harness/architrave_runtime.py` (`STALLED_PRIMARY_CRITERION`).
 - Coordinator rotation into a fresh session seeded from the requirements file, not the transcript — `agents/architrave.agent.md`.

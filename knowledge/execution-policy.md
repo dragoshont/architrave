@@ -143,6 +143,29 @@ the current canonical repository identity before destructive GitHub operations;
 an unresolved mismatch blocks that operation, not a reason to guess or rewrite
 remotes. Preserve dirty work and other owners' branches.
 
+Native batch dispatch, Run claims and mutable-path conflict checks are
+single-repository. A program spanning repositories keeps one committed
+requirements ledger in its coordination repository and runs one isolated
+writer session per component repository; cross-repository order comes from
+that ledger's REQ dependencies, not a second scheduler. Run
+`python gates/gate_runner.py components` before each dispatch and resolve the
+branch's effective push target before the first write: when `origin` is a
+public or upstream remote, set `branch.<name>.pushRemote` or the clone's
+`remote.pushDefault` to the private component remote, and never push private
+work by naming `origin`. Shared clone config affects every worktree.
+
+Before assigning a child, confirm it can run the commands and read the files
+its assignment needs; new sessions may not reach paths outside their workspace
+or run a shell without host approval. When it cannot, inline the needed
+acceptance and rules in the kickoff or report the exact host permission to the
+owner once; do not respawn the same lane or route around the denial.
+
+Heavy builds share one coordinator-owned slot when they compete for CPU or
+disk; parallel lanes continue source edits and already-built non-visual checks.
+Respect the program's free-disk floor: check it before builds and stop
+starting new work below the floor. Exclusive desktop input, installed apps,
+VMs, signing and publication keep one owner each.
+
 Distinguish a known-working precursor/lab/handwritten path from the intended
 generated/product path in the requirements/Handoff. Evidence identifies the
 source ref/artifact and entry point that actually ran; success on the precursor
