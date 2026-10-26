@@ -1,5 +1,11 @@
 # Roadmap
 
+## Critical - Cross-repository GHC coordination (REQ-29 through REQ-35)
+
+- [ ] Lead/CTO/skill behavior preserves owner intent, verifies evidence, rotates at the context budget, answers stream status from one machine-readable lane table, and never resurrects superseded sessions.
+- [ ] The Ode coordinator owns live proof for REQ-30/36; this lane does not start competing Ode sessions.
+- [ ] No new gate subcommand, runtime, fixture program, release, publication or reinstall.
+
 ## v0.21.10 - Multi-repository lanes (REQ-25 through REQ-28)
 
 - [x] Policy and lead contract: single-repository batch, one writer per component repository, effective push targets, child capability preflight, shared build/disk slot.

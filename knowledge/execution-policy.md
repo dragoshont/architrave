@@ -146,10 +146,24 @@ remotes. Preserve dirty work and other owners' branches.
 Native batch dispatch, Run claims and mutable-path conflict checks are
 single-repository. A program spanning repositories keeps one committed
 requirements ledger in its coordination repository and runs one isolated
-writer session per component repository; cross-repository order comes from
-that ledger's REQ dependencies, not a second scheduler. Run
-`python gates/gate_runner.py components` before each dispatch and resolve the
-branch's effective push target before the first write: when `origin` is a
+writer session per component repository. Its machine-readable `## GHC
+Scheduler` lane table is the one cross-repository source for REQ ownership,
+dependencies, session/assignment IDs, state and owner-only decisions;
+cross-repository order comes from that ledger's REQ dependencies. In the
+Copilot app, the coordinator drives
+ready lanes through `create_session` and `send_session_message`, enforcing
+duplicate REQ claims, mutable-path ownership, `workers.maxParallel`, child
+preflight and the single heavy-build slot. Commit host-issued session and
+assignment IDs and state to the ledger. After restart, reconcile against
+`get_sessions_status` and use `get_session` to inspect idle, missing or unknown
+sessions; those states never trigger automatic respawn or completion. Record
+the exact permission denial and report it once; never retry unchanged or bypass
+host permissions. A superseded lane is not resurrected, and its mutable paths
+remain owned until its session is verified stopped. This is explicit lead
+behavior, not a daemon or polling loop.
+
+Run `python gates/gate_runner.py components` before each dispatch and resolve
+the branch's effective push target before the first write: when `origin` is a
 public or upstream remote, set `branch.<name>.pushRemote` or the clone's
 `remote.pushDefault` to the private component remote, and never push private
 work by naming `origin`. Shared clone config affects every worktree.
@@ -270,7 +284,8 @@ coverage or restored capability. Source/test success does not establish installe
 or native behavior; disk installation does not refresh already-loaded sessions.
 Correct an agent-added blocker yourself rather than waiting for the owner to
 rediscover it. These rules reuse existing ownership, retry and evidence controls;
-they add no per-task checklist, scheduler or receipt.
+they add no per-task checklist or receipt; cross-repository work uses the
+committed GHC lane table and host-owned session controls above.
 
 ### Signing grant reuse
 

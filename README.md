@@ -82,6 +82,18 @@ In a CLI, Architrave uses native subagents when available.
 Work that follows one continuous trace or touches the same files stays direct.
 Model and reasoning choices remain in your host settings.
 
+For cross-repository programs in the Copilot app, one committed `## GHC
+Scheduler` lane table in the requirements ledger holds repo/project, branch,
+push target, REQ dependencies, session/assignment IDs, state and owner-only
+decisions. The lead
+drives dependency-ready lanes through the app's native session tools while
+enforcing REQ ownership, mutable paths, `workers.maxParallel`, preflight and
+the shared heavy-build slot. Commit every lane transition. After a coordinator
+restart, reconcile with `get_sessions_status` and inspect idle, missing or
+unknown sessions with `get_session`—absence never causes automatic respawn.
+Permission denials are reported once, not bypassed. This is explicit lead
+behavior, not a daemon or monitor.
+
 Architrave uses the host's communication tools, not a separate agent-messaging
 framework. The optional native bridge connects supported host tasks to the
 durable Python harness for Run state, admission checks, and evidence. Ordinary
@@ -129,8 +141,9 @@ See the [runtime guide](docs/runtime-v2.md) and
 ### Program oversight (CTO)
 
 When you run several long programs at once, ask the CTO to watch them, for
-example "review these threads every 30 minutes". The schedule is a host
-session automation; Architrave itself has no scheduler. Each pass:
+example "review these threads every 30 minutes". That oversight schedule is a
+host session automation; the lead's explicit GHC lane coordination is separate
+and does not add a daemon or polling loop. Each CTO pass:
 
 - measures progress against each program's real goal, such as a game observed
   rendering, and treats commits, audits and status messages as activity only;
@@ -431,6 +444,8 @@ Everything Architrave ships, grouped by area. Paths point at the source of truth
 - App-native child sessions in the Copilot app, native subagents in CLIs; never shells out to another agent harness — `harness/platform_launch.py`.
 - Component map: one writer per component repository, push only to its own repo, never upstream, service tests before UI tests — `gates/gate_runner.py components`, `kit/examples/coordination.architrave.json`.
 - Multi-repository lanes: native batch and Run claims are single-repository, so a program runs one writer session per component repository from one ledger; resolve each branch's effective push target before writing, confirm a child can run its commands and read its ledger before assigning it, and serialize heavy builds against the free-disk floor — `knowledge/execution-policy.md`.
+- Cross-repository GHC coordination: the lead's behavior uses the committed requirements lane table to enforce REQ dependencies, unique claims, mutable-path ownership, worker cap, preflight, build-slot admission and restart reconciliation; host session APIs remain owned by GHC.
+- Intent and recovery: typed, acknowledged narrowing; source-verified evidence; context-budget handoff; per-stream remaining work from the lane table; superseded sessions are never silently restarted.
 - Destination preflight: a child verifies repository, workspace and branch before writing — `skills/architrave-work/SKILL.md`.
 - Repeated-failure stop: the same failure fingerprint twice without new evidence stops the lane; a stalled primary criterion blocks unrelated new tasks — `harness/architrave_runtime.py` (`STALLED_PRIMARY_CRITERION`).
 - Coordinator rotation into a fresh session seeded from the requirements file, not the transcript — `agents/architrave.agent.md`.

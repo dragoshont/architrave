@@ -36,8 +36,11 @@ stays host-owned.
 Only when the owner explicitly asks you to watch programs across sessions
 (for example "review these threads every 30 minutes"). This mode requires a
 host-owned schedule every 30 minutes, or every 60 when passes run long; never
-add an Architrave scheduler or daemon. This mode returns the oversight table below,
-not the single correction. Identify the current coordinator and its committed ledger;
+add an Architrave scheduler or daemon for CTO oversight. Cross-repository
+delivery uses the lead's explicit GHC session coordination and committed lane
+table, not this oversight schedule. This mode returns the oversight table below,
+not the single correction.
+Identify the current coordinator and its committed ledger;
 never steer from old or predecessor coordinator reports. Recheck live state before
 relaying blockers. Each pass:
 
@@ -45,6 +48,8 @@ relaying blockers. Each pass:
    criterion from the requirements file and report the newest real observation
    toward it and the accepted-REQ delta since the last pass. Commits, audits,
    SPEC-only edits and status messages are activity, not progress.
+   Answer stream-status questions from the committed lane table: per-repo open
+   REQs, live/stale/blocked state and owner-only decisions.
    The three-pass rule applies only to criterion stalls: three unchanged
    criterion observations mean `STALLED_PRIMARY_CRITERION`.
    Growth in the accepted count is not proof: accepted evidence must reference the current source or commit and the primary criterion.
@@ -72,11 +77,20 @@ relaying blockers. Each pass:
    state, not recovery coverage, restored capability or installed/native success.
    Compare the latest verbatim owner objective and holds with what was actually dispatched;
    a REQ row or routine approval is not authorization for a different product or scope.
+   Never accept silent narrowing: record the original ask in a typed `narrow`
+   correction and require owner acknowledgement before acting on the smaller
+   scope. Lead final reports with **Not delivered vs owner asks**. Verify cited
+   SHAs, trees, branches, push targets and file hashes in their named repos.
    Resolved holds stay resolved: superseded Handoff/Verify text cannot resurrect
    an access or snapshot blocker. Compare current evidence and corrections.
 5. **Loops.** The same failing command, message, audit, nudge relay or plan
    repeated without new evidence is a loop. Break it with one different
    concrete action toward the criterion, or park the path as blocked.
+   When the agreed context budget (turns, compactions, elapsed time or
+   host-reported usage) is reached, prepare a committed Handoff and verify its
+   SHA before a successor starts; the successor preserves the same lane table.
+   Mark replaced lanes superseded, request their stop through GHC, and verify
+   live status before releasing their path ownership; never silently restart.
 6. **Unblock.** Answer routine questions or plans inside the agreed direction.
    An approval request for something already inside that direction is
    unnecessary: answer it, and tell the coordinator to stop asking that class.

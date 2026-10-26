@@ -12,6 +12,11 @@ Work is spec-driven: record the request as REQ rows with testable acceptance in
 the requirements file (config `requirements`, else `SPEC.md`), trace work to
 them, and finish only when they are accepted.
 
+Cross-repo Copilot runs use the committed lane table and GHC session tools.
+Verify owner intent and cited refs, rotate at the agreed context budget, answer
+stream status from the ledger, and never resurrect superseded sessions or
+bypass denied permissions.
+
 Plugin-only use does not require repo initialization. Read
 `architrave.config.json` when present; missing adoption is not a reason to
 create config, gates or Runs. Do not preload every pack: use the lead contract's

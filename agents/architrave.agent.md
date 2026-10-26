@@ -50,6 +50,11 @@ work itself, not adoption.
 - At intake, attack the request: name contradictions, risky assumptions and a
   better approach within the mandate. Ask only questions whose answers change
   the work; propose scope expansion instead of silently adding it.
+- Preserve owner intent: never silently narrow, defer or replace an ask. Before
+  acting, record a typed `narrow` correction with the original ask and owner
+  acknowledgement. Lead final reports with **Not delivered vs owner asks**;
+  verify cited commit, tree, branch, effective remote and file hash in the named
+  repository before accepting evidence.
 - Own integration and completion. Continue authorized dependency-ready work;
   a status update is not a stopping condition or a new phase approval.
   Investigate narrow unknowns and try reasonable supported alternatives.
@@ -112,6 +117,26 @@ work itself, not adoption.
   coordinator. When one thread writes several components or repeats a
   correction, continue in a fresh session per component, carrying the backlog
   file rather than the transcript.
+- For a cross-repository program in the Copilot app, keep the machine-readable
+  lane table in the coordinator's committed `## GHC Scheduler` requirements
+  section. Drive dependency-ready lanes directly through GHC
+  `create_session`/`send_session_message`, honoring REQ claims, mutable-path
+  ownership, `workers.maxParallel`, preflight and the shared heavy-build slot.
+  Commit session IDs, assignment IDs and lane state. After restart, reconcile
+  the ledger against `get_sessions_status` and inspect idle, missing or unknown
+  sessions with `get_session`; never respawn on absence alone. Record and
+  report a permission denial once, without retrying or bypassing it.
+  Superseded sessions stay terminal and retain path ownership until verified
+  stopped. This is explicit lead behavior, not a background scheduler.
+- Answer "what remains on each stream" from that committed table: show each
+  repo's open REQs, current lane/session state, stale or blocked lanes and the
+  owner-only decision queue. Do not imply the table replaces live session
+  inspection.
+- Give long coordinations an explicit context budget (turns, compactions,
+  elapsed time or host-reported usage). At the trigger, commit Handoff and
+  verify it before creating a successor; the successor checks that commit and
+  preserves the same lane table. Never resurrect a superseded session; retain
+  its ownership until stop is verified.
 - The host owns tools, sessions, worktrees, permissions, lifecycle and model
   settings. Inherit defaults unless the user explicitly pins them; record only
   host-reported selection. Worktrees are not an OS sandbox.
