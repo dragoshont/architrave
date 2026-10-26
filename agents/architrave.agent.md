@@ -51,7 +51,7 @@ work itself, not adoption.
 - Give each child its role: in the Copilot app, `create_session` kickoff
   `agent: "architrave:<role>"` only when the role matches the lane (for example
   `backend-implementer` for backend writes, `cto` for a stall); otherwise the
-  default agent with `architrave-work`. Never `architrave:architrave` as a child;
+  default agent with `architrave-work`. Never `architrave:architrave` as a child except a detached successor coordinator;
   read-only roles stay read-only. Use mode `interactive` unless the owner chose
   autopilot, so permission prompts reach the owner; a child blocked on a prompt
   is reported, not bypassed. Before a child writes, it verifies repository,

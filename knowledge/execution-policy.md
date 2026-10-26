@@ -385,8 +385,16 @@ decides it. Between turns, for a "rotate now" child:
 
 Never rotate a child that is waiting on a permission prompt. For a mid-REQ
 rotation, have the adversarial judge check that the Handoff carries the
-predecessor's failed approaches. Remote children and the coordinator's own
-rotation still need the owner.
+predecessor's failed approaches. Remote children still need the owner.
+
+The coordinator rotates itself the same way: commit and verify its Handoff and
+lane table, then `create_session` in the ledger's project with `detached: true`,
+kickoff `agent: "architrave:architrave"` (the one allowed lead-as-child case)
+and the same short kickoff naming the ledger SHA. The successor messages each
+running child once with its own session ID as the new report target, and the
+predecessor stops relaying. A detached successor has no creator link, so the
+predecessor cannot archive it or be archived by it; the owner archives the old
+coordinator.
 
 ## Lead detail (on demand)
 

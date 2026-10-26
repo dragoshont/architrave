@@ -5,7 +5,13 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
-## 0.21.20
+## 0.21.21
+
+- Coordinator self-rotation: the coordinator can start its own successor with
+  `create_session` `detached: true` and `agent: "architrave:architrave"`
+  (verified live); the successor re-points running children to itself. The old
+  coordinator is archived by the owner.
+
 
 - Context rotation: the program board flags sessions "rotate soon" (peak
   context ≥30% of limit or ≥300k) and "rotate now" (≥45% or two compactions),
