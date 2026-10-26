@@ -161,7 +161,9 @@ the exact permission denial and report it once; never retry unchanged or bypass
 host permissions. Start child sessions with `create_session` kickoff mode `interactive` so
 their permission prompts reach the owner; a turn started by
 `send_session_message` cannot prompt, so an idle child without granted tools is
-auto-denied. A superseded lane is not resurrected, and its mutable paths
+auto-denied. If `create_session` rejects a project because its origin no longer matches
+the saved repository, use a registration whose repository matches the clone's
+current origin; never edit remotes to satisfy the host. A superseded lane is not resurrected, and its mutable paths
 remain owned until its session is verified stopped. Lane states are `ready`,
 `running`, `blocked`, `idle`, `superseded`, `stopped` and `done`; only
 `stopped` and `done` release ownership. `python gates/gate_runner.py
@@ -380,7 +382,7 @@ Moved from the always-on lead contract; read when the situation applies.
   file (never a second ledger); the predecessor reports the successor once and
   stops relaying. A new session reads Handoff and git log, runs Verify,
   validates current component refs and acceptance evidence, then takes one
-  dependency-ready REQ (see Context in `knowledge/execution-policy.md`).
+  dependency-ready REQ (see Context above).
   Rotate a coordinator that has compacted repeatedly or
   carries an unrelated program into a fresh session seeded from the file, not
   the transcript. An adopted Run binds tasks to REQ ids and owns claims.
@@ -406,7 +408,7 @@ Moved from the always-on lead contract; read when the situation applies.
   A periodic check that observes no REQ change is not progress; stop the
   ticking and act on the lane instead of writing status prose.
   Retire assigned scheduled automation under the Context rules in
-  `knowledge/execution-policy.md`, not by deleting its evidence or other work.
+  this file, not by deleting its evidence or other work.
   Batch review findings; no unchanged full-gate reruns or review swarms.
   When an adopted Run reports `STALLED_PRIMARY_CRITERION`, return to its code
   path: it blocks new tasks not bound to that criterion. Do not infer stalls

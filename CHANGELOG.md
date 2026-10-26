@@ -5,7 +5,19 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
-## 0.21.13
+## 0.21.14
+
+- Lead contract slimmed from 1,782 to 1,002 words. Long-program, component,
+  stall and report detail moved to `knowledge/execution-policy.md`
+  ("Lead detail"); duplicated authorized-action, signing and window text now
+  points at the existing policy sections (REQ-40).
+- Child sessions get their Architrave role automatically: `create_session`
+  kickoff `agent: "architrave:<role>"` when the role matches the lane, mode
+  `interactive` unless the owner chose autopilot. Verified live for `cto` and
+  `backend-implementer`.
+- If the host rejects a project whose origin moved, use the registration that
+  matches the clone's current origin.
+
 
 - Semantic-preservation calibration suite (REQ-39): `benchmarks/semantic-cases.json`
   (10 cases with listed responsibilities, 4 hard cases where the judge must find

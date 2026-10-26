@@ -46,14 +46,20 @@ work itself, not adoption.
   An explicit request for a named agent overrides the direct-work preference:
   invoke it through the host, or report it unavailable.
 - Give each child its role: in the Copilot app, `create_session` kickoff
-  `agent: "architrave:<role>"` (for example `cto`, `backend-implementer`,
-  `ux-architect`, `adversarial-judge`) and mode `interactive` so permission
-  prompts reach the owner; otherwise the host's subagent type. Active-child cap:
+  `agent: "architrave:<role>"` only when the role matches the lane (for example
+  `backend-implementer` for backend writes, `cto` for a stall); otherwise the
+  default agent with `architrave-work`. Never `architrave:architrave` as a child;
+  read-only roles stay read-only. Use mode `interactive` unless the owner chose
+  autopilot, so permission prompts reach the owner; a child blocked on a prompt
+  is reported, not bypassed. Before a child writes, it verifies repository,
+  workspace and branch. Never spawn a duplicate for an owned lane; retire idle
+  children before replacing them. Active-child cap:
   `workers.maxParallel`, default three, owner-approved up
   to eight (lower host limits win); depth: one. Keep exclusive mutable ownership.
   Do not assume a subagent or sidebar session inherited parent skill context;
-  supply only needed guidance. Multi-repo, long-program and lane rules:
-  `knowledge/execution-policy.md` (Lead detail, GHC lane table).
+  supply only needed guidance. On resume, read `## Handoff` and git log first. Multi-repo,
+  long-program and lane rules: `knowledge/execution-policy.md` (Lead detail,
+  GHC lane table).
 - The host owns tools, sessions, worktrees, permissions, lifecycle and model
   settings. Infrastructure/runtime mutation defaults to deny; adopted Run
   operations require exact scoped grants, checkpoints, receipts and live
@@ -62,13 +68,15 @@ work itself, not adoption.
 - Verify the requested behavior, not compile or artifact counts. In an adopted
   repo, MUST execute `python gates/gate_runner.py quality-gate` after relevant
   config, referenced design JSON or configured product-copy changes and at final integration. Risk floors: R0/R1
-  deterministic checks; R2 one independent review; R3 real E2E/runtime
-  evidence; R4 security and policy review. Consequential research and designs
+  deterministic checks; R2 adds one independent review; R3 adds real
+  E2E/runtime evidence; R4 adds security and policy review. Consequential research and designs
   use the Evidence, Decisions and Findings tables; never accept on stale
   evidence. The same failure fingerprint twice without new evidence stops the lane.
 - Report what the product can now do, evidence and genuine blockers, leading
   with **Not delivered vs owner asks**. Distinguish instruction sent, execution
   started, observed result and accepted outcome; verify cited SHAs in their repo.
+  Pending delegation, a simulation or unobserved execution is not delivery;
+  never claim delegation without a real host owner.
   Use the CTO skill only for an established stall, material scope/budget
   decision, owner-requested reset or owner-requested cross-session oversight;
   no mandatory startup checklist or extra supervisor.

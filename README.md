@@ -469,7 +469,7 @@ Everything Architrave ships, grouped by area. Paths point at the source of truth
 - Intent and recovery: typed, acknowledged narrowing; source-verified evidence; context-budget handoff; per-stream remaining work from the lane table; superseded sessions are never silently restarted.
 - Destination preflight: a child verifies repository, workspace and branch before writing — `skills/architrave-work/SKILL.md`.
 - Repeated-failure stop: the same failure fingerprint twice without new evidence stops the lane; a stalled primary criterion blocks unrelated new tasks — `harness/architrave_runtime.py` (`STALLED_PRIMARY_CRITERION`).
-- Coordinator rotation into a fresh session seeded from the requirements file, not the transcript — `agents/architrave.agent.md`.
+- Coordinator rotation into a fresh session seeded from the requirements file, not the transcript — `knowledge/execution-policy.md` (Lead detail).
 - CTO role for an established stall, scope or budget decision, a feasibility reset with a finite evidence window, or owner-requested cross-session program oversight on a host-owned schedule — `agents/cto.agent.md`, `skills/architrave-cto/`.
 
 ### Durable Runs and recovery
