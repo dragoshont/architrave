@@ -159,7 +159,7 @@ class ComponentGate(unittest.TestCase):
                   "Preflight reported | Owner-only decisions | Superseded by |\n" + "|---" * 17 + "|\n")
 
         def lane(name, state, reqs, paths, heavy="no", sup="-", decisions="[]"):
-            return (f"| {name} | me/app | p1 | b | private | {reqs} | - | s | a | {state} | {paths} | "
+            return (f"| {name} | me/app | p1 | b | private | {reqs} | - | 6b5186b6-ee1d-49cf-9807-3f23139b3444 | a | {state} | {paths} | "
                     f"{heavy} | ok | - | no | {decisions} | {sup} |\n")
 
         example = EXAMPLE.read_text()
@@ -168,12 +168,12 @@ class ComponentGate(unittest.TestCase):
         self.assertEqual(code, 0, out)
         bad = (example + header + lane("L1", "running", "REQ-01", "src", "yes") + lane("L2", "running", "REQ-01,REQ-99", "src/ui", "yes")
                + lane("L3", "running", "REQ-04", "docs") + lane("L4", "running", "-", "x") + lane("L5", "superseded", "-", "-")
-               + lane("L6", "paused", "-", "-", decisions="{}"))
+               + lane("L6", "paused", "-", "-", decisions="{}").replace("6b5186b6-ee1d-49cf-9807-3f23139b3444", "6b5186b6"))
         code, out = self.requirements(bad)
         self.assertEqual(code, 1, out)
         for text in ("REQ-01 is owned by live lanes L1 and L2", "lanes L1 and L2 both own me/app:src/ui",
                      "unknown REQ-99", "4 running lanes exceed workers.maxParallel=3", "heavy-build slot held by several",
-                     "L5 is superseded without", "L6 state 'paused'", "L6 'Owner-only decisions' is not a JSON array"):
+                     "L5 is superseded without", "L6 state 'paused'", "L6 'Owner-only decisions' is not a JSON array", "L6 session ID '6b5186b6' is not a full"):
             self.assertIn(text, out)
 
     def test_spec_md_is_the_default_requirements_file_and_checks_validate_it(self):

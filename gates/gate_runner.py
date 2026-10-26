@@ -322,6 +322,8 @@ def lane_errors(text: str, reqs: dict[str, dict[str, str]], max_parallel: int) -
                 raise ValueError
         except ValueError:
             errors.append(f"lane {name} 'Owner-only decisions' is not a JSON array")
+        if lane["session id"] not in {"", "-"} and not re.fullmatch(r"[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}", lane["session id"]):
+            errors.append(f"lane {name} session ID {lane['session id']!r} is not a full host session UUID")
         for rid in re.findall(r"REQ-[A-Za-z0-9_.-]+", lane["req ids"]):
             if rid not in reqs:
                 errors.append(f"lane {name} references unknown {rid}")
