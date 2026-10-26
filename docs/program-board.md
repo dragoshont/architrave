@@ -5,11 +5,19 @@ A one-page view of a coordinated program for the browser canvas. It answers
 store.
 
 ```text
-python harness/program_board.py --ledger <dir with SPEC.md> --session <coordinator-session-id> --output board.html
+python3 ~/.copilot/installed-plugins/architrave/architrave/harness/program_board.py --watch 120
 ```
 
-Then open `board.html` in the browser canvas. Rerun to refresh; the page is a
-dated snapshot.
+Start it once per coordinator in a background (detached) shell; a second start
+exits because a watcher already holds `<output>.pid`. Use the plugin's actual
+install path on other hosts.
+
+Run it from the folder holding the requirements file (or pass `--ledger`). The
+coordinator session defaults to `COPILOT_AGENT_SESSION_ID` and the output to that
+session's `files/program-board.html`; open it in the browser canvas. With
+`--watch` it rewrites the file every 120 seconds, the page reloads itself, and
+the watcher exits after the program has been quiet for two hours. The lead
+starts it for every non-trivial task.
 
 ## What it shows
 
@@ -21,9 +29,14 @@ dated snapshot.
 
 It is dense by design and fits a narrow side panel; there are no tables.
 
-## Limits
+## Checks and limits
 
-- Dots show ledger status; acceptance evidence is not re-verified here (use `requirements`).
-- Only sessions logged on this machine appear; sessions on other hosts are omitted.
-- Input tokens include cached prompt reads, so they overstate fresh input.
-- It reads files only. It does not change ledgers, sessions or repositories, and makes no network requests.
+- The overview runs the same structural checks as `requirements`; issues are listed under it.
+- A gold ring marks an accepted REQ none of whose evidence commits resolve in the ledger or a configured component. A resolving commit is not proof of the behaviour; that is still review.
+- Lane sessions not logged on this machine get a dashed row without metrics.
+- Tokens are split into new input, cached reads and output. Sessions that began before the coordinator count only from its start.
+- REQs in no lane appear in a "Not in a lane" rectangle (or one "Requirements" rectangle without a lane table).
+- Child sessions created by `create_session`, `open_pr_session`, `open_issue_session` or `fork_session` are followed recursively.
+- New input = prompt tokens minus cache reads (cache writes count as new). A malformed log line is skipped; a failed refresh keeps the last good board.
+- It reads files only: no ledger, session or repository changes and no network requests.
+- Browser-canvas screenshots can return stale frames (a host issue); verify with the page contents or a fresh render.

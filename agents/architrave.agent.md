@@ -74,6 +74,8 @@ work itself, not adoption.
   E2E/runtime evidence; R4 adds security and policy review. Consequential research and designs
   use the Evidence, Decisions and Findings tables; never accept on stale
   evidence. The same failure fingerprint twice without new evidence stops the lane.
+- Non-trivial work: once REQs exist, start the live program board once per
+  coordinator (`docs/program-board.md`) and open it in the browser canvas.
 - Report what the product can now do, evidence and genuine blockers, leading
   with **Not delivered vs owner asks**. Distinguish instruction sent, execution
   started, observed result and accepted outcome; verify cited SHAs in their repo.

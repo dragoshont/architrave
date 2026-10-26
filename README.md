@@ -199,9 +199,11 @@ worktrees and branches; host session messages steer live work. See
 The Copilot package includes two companion panels for hosts that support
 extensions and canvases:
 
+![Program board: lane rectangles with a square per requirement, and how the coordinator and child sessions ran with context and token gauges](assets/program-board.png)
+
 | Panel | What it shows |
 |---|---|
-| **Program board** | For a coordinated program, a compact side-panel view: overview, one rectangle per lane with a square per REQ coloured by ledger status, and how the coordinator and its child sessions ran over time with each session's tokens, peak context against the limit, and model and wall minutes. Generated on request with `python harness/program_board.py` and opened in the browser canvas — [docs](docs/program-board.md). |
+| **Program board** | For a coordinated program, a compact side-panel view: overview, one rectangle per lane with a square per REQ coloured by ledger status, and how the coordinator and its child sessions ran over time with each session's tokens, peak context against the limit, and model and wall minutes. The lead starts it for every non-trivial task; it refreshes every two minutes in the browser canvas — [docs](docs/program-board.md). |
 | **Session companion** | Session activity, host-reported model and effort, context usage, and expandable SDK subagent rows with names, roles, assigned work, and lifecycle status. App-native child-session rows are not yet exposed by the host integration. |
 | **Route Ribbon** | Run snapshots showing the route, workstreams, blockers, stops, retries, and evidence, with completed work kept separate from verified product results. |
 

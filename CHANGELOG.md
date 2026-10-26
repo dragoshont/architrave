@@ -5,15 +5,28 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
-## 0.21.16
+## 0.21.17
 
-- Program board: `python harness/program_board.py --ledger <dir> --session <coordinator-id> --output board.html`
+- Program board hardening (independent review REVISE fixed): REQs in no lane
+  get a "Not in a lane" rectangle so rings match the overview; evidence commits
+  match inside joined text and results are cached; malformed log lines are
+  skipped and a failed refresh keeps the last good board; one watcher per
+  output (pid lock) that exits when no sessions are found; child sessions from
+  all session-creating tools are followed recursively; the session count
+  matches the timeline; "program min" is the program's span. README shows the
+  board.
+
+
+- Program board: `python3 harness/program_board.py --watch 120`, started by the lead for every non-trivial task
   renders a compact side-panel page for the browser canvas: overview, one
   rectangle per lane with a square per REQ coloured by ledger status, and how
   the coordinator and its child sessions ran over time with each session's
   tokens, peak context against the limit, and model and wall minutes. Reads the requirements file and local
-  session logs only. Replaces the Route Ribbon as the lead's default panel; the
-  Route Ribbon stays for adopted Runs.
+  session logs only; refreshes every two minutes and stops after two quiet hours.
+  Runs the gate's structural checks, rings accepted REQs whose evidence commits
+  don't resolve, splits new and cached tokens, lists lane sessions logged
+  elsewhere, and follows child sessions recursively. Replaces the Route Ribbon
+  as the lead's default panel; the Route Ribbon stays for adopted Runs.
 
 
 - Delegated work defaults to visible child sessions (Copilot app sidebar via

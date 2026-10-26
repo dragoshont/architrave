@@ -5,14 +5,14 @@
   },
   "metadata": {
     "description": "Architrave — spec-driven, judge-gated, durable development for long-running agent work.",
-    "version": "0.21.16"
+    "version": "0.21.17"
   },
   "plugins": [
     {
       "name": "architrave",
       "source": ".",
       "description": "Spec-driven development control plane for coding agents. Every task starts from a repository requirements file with testable acceptance; work, child sessions, owner corrections and hand-offs are traced to REQ ids, and done means accepted with evidence. Adds durable resumable Runs, bounded multi-session supervision, deterministic and judge-gated verification, design-, contract- and runtime-grounded specialist roles, and a self-improving learning loop.",
-      "version": "0.21.16",
+      "version": "0.21.17",
       "license": "MIT",
       "keywords": [
         "ui",
