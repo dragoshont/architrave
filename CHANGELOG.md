@@ -5,7 +5,16 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
-## 0.21.17
+## 0.21.18
+
+- Review marks on the program board: session rows show ✓ when the session ran
+  a reviewer (○ when none); REQ squares get a white corner when independently
+  reviewed; lanes show "reviewed k/n" and a gold border when accepted work has
+  no recorded review; the overview counts accepted but unreviewed REQs.
+- Ledger rule: record each independent review in the REQ's Evidence as
+  `review: <reviewer> <PASS|REVISE|FAIL>`; the `requirements` gate checks the
+  format and refuses acceptance on a REVISE/FAIL without a later PASS.
+
 
 - Program board hardening (independent review REVISE fixed): REQs in no lane
   get a "Not in a lane" rectangle so rings match the overview; evidence commits

@@ -247,6 +247,18 @@ Verify: `make e2e`
         code, out = run(opened.replace("| open | - | `make e2e`", '| deferred | - | owner acknowledged: "after beta" `make e2e`'))
         self.assertEqual(code, 0, out)
 
+    def test_review_notes_have_a_format_and_block_acceptance_on_revise(self):
+        example = EXAMPLE.read_text()
+        row = "commit abc1234, test log ci/123"
+        code, out = self.requirements(example.replace(row, row + "; review: judge PASS"))
+        self.assertEqual(code, 0, out)
+        code, out = self.requirements(example.replace(row, row + "; review: judge REVISE"))
+        self.assertIn("is accepted on a REVISE review", out)
+        code, out = self.requirements(example.replace(row, row + "; review: judge REVISE; review: judge PASS"))
+        self.assertEqual(code, 0, out)
+        code, out = self.requirements(example.replace(row, row + "; review: looked fine"))
+        self.assertIn("review note must read", out)
+
     def test_spec_md_is_the_default_requirements_file_and_checks_validate_it(self):
         (self.hub / "architrave.config.json").write_text(json.dumps(
             {"kind": "knowledge", "build": "true", "test": "true"}))

@@ -41,6 +41,8 @@ def when(value: str | None) -> datetime | None:
 
 
 SPAWN_TOOLS = {"create_session", "open_pr_session", "open_issue_session", "fork_session"}
+REVIEWER = re.compile(r"adversarial-judge|code-review|rubber-duck|security-review|architrave-review|judge", re.I)
+REVIEW_NOTE = re.compile(r"review:\s*\S+\s+(PASS|REVISE|FAIL)\b|review[^|]{0,80}?\b(PASS|REVISE|FAIL)\b", re.I)
 SESSION_ID = re.compile(r"\b([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\b")
 
 
@@ -56,7 +58,7 @@ def read_session(sid: str, since: datetime | None = None) -> dict | None:
     if not path.is_file():
         return None
     info = {"id": sid, "start": None, "end": None, "turns": [], "calls": 0, "input": 0, "cached": 0, "output": 0,
-            "max_context": 0, "context_limit": 0, "model": None, "agent": None, "children": []}
+            "max_context": 0, "context_limit": 0, "model": None, "agent": None, "children": [], "reviews": set()}
     pending: dict[str, tuple[str, str | None]] = {}
     turn_open = None
     for line in path.open(encoding="utf-8", errors="ignore"):
@@ -78,8 +80,17 @@ def read_session(sid: str, since: datetime | None = None) -> dict | None:
             info["model"] = data.get("selectedModel") if isinstance(data.get("selectedModel"), str) else info["model"]
             if not since and isinstance(data.get("startTime"), str):
                 info["start"] = when(data["startTime"]) or info["start"]
-        elif kind == "subagent.selected" and not info["turns"] and turn_open is None:
-            info["agent"] = data.get("agentName") if isinstance(data.get("agentName"), str) else None
+        elif kind == "subagent.selected":
+            name = data.get("agentName") if isinstance(data.get("agentName"), str) else None
+            if not info["turns"] and turn_open is None:
+                info["agent"] = name
+            elif name and REVIEWER.search(name):
+                info["reviews"].add(name)
+        elif kind == "skill.invoked" and REVIEWER.search(str(data.get("name") or data.get("skillName") or "")):
+            info["reviews"].add(str(data.get("name") or data.get("skillName")))
+        elif kind == "tool.execution_start" and data.get("toolName") == "task" and isinstance(data.get("arguments"), dict) \
+                and REVIEWER.search(str(data["arguments"].get("agent_type", ""))):
+            info["reviews"].add(str(data["arguments"]["agent_type"]))
         elif kind == "assistant.turn_start":
             turn_open = stamp
         elif kind == "assistant.turn_end" and turn_open and stamp:
@@ -163,6 +174,11 @@ def build(ledger: Path, coordinator: str) -> dict:
     repos = [ledger] + [gate.component_path(ledger, c["path"]) for c in config.get("components") or []
                         if isinstance(c, dict) and isinstance(c.get("path"), str)]
     repos = [r for r in repos if gate.git(r, "rev-parse", "--git-dir") is not None]
+    findings = gate.ledger_table(text, ("id", "severity", "target", "finding"),
+                                 ("id", "severity", "target", "finding", "raised by", "disposition", "verified by", "evidence"))
+    reviewed = {rid for rid, r in reqs.items() if REVIEW_NOTE.search(r["evidence"])}
+    reviewed |= {t.upper() for f in findings if f["verified by"].strip() not in {"", "-"}
+                 for t in re.findall(r"REQ-[A-Za-z0-9_.-]+", f["target"], re.I)}
     unverified = {rid for rid, r in reqs.items() if r["status"].lower() == "accepted" and not evidence_resolves(r["evidence"], repos)}
     laned = {rid.upper() for lane in lanes for rid in re.findall(r"REQ-[A-Za-z0-9_.-]+", lane["req ids"], re.I)}
     loose = [rid for rid, r in reqs.items() if rid not in laned and r["status"].lower() not in gate.REQ_CLOSED]
@@ -199,7 +215,7 @@ def build(ledger: Path, coordinator: str) -> dict:
     seen = {x["id"].lower() for x in sessions}
     remote = [lane for sid, lane in lane_by_session.items() if sid.lower() not in seen and lane["state"].lower() not in {"superseded", "stopped"}]
     return {"ledger": ledger, "commit": commit, "reqs": reqs, "lanes": lanes, "sessions": sessions, "remote": remote,
-            "lane_by_session": lane_by_session, "errors": errors, "unverified": unverified, "generated": datetime.now(timezone.utc)}
+            "lane_by_session": lane_by_session, "errors": errors, "unverified": unverified, "reviewed": reviewed, "generated": datetime.now(timezone.utc)}
 
 
 def timeline(sessions: list[dict], lane_by_session: dict, remote: list[dict] = ()) -> str:
@@ -226,8 +242,9 @@ def timeline(sessions: list[dict], lane_by_session: dict, remote: list[dict] = (
         agent = (s["agent"] or "default").replace("architrave:", "")
         rows.append(
             f"<g><title>{esc(s['name'])}: {s['wall_min']:.0f} min wall, {s['active_min']:.0f} min model; "
-            f"{s['calls']} calls; {s['input']:,} fresh in, {s['cached']:,} cached, {s['output']:,} out tokens; peak context {s['max_context']:,} of {s['context_limit']:,}</title>"
-            f"<text class='label' x='0' y='{y + 8}'>{esc(s['name'] if len(s['name']) <= 17 else s['name'][:16] + '…')}</text>"
+            f"{('reviewed by ' + ', '.join(sorted(s['reviews']))) if s['reviews'] else 'no reviewer run'}; {s['calls']} calls; {s['input']:,} fresh in, {s['cached']:,} cached, {s['output']:,} out tokens; peak context {s['max_context']:,} of {s['context_limit']:,}</title>"
+            f"<text class='label' x='0' y='{y + 8}'>{esc(s['name'] if len(s['name']) <= 15 else s['name'][:14] + '…')}"
+            f"<tspan class='{'rv' if s['reviews'] else 'nrv'}'> {'✓' if s['reviews'] else '○'}</tspan></text>"
             f"<text class='sub' x='0' y='{y + 19}'>{esc(agent[:22])}</text>"
             f"<rect class='lane-bg' x='{left}' y='{y}' width='{width}' height='10'/>"
             f"<rect class='track {tone}' x='{x:.1f}' y='{y}' width='{w:.1f}' height='10'/>{marks}"
@@ -256,13 +273,15 @@ def render(data: dict) -> str:
     accepted = sum(1 for r in active_req.values() if r["status"].lower() == "accepted")
     total_in, total_out = sum(s["input"] for s in sessions), sum(s["output"] for s in sessions)
     total_cached = sum(s["cached"] for s in sessions)
-    unverified = data["unverified"]
+    unverified, reviewed = data["unverified"], data["reviewed"]
+    unreviewed_accepted = [r for r in active_req if active_req[r]["status"].lower() == "accepted" and r not in reviewed]
     active = sum(s["active_min"] for s in sessions)
     wall = ((max(s["end"] for s in sessions) - sessions[0]["start"]).total_seconds() / 60) if sessions else 0
     running = sum(1 for lane in lanes if lane["state"].lower() == "running")
     stats = [("REQs accepted", f"{accepted}/{len(active_req)}"),
              ("gate", "PASS" if not data["errors"] else f"{len(data['errors'])} issues"),
-             ("accepted, evidence unresolved", str(len(unverified & set(active_req)))), ("lanes running", f"{running}/{len(lanes)}"),
+             ("accepted, evidence unresolved", str(len(unverified & set(active_req)))),
+             ("accepted, not reviewed", str(len(unreviewed_accepted))), ("lanes running", f"{running}/{len(lanes)}"),
              ("sessions", str(len(sessions))), ("tokens new/cache/out", f"{num(total_in)}/{num(total_cached)}/{num(total_out)}"),
              ("model min, all sessions", f"{active:.0f}"), ("program min", f"{wall:.0f}")]
     overview = "".join(f"<div><b>{esc(v)}</b><span>{esc(k)}</span></div>" for k, v in stats)
@@ -270,12 +289,15 @@ def render(data: dict) -> str:
     for lane in lanes:
         ids = [rid.upper() for rid in re.findall(r"REQ-[A-Za-z0-9_.-]+", lane["req ids"], re.I)]
         squares = "".join(
-            f"<button class='sq {REQ_TONE.get(reqs[r]['status'].lower(), 'open') if r in reqs else 'open'}{' warn' if r in unverified else ''}' "
-            f"data-d='{esc(r)} · {esc(reqs[r]['status'] if r in reqs else 'unknown')}{' · no evidence commit resolves' if r in unverified else ''} · {esc((reqs[r]['requirement'] if r in reqs else '')[:160])}' "
+            f"<button class='sq {REQ_TONE.get(reqs[r]['status'].lower(), 'open') if r in reqs else 'open'}{' warn' if r in unverified else ''}{' rev' if r in reviewed else ''}' "
+            f"data-d='{esc(r)} · {esc(reqs[r]['status'] if r in reqs else 'unknown')}{' · no evidence commit resolves' if r in unverified else ''}{' · reviewed' if r in reviewed else ' · not reviewed'} · {esc((reqs[r]['requirement'] if r in reqs else '')[:160])}' "
             f"aria-label='{esc(r)} {esc(reqs[r]['status'] if r in reqs else 'unknown')}'></button>" for r in ids)
         done = sum(1 for r in ids if r in reqs and reqs[r]["status"].lower() == "accepted")
+        rev = sum(1 for r in ids if r in reviewed)
+        risky = any(r in reqs and reqs[r]["status"].lower() == "accepted" and r not in reviewed for r in ids)
         tone = LANE_TONE.get(lane["state"].lower(), "open")
-        boxes.append(f"<section class='box {tone}'><h3>{esc(lane['lane'])}</h3><p>{esc(lane['state'])} · {done}/{len(ids)}</p>"
+        boxes.append(f"<section class='box {tone}{' unrev' if risky else ''}'><h3>{esc(lane['lane'])}</h3>"
+                     f"<p>{esc(lane['state'])} · {done}/{len(ids)} accepted · reviewed {rev}/{len(ids)}</p>"
                      f"<div class='grid'>{squares}</div></section>")
     css = """
 :root{color-scheme:dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#10161e;color:#edf3f8}
@@ -284,19 +306,20 @@ h1{margin:0;font-size:17px;font-weight:650;letter-spacing:-.02em}h2{margin:16px 
 .note{margin:3px 0;font-size:10px;color:#b8c6d5}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:#2a3644;margin-top:10px;border:1px solid #2a3644}
 .stats div{background:#1b2632;padding:7px 8px}.stats b{display:block;font-size:15px;font-variant-numeric:tabular-nums}.stats span{font-size:10px;color:#b8c6d5}
-.legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:10px;color:#d3dee8;margin:4px 0 8px}.legend i{display:inline-block;width:9px;height:9px;margin-right:4px;vertical-align:-1px}.legend i.warn{box-shadow:inset 0 0 0 2px #d6aa4b}
+.legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:10px;color:#d3dee8;margin:4px 0 8px}.legend i{display:inline-block;width:9px;height:9px;margin-right:4px;vertical-align:-1px}.legend i.warn{box-shadow:inset 0 0 0 2px #d6aa4b}.legend i.sq{width:9px;height:9px}.legend i.unrevkey{border:2px solid #d6aa4b}
 .done{background:#38aa6b;fill:#38aa6b}.active{background:#479bc1;fill:#479bc1}.blocked{background:#e05b6b;fill:#e05b6b}.open{background:#506071;fill:#506071}.gone{background:#33404e;fill:#33404e}
 .boxes{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}
 .box{background:#1b2632;border:1px solid #7a8c9e;padding:5px 6px 6px}.box.blocked{border-color:#f08895}.box.done{border-color:#38aa6b}.box.gone{opacity:.45}
 .box h3{margin:0;font-size:10.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.box p{margin:0 0 4px;font-size:9px;color:#bacada}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,11px);gap:1px}
-.sq{width:11px;height:11px;padding:0;border:0;cursor:pointer}.sq.warn{box-shadow:inset 0 0 0 2px #d6aa4b}.remote{fill:none;stroke:#506071;stroke-dasharray:3 2}.issues{margin:6px 0 0;padding-left:16px;font-size:10px;color:#f0a0aa}.sq:hover,.sq:focus-visible,.sq.sel{outline:1.5px solid #fff;outline-offset:0}
+.sq{width:11px;height:11px;padding:0;border:0;cursor:pointer}.sq.warn{box-shadow:inset 0 0 0 2px #d6aa4b}.sq{position:relative}.sq.rev::after{content:"";position:absolute;right:0;top:0;border-style:solid;border-width:0 5px 5px 0;border-color:transparent #fff transparent transparent}.box.unrev{border-color:#d6aa4b;box-shadow:inset 0 0 0 1px #d6aa4b}.rv{fill:#38aa6b}.nrv{fill:#8fa1b3}.remote{fill:none;stroke:#506071;stroke-dasharray:3 2}.issues{margin:6px 0 0;padding-left:16px;font-size:10px;color:#f0a0aa}.sq:hover,.sq:focus-visible,.sq.sel{outline:1.5px solid #fff;outline-offset:0}
 #detail{min-height:28px;margin:8px 0 0;padding-top:6px;border-top:1px solid #415064;font-size:11px;color:#c6d4e1;overflow-wrap:anywhere}
 .timeline{width:100%;display:block}.timeline .label{fill:#edf3f8;font-size:8.5px;font-weight:600}.timeline .sub{fill:#9fb0c1;font-size:6.5px}.timeline .tick{fill:#8fa1b3;font-size:6.5px}.lane-bg,.gauge{fill:#1b2632}.turn{fill:#0b1016;opacity:.55}.ctxfill{fill:#d6aa4b}.tokfill{fill:#479bc1}
 footer{font-size:9px;color:#8fa1b3;margin-top:10px;line-height:1.5}
 """
     legend = ("<div class='legend'><span><i class='done'></i>accepted</span><span><i class='active'></i>claimed</span>"
-              "<span><i class='blocked'></i>blocked</span><span><i class='open'></i>open</span><span><i class='open warn'></i>accepted, evidence unresolved</span></div>")
+              "<span><i class='blocked'></i>blocked</span><span><i class='open'></i>open</span><span><i class='open warn'></i>evidence unresolved</span>"
+              "<span><i class='sq rev open'></i>reviewed</span><span><i class='unrevkey'></i>lane has accepted but unreviewed work</span></div>")
     script = ("<script>const d=document.getElementById('detail');document.querySelectorAll('.sq').forEach(b=>b.onclick=()=>{"
               "document.querySelectorAll('.sq.sel').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');d.textContent=b.dataset.d});</script>")
     return (f"<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width'>"

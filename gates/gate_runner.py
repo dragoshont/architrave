@@ -279,6 +279,13 @@ def parse_requirements(text: str) -> tuple[dict[str, dict[str, str]], list[dict[
             errors.append(f"{rid} has no testable acceptance")
         if status == "accepted" and not row["evidence"]:
             errors.append(f"{rid} is accepted without evidence")
+        for note in re.finditer(r"(?:^|;)\s*review:\s*([^;|]*)", row["evidence"]):
+            match = re.fullmatch(r"(\S+)\s+(PASS|REVISE|FAIL)\b.*", note.group(1).strip(), re.I)
+            if not match:
+                errors.append(f"{rid} review note must read 'review: <reviewer> <PASS|REVISE|FAIL>'")
+            elif status == "accepted" and match.group(2).upper() != "PASS" and not re.search(
+                    r";\s*review:\s*\S+\s+PASS\b", row["evidence"][note.end():]):
+                errors.append(f"{rid} is accepted on a {match.group(2).upper()} review; record the PASS re-review")
         if status in REQ_CLOSED and not any(rid in c["target"] for c in corrections):
             errors.append(f"{rid} is {status} but no correction row records why")
     for item in corrections:

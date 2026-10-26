@@ -29,6 +29,13 @@ starts it for every non-trivial task.
 
 It is dense by design and fits a narrow side panel; there are no tables.
 
+## Review marks
+
+- Session row: ✓ when the session ran a reviewer (adversarial judge, code review, rubber duck, security review or `architrave-review`); ○ when it ran none. Hover for which.
+- Square: white corner when the REQ's Evidence records `review: <reviewer> <verdict>` (at the start of the cell or after `;`) (or an older free-text review verdict) or a Findings row targeting it has a verifier.
+- Lane: "reviewed k/n"; a gold border when accepted work in it has no recorded review. The overview counts accepted but unreviewed REQs.
+- The `requirements` gate checks the note format and refuses acceptance on a REVISE/FAIL review without a later PASS.
+
 ## Checks and limits
 
 - The overview runs the same structural checks as `requirements`; issues are listed under it.

@@ -35,7 +35,7 @@ class ProgramBoard(unittest.TestCase):
             sha = subprocess.run(["git", "-C", str(ledger), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
             (ledger / "SPEC.md").write_text(
                 f"| ID | Requirement | Acceptance | Owner | Status | Evidence |\n|---|---|---|---|---|---|\n"
-                f"| REQ-1 | Show <b>sync</b> | `t` | L1 | accepted | {sha} |\n| REQ-2 | Fix x | `t` | L1 | blocked | - |\n"
+                f"| REQ-1 | Show <b>sync</b> | `t` | L1 | accepted | {sha}; review: judge PASS |\n| REQ-2 | Fix x | `t` | L1 | blocked | - |\n"
                 "| REQ-3 | Claimed done | `t` | L2 | accepted | deadbee |\n| REQ-4 | Loose | `t` | x | open | - |\n\n"
                 + LANE + f"| L1-app | app | p | b | origin | REQ-1, REQ-2 | - | {CHILD} | - | running | src | no | ok | - | no | [] | - |\n"
                 f"| L2-remote | app | p | b | origin | REQ-3 | - | {REMOTE} | - | running | docs | no | ok | - | no | [] | - |\n"
@@ -68,11 +68,16 @@ class ProgramBoard(unittest.TestCase):
             self.assertIn("L2-remote", page)
             self.assertIn("not logged on this machine", page)
             self.assertIn("tok 10k new · 40k cache · 900 out", page)
-            self.assertIn("class='sq done'", page)
+            self.assertIn("class='sq done", page)
             self.assertIn("class='sq blocked'", page)
             self.assertIn("L1 app", page)
             self.assertIn("backend-implementer", page)
-            self.assertNotIn("code-review", page)
+            self.assertIn("reviewed by code-review", page)
+            self.assertIn("no reviewer run", page)
+            self.assertIn("sq done rev", page)
+            self.assertIn("box active unrev", page)
+            self.assertIn("reviewed 1/2", page)
+            self.assertIn("<b>1</b><span>accepted, not reviewed</span>", page)
             self.assertIn("ctx 50k / 200k", page)
             self.assertIn("10 model / 11 wall min", page)
             self.assertNotIn("<b>sync</b>", page)

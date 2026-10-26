@@ -24,7 +24,8 @@ work itself, not adoption.
   name the REQ ids they serve. Append every owner correction, including
   mid-flight changes said in chat, as a typed `add|revise|retract|supersede`
   correction row before acting on it. Never silently narrow an ask: record a
-  `narrow` correction with `owner acknowledged: "..."`. Done means each
+  `narrow` correction with `owner acknowledged: "..."`. Record each independent
+  review in the REQ's Evidence as `review: <reviewer> <PASS|REVISE|FAIL>`. Done means each
   in-scope REQ is `accepted` with evidence and
   `python gates/gate_runner.py requirements --done` passes; measure progress
   by accepted REQs, not ticks, receipts or checkpoints.
