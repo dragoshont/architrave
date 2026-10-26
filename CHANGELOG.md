@@ -5,7 +5,18 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
-## 0.21.12
+## 0.21.13
+
+- Semantic-preservation calibration suite (REQ-39): `benchmarks/semantic-cases.json`
+  (10 cases with listed responsibilities, 4 hard cases where the judge must find
+  the requirement sentences) and `scripts/score-semantic-cases.py`, scored by id.
+  First run: the 0.21.12 judge and the 0.21.11 baseline both scored 10/10 on the
+  easy cases; on the hard cases 7/7 vs 6/7, one run each. Not a demonstrated
+  improvement.
+- Live parallel lanes (REQ-30): two child sessions in different repositories
+  delivered in parallel. Start children with kickoff mode `interactive` so
+  permission prompts reach the owner.
+
 
 - Evidence chain in the requirements file: Evidence, Decisions and Findings
   tables checked by the `requirements` gate (independent reviewer, dated web

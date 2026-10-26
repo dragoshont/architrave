@@ -1,6 +1,6 @@
 {
   "name": "architrave",
-  "version": "0.21.12",
+  "version": "0.21.13",
   "description": "Spec-driven repository workflow: requirements with testable acceptance, REQ-traced work and hand-offs, deterministic gates, durable runs, option analysis and independent review.",
   "author": {
     "name": "dragoshont"

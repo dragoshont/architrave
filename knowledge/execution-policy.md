@@ -158,10 +158,10 @@ assignment IDs and state to the ledger. After restart, reconcile against
 `get_sessions_status` and use `get_session` to inspect idle, missing or unknown
 sessions; those states never trigger automatic respawn or completion. Record
 the exact permission denial and report it once; never retry unchanged or bypass
-host permissions. A turn started by `send_session_message` cannot show the
-owner a permission prompt, so a child without granted tools is auto-denied.
-Dispatch only to sessions whose tools already work, or ask the owner to start a
-turn in that session, or do the work in the coordinator. A superseded lane is not resurrected, and its mutable paths
+host permissions. Start child sessions with `create_session` kickoff mode `interactive` so
+their permission prompts reach the owner; a turn started by
+`send_session_message` cannot prompt, so an idle child without granted tools is
+auto-denied. A superseded lane is not resurrected, and its mutable paths
 remain owned until its session is verified stopped. Lane states are `ready`,
 `running`, `blocked`, `idle`, `superseded`, `stopped` and `done`; only
 `stopped` and `done` release ownership. `python gates/gate_runner.py
