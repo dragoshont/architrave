@@ -16,13 +16,13 @@ rows; the extra tables below appear only for consequential work.
 
 | Stage | What the file records | What the gate enforces |
 |---|---|---|
-| **Research** | Evidence rows: question, source, claim, author, status, reviewer | A supported claim has a reviewer other than its author. Web sources carry a retrieval date. `<repo>@<commit>:<path>` sources resolve in a configured component and fail as stale once that file changes |
+| **Research** | Evidence rows: question, source, claim, author, status, reviewer | A supported claim has a reviewer other than its author. Web sources carry a retrieval date. `<repo>@<commit>:<path>` sources must resolve in a configured local checkout. They fail as stale once that file changes, but only when the checkout's HEAD contains the cited commit; otherwise freshness is reported as unverified |
 | **Decide** | Decision rows: choice, rejected alternatives, evidence | An active decision rests only on supported evidence. A REQ can't be accepted on a decision under reconsideration |
-| **Build** | REQ rows, owner corrections and the cross-repository lane table | One live owner per REQ and path; running lanes within `workers.maxParallel`; one heavy build at a time; dependencies done before a lane runs; full session IDs; narrowing needs a quoted owner acknowledgement |
-| **Challenge** | Finding rows from any review: severity, disposition, verifier, evidence | A fix needs a commit, check or evidence id, never just agreement. A high finding needs a verifier other than the implementer. Deferral needs the owner's acknowledgement. Open high findings block completion |
+| **Build** | REQ rows, owner corrections and the cross-repository lane table | One live owner per REQ and path; running lanes within `workers.maxParallel`; one heavy build at a time; dependencies done before a lane runs; running lanes have full session IDs; supersessions name an existing lane. Preflight and restart reconciliation are coordinator behavior, not gate checks |
+| **Challenge** | Finding rows from any review: severity, disposition, verifier, evidence | A fix needs a commit that resolves in a configured checkout, or an existing evidence or decision id; agreement alone doesn't count. A serious finding needs a verifier who isn't the target's owner or author. Deferral needs a quoted owner acknowledgement, which the gate can't authenticate. Open high findings block completion |
 | **Deliver** | Accepted REQs with evidence and a committed `## Handoff` | `--done` fails while any REQ is unaccepted or a narrowing or high finding is unresolved. `--handoff` requires the committed state and its predecessor commit |
 
-The gate checks identity, provenance, freshness and links. Whether a source
+Tables that look like these but use different headers fail rather than being skipped. The gate checks identity, provenance, freshness and links. Whether a source
 really supports its claim is the independent reviewer's call. The adversarial
 judge rebuilds high-risk claims from their sources and re-checks earlier
 audits, and agreement between agents never counts as evidence.

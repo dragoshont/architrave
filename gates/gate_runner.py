@@ -302,6 +302,10 @@ LANE_STATES = {"ready", "running", "blocked", "idle", "superseded", "stopped", "
 OWNER_ACK = re.compile(r"owner acknowledged:\s*[\"\u201c]\S", re.I)
 
 
+def lane_reqs(lane: dict[str, str]) -> list[str]:
+    return [rid.upper() for rid in re.findall(r"REQ-[A-Za-z0-9_.-]+", lane["req ids"], re.I)]
+
+
 def lane_errors(text: str, reqs: dict[str, dict[str, str]], max_parallel: int) -> list[str]:
     """Enforce the committed GHC lane table: one live owner per REQ and path, caps and terminal supersede."""
     errors: list[str] = []
@@ -309,6 +313,9 @@ def lane_errors(text: str, reqs: dict[str, dict[str, str]], max_parallel: int) -
              for table in markdown_tables(text) if [c.lower() for c in table[0]][:3] == ["lane", "repo", "project id"]
              for cells in table[1:]]
     live = [lane for lane in lanes if lane["state"].lower() not in {"stopped", "done"}]
+    names = [lane["lane"] for lane in lanes]
+    for name in sorted({n for n in names if names.count(n) > 1}):
+        errors.append(f"lane {name} is listed more than once")
     req_owner: dict[str, str] = {}
     paths: list[tuple[str, str, str]] = []
     for lane in lanes:
@@ -317,6 +324,10 @@ def lane_errors(text: str, reqs: dict[str, dict[str, str]], max_parallel: int) -
             errors.append(f"lane {name} state {lane['state']!r} is not one of {', '.join(sorted(LANE_STATES))}")
         if state == "superseded" and lane["superseded by"] in {"", "-"}:
             errors.append(f"lane {name} is superseded without 'Superseded by'")
+        elif state == "superseded" and lane["superseded by"] not in names:
+            errors.append(f"lane {name} is superseded by unknown lane {lane['superseded by']}")
+        if state == "running" and lane["session id"] in {"", "-"}:
+            errors.append(f"lane {name} is running without a session ID")
         try:
             if not isinstance(json.loads(lane["owner-only decisions"] or "[]"), list):
                 raise ValueError
@@ -324,22 +335,22 @@ def lane_errors(text: str, reqs: dict[str, dict[str, str]], max_parallel: int) -
             errors.append(f"lane {name} 'Owner-only decisions' is not a JSON array")
         if lane["session id"] not in {"", "-"} and not re.fullmatch(r"[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}", lane["session id"]):
             errors.append(f"lane {name} session ID {lane['session id']!r} is not a full host session UUID")
-        for rid in re.findall(r"REQ-[A-Za-z0-9_.-]+", lane["req ids"]):
+        for rid in lane_reqs(lane):
             if rid not in reqs:
                 errors.append(f"lane {name} references unknown {rid}")
     for lane in live:
-        for rid in re.findall(r"REQ-[A-Za-z0-9_.-]+", lane["req ids"]):
+        for rid in lane_reqs(lane):
             if rid in req_owner:
                 errors.append(f"{rid} is owned by live lanes {req_owner[rid]} and {lane['lane']}")
             req_owner[rid] = lane["lane"]
         for raw in lane["mutable paths"].split(","):
-            path = raw.strip().strip("/")
+            path = re.sub(r"^(\./)+", "", raw.strip()).strip("/").rstrip("*").rstrip("/")
             if path in {"", "-"}:
                 continue
             for repo, other, owner in paths:
-                if repo == lane["repo"] and (path == other or path.startswith(other + "/") or other.startswith(path + "/")):
+                if repo == lane["repo"].lower() and (path == other or path.startswith(other + "/") or other.startswith(path + "/")):
                     errors.append(f"lanes {owner} and {lane['lane']} both own {lane['repo']}:{path}")
-            paths.append((lane["repo"], path, lane["lane"]))
+            paths.append((lane["repo"].lower(), path, lane["lane"]))
     states = {lane["lane"]: lane["state"].lower() for lane in lanes}
     for lane in lanes:
         if lane["state"].lower() != "running":
@@ -350,7 +361,7 @@ def lane_errors(text: str, reqs: dict[str, dict[str, str]], max_parallel: int) -
     running = [lane for lane in live if lane["state"].lower() == "running"]
     if len(running) > max_parallel:
         errors.append(f"{len(running)} running lanes exceed workers.maxParallel={max_parallel}")
-    heavy = [lane["lane"] for lane in running if lane["heavy build"].lower() == "yes"]
+    heavy = [lane["lane"] for lane in running if lane["heavy build"].strip().lower() in {"yes", "y", "true", "1"}]
     if len(heavy) > 1:
         errors.append(f"heavy-build slot held by several running lanes: {', '.join(heavy)}")
     return errors
@@ -358,10 +369,36 @@ def lane_errors(text: str, reqs: dict[str, dict[str, str]], max_parallel: int) -
 
 EVIDENCE_STATES = {"unverified", "supported", "contradicted", "stale", "superseded"}
 DECISION_STATES = {"proposed", "active", "reconsider", "superseded"}
-FINDING_SEVERITIES = {"low", "medium", "high", "critical"}
+FINDING_SEVERITIES = {"low", "medium", "high", "critical", "nit", "minor", "major", "blocker"}
+SERIOUS = {"high", "critical", "major", "blocker"}
+CHAIN_HEADERS = {
+    "evidence": ("id", "question", "source", "claim", "author", "status", "reviewed by"),
+    "decision": ("id", "decision", "rejected", "evidence", "status"),
+    "finding": ("id", "severity", "target", "finding", "raised by", "disposition", "verified by", "evidence"),
+}
 FINDING_DISPOSITIONS = {"open", "fixed", "rejected", "accepted-risk", "deferred"}
-GIT_SOURCE = re.compile(r"\b([A-Za-z0-9_.-]+)@([0-9a-f]{7,40}):([^\s|,;]+)")
-VERIFIABLE = re.compile(r"\b[0-9a-f]{7,40}\b|\b[ED]-[A-Za-z0-9_.-]+\b|`[^`]+`")
+GIT_SOURCE = re.compile(r"\b([A-Za-z0-9_.-]+)@([0-9a-fA-F]{7,40}):([^\s|,;`]+)")
+
+
+def who(value: str) -> str:
+    """Normalize a person/lane label so 'L1 (lane)' and 'l1' compare equal."""
+    return re.sub(r"\s+", " ", re.sub(r"\(.*?\)", "", value)).strip(" -_.`").lower()
+
+
+def header_errors(text: str) -> list[str]:
+    """A table that looks like an evidence/decision/finding/lane table must use the exact header, or it is not checked."""
+    errors = []
+    for table in markdown_tables(text):
+        head = tuple(c.lower() for c in table[0])
+        first = head[:1] == ("id",)
+        kind = ("finding" if first and any(c.startswith("sev") for c in head) and any("finding" in c for c in head) else
+                "evidence" if first and any(c.startswith("source") for c in head) and any(c.startswith("claim") for c in head) else
+                "decision" if head[:1] == ("id",) and len(head) > 1 and "decision" in head[1] else
+                "lane" if head[:1] == ("lane",) and any("repo" in c for c in head) else None)
+        expected = LANE_COLUMNS if kind == "lane" else CHAIN_HEADERS.get(kind or "")
+        if expected and head != expected:
+            errors.append(f"{kind} table header must be exactly | {' | '.join(expected)} | (got | {' | '.join(head)} |)")
+    return errors
 
 
 def ledger_table(text: str, prefix: tuple[str, ...], columns: tuple[str, ...]) -> list[dict[str, str]]:
@@ -417,6 +454,16 @@ def chain_errors(root: Path, text: str, reqs: dict[str, dict[str, str]],
         if isinstance(item, dict) and isinstance(item.get("name"), str) and isinstance(item.get("path"), str):
             repos[item["name"]] = component_path(root, item["path"])
     known = set(reqs) | set(evidence) | set(decisions)
+    local = [repo for repo in repos.values() if git(repo, "rev-parse", "--git-dir") is not None]
+
+    def verifiable(value: str) -> bool:
+        if any(i in known for i in ref_ids(value, "E") + ref_ids(value, "D")):
+            return True
+        shas = re.findall(r"\b[0-9a-fA-F]{7,40}\b", value)
+        if not local:
+            return bool(shas)
+        return any(git(repo, "cat-file", "-e", f"{sha}^{{commit}}") is not None for sha in shas for repo in local)
+
     for eid, row in evidence.items():
         status = row["status"].lower()
         if status not in EVIDENCE_STATES:
@@ -425,7 +472,7 @@ def chain_errors(root: Path, text: str, reqs: dict[str, dict[str, str]],
             errors.append(f"{eid} needs a source and the claim it supports")
         if status == "supported":
             reviewer = row["reviewed by"].strip()
-            if reviewer in {"", "-"} or reviewer.lower() == row["author"].strip().lower():
+            if reviewer in {"", "-"} or who(reviewer) == who(row["author"]):
                 errors.append(f"{eid} is supported without an independent reviewer (not the author)")
         if re.search(r"https?://", row["source"]) and not re.search(r"\d{4}-\d{2}-\d{2}", row["source"]):
             errors.append(f"{eid} web source needs a retrieval date (YYYY-MM-DD)")
@@ -464,12 +511,13 @@ def chain_errors(root: Path, text: str, reqs: dict[str, dict[str, str]],
         for target in targets:
             if target not in known:
                 errors.append(f"{fid} targets unknown {target}")
-        serious = severity in {"high", "critical"}
-        if disposition in {"fixed", "rejected"} and not VERIFIABLE.search(row["evidence"]):
-            errors.append(f"{fid} is {disposition} without verifiable evidence (commit, E-/D- id or `command`); agreement is not evidence")
+        serious = severity in SERIOUS
+        if disposition in {"fixed", "rejected"} and not verifiable(row["evidence"]):
+            errors.append(f"{fid} is {disposition} without verifiable evidence (a commit that resolves in a configured repo, or an existing E-/D- id); agreement is not evidence")
         if serious and disposition in {"fixed", "rejected"}:
-            verifier = row["verified by"].strip().lower()
-            owners = {reqs[t]["owner"].strip().lower() for t in targets if t in reqs}
+            verifier = who(row["verified by"])
+            owners = {who(reqs[t]["owner"]) for t in targets if t in reqs}
+            owners |= {who(evidence[t]["author"]) for t in targets if t in evidence}
             if verifier in {"", "-"} or verifier in owners:
                 errors.append(f"{fid} {severity} finding needs verification by someone other than the target's owner")
         if serious and disposition in {"accepted-risk", "deferred"} and not OWNER_ACK.search(row["evidence"]):
@@ -647,7 +695,13 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
     for note in notes:
         print(f"note  {note}")
     workers = config.get("workers") or {}
-    errors.extend(lane_errors(text, reqs, int(workers.get("maxParallel", 3)) if isinstance(workers, dict) else 3))
+    errors.extend(header_errors(text))
+    try:
+        max_parallel = int(workers.get("maxParallel", 3)) if isinstance(workers, dict) else 3
+    except (TypeError, ValueError):
+        errors.append(f"workers.maxParallel {workers.get('maxParallel')!r} is not an integer")
+        max_parallel = 3
+    errors.extend(lane_errors(text, reqs, max_parallel))
     ids = [part.strip() for part in (claim or "").split(",") if part.strip()]
     if expect is not None and not handoff:
         errors.append("--expect requires --handoff")
@@ -688,7 +742,7 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
         if unacked:
             errors.append(f"not done: narrow corrections lack owner acknowledgement: {', '.join(unacked)}")
         if blockers:
-            errors.append(f"not done: open high/critical findings: {', '.join(blockers)}")
+            errors.append(f"not done: open serious findings: {', '.join(blockers)}")
     if claim is not None and not errors:
         lines = []
         in_requirements = False

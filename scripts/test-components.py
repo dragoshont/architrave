@@ -241,7 +241,7 @@ Verify: `make e2e`
         git(backend, "-c", "user.email=a@b", "-c", "user.name=a", "revert", "--no-edit", "HEAD")
         code, out = run(opened, "--done")
         self.assertIn("REQ-01 is accepted while high finding F-1 is open", out)
-        self.assertIn("open high/critical findings: F-1", out)
+        self.assertIn("open serious findings: F-1", out)
         code, out = run(opened.replace("| open | - | `make e2e`", "| deferred | - | `make e2e`"))
         self.assertIn("F-1 high finding is deferred without a quoted owner acknowledgement", out)
         code, out = run(opened.replace("| open | - | `make e2e`", '| deferred | - | owner acknowledged: "after beta" `make e2e`'))
