@@ -36,10 +36,10 @@ class ProgramBoard(unittest.TestCase):
             (ledger / "SPEC.md").write_text(
                 f"| ID | Requirement | Acceptance | Owner | Status | Evidence |\n|---|---|---|---|---|---|\n"
                 f"| REQ-1 | Show <b>sync</b> | `t` | L1 | accepted | {sha}; review: judge PASS |\n| REQ-2 | Fix x | `t` | L1 | blocked | - |\n"
-                "| REQ-3 | Claimed done | `t` | L2 | accepted | deadbee |\n| REQ-4 | Loose | `t` | x | open | - |\n\n"
+                "| REQ-3 | Claimed done | `t` | L2 | accepted | deadbee |\n| REQ-4 | Loose | `t` | x | open | - |\n| REQ-5 | Shipped | `t` | L3 | claimed | - |\n\n"
                 + LANE + f"| L1-app | app | p | b | origin | REQ-1, REQ-2 | - | {CHILD} | - | running | src | no | ok | - | no | [] | - |\n"
                 f"| L2-remote | app | p | b | origin | REQ-3 | - | {REMOTE} | - | running | docs | no | ok | - | no | [] | - |\n"
-                "| L3-done | app | p | b | origin | REQ-3 | - | - | - | done | lib | no | ok | - | no | [] | - |\n"
+                "| L3-done | app | p | b | origin | REQ-3, REQ-5 | - | - | - | done | lib | no | ok | - | no | [] | - |\n"
                 "\n## Handoff\nNext: x\nFailed approaches: x\nVerify: x\n")
             state = base / "home" / "session-state"
             usage = {"inputTokens": 50000, "cacheReadTokens": 40000, "outputTokens": 900, "maxPromptTokens": 200000, "model": "m"}
@@ -65,9 +65,11 @@ class ProgramBoard(unittest.TestCase):
                                    "--output", str(out)], capture_output=True, text=True, env=env)
             self.assertEqual(proc.returncode, 0, proc.stderr)
             page = out.read_text()
-            self.assertIn("<b>2/4</b>", page)
+            self.assertIn("<b>2/5</b>", page)
             self.assertIn("Not in a lane", page)
             self.assertIn("done · review missing", page)
+            self.assertIn("sq delivered", page)
+            self.assertIn("delivered by this lane, awaiting acceptance", page)
             self.assertIn("sq done warn", page)
             self.assertNotIn("sq done warn' data-d='REQ-1", page)
             self.assertIn("L2-remote", page)

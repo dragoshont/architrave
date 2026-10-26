@@ -735,7 +735,7 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
     workers = config.get("workers") or {}
     errors.extend(header_errors(text))
     try:
-        max_parallel = int(workers.get("maxParallel", 3)) if isinstance(workers, dict) else 3
+        max_parallel = min(20, int(workers.get("maxParallel", 3))) if isinstance(workers, dict) else 3
     except (TypeError, ValueError):
         errors.append(f"workers.maxParallel {workers.get('maxParallel')!r} is not an integer")
         max_parallel = 3

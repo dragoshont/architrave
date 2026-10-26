@@ -228,7 +228,7 @@ def build(ledger: Path, coordinator: str) -> dict:
     more, _blockers, _notes = gate.chain_errors(ledger, text, reqs, config)
     workers = config.get("workers") or {}
     cap = workers.get("maxParallel", 3) if isinstance(workers, dict) else 3
-    errors += more + gate.header_errors(text) + gate.lane_errors(text, reqs, cap if isinstance(cap, int) else 3)
+    errors += more + gate.header_errors(text) + gate.lane_errors(text, reqs, min(cap, 20) if isinstance(cap, int) else 3)
     repos = [ledger] + [gate.component_path(ledger, c["path"]) for c in config.get("components") or []
                         if isinstance(c, dict) and isinstance(c.get("path"), str)]
     repos = [r for r in repos if gate.git(r, "rev-parse", "--git-dir") is not None]
@@ -238,7 +238,7 @@ def build(ledger: Path, coordinator: str) -> dict:
     loose = [rid for rid, r in reqs.items() if rid not in laned and r["status"].lower() not in gate.REQ_CLOSED]
     if loose:
         lanes = lanes + [dict.fromkeys(gate.LANE_COLUMNS, "") | {"lane": "Not in a lane" if lanes else "Requirements",
-                                                                 "repo": ledger.name, "state": "idle", "req ids": ", ".join(loose)}]
+                                                                 "repo": ledger.name, "state": "idle", "req ids": ", ".join(loose), "synthetic": True}]
     commit = subprocess.run(["git", "-C", str(ledger), "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
     root = read_session(coordinator)
     sessions = [root] if root else []
@@ -343,14 +343,17 @@ def render(data: dict) -> str:
     boxes = []
     for lane in lanes:
         ids = [rid.upper() for rid in re.findall(r"REQ-[A-Za-z0-9_.-]+", lane["req ids"], re.I)]
+        delivered = {r for r in ids if lane["state"].lower() == "done" and r in reqs
+                     and reqs[r]["status"].lower() not in gate.REQ_CLOSED | {"accepted", "blocked"}}
         squares = "".join(
-            f"<button class='sq {REQ_TONE.get(reqs[r]['status'].lower(), 'open') if r in reqs else 'open'}{' warn' if r in unverified else ''}{' rev' if r in reviewed else ''}' "
-            f"data-d='{esc(r)} · {esc(reqs[r]['status'] if r in reqs else 'unknown')}{' · no evidence commit resolves' if r in unverified else ''}{' · reviewed' if r in reviewed else ' · not reviewed'} · {esc((reqs[r]['requirement'] if r in reqs else '')[:160])}' "
+            f"<button class='sq {'delivered' if r in delivered else REQ_TONE.get(reqs[r]['status'].lower(), 'open') if r in reqs else 'open'}{' warn' if r in unverified else ''}{' rev' if r in reviewed else ''}' "
+            f"data-d='{esc(r)} · {esc(reqs[r]['status'] if r in reqs else 'unknown')}{' · delivered by this lane, awaiting acceptance' if r in delivered else ''}{' · no evidence commit resolves' if r in unverified else ''}{' · reviewed' if r in reviewed else ' · not reviewed'} · {esc((reqs[r]['requirement'] if r in reqs else '')[:160])}' "
             f"aria-label='{esc(r)} {esc(reqs[r]['status'] if r in reqs else 'unknown')}'></button>" for r in ids)
         done = sum(1 for r in ids if r in reqs and reqs[r]["status"].lower() == "accepted")
         rev = sum(1 for r in ids if r in reviewed)
-        missing = bool(gate.lane_review_gaps(lane, reqs))
-        risky = missing
+        missing = bool(gate.lane_review_gaps(lane, reqs)) and not lane.get("synthetic")
+        risky = missing or (lane.get("synthetic") and any(
+            r in reqs and reqs[r]["status"].lower() == "accepted" and r not in reviewed for r in ids))
         tone = LANE_TONE.get(lane["state"].lower(), "open")
         boxes.append(f"<section class='box {tone}{' unrev' if risky else ''}'><h3>{esc(lane['lane'])}</h3>"
                      f"<p>{esc(lane['state'])}{' · review missing' if missing else ''} · {done}/{len(ids)} accepted · reviewed {rev}/{len(ids)}</p>"
@@ -368,13 +371,13 @@ h1{margin:0;font-size:17px;font-weight:650;letter-spacing:-.02em}h2{margin:16px 
 .box{background:#1b2632;border:1px solid #7a8c9e;padding:5px 6px 6px}.box.blocked{border-color:#f08895}.box.done{border-color:#38aa6b}.box.gone{opacity:.45}
 .box h3{margin:0;font-size:10.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.box p{margin:0 0 4px;font-size:9px;color:#bacada}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,11px);gap:1px}
-.sq{width:11px;height:11px;padding:0;border:0;cursor:pointer}.sq.warn{box-shadow:inset 0 0 0 2px #d6aa4b}.sq{position:relative}.sq.rev::after{content:"";position:absolute;right:0;top:0;border-style:solid;border-width:0 5px 5px 0;border-color:transparent #fff transparent transparent}.box.unrev{border-color:#d6aa4b;box-shadow:inset 0 0 0 1px #d6aa4b}.rot{fill:#d6aa4b}.rv{fill:#38aa6b}.nrv{fill:#8fa1b3}.remote{fill:none;stroke:#506071;stroke-dasharray:3 2}.issues{margin:6px 0 0;padding-left:16px;font-size:10px;color:#f0a0aa}.sq:hover,.sq:focus-visible,.sq.sel{outline:1.5px solid #fff;outline-offset:0}
+.sq{width:11px;height:11px;padding:0;border:0;cursor:pointer}.sq.warn{box-shadow:inset 0 0 0 2px #d6aa4b}.delivered{background:repeating-linear-gradient(135deg,#38aa6b 0 2px,#1b2632 2px 4px)}.sq{position:relative}.sq.rev::after{content:"";position:absolute;right:0;top:0;border-style:solid;border-width:0 5px 5px 0;border-color:transparent #fff transparent transparent}.box.unrev{border-color:#d6aa4b;box-shadow:inset 0 0 0 1px #d6aa4b}.rot{fill:#d6aa4b}.rv{fill:#38aa6b}.nrv{fill:#8fa1b3}.remote{fill:none;stroke:#506071;stroke-dasharray:3 2}.issues{margin:6px 0 0;padding-left:16px;font-size:10px;color:#f0a0aa}.sq:hover,.sq:focus-visible,.sq.sel{outline:1.5px solid #fff;outline-offset:0}
 #detail{min-height:28px;margin:8px 0 0;padding-top:6px;border-top:1px solid #415064;font-size:11px;color:#c6d4e1;overflow-wrap:anywhere}
 .timeline{width:100%;display:block}.timeline .label{fill:#edf3f8;font-size:8.5px;font-weight:600}.timeline .sub{fill:#9fb0c1;font-size:6.5px}.timeline .tick{fill:#8fa1b3;font-size:6.5px}.lane-bg,.gauge{fill:#1b2632}.turn{fill:#0b1016;opacity:.55}.ctxfill{fill:#d6aa4b}.tokfill{fill:#479bc1}
 footer{font-size:9px;color:#8fa1b3;margin-top:10px;line-height:1.5}
 """
     legend = ("<div class='legend'><span><i class='done'></i>accepted</span><span><i class='active'></i>claimed</span>"
-              "<span><i class='blocked'></i>blocked</span><span><i class='open'></i>open</span><span><i class='open warn'></i>evidence unresolved</span>"
+              "<span><i class='delivered'></i>delivered, awaiting acceptance</span><span><i class='blocked'></i>blocked</span><span><i class='open'></i>open</span><span><i class='open warn'></i>evidence unresolved</span>"
               "<span><i class='sq rev open'></i>reviewed</span><span><i class='unrevkey'></i>done or accepted work without a PASS review</span></div>")
     script = ("<script>const d=document.getElementById('detail');document.querySelectorAll('.sq').forEach(b=>b.onclick=()=>{"
               "document.querySelectorAll('.sq.sel').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');d.textContent=b.dataset.d});</script>")

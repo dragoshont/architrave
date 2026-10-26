@@ -15,14 +15,16 @@ Releases at or before **v0.8.12** are on the
   lookups outside any lane. A running lane without a host session ID already
   fails the `requirements` gate.
 - Active-lane cap raised: `workers.maxParallel` default 3, owner-approved up to
-  20 (schema, Run runtime, native dispatch and batch, lane gate).
+  20 (schema, Run runtime, native dispatch and batch; the lane gate clamps to 20).
 - Review gaps use one shared rule on the board and in `requirements --done`:
   a done lane needs a PASS review on every open REQ and any lane needs one on
   every accepted REQ (withdrawn/superseded skipped; Findings verifiers no
   longer count as reviews). Notes attach to REQs, so one PASS covers every lane
   listing that REQ.
+- Program board: squares of a done lane that are not yet accepted show green
+  hatching ("delivered, awaiting acceptance") instead of claimed blue.
 - Program board: logs are read incrementally (only new bytes per refresh;
-  a replaced or truncated file is re-read);
+  a shrunk or replaced file is re-read);
   context flags are judged against each session's first prompt (recorded even
   when events are clipped) and the remaining room, so fresh small-window
   sessions are never flagged and large-baseline sessions can still reach the

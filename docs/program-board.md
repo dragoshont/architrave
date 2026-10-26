@@ -24,7 +24,7 @@ starts it for every non-trivial task.
 | Section | Source |
 |---|---|
 | Overview: accepted REQs, running lanes, sessions, tokens, model and wall minutes | Requirements file and local session logs |
-| Lanes: one rectangle per lane, one square per REQ (green accepted, blue claimed, red blocked, grey open); select a square for its requirement | `## GHC Scheduler` lane table and REQ rows |
+| Lanes: one rectangle per lane, one square per REQ (green accepted, green hatching delivered by a done lane but not yet accepted, blue claimed, red blocked, grey open); select a square for its requirement | `## GHC Scheduler` lane table and REQ rows |
 | How the sessions ran: per session a time bar (first to last event, dark marks for model turns), agent, model/wall minutes, live state, a peak-context gauge against the model limit and a token gauge | `~/.copilot/session-state/<id>/events.jsonl` of the coordinator and the child sessions it created with `create_session` |
 
 It is dense by design and fits a narrow side panel; there are no tables.
@@ -48,7 +48,7 @@ flagged. A fresh session on a small-window model is never flagged. Rotation step
 
 - Session row: grey ✓ when the session ran a reviewer agent (adversarial judge, code review, rubber duck, security review or `architrave-review`); ○ when none. It shows that a review ran, not its verdict.
 - Square: white corner only when the REQ's latest `review: <reviewer> <verdict>` note (at the start of the cell or after `;` or `,`) is PASS. Findings verifiers do not count.
-- Lane: "reviewed k/n"; a gold border and "review missing" when a `done` lane has any open REQ, or any lane has an accepted REQ, without a PASS review (withdrawn and superseded REQs are skipped). This is the same rule `requirements --done` enforces.
+- Lane: "reviewed k/n"; a gold border and "review missing" when a `done` lane has any open REQ, or any lane has an accepted REQ, without a PASS review (withdrawn and superseded REQs are skipped). This is the same rule `requirements --done` enforces for ledger lanes; the "Not in a lane" box only gets the gold border for accepted, unreviewed REQs.
 - Review notes attach to REQs, not lanes: one PASS on a REQ covers every lane that lists it. The overview counts accepted but unreviewed REQs.
 - The `requirements` gate parses every note, requires the latest to be PASS for an accepted REQ, and rejects a reviewer named like the REQ's owner. Who reviewed is still self-reported in the ledger.
 
