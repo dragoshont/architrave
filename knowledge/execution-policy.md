@@ -173,7 +173,8 @@ independent review of its delivered commits; record `review: <reviewer
 session UUID> <verdict>` on each of its REQs. `requirements --done` fails on a done lane
 without a PASS, and on any lane with an accepted REQ lacking one; where local session logs
 exist it counts a PASS only when that session's log shows a reviewer kickoff role ending in
-that verdict. This catches mistakes, not deliberate forgery. `python gates/gate_runner.py requirements` enforces this table. This is explicit lead behavior, not a daemon
+that verdict. Start the reviewer's report with a `Verdict:` line and use a fresh reviewer session for each
+delivery. This catches mistakes, not deliberate forgery. `python gates/gate_runner.py requirements` enforces this table. This is explicit lead behavior, not a daemon
 or polling loop.
 
 Run `python gates/gate_runner.py components` before each dispatch and resolve

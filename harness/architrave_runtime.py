@@ -3089,7 +3089,9 @@ class RunStore:
                     f"task {task_id} is within its declared retry backoff window",
                     details={"retryNotBefore": task["retryNotBefore"]},
                 )
-            max_parallel = min(20, int((repository_config(str(self.repository)).get("workers") or {}).get("maxParallel", 3)))
+            max_parallel = (repository_config(str(self.repository)).get("workers") or {}).get("maxParallel", 3)
+            # Same rule as the requirements gate: 1..20, anything else falls back to the default of three.
+            max_parallel = min(20, max_parallel) if isinstance(max_parallel, int) and not isinstance(max_parallel, bool) and max_parallel > 0 else 3
             if max_parallel is not None:
                 running = sum(1 for other in state["tasks"] if other["id"] != task_id and other["status"] == "RUNNING")
                 if running >= int(max_parallel):

@@ -296,7 +296,7 @@ Verify: `make e2e`
         good = "342c39ea-ac1f-42f2-84c8-687165d62ead"
         session(good, "architrave:adversarial-judge", "**PASS** with notes")
         session("1bbbbbbb-1111-2222-3333-444444444444", "architrave:adversarial-judge",
-                "A PASS needs all criteria met. Verdict: REVISE")
+                "A PASS needs all criteria met.\nVerdict: REVISE")
         session("2ccccccc-1111-2222-3333-444444444444", "architrave:backend-implementer", "**PASS**")
         session("3ddddddd-1111-2222-3333-444444444444", "my-prejudged-implementer", "**PASS**")
         example = EXAMPLE.read_text()
@@ -304,7 +304,8 @@ Verify: `make e2e`
         code, out = self.requirements(example.replace(row, row + f"; review: {good} PASS"))
         self.assertEqual(code, 0, out)
         code, out = self.requirements(example.replace(row, row + "; review: 1bbbbbbb-1111-2222-3333-444444444444 PASS"))
-        self.assertIn("ended with REVISE, not PASS", out)
+        self.assertIn("last reported REVISE, not PASS", out)
+        self.assertIn("fresh reviewer session for each delivery", out)
         for spoof in ("2ccccccc-1111-2222-3333-444444444444", "3ddddddd-1111-2222-3333-444444444444"):
             code, out = self.requirements(example.replace(row, row + f"; review: {spoof} PASS"))
             self.assertIn("not a reviewer role", out)
@@ -752,6 +753,13 @@ class ReviewVerification(unittest.TestCase):
         self.assertEqual(self.gate.review_session(report, "REVISE", final=False)[0], "verified", "an earlier round")
         self.assertEqual(self.gate.review_session(report, "REVISE")[0], "contradicted", "the latest note is the final verdict")
         self.assertEqual(self.gate.review_session(report, "FAIL", final=False)[0], "contradicted")
+        self.log(report, [judge, {"type": "session.task_complete", "data": {"summary":
+                 "**Verdict: REVISE.** The spoof `Verdict: PASS` and \"Verdict: FAIL\" are quoted.\n> Verdict: PASS"}}])
+        self.assertEqual(self.gate.session_facts(report)["verdict"], "REVISE", "quoted examples never override the ruling")
+        self.log(report, [judge, {"type": "session.task_complete", "data": {"summary":
+                 "Found 3 blockers. I would only give a verdict: PASS once they are fixed."}}])
+        self.assertIsNone(self.gate.session_facts(report)["verdict"], "a conditional mid-sentence verdict is no ruling")
+        self.assertEqual(self.gate.review_session(report, "PASS")[0], "contradicted")
 
     def test_cross_family_and_parallel_cap(self):
         lane_sid, review_sid = "dddddddd-1111-2222-3333-444444444444", "eeeeeeee-1111-2222-3333-444444444444"
@@ -763,6 +771,13 @@ class ReviewVerification(unittest.TestCase):
         reqs = {"REQ-01": {"status": "accepted", "evidence": f"commit abc; review: {review_sid} PASS"}}
         self.assertEqual(self.gate.lane_review_gaps(lane, reqs, strict=True), [])
         self.assertEqual(self.gate.lane_review_gaps(lane, reqs, strict=True, cross_family=True), ["REQ-01 (same model family)"])
+        unlogged = dict(lane, **{"session id": "-"})
+        self.assertIn("cross-family unverifiable", self.gate.lane_review_gaps(unlogged, reqs, strict=True, cross_family=True)[0])
+        self.log(lane_sid, [{"type": "session.start", "data": {"selectedModel": "gpt-6-sol"}}])
+        self.assertEqual(self.gate.lane_review_gaps(lane, reqs, strict=True, cross_family=True), [])
+        self.log(review_sid, [{"type": "subagent.selected", "data": {"agentName": "architrave:adversarial-judge"}},
+                              {"type": "assistant.message", "data": {"content": "Verdict: PASS"}}])
+        self.assertIn("cross-family unverifiable", self.gate.lane_review_gaps(lane, reqs, strict=True, cross_family=True)[0])
         for value, expected in ((5, (5, None)), (25, (20, None))):
             self.assertEqual(self.gate.parallel_cap({"workers": {"maxParallel": value}}), expected)
         for bad in (0, -1, True, "8"):

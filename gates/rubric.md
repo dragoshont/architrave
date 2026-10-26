@@ -143,7 +143,9 @@ non-PASS, stop and escalate once with the complete findings rather than opening
 another micro-delta.
 
 ## Required judge output
-Return **PASS | REVISE | FAIL** with a one-line rationale, then only actionable
+Start the report with a line `Verdict: PASS | REVISE | FAIL` and a one-line
+rationale (the `requirements` gate reads this line from the reviewer session's
+report; quoted or mid-sentence verdicts are ignored), then only actionable
 findings (severity, path/line evidence, consequence and required fix) and any
 uncovered requested criteria. A clean review needs no dimension-score table,
 restated contract, exhaustive N/A list or separate report file.

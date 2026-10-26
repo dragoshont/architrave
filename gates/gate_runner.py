@@ -257,7 +257,21 @@ REVIEW_NOTE = re.compile(r"(?:^|[;,])\s*review:\s*([^;|,]*)")
 REVIEWER_ROLE = re.compile(r"(?:architrave:)?(?:adversarial-judge|code-review|rubber-duck|security-review|architrave-review)", re.I)
 SESSION_UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 SESSION_FACTS: dict[tuple[str, int, float], dict[str, str | None]] = {}
-EXPLICIT_VERDICT = re.compile(r"verdict\W{0,6}(PASS|REVISE|FAIL)\b", re.I)
+RULING = re.compile(r"^[^\w>]*(?:\(?[a-z0-9]\)\s*)?(?:(?i:(?:final\s+)?(?:verdict|outcome|result|ruling|(?:re-?)?review(?:\s+of\s+\S+)?))\W{0,6})?"
+                    r"(PASS|REVISE|FAIL)\b")
+QUOTED = re.compile(r"```.*?```|`[^`\n]*`|\"[^\"\n]*\"|\u201c[^\u201d\n]*\u201d", re.S)
+
+
+def ruling(text: str) -> str | None:
+    """The first line that opens with a ruling (`Verdict: REVISE`, `**PASS** on ...`, `Re-review of X: PASS`).
+
+    Quoted, backticked, fenced and `>` lines are ignored, and a verdict word mid-sentence is never a ruling.
+    """
+    for line in QUOTED.sub("", text).splitlines():
+        found = RULING.match(line)
+        if found:
+            return found.group(1)
+    return None
 
 
 def session_home() -> Path:
@@ -301,17 +315,13 @@ def session_facts(session: str) -> dict[str, str | None] | None:
                     reports.append(str(arguments.get("message") or ""))
         said = None
         said_all = []
-        # The verdict is the reviewer's last report (task_complete or a message to another session); narration
-        # counts only without reports and only when it opens with the verdict.
+        # The verdict is the ruling of the reviewer's last report (task_complete or a message to another session);
+        # narration counts only when the session sent no report.
         for text in reports or messages:
-            explicit = EXPLICIT_VERDICT.findall(text)
-            found = explicit[-1] if explicit else None
-            if not found:
-                lead = re.search(r"\b(PASS|REVISE|FAIL)\b", text[:160]) if reports else re.match(r"\W*(PASS|REVISE|FAIL)\b", text)
-                found = lead.group(1) if lead else None
+            found = ruling(text)
             if found:
-                said = found.upper()
-                said_all.append(said)
+                said = found
+                said_all.append(found)
         SESSION_FACTS.clear() if len(SESSION_FACTS) > 512 else None
         SESSION_FACTS[key] = {"role": role, "model": model, "verdict": said, "verdicts": " ".join(said_all)}
     return SESSION_FACTS[key]
@@ -330,8 +340,11 @@ def review_session(reviewer: str, verdict: str, final: bool = True) -> tuple[str
     role = facts["role"] or ""
     if not REVIEWER_ROLE.fullmatch(role):
         return "contradicted", f"session {reviewer[:8]} ran {role or 'no agent role'}, not a reviewer role"
-    if final and facts["verdict"] != verdict or not final and verdict not in (facts["verdicts"] or "").split():
-        return "contradicted", f"session {reviewer[:8]} ended with {facts['verdict'] or 'no verdict'}, not {verdict}"
+    if final and facts["verdict"] != verdict:
+        return "contradicted", (f"session {reviewer[:8]} last reported {facts['verdict'] or 'no ruling'}, not {verdict}; record "
+                                "its latest verdict, and use a fresh reviewer session for each delivery")
+    if not final and verdict not in (facts["verdicts"] or "").split():
+        return "contradicted", f"session {reviewer[:8]} never reported {verdict}"
     return "verified", None
 
 
@@ -360,7 +373,7 @@ def lane_review_gaps(lane: dict[str, str], reqs: dict[str, dict[str, str]], stri
     `review.crossFamily` the reviewer's model family must differ from the lane session's.
     """
     gaps = []
-    lane_model = (session_facts(lane.get("session id", "")) or {}).get("model") if cross_family else None
+    lane_model = (session_facts(lane.get("session id", "")) or {}).get("model") if cross_family and strict else None
     for rid in dict.fromkeys(r.upper() for r in re.findall(r"REQ-[A-Za-z0-9_.-]+", lane["req ids"], re.I)):
         row = reqs.get(rid)
         if not row or row["status"].lower() in REQ_CLOSED:
@@ -369,9 +382,12 @@ def lane_review_gaps(lane: dict[str, str], reqs: dict[str, dict[str, str]], stri
             continue
         if not review_passed(row["evidence"], strict):
             gaps.append(rid)
-        elif cross_family and lane_model:
+        elif cross_family and strict:
             reviewer = [w for w, v in review_notes(row["evidence"]) if v][-1]
-            if model_family((session_facts(reviewer) or {}).get("model")) == model_family(lane_model):
+            families = model_family(lane_model), model_family((session_facts(reviewer) or {}).get("model"))
+            if not all(families):
+                gaps.append(f"{rid} (cross-family unverifiable: lane or reviewer model not logged here)")
+            elif families[0] == families[1]:
                 gaps.append(f"{rid} (same model family)")
     return gaps
 
