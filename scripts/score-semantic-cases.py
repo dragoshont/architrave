@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+"""Score judge output against benchmarks/semantic-cases.json by responsibility id (REQ-39).
+
+Usage: python scripts/score-semantic-cases.py <judge-output.json> [--blind]
+--blind prints the cases without expected outcomes, for the judge prompt.
+Judge output: [{"case": "C1", "verdict": "REVISE", "responsibilities": {"R1": "preserved", ...}}, ...]
+"""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+import sys
+
+CASES = Path(__file__).resolve().parents[1] / "benchmarks/semantic-cases.json"
+
+
+def main() -> int:
+    cases = json.loads(CASES.read_text(encoding="utf-8"))["cases"]
+    if "--blind" in sys.argv:
+        print(json.dumps([{k: v for k, v in case.items() if k != "expected"} for case in cases], indent=1))
+        return 0
+    text = Path(sys.argv[1]).read_text(encoding="utf-8")
+    answers = {item["case"]: item for item in json.loads(text[text.index("["):text.rindex("]") + 1])}
+    verdicts = lost_hit = lost_total = false_lost = preserved_total = unverified_hit = unverified_total = 0
+    for case in cases:
+        expected, got = case["expected"], answers.get(case["id"], {})
+        statuses = got.get("responsibilities", {})
+        ok = str(got.get("verdict", "")).upper() == expected["verdict"]
+        verdicts += ok
+        misses = []
+        for rid in case["responsibilities"]:
+            want, have = expected[rid], str(statuses.get(rid, "missing")).lower()
+            if want == "lost":
+                lost_total += 1
+                lost_hit += have == "lost"
+            elif want == "preserved":
+                preserved_total += 1
+                false_lost += have == "lost"
+            else:
+                unverified_total += 1
+                unverified_hit += have in {"unverified", "lost"}
+            if have != want:
+                misses.append(f"{rid} {have}!={want}")
+        print(f"{case['id']}: verdict {got.get('verdict', 'missing')} ({'ok' if ok else 'want ' + expected['verdict']})"
+              + (f"; {', '.join(misses)}" if misses else ""))
+    print(f"verdict accuracy {verdicts}/{len(cases)}; lost detected {lost_hit}/{lost_total}; "
+          f"false 'lost' on preserved {false_lost}/{preserved_total}; insufficient evidence flagged {unverified_hit}/{unverified_total}")
+    return 0 if verdicts == len(cases) and lost_hit == lost_total and not false_lost else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
