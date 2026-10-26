@@ -83,6 +83,7 @@ class ProgramBoard(unittest.TestCase):
             self.assertIn("running · idle", page)
             self.assertIn("rotate at next task boundary", page)
             self.assertIn(CHILD, out.with_suffix(".rotate.json").read_text())
+            self.assertIn('"since"', out.with_suffix(".rotate.json").read_text())
             self.assertNotIn(COORD, out.with_suffix(".rotate.json").read_text())
             self.assertIn("sq done rev", page)
             self.assertIn("box active unrev", page)
@@ -124,17 +125,28 @@ class Parsing(unittest.TestCase):
             self.assertEqual(first["calls"], 1)
             self.assertIsNone(first["rotate"], "a fresh small-window session must not be flagged")
             with log.open("a") as handle:
-                handle.write(usage("2026-10-26T10:05:00Z", 100000, 128000))
+                handle.write(usage("2026-10-26T10:05:00Z", 80000, 128000))
                 handle.write('{"type": "session.usage_rec')
             second = pb.read_session(sid)
             self.assertEqual(second["calls"], 2)
-            self.assertIsNone(second["rotate"], "growth under 1.5x baseline is not flagged")
+            self.assertIsNone(second["rotate"], "modest growth over the baseline is not flagged")
             with log.open("a") as handle:
                 handle.write('ord", "timestamp": "2026-10-26T10:09:00Z", "data": {"usage": {"inputTokens": 150000, "maxPromptTokens": 300000}}}\n')
             third = pb.read_session(sid)
             self.assertEqual(third["calls"], 3)
             self.assertEqual(third["rotate"], "hard")
             self.assertEqual(first["calls"], 1, "snapshots are not mutated by later reads")
+            replaced = Path(tmp) / "replacement.jsonl"
+            replaced.write_text(usage("2026-10-26T11:00:00Z", 10000, 128000) * 3)
+            replaced.replace(log)
+            self.assertEqual(pb.read_session(sid)["calls"], 3, "a replaced file is re-read from the start")
+            headroom = "55555555-5555-5555-5555-555555555555"
+            (Path(tmp) / "session-state" / headroom).mkdir()
+            (Path(tmp) / "session-state" / headroom / "events.jsonl").write_text(
+                usage("2026-10-26T10:00:00Z", 70000, 128000) + usage("2026-10-26T10:30:00Z", 125000, 128000))
+            self.assertEqual(pb.read_session(headroom)["rotate"], "hard", "growth into most of the headroom is hard")
+            clipped = pb.read_session(headroom, pb.when("2026-10-26T10:10:00Z"))
+            self.assertEqual(clipped["baseline"], 70000, "baseline is the first prompt even when events are clipped")
 
 
 if __name__ == "__main__":

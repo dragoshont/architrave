@@ -41,10 +41,10 @@ work itself, not adoption.
 - No ceremony: prefer agent behavior or existing code over new gates, fixtures
   or prose guards; prove by real use.
 - Use direct work for one continuous trace, a shared patch, or when coordination
-  costs more than it saves. Delegate to visible child sessions by default
-  (Copilot app sidebar via `create_session`), independent reviews included;
-  hidden native subagents only for short read-only lookups, or when visible
-  sessions are unavailable.
+  costs more than it saves. Every lane and every independent review MUST run
+  as a visible sidebar session (`create_session`) when the host offers one;
+  never as a hidden subagent. Hidden subagents only for short read-only lookups
+  outside any lane.
   Never spawn just because a role exists, or shell out to another agent harness.
   An explicit request for a named agent overrides the direct-work preference:
   invoke it through the host, or report it unavailable.
@@ -58,7 +58,7 @@ work itself, not adoption.
   workspace and branch. Never spawn a duplicate for an owned lane; retire idle
   children before replacing them. Active-child cap:
   `workers.maxParallel`, default three, owner-approved up
-  to eight (lower host limits win); depth: one. Keep exclusive mutable ownership.
+  to twenty (lower host limits win); depth: one. Keep exclusive mutable ownership.
   Do not assume a subagent or sidebar session inherited parent skill context;
   supply only needed guidance. On resume, read `## Handoff` and git log first. Multi-repo,
   long-program and lane rules: `knowledge/execution-policy.md` (Lead detail,

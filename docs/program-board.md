@@ -36,18 +36,20 @@ A session whose last action was the host's "Task completed" (no model turn after
 ## Context flags
 
 Context is the latest prompt size, not the peak, judged against the session's
-first prompt (its system prompt and tools). "context high" (≥30% of the limit or
-≥300k, and 1.5× the first prompt) is information; "rotate at next task
-boundary" with a gold ↻ (≥45% and 2× the first prompt) is listed in
-`<output>.rotate.json`, so a fresh session on a small-window model is never
-flagged. Rotation steps and evidence are in
+first prompt (its system prompt and tools), even when earlier events are
+clipped. "context high" (≥30% of the limit or ≥300k, with 1.5× the first prompt
+or a quarter of the remaining room used) is information; "rotate at next task
+boundary" with a gold ↻ (≥45%, with 2× the first prompt or half the remaining
+room used) is listed in `<output>.rotate.json` with the time it was first
+flagged. A fresh session on a small-window model is never flagged. Rotation steps and evidence are in
 `knowledge/execution-policy.md` (Context rotation).
 
 ## Review marks
 
 - Session row: grey ✓ when the session ran a reviewer agent (adversarial judge, code review, rubber duck, security review or `architrave-review`); ○ when none. It shows that a review ran, not its verdict.
-- Square: white corner only when the REQ's latest `review: <reviewer> <verdict>` note (at the start of the cell or after `;` or `,`) is PASS, or a Findings row targeting it has a verifier.
-- Lane: "reviewed k/n"; a gold border when it is `done`, or has accepted work, without a PASS review, and "review missing" on a done lane. The overview counts accepted but unreviewed REQs.
+- Square: white corner only when the REQ's latest `review: <reviewer> <verdict>` note (at the start of the cell or after `;` or `,`) is PASS. Findings verifiers do not count.
+- Lane: "reviewed k/n"; a gold border and "review missing" when a `done` lane has any open REQ, or any lane has an accepted REQ, without a PASS review (withdrawn and superseded REQs are skipped). This is the same rule `requirements --done` enforces.
+- Review notes attach to REQs, not lanes: one PASS on a REQ covers every lane that lists it. The overview counts accepted but unreviewed REQs.
 - The `requirements` gate parses every note, requires the latest to be PASS for an accepted REQ, and rejects a reviewer named like the REQ's owner. Who reviewed is still self-reported in the ledger.
 
 ## Checks and limits

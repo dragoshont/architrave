@@ -69,9 +69,11 @@ def read_session(sid: str, since: datetime | None = None) -> dict | None:
         return None
     key = (sid, since)
     state = STATE.get(key)
-    size = path.stat().st_size
-    if state is None or size < state["offset"]:
+    stat = path.stat()
+    size, identity = stat.st_size, (stat.st_ino, stat.st_dev)
+    if state is None or size < state["offset"] or state.get("identity") != identity:
         state = STATE[key] = fresh_state(sid)
+        state["identity"] = identity
     if size > state["offset"]:
         with path.open("rb") as handle:
             handle.seek(state["offset"])
@@ -101,6 +103,9 @@ def consume(state: dict, line: bytes, since: datetime | None) -> None:
     data = event.get("data") if isinstance(event.get("data"), dict) else {}
     kind = event.get("type")
     stamp = when(event["timestamp"]) if isinstance(event.get("timestamp"), str) else None
+    if kind == "session.usage_record" and not info["baseline"]:
+        usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+        info["baseline"] = as_int(usage.get("inputTokens"))
     if since and stamp and stamp < since:
         return
     if stamp:
@@ -139,7 +144,6 @@ def consume(state: dict, line: bytes, since: datetime | None) -> None:
         info["output"] += as_int(usage.get("outputTokens"))
         info["max_context"] = max(info["max_context"], prompt)
         if prompt:
-            info["baseline"] = info["baseline"] or prompt
             if not info["context_at"] or (stamp and stamp >= info["context_at"]):
                 info["context"], info["context_at"] = prompt, stamp
         info["context_limit"] = max(info["context_limit"], as_int(usage.get("maxPromptTokens")))
@@ -176,9 +180,11 @@ def derive(state: dict) -> dict:
     context, limit, base = info["context"], info["context_limit"], info["baseline"] or 1
     frac = context / limit if limit else 0
     # A fresh session already carries the system prompt and tools; only growth beyond that baseline is sheddable.
+    growth, headroom = context - base, max(limit - base, 1)
     info["rotate"] = None if info["done"] else (
-        "hard" if frac >= 0.45 and context >= 2 * base
-        else "soft" if (frac >= 0.30 or context >= 300_000) and context >= 1.5 * base else None)
+        "hard" if frac >= 0.45 and (context >= 2 * base or growth >= 0.5 * headroom)
+        else "soft" if (frac >= 0.30 or context >= 300_000) and (context >= 1.5 * base or growth >= 0.25 * headroom)
+        else None)
     return info
 
 
@@ -226,12 +232,7 @@ def build(ledger: Path, coordinator: str) -> dict:
     repos = [ledger] + [gate.component_path(ledger, c["path"]) for c in config.get("components") or []
                         if isinstance(c, dict) and isinstance(c.get("path"), str)]
     repos = [r for r in repos if gate.git(r, "rev-parse", "--git-dir") is not None]
-    findings = gate.ledger_table(text, ("id", "severity", "target", "finding"),
-                                 ("id", "severity", "target", "finding", "raised by", "disposition", "verified by", "evidence"))
-    reviewed = {rid for rid, r in reqs.items()
-                if [v for _r, v in gate.review_notes(r["evidence"]) if v][-1:] == ["PASS"]}
-    reviewed |= {t.upper() for f in findings if f["verified by"].strip() not in {"", "-"}
-                 for t in re.findall(r"REQ-[A-Za-z0-9_.-]+", f["target"], re.I)}
+    reviewed = {rid for rid, r in reqs.items() if gate.review_passed(r["evidence"])}
     unverified = {rid for rid, r in reqs.items() if r["status"].lower() == "accepted" and not evidence_resolves(r["evidence"], repos)}
     laned = {rid.upper() for lane in lanes for rid in re.findall(r"REQ-[A-Za-z0-9_.-]+", lane["req ids"], re.I)}
     loose = [rid for rid, r in reqs.items() if rid not in laned and r["status"].lower() not in gate.REQ_CLOSED]
@@ -348,8 +349,8 @@ def render(data: dict) -> str:
             f"aria-label='{esc(r)} {esc(reqs[r]['status'] if r in reqs else 'unknown')}'></button>" for r in ids)
         done = sum(1 for r in ids if r in reqs and reqs[r]["status"].lower() == "accepted")
         rev = sum(1 for r in ids if r in reviewed)
-        missing = lane["state"].lower() == "done" and any(r not in reviewed for r in ids)
-        risky = missing or any(r in reqs and reqs[r]["status"].lower() == "accepted" and r not in reviewed for r in ids)
+        missing = bool(gate.lane_review_gaps(lane, reqs))
+        risky = missing
         tone = LANE_TONE.get(lane["state"].lower(), "open")
         boxes.append(f"<section class='box {tone}{' unrev' if risky else ''}'><h3>{esc(lane['lane'])}</h3>"
                      f"<p>{esc(lane['state'])}{' · review missing' if missing else ''} · {done}/{len(ids)} accepted · reviewed {rev}/{len(ids)}</p>"
@@ -449,8 +450,15 @@ def main() -> int:
                 tmp = out.with_suffix(f".{os.getpid()}.tmp")
                 tmp.write_text(render(data), encoding="utf-8")
                 tmp.replace(out)
-                out.with_suffix(".rotate.json").write_text(json.dumps(
-                    {x["id"]: "rotate" for x in data["sessions"] if x["rotate"] == "hard"}, indent=1), encoding="utf-8")
+                sidecar = out.with_suffix(".rotate.json")
+                try:
+                    previous = json.loads(sidecar.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    previous = {}
+                now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+                sidecar.write_text(json.dumps({x["id"]: {"flag": "rotate", "since": (previous.get(x["id"]) or {}).get("since", now)
+                                                         if isinstance(previous.get(x["id"]), dict) else now}
+                                               for x in data["sessions"] if x["rotate"] == "hard"}, indent=1), encoding="utf-8")
                 print(f"program-board: {len(data['lanes'])} lanes, {len(data['sessions'])} sessions -> {out}", flush=True)
                 newest = max((x["end"] for x in data["sessions"]), default=None)
             except Exception as exc:  # keep the last good board, report, retry next interval

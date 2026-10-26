@@ -31,7 +31,7 @@ defaults to deny; explicit Run policy may authorize a bounded target and operati
 - **Keep install/update logic canonical in `tools/install_update.py`** — managed-path safety and adversarial fixtures live there.
 - **Agents and gates are config-driven** — resolve everything through `architrave.config.json`; never hard-code a stack or a path.
 - **Thin supervision** — direct work first; the host owns sessions, context,
-  routing and lifecycle. `workers.maxParallel` active children (default three, max eight), depth one, exclusive
+  routing and lifecycle. `workers.maxParallel` active children (default three, max twenty), depth one, exclusive
   mutable ownership, compact returns, and deterministic repeated-failure stops.
 - **Model selection is host-owned** — user pins/mappings live in host settings,
   not repository config, WorkPackets or Run state. Record only reported effective

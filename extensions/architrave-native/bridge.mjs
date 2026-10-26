@@ -177,8 +177,8 @@ function result(value) {
     resultType: value.status === "failed" || ["FAIL", "failed"].includes(value.result?.status) ? "failure" : "success" };
 }
 
-const HARD_CHILD_CAP = 8;
-// workers.maxParallel in the target repository's architrave.config.json; default 3, never above 8.
+const HARD_CHILD_CAP = 20;
+// workers.maxParallel in the target repository's architrave.config.json; default 3, never above 20.
 function childCap(repo) {
   try {
     const value = JSON.parse(readFileSync(join(realpathSync(repo), "architrave.config.json"), "utf8")).workers?.maxParallel;
@@ -481,10 +481,10 @@ async function cleanupSemanticOwner(owner, connection, progress = {}) {
 
 tools.push({
   name: "architrave_native_batch",
-  description: "Invoke two to eight (within workers.maxParallel) pre-decomposed independent canonical WorkPackets concurrently through the same native dispatch. No automatic decomposition or recursive spawning.",
+  description: "Invoke two to twenty (within workers.maxParallel) pre-decomposed independent canonical WorkPackets concurrently through the same native dispatch. No automatic decomposition or recursive spawning.",
   parameters: { type: "object", properties: {
     repo: identitySchema.repo, run_id: identitySchema.run_id,
-    task_ids: { type: "array", items: { type: "string" }, minItems: 2, maxItems: 8, uniqueItems: true },
+    task_ids: { type: "array", items: { type: "string" }, minItems: 2, maxItems: 20, uniqueItems: true },
     reqs: { type: "object", additionalProperties: { type: "array", items: { type: "string", pattern: "^REQ-[A-Za-z0-9_.-]+$" }, minItems: 1, uniqueItems: true }, description: "REQ ids keyed by task id; each task needs an entry when requirements are configured" },
   }, required: ["repo", "run_id", "task_ids"], additionalProperties: false },
   handler: async (args, invocation) => {

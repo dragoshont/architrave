@@ -10,11 +10,23 @@ Releases at or before **v0.8.12** are on the
 - A lane is `done` only after one independent review of its delivery, recorded
   on each of its REQs; `requirements --done` fails on a done lane without a PASS,
   and the board marks such lanes "review missing".
-- Independent reviews run as visible sidebar sessions by default; hidden
-  subagents only for short read-only lookups.
-- Program board: logs are read incrementally (only new bytes per refresh);
-  context flags are judged against each session's first prompt so fresh
-  small-window sessions are never flagged; the coordinator re-checks a flagged
+- Every lane and every independent review MUST run as a visible sidebar
+  session when the host offers one; hidden subagents only for short read-only
+  lookups outside any lane. A running lane without a host session ID already
+  fails the `requirements` gate.
+- Active-lane cap raised: `workers.maxParallel` default 3, owner-approved up to
+  20 (schema, Run runtime, native dispatch and batch, lane gate).
+- Review gaps use one shared rule on the board and in `requirements --done`:
+  a done lane needs a PASS review on every open REQ and any lane needs one on
+  every accepted REQ (withdrawn/superseded skipped; Findings verifiers no
+  longer count as reviews). Notes attach to REQs, so one PASS covers every lane
+  listing that REQ.
+- Program board: logs are read incrementally (only new bytes per refresh;
+  a replaced or truncated file is re-read);
+  context flags are judged against each session's first prompt (recorded even
+  when events are clipped) and the remaining room, so fresh small-window
+  sessions are never flagged and large-baseline sessions can still reach the
+  hard flag; `rotate.json` keeps the first-flagged time; the coordinator re-checks a flagged
   child with `get_session` and tells the owner if no boundary comes within an
   hour.
 

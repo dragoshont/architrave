@@ -11,17 +11,18 @@ truth. An absent/unsupported request inherits the parent and reports that fact.
 Before a non-trivial multi-part task, identify independent deliverables and
 whether they can advance concurrently without shared mutable files or a
 dependency between them. When the host exposes sidebar-session creation,
-delegated work defaults to coordinated, visible sidebar sessions; the owner
-should not have to ask for them. Create one bounded session per
+every lane and every independent review must be a coordinated, visible sidebar
+session; the owner should not have to ask, and a running lane row without a
+host session ID fails the `requirements` gate. Create one bounded session per
 deliverable, with exclusive mutable ownership, and integrate and verify the
 results in the parent. This makes useful parallel work visible instead of
 silently serializing it or hiding it in an ephemeral subagent.
 
 Work directly for one continuous trace, a shared patch, or when coordination
-costs more than the parallelism saves. Independent reviews run as visible sidebar
+costs more than the parallelism saves. Independent reviews are visible sidebar
 sessions too (for example kickoff `agent: "architrave:adversarial-judge"`), so
-the owner can watch them. Use a hidden native subagent only for a short
-read-only lookup where a sidebar session would add needless overhead. Never delegate solely to switch models or because
+the owner can watch them. A hidden native subagent is allowed only for a short
+read-only lookup that is not a lane or a review. Never delegate solely to switch models or because
 a role exists. If sidebar-session creation is unavailable, use another
 supported host-native mechanism only when it preserves ownership, depth and
 budget bounds; otherwise continue directly and state the limitation. In
@@ -170,7 +171,7 @@ remain owned until its session is verified stopped. Lane states are `ready`,
 `stopped` and `done` release ownership. Set a lane `done` only after one
 independent review of its delivered commits; record `review: <reviewer>
 <verdict>` on each of its REQs (`requirements --done` fails on a done lane
-without a PASS). `python gates/gate_runner.py requirements` enforces this table. This is explicit lead behavior, not a daemon
+without a PASS, and on any lane with an accepted REQ lacking one). `python gates/gate_runner.py requirements` enforces this table. This is explicit lead behavior, not a daemon
 or polling loop.
 
 Run `python gates/gate_runner.py components` before each dispatch and resolve
@@ -393,7 +394,8 @@ not tuned for coding. Host compaction is not a failure and is not a trigger.
 
 Re-check a flagged child with `get_session` before acting; the board is a
 snapshot. Never rotate a child mid-task or while it waits on a permission
-prompt; if it has not reached a boundary an hour after the flag, tell the owner. For a
+prompt; if it has not reached a boundary an hour after the flag (`since` in
+`rotate.json`), tell the owner. For a
 mid-REQ rotation, an independent reviewer (a different model family when the
 host offers one; `review.crossFamily`) checks that the Handoff carries the
 predecessor's failed approaches.

@@ -254,6 +254,23 @@ def section(text: str, title: str) -> str:
 REVIEW_NOTE = re.compile(r"(?:^|[;,])\s*review:\s*([^;|,]*)")
 
 
+def review_passed(evidence: str) -> bool:
+    """True when the latest well-formed review note is PASS."""
+    return [v for _r, v in review_notes(evidence) if v][-1:] == ["PASS"]
+
+
+def lane_review_gaps(lane: dict[str, str], reqs: dict[str, dict[str, str]]) -> list[str]:
+    """REQs in a lane that still need a PASS review: all open ones in a done lane, accepted ones anywhere."""
+    gaps = []
+    for rid in dict.fromkeys(r.upper() for r in re.findall(r"REQ-[A-Za-z0-9_.-]+", lane["req ids"], re.I)):
+        row = reqs.get(rid)
+        if not row or row["status"].lower() in REQ_CLOSED or review_passed(row["evidence"]):
+            continue
+        if lane["state"].lower() == "done" or row["status"].lower() == "accepted":
+            gaps.append(rid)
+    return gaps
+
+
 def review_notes(evidence: str) -> list[tuple[str, str | None]]:
     """Every `review: <reviewer> <verdict>` note in order; verdict None when malformed."""
     notes = []
@@ -765,12 +782,9 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
         if blockers:
             errors.append(f"not done: open serious findings: {', '.join(blockers)}")
         for lane in ledger_table(text, ("lane", "repo", "project id"), LANE_COLUMNS):
-            if lane["state"].lower() != "done":
-                continue
-            unreviewed = [rid for rid in re.findall(r"REQ-[A-Za-z0-9_.-]+", lane["req ids"], re.I)
-                          if rid.upper() in reqs and [v for _r, v in review_notes(reqs[rid.upper()]["evidence"]) if v][-1:] != ["PASS"]]
+            unreviewed = lane_review_gaps(lane, reqs)
             if unreviewed:
-                errors.append(f"not done: lane {lane['lane']} is done without a PASS review on {', '.join(unreviewed)}")
+                errors.append(f"not done: lane {lane['lane']} ({lane['state']}) lacks a PASS review on {', '.join(unreviewed)}")
     if claim is not None and not errors:
         lines = []
         in_requirements = False

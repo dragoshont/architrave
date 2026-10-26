@@ -79,7 +79,7 @@ instructions. It writes the owner and changes `open` to `claimed`, preserving
 already active statuses. The single coordinator commits that change before
 dispatch; this is not a cross-branch lock. A second lane on that committed
 ledger fails. An adopted Run still owns its own cross-worktree reservations.
-You can run up to 8 helpers (`workers.maxParallel`, default 3).
+You can run up to 20 helpers (`workers.maxParallel`, default 3).
 
 ### A handoff note instead of a lost conversation
 

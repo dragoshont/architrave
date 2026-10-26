@@ -162,7 +162,7 @@
           "type": "string", "enum": ["native", "shell", "copilot", "claude", "codex"],
           "description": "Use native or deterministic shell. Old agent names are compatibility aliases for host-native transport, never CLI launchers or model/provider selection."
         },
-        "maxParallel": { "type": "integer", "minimum": 1, "maximum": 8, "description": "Active child cap for canonical task starts and native dispatch. Default 3; owner-approved values up to 8. Lower host limits win." },
+        "maxParallel": { "type": "integer", "minimum": 1, "maximum": 20, "description": "Active child cap for canonical task starts, native dispatch and running GHC lanes. Default 3; owner-approved values up to 20. Lower host limits win." },
         "worktreeRoot": { "type": "string", "minLength": 1 },
         "cleanupCompletedWorktrees": { "type": "boolean" },
         "enabledAdapters": {

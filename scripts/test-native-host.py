@@ -957,7 +957,7 @@ dispatch.handler=async args=>{packets.push(args);return {textResultForLlm:"{}",r
 await batch.handler({repo:"repo",run_id:"r",task_ids:["a","b"],reqs:{a:["REQ-1"],b:["REQ-2"]}},{sessionId:"root"});
 assert.deepEqual(packets.map(packet=>packet.reqs),[["REQ-1"],["REQ-2"]]);
 dispatch.handler=realDispatch;
-for(let i=0;i<8;i++) void dispatch.handler({repo:"unused",run_id:"r",task_id:String(i)},{sessionId:"root"});
+for(let i=0;i<20;i++) void dispatch.handler({repo:"unused",run_id:"r",task_id:String(i)},{sessionId:"root"});
 assert.equal(Object.hasOwn(options,"hooks"),false);
 await assert.rejects(dispatch.handler({},{sessionId:"root"}),/CHILD_LIMIT/);
 console.log("SDK event/hookless/admission fixture: PASS (not native evidence)");

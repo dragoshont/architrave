@@ -92,7 +92,7 @@ worktrees and non-overlapping ownership. A brief assignment needs an objective,
 owned scope, relevant context, and expected result. Add acceptance checks,
 explicit budgets, and recovery detail when the task or risk needs them.
 Children return compact results, not their entire transcripts.
-The default is at most three active children, one level deep; `workers.maxParallel` raises it to at most eight. Multi-component programs (`components` with two or more entries) must configure a repository `requirements` file; the components gate fails without it. The file is a REQ table with acceptance, typed corrections and a `## Handoff` note. `requirements --claim REQ-1 --owner lane` writes ownership (commit before dispatch); `--done` checks acceptance; `--handoff --expect <predecessor-sha>` checks committed handoff state and successor ancestry. Claims use a single coordinator writer, not a cross-branch lock. Plain-language guide: [docs/long-programs.md](docs/long-programs.md).
+The default is at most three active children, one level deep; `workers.maxParallel` raises it to at most twenty. Multi-component programs (`components` with two or more entries) must configure a repository `requirements` file; the components gate fails without it. The file is a REQ table with acceptance, typed corrections and a `## Handoff` note. `requirements --claim REQ-1 --owner lane` writes ownership (commit before dispatch); `--done` checks acceptance; `--handoff --expect <predecessor-sha>` checks committed handoff state and successor ancestry. Claims use a single coordinator writer, not a cross-branch lock. Plain-language guide: [docs/long-programs.md](docs/long-programs.md).
 
 On hosts with app-native session controls, the lead can create child sessions,
 send them instructions, receive results, and inspect their status. In the
@@ -468,7 +468,7 @@ Everything Architrave ships, grouped by area. Paths point at the source of truth
 
 ### Supervision and multi-session work
 - One lead owns integration; children get an objective, owned scope, REQ ids and expected result, and return compact results — `agents/architrave.agent.md`, `knowledge/execution-policy.md`.
-- Child cap `workers.maxParallel` (default 3, up to 8), depth one, exclusive mutable ownership, enforced in the runtime and native dispatch — `harness/architrave_runtime.py`, `extensions/architrave-native/bridge.mjs`.
+- Child cap `workers.maxParallel` (default 3, up to 20), depth one, exclusive mutable ownership, enforced in the runtime and native dispatch — `harness/architrave_runtime.py`, `extensions/architrave-native/bridge.mjs`.
 - App-native child sessions in the Copilot app, native subagents in CLIs; never shells out to another agent harness — `harness/platform_launch.py`.
 - Component map: one writer per component repository, push only to its own repo, never upstream, service tests before UI tests — `gates/gate_runner.py components`, `kit/examples/coordination.architrave.json`.
 - Multi-repository lanes: native batch and Run claims are single-repository, so a program runs one writer session per component repository from one ledger; resolve each branch's effective push target before writing, confirm a child can run its commands and read its ledger before assigning it, and serialize heavy builds against the free-disk floor — `knowledge/execution-policy.md`.

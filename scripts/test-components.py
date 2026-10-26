@@ -272,9 +272,15 @@ Verify: `make e2e`
                 "Mutable paths | Heavy build | Preflight | Preflight evidence | Preflight reported | Owner-only decisions | Superseded by |\n"
                 + "|---" * 17 + "|\n| L1 | me/app | p | b | private | REQ-02 | - | - | - | done | src | no | ok | - | no | [] | - |\n")
         code, out = self.requirements(example + lane, "--done")
-        self.assertIn("lane L1 is done without a PASS review on REQ-02", out)
+        self.assertIn("lane L1 (done) lacks a PASS review on REQ-02", out)
         code, out = self.requirements(example.replace(row, row + "; review: judge PASS") + lane, "--done")
-        self.assertNotIn("is done without a PASS review", out)
+        self.assertNotIn("lacks a PASS review", out)
+        stopped = lane.replace("| done |", "| stopped |")
+        code, out = self.requirements(example + stopped, "--done")
+        self.assertIn("lane L1 (stopped) lacks a PASS review on REQ-02", out)
+        closed = lane.replace("| REQ-02 |", "| REQ-03 |")
+        code, out = self.requirements(example + closed, "--done")
+        self.assertNotIn("lacks a PASS review on REQ-03", out)
 
     def test_spec_md_is_the_default_requirements_file_and_checks_validate_it(self):
         (self.hub / "architrave.config.json").write_text(json.dumps(
