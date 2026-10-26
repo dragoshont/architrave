@@ -7,11 +7,19 @@ Releases at or before **v0.8.12** are on the
 
 ## 0.21.21
 
-- Coordinator self-rotation: the coordinator can start its own successor with
-  `create_session` `detached: true` and `agent: "architrave:architrave"`
-  (verified live); the successor re-points running children to itself. The old
-  coordinator is archived by the owner.
+- Context rotation reworked after an independent killer review and online
+  research (REQ-43): rotate at task boundaries; the board's backstop uses
+  current context (info at ≥30%/300k, "rotate at next task boundary" at ≥45%),
+  not peak; compaction is no longer a trigger; the claim moves before the
+  successor starts. The coordinator can rotate itself with a detached
+  `architrave:architrave` successor (verified live), only between waves.
+- Review marks hardened: the gate parses every `review:` note, requires the
+  latest to be PASS for accepted REQs and rejects owner-named reviewers; the
+  board counts a REQ reviewed only on a PASS note (free-text heuristic
+  removed); the session ✓ is grey and means a reviewer ran, not its verdict.
+- Board: atomic pid lock with safe stale recovery; unchanged logs cached.
 
+## 0.21.20
 
 - Context rotation: the program board flags sessions "rotate soon" (peak
   context ≥30% of limit or ≥300k) and "rotate now" (≥45% or two compactions),
@@ -21,11 +29,13 @@ Releases at or before **v0.8.12** are on the
   checks Handoff quality for mid-REQ rotations. Based on a feasibility study of
   the live Ode sessions.
 
+## 0.21.19
 
 - Program board: a session whose last action was the host's "Task completed"
   (no model turn after it) shows a green bar and "task completed", even before
   its lane row is updated; a later turn makes it active again.
 
+## 0.21.18
 
 - Review marks on the program board: session rows show ✓ when the session ran
   a reviewer (○ when none); REQ squares get a white corner when independently
@@ -35,6 +45,7 @@ Releases at or before **v0.8.12** are on the
   `review: <reviewer> <PASS|REVISE|FAIL>`; the `requirements` gate checks the
   format and refuses acceptance on a REVISE/FAIL without a later PASS.
 
+## 0.21.17
 
 - Program board hardening (independent review REVISE fixed): REQs in no lane
   get a "Not in a lane" rectangle so rings match the overview; evidence commits
@@ -45,6 +56,7 @@ Releases at or before **v0.8.12** are on the
   matches the timeline; "program min" is the program's span. README shows the
   board.
 
+## 0.21.16
 
 - Program board: `python3 harness/program_board.py --watch 120`, started by the lead for every non-trivial task
   renders a compact side-panel page for the browser canvas: overview, one
@@ -57,11 +69,13 @@ Releases at or before **v0.8.12** are on the
   elsewhere, and follows child sessions recursively. Replaces the Route Ribbon
   as the lead's default panel; the Route Ribbon stays for adopted Runs.
 
+## 0.21.15
 
 - Delegated work defaults to visible child sessions (Copilot app sidebar via
   `create_session`) without the owner asking; hidden native subagents only for
   short read-only lookups or reviews, or when visible sessions are unavailable.
 
+## 0.21.14
 
 - Lead contract slimmed from 1,782 to 1,002 words. Long-program, component,
   stall and report detail moved to `knowledge/execution-policy.md`
@@ -74,6 +88,7 @@ Releases at or before **v0.8.12** are on the
 - If the host rejects a project whose origin moved, use the registration that
   matches the clone's current origin.
 
+## 0.21.13
 
 - Semantic-preservation calibration suite (REQ-39): `benchmarks/semantic-cases.json`
   (10 cases with listed responsibilities, 4 hard cases where the judge must find
@@ -85,6 +100,7 @@ Releases at or before **v0.8.12** are on the
   delivered in parallel. Start children with kickoff mode `interactive` so
   permission prompts reach the owner.
 
+## 0.21.12
 
 - Evidence chain in the requirements file: Evidence, Decisions and Findings
   tables checked by the `requirements` gate (independent reviewer, dated web
@@ -99,6 +115,7 @@ Releases at or before **v0.8.12** are on the
   The calibration suite (REQ-39) is not built yet.
 - Lead/CTO/policy text compressed.
 
+## 0.21.11
 
 - Cross-repository Copilot programs keep one committed `## GHC Scheduler` lane
   table; the `requirements` gate now rejects duplicate live REQ or path owners,
@@ -157,7 +174,6 @@ Releases at or before **v0.8.12** are on the
   outcome, including source versus installed/native and loaded-session identity.
 - Repair adjacent backend phase/ledger prerequisites and infra/observer
   checkpoint-versus-backup wording. REQ-20..23 (remapped from branch REQ-16..19).
-
 
 
 ## 0.21.7

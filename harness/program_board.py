@@ -42,7 +42,6 @@ def when(value: str | None) -> datetime | None:
 
 SPAWN_TOOLS = {"create_session", "open_pr_session", "open_issue_session", "fork_session"}
 REVIEWER = re.compile(r"adversarial-judge|code-review|rubber-duck|security-review|architrave-review|judge", re.I)
-REVIEW_NOTE = re.compile(r"review:\s*\S+\s+(PASS|REVISE|FAIL)\b|review[^|]{0,80}?\b(PASS|REVISE|FAIL)\b", re.I)
 SESSION_ID = re.compile(r"\b([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\b")
 
 
@@ -53,12 +52,27 @@ def as_int(value: object) -> int:
         return 0
 
 
+CACHE: dict[tuple[str, datetime | None], tuple[tuple[int, float], dict]] = {}
+
+
 def read_session(sid: str, since: datetime | None = None) -> dict | None:
     path = STATE_HOME / sid / "events.jsonl"
     if not path.is_file():
         return None
+    stat = path.stat()
+    key, sig = (sid, since), (stat.st_size, stat.st_mtime)
+    if key in CACHE and CACHE[key][0] == sig:
+        cached = dict(CACHE[key][1])
+        cached["idle_min"] = ((datetime.now(timezone.utc) - cached["end"]).total_seconds() / 60) if cached["end"] else None
+        return cached
+    info = parse_session(sid, path, since)
+    CACHE[key] = (sig, info)
+    return dict(info)
+
+
+def parse_session(sid: str, path: Path, since: datetime | None) -> dict:
     info = {"id": sid, "start": None, "end": None, "turns": [], "calls": 0, "input": 0, "cached": 0, "output": 0,
-            "max_context": 0, "context_limit": 0, "model": None, "agent": None, "children": [], "reviews": set(), "completed": None, "turn_after_complete": False, "compactions": 0}
+            "max_context": 0, "context_limit": 0, "model": None, "agent": None, "children": [], "reviews": set(), "completed": None, "turn_after_complete": False, "context": 0}
     pending: dict[str, tuple[str, str | None]] = {}
     turn_open = None
     for line in path.open(encoding="utf-8", errors="ignore"):
@@ -95,8 +109,6 @@ def read_session(sid: str, since: datetime | None = None) -> dict | None:
             turn_open = stamp
             if info["completed"]:
                 info["turn_after_complete"] = True
-        elif kind == "session.compaction_start":
-            info["compactions"] += 1
         elif kind == "session.task_complete":
             info["completed"], info["turn_after_complete"] = stamp, False
         elif kind == "assistant.turn_end" and turn_open and stamp:
@@ -110,6 +122,8 @@ def read_session(sid: str, since: datetime | None = None) -> dict | None:
             info["cached"] += cached
             info["output"] += as_int(usage.get("outputTokens"))
             info["max_context"] = max(info["max_context"], prompt)
+            if prompt and (not info.get("context_at") or (stamp and stamp >= info["context_at"])):
+                info["context"], info["context_at"] = prompt, stamp
             info["context_limit"] = max(info["context_limit"], as_int(usage.get("maxPromptTokens")))
             if isinstance(usage.get("model"), str):
                 info["model"] = usage["model"]
@@ -136,16 +150,16 @@ def read_session(sid: str, since: datetime | None = None) -> dict | None:
     info["wall_min"] = ((info["end"] - info["start"]).total_seconds() / 60) if info["start"] and info["end"] else 0
     info["idle_min"] = ((datetime.now(timezone.utc) - info["end"]).total_seconds() / 60) if info["end"] else None
     info["done"] = bool(info["completed"]) and not info["turn_after_complete"]
-    frac = info["max_context"] / info["context_limit"] if info["context_limit"] else 0
-    info["rotate"] = None if info["done"] else ("hard" if frac >= 0.45 or info["compactions"] >= 2
-                                                else "soft" if frac >= 0.30 or info["max_context"] >= 300_000 else None)
+    frac = info["context"] / info["context_limit"] if info["context_limit"] else 0
+    info["rotate"] = None if info["done"] else ("hard" if frac >= 0.45
+                                                else "soft" if frac >= 0.30 or info["context"] >= 300_000 else None)
     return info
 
 
 def state_of(s: dict, lane: dict) -> str:
     label = lane.get("state") or ("coordinator" if s.get("name") == "Coordinator" else "")
     idle = s.get("idle_min")
-    rotate = {"hard": " · rotate now", "soft": " · rotate soon"}.get(s.get("rotate") or "", "")
+    rotate = {"hard": " · rotate at next task boundary", "soft": " · context high"}.get(s.get("rotate") or "", "")
     activity = ("task completed" if s.get("done") else "no log" if idle is None
                 else "active now" if idle < 10 else f"idle {idle:.0f} min")
     return (f"{label} · {activity}" if label else activity) + rotate
@@ -188,7 +202,8 @@ def build(ledger: Path, coordinator: str) -> dict:
     repos = [r for r in repos if gate.git(r, "rev-parse", "--git-dir") is not None]
     findings = gate.ledger_table(text, ("id", "severity", "target", "finding"),
                                  ("id", "severity", "target", "finding", "raised by", "disposition", "verified by", "evidence"))
-    reviewed = {rid for rid, r in reqs.items() if REVIEW_NOTE.search(r["evidence"])}
+    reviewed = {rid for rid, r in reqs.items()
+                if [v for _r, v in gate.review_notes(r["evidence"]) if v][-1:] == ["PASS"]}
     reviewed |= {t.upper() for f in findings if f["verified by"].strip() not in {"", "-"}
                  for t in re.findall(r"REQ-[A-Za-z0-9_.-]+", f["target"], re.I)}
     unverified = {rid for rid, r in reqs.items() if r["status"].lower() == "accepted" and not evidence_resolves(r["evidence"], repos)}
@@ -248,22 +263,22 @@ def timeline(sessions: list[dict], lane_by_session: dict, remote: list[dict] = (
         w = max((s["end"] - max(s["start"], t0)).total_seconds() / span * width, 2)
         marks = "".join(f"<rect class='turn' x='{left + (a - t0).total_seconds() / span * width:.1f}' y='{y + 2}' "
                         f"width='{max((b - a).total_seconds() / span * width, 1):.1f}' height='6'/>" for a, b in s["spans"] if b >= t0)
-        ctx = (s["max_context"] / s["context_limit"]) if s["context_limit"] else 0
+        ctx = (s["context"] / s["context_limit"]) if s["context_limit"] else 0
         tok = (s["input"] + s["cached"] + s["output"]) / top_tokens
         gx = left + width + 12
         agent = (s["agent"] or "default").replace("architrave:", "")
         rows.append(
             f"<g><title>{esc(s['name'])}: {s['wall_min']:.0f} min wall, {s['active_min']:.0f} min model; "
-            f"{('reviewed by ' + ', '.join(sorted(s['reviews']))) if s['reviews'] else 'no reviewer run'}; {s['calls']} calls; {s['input']:,} fresh in, {s['cached']:,} cached, {s['output']:,} out tokens; peak context {s['max_context']:,} of {s['context_limit']:,}</title>"
+            f"{('ran reviewer ' + ', '.join(sorted(s['reviews'])) + ' (verdict is in the ledger, not checked here)') if s['reviews'] else 'no reviewer run'}; {s['calls']} calls; {s['input']:,} fresh in, {s['cached']:,} cached, {s['output']:,} out tokens; context now {s['context']:,}, peak {s['max_context']:,} of {s['context_limit']:,}</title>"
             f"<text class='label' x='0' y='{y + 8}'>{esc(s['name'] if len(s['name']) <= 15 else s['name'][:14] + '…')}"
-            f"<tspan class='{'rv' if s['reviews'] else 'nrv'}'> {'✓' if s['reviews'] else '○'}</tspan>"
-            f"{'<tspan class=rot> ↻</tspan>' if s.get('rotate') else ''}</text>"
+            f"<tspan class='nrv'> {'✓' if s['reviews'] else '○'}</tspan>"
+            f"{'<tspan class=rot> ↻</tspan>' if s.get('rotate') == 'hard' else ''}</text>"
             f"<text class='sub' x='0' y='{y + 19}'>{esc(agent[:22])}</text>"
             f"<rect class='lane-bg' x='{left}' y='{y}' width='{width}' height='10'/>"
             f"<rect class='track {tone}' x='{x:.1f}' y='{y}' width='{w:.1f}' height='10'/>{marks}"
             f"<text class='sub' x='{left}' y='{y + 22}'>{'started earlier · ' if s['start'] < t0 else ''}{s['active_min']:.0f} model / {s['wall_min']:.0f} wall min · {esc(state_of(s, lane))}</text>"
             f"<rect class='gauge' x='{gx}' y='{y}' width='{gauge}' height='4'/><rect class='ctxfill' x='{gx}' y='{y}' width='{gauge * min(ctx, 1):.1f}' height='4'/>"
-            f"<text class='sub' x='{gx}' y='{y + 12}'>ctx {num(s['max_context'])} / {num(s['context_limit'])}</text>"
+            f"<text class='sub' x='{gx}' y='{y + 12}'>ctx {num(s['context'])} / {num(s['context_limit'])}</text>"
             f"<rect class='gauge' x='{gx}' y='{y + 16}' width='{gauge}' height='4'/><rect class='tokfill' x='{gx}' y='{y + 16}' width='{gauge * tok:.1f}' height='4'/>"
             f"<text class='sub' x='{gx}' y='{y + 28}'>tok {num(s['input'])} new · {num(s['cached'])} cache · {num(s['output'])} out</text></g>")
     for j, lane in enumerate(remote):
@@ -273,10 +288,10 @@ def timeline(sessions: list[dict], lane_by_session: dict, remote: list[dict] = (
                     f"<text class='sub' x='{left}' y='{y + 22}'>{esc(lane['state'])} · not logged on this machine</text></g>")
     ticks = "".join(f"<text class='tick' x='{left + f * width:.0f}' y='9' text-anchor='{'start' if f == 0 else 'end' if f == 1 else 'middle'}'>"
                     f"{datetime.fromtimestamp(t0.timestamp() + f * span).strftime('%H:%M')}</text>" for f in (0, .5, 1))
-    heads = (f"<text class='tick' x='{left + width + 12}' y='9'>context peak · tokens</text>")
+    heads = (f"<text class='tick' x='{left + width + 12}' y='9'>context now · tokens</text>")
     return (f"<svg class='timeline' viewBox='0 0 {left + width + 12 + gauge} {16 + (len(timed) + len(remote)) * row}' role='img' "
             f"aria-label='How the sessions ran'>{ticks}{heads}{''.join(rows)}</svg>"
-            f"<p class='note'>Bar: first to last event; dark marks: model turns. Gauges: peak context against the "
+            f"<p class='note'>Bar: first to last event; dark marks: model turns. Gauges: current context against the "
             f"model limit, and tokens relative to the busiest session. Hover a row for exact numbers.</p>")
 
 
@@ -376,12 +391,29 @@ def main() -> int:
     lock = out.with_suffix(".pid")
     if args.watch:
         try:
-            other = int(lock.read_text())
-            os.kill(other, 0)
-            print(f"program-board: watcher {other} already running for {out}")
-            return 0
-        except (OSError, ValueError):
-            lock.write_text(str(os.getpid()))
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            other = None
+            try:
+                other = int(lock.read_text())
+                os.kill(other, 0)
+                print(f"program-board: watcher {other} already running for {out}")
+                return 0
+            except (OSError, ValueError):
+                stale = lock.with_suffix(f".stale.{os.getpid()}")
+                try:
+                    lock.rename(stale)
+                    if stale.read_text().strip() != str(other):
+                        stale.rename(lock)
+                        print(f"program-board: another watcher took {lock}")
+                        return 0
+                    stale.unlink()
+                    fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                except OSError:
+                    print(f"program-board: could not take {lock}; another watcher won", file=sys.stderr)
+                    return 0
+        os.write(fd, str(os.getpid()).encode())
+        os.close(fd)
     try:
         while True:
             try:
@@ -391,7 +423,7 @@ def main() -> int:
                 tmp.write_text(render(data), encoding="utf-8")
                 tmp.replace(out)
                 out.with_suffix(".rotate.json").write_text(json.dumps(
-                    {x["id"]: x["rotate"] for x in data["sessions"] if x["rotate"]}, indent=1), encoding="utf-8")
+                    {x["id"]: "rotate" for x in data["sessions"] if x["rotate"] == "hard"}, indent=1), encoding="utf-8")
                 print(f"program-board: {len(data['lanes'])} lanes, {len(data['sessions'])} sessions -> {out}", flush=True)
                 newest = max((x["end"] for x in data["sessions"]), default=None)
             except Exception as exc:  # keep the last good board, report, retry next interval

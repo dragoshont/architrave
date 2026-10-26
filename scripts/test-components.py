@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 import os
 import time
 from pathlib import Path
@@ -257,6 +258,15 @@ Verify: `make e2e`
         code, out = self.requirements(example.replace(row, row + "; review: judge REVISE; review: judge PASS"))
         self.assertEqual(code, 0, out)
         code, out = self.requirements(example.replace(row, row + "; review: looked fine"))
+        self.assertIn("review note must read", out)
+        code, out = self.requirements(example.replace(row, row + ", review: judge FAIL"))
+        self.assertIn("is accepted on a FAIL review", out)
+        code, out = self.requirements(example.replace(row, row + "; review: judge PASS; review: judge REVISE"))
+        self.assertIn("is accepted on a REVISE review", out)
+        owner = re.search(r"\| REQ-02 \|[^|]*\|[^|]*\| ([^|]+?) \|", example).group(1)
+        code, out = self.requirements(example.replace(row, row + f"; review: {owner} PASS"))
+        self.assertIn("is not independent of the owner", out)
+        code, out = self.requirements(example.replace(row, row + "; review: 1 FAIL"))
         self.assertIn("review note must read", out)
 
     def test_spec_md_is_the_default_requirements_file_and_checks_validate_it(self):

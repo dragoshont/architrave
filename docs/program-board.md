@@ -33,16 +33,19 @@ It is dense by design and fits a narrow side panel; there are no tables.
 
 A session whose last action was the host's "Task completed" (no model turn after it) shows a green bar and "task completed", even if its lane row is not yet updated. A later turn makes it active again.
 
-## Rotation flags
+## Context flags
 
-A gold ↻ after a session name and "rotate soon/now" in its row mark sessions whose context is getting large (≥30% / ≥45% of the limit, ≥300k tokens, or two compactions). `<output>.rotate.json` lists them for the coordinator; the rotation steps are in `knowledge/execution-policy.md` (Context rotation).
+Context is the latest prompt size, not the peak. "context high" (≥30% of the
+limit or ≥300k) is information; "rotate at next task boundary" with a gold ↻
+(≥45%) is listed in `<output>.rotate.json`. Rotation steps and evidence are in
+`knowledge/execution-policy.md` (Context rotation).
 
 ## Review marks
 
-- Session row: ✓ when the session ran a reviewer (adversarial judge, code review, rubber duck, security review or `architrave-review`); ○ when it ran none. Hover for which.
-- Square: white corner when the REQ's Evidence records `review: <reviewer> <verdict>` (at the start of the cell or after `;`) (or an older free-text review verdict) or a Findings row targeting it has a verifier.
+- Session row: grey ✓ when the session ran a reviewer agent (adversarial judge, code review, rubber duck, security review or `architrave-review`); ○ when none. It shows that a review ran, not its verdict.
+- Square: white corner only when the REQ's latest `review: <reviewer> <verdict>` note (at the start of the cell or after `;` or `,`) is PASS, or a Findings row targeting it has a verifier.
 - Lane: "reviewed k/n"; a gold border when accepted work in it has no recorded review. The overview counts accepted but unreviewed REQs.
-- The `requirements` gate checks the note format and refuses acceptance on a REVISE/FAIL review without a later PASS.
+- The `requirements` gate parses every note, requires the latest to be PASS for an accepted REQ, and rejects a reviewer named like the REQ's owner. Who reviewed is still self-reported in the ledger.
 
 ## Checks and limits
 

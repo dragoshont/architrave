@@ -369,32 +369,35 @@ them.
 
 ### Context rotation
 
-The program board flags a session "rotate soon" at peak context ≥ 30% of its
-limit or ≥ 300k tokens, and "rotate now" at ≥ 45% or two compactions
-(`<board>.rotate.json` lists them). The trigger is mechanical; no reviewer
-decides it. Between turns, for a "rotate now" child:
+Rotate at task boundaries: when a child finishes a REQ or wave, prefer a fresh
+session for the next one. The token backstop is the program board's current
+context (not peak): "context high" at ≥30% of the limit or ≥300k is information
+only; "rotate at next task boundary" at ≥45% (listed in `<board>.rotate.json`).
+Published long-context results put reliable use near 25–30% of the advertised
+window (RULER, NoLiMa, Chroma "context rot"); the numbers are a heuristic,
+not tuned for coding. Host compaction is not a failure and is not a trigger.
 
-1. Tell it to commit code and `## Handoff` (Next, Failed approaches, Verify),
-   pass `requirements --handoff`, push, and report the SHA.
-2. Start a successor with `create_session`, workspace `worktree`, `base_branch`
-   = that branch, the same role, and a kickoff naming only REQ ids, the SHA and
-   "run `requirements --handoff --expect <sha>`, read Handoff and git log, run
-   Verify". Never pass the transcript; uncommitted work does not move.
-3. Move the claim (`--claim <ids> --owner <successor lane>`) before the
-   successor writes; archive the predecessor only after `--expect` passes.
+1. At the boundary, the child commits code and `## Handoff` (Next, Failed
+   approaches, Verify), passes `requirements --handoff`, pushes, reports the SHA
+   and stops writing.
+2. Move the claim (`--claim <ids> --owner <successor lane>`) and commit it.
+3. Start the successor with `create_session`, workspace `worktree`,
+   `base_branch` = that pushed branch, the same role, and a kickoff naming only
+   REQ ids, the SHA and "run `requirements --handoff --expect <sha>`, read
+   Handoff and git log, run Verify". No transcript; uncommitted work does not
+   move.
+4. Archive the predecessor only after `--expect` passes.
 
-Never rotate a child that is waiting on a permission prompt. For a mid-REQ
-rotation, have the adversarial judge check that the Handoff carries the
-predecessor's failed approaches. Remote children still need the owner.
+Never rotate a child mid-task or while it waits on a permission prompt. For a
+mid-REQ rotation, an independent reviewer (a different model family when the
+host offers one; `review.crossFamily`) checks that the Handoff carries the
+predecessor's failed approaches.
 
-The coordinator rotates itself the same way: commit and verify its Handoff and
-lane table, then `create_session` in the ledger's project with `detached: true`,
-kickoff `agent: "architrave:architrave"` (the one allowed lead-as-child case)
-and the same short kickoff naming the ledger SHA. The successor messages each
-running child once with its own session ID as the new report target, and the
-predecessor stops relaying. A detached successor has no creator link, so the
-predecessor cannot archive it or be archived by it; the owner archives the old
-coordinator.
+The coordinator rotates itself only between waves, with no children running:
+commit its Handoff and lane table, then `create_session` in the ledger's
+project with `detached: true`, kickoff `agent: "architrave:architrave"` and the
+same short kickoff. A detached successor has no creator link to the old
+coordinator or its children; the owner archives the old coordinator.
 
 ## Lead detail (on demand)
 

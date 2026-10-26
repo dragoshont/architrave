@@ -251,6 +251,18 @@ def section(text: str, title: str) -> str:
     return match.group(1) if match else ""
 
 
+REVIEW_NOTE = re.compile(r"(?:^|[;,])\s*review:\s*([^;|,]*)")
+
+
+def review_notes(evidence: str) -> list[tuple[str, str | None]]:
+    """Every `review: <reviewer> <verdict>` note in order; verdict None when malformed."""
+    notes = []
+    for note in REVIEW_NOTE.finditer(evidence):
+        match = re.fullmatch(r"([A-Za-z][\w:.@/-]*)\s+(PASS|REVISE|FAIL)\b.*", note.group(1).strip(), re.I)
+        notes.append((match.group(1), match.group(2).upper()) if match else (note.group(1).strip(), None))
+    return notes
+
+
 def parse_requirements(text: str) -> tuple[dict[str, dict[str, str]], list[dict[str, str]], list[str]]:
     """Parse the long-program requirements file: REQ table, typed corrections and handoff."""
     reqs: dict[str, dict[str, str]] = {}
@@ -279,13 +291,15 @@ def parse_requirements(text: str) -> tuple[dict[str, dict[str, str]], list[dict[
             errors.append(f"{rid} has no testable acceptance")
         if status == "accepted" and not row["evidence"]:
             errors.append(f"{rid} is accepted without evidence")
-        for note in re.finditer(r"(?:^|;)\s*review:\s*([^;|]*)", row["evidence"]):
-            match = re.fullmatch(r"(\S+)\s+(PASS|REVISE|FAIL)\b.*", note.group(1).strip(), re.I)
-            if not match:
+        notes = review_notes(row["evidence"])
+        for reviewer, verdict in notes:
+            if verdict is None:
                 errors.append(f"{rid} review note must read 'review: <reviewer> <PASS|REVISE|FAIL>'")
-            elif status == "accepted" and match.group(2).upper() != "PASS" and not re.search(
-                    r";\s*review:\s*\S+\s+PASS\b", row["evidence"][note.end():]):
-                errors.append(f"{rid} is accepted on a {match.group(2).upper()} review; record the PASS re-review")
+            elif who(reviewer) and who(reviewer) == who(row["owner"]):
+                errors.append(f"{rid} review by {reviewer} is not independent of the owner")
+        verdicts = [v for _r, v in notes if v]
+        if status == "accepted" and verdicts and verdicts[-1] != "PASS":
+            errors.append(f"{rid} is accepted on a {verdicts[-1]} review; record the PASS re-review")
         if status in REQ_CLOSED and not any(rid in c["target"] for c in corrections):
             errors.append(f"{rid} is {status} but no correction row records why")
     for item in corrections:
