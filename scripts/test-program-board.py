@@ -39,6 +39,7 @@ class ProgramBoard(unittest.TestCase):
                 "| REQ-3 | Claimed done | `t` | L2 | accepted | deadbee |\n| REQ-4 | Loose | `t` | x | open | - |\n\n"
                 + LANE + f"| L1-app | app | p | b | origin | REQ-1, REQ-2 | - | {CHILD} | - | running | src | no | ok | - | no | [] | - |\n"
                 f"| L2-remote | app | p | b | origin | REQ-3 | - | {REMOTE} | - | running | docs | no | ok | - | no | [] | - |\n"
+                "| L3-done | app | p | b | origin | REQ-3 | - | - | - | done | lib | no | ok | - | no | [] | - |\n"
                 "\n## Handoff\nNext: x\nFailed approaches: x\nVerify: x\n")
             state = base / "home" / "session-state"
             usage = {"inputTokens": 50000, "cacheReadTokens": 40000, "outputTokens": 900, "maxPromptTokens": 200000, "model": "m"}
@@ -66,6 +67,7 @@ class ProgramBoard(unittest.TestCase):
             page = out.read_text()
             self.assertIn("<b>2/4</b>", page)
             self.assertIn("Not in a lane", page)
+            self.assertIn("done · review missing", page)
             self.assertIn("sq done warn", page)
             self.assertNotIn("sq done warn' data-d='REQ-1", page)
             self.assertIn("L2-remote", page)
@@ -99,6 +101,40 @@ class ProgramBoard(unittest.TestCase):
             dup = subprocess.run([sys.executable, str(ROOT / "harness/program_board.py"), "--ledger", str(ledger),
                                   "--output", str(out), "--watch", "120"], capture_output=True, text=True, env=env, timeout=30)
             self.assertIn("already running", dup.stdout)
+
+
+class Parsing(unittest.TestCase):
+    def test_incremental_reads_and_baseline_relative_flags(self):
+        import importlib.util
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["COPILOT_HOME"] = tmp
+            spec = importlib.util.spec_from_file_location("pb", ROOT / "harness/program_board.py")
+            pb = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(pb)
+            sid = "44444444-4444-4444-4444-444444444444"
+            path = Path(tmp) / "session-state" / sid
+            path.mkdir(parents=True)
+            log = path / "events.jsonl"
+
+            def usage(ts, prompt, limit):
+                return json.dumps({"type": "session.usage_record", "timestamp": ts,
+                                   "data": {"usage": {"inputTokens": prompt, "maxPromptTokens": limit}}}) + "\n"
+            log.write_text(usage("2026-10-26T10:00:00Z", 70000, 128000))
+            first = pb.read_session(sid)
+            self.assertEqual(first["calls"], 1)
+            self.assertIsNone(first["rotate"], "a fresh small-window session must not be flagged")
+            with log.open("a") as handle:
+                handle.write(usage("2026-10-26T10:05:00Z", 100000, 128000))
+                handle.write('{"type": "session.usage_rec')
+            second = pb.read_session(sid)
+            self.assertEqual(second["calls"], 2)
+            self.assertIsNone(second["rotate"], "growth under 1.5x baseline is not flagged")
+            with log.open("a") as handle:
+                handle.write('ord", "timestamp": "2026-10-26T10:09:00Z", "data": {"usage": {"inputTokens": 150000, "maxPromptTokens": 300000}}}\n')
+            third = pb.read_session(sid)
+            self.assertEqual(third["calls"], 3)
+            self.assertEqual(third["rotate"], "hard")
+            self.assertEqual(first["calls"], 1, "snapshots are not mutated by later reads")
 
 
 if __name__ == "__main__":

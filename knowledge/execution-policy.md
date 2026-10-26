@@ -18,9 +18,10 @@ results in the parent. This makes useful parallel work visible instead of
 silently serializing it or hiding it in an ephemeral subagent.
 
 Work directly for one continuous trace, a shared patch, or when coordination
-costs more than the parallelism saves. Use a hidden native subagent only for
-short read-only research/review when a persistent sidebar session would add
-needless lifecycle overhead. Never delegate solely to switch models or because
+costs more than the parallelism saves. Independent reviews run as visible sidebar
+sessions too (for example kickoff `agent: "architrave:adversarial-judge"`), so
+the owner can watch them. Use a hidden native subagent only for a short
+read-only lookup where a sidebar session would add needless overhead. Never delegate solely to switch models or because
 a role exists. If sidebar-session creation is unavailable, use another
 supported host-native mechanism only when it preserves ownership, depth and
 budget bounds; otherwise continue directly and state the limitation. In
@@ -166,8 +167,10 @@ the saved repository, use a registration whose repository matches the clone's
 current origin; never edit remotes to satisfy the host. A superseded lane is not resurrected, and its mutable paths
 remain owned until its session is verified stopped. Lane states are `ready`,
 `running`, `blocked`, `idle`, `superseded`, `stopped` and `done`; only
-`stopped` and `done` release ownership. `python gates/gate_runner.py
-requirements` enforces this table. This is explicit lead behavior, not a daemon
+`stopped` and `done` release ownership. Set a lane `done` only after one
+independent review of its delivered commits; record `review: <reviewer>
+<verdict>` on each of its REQs (`requirements --done` fails on a done lane
+without a PASS). `python gates/gate_runner.py requirements` enforces this table. This is explicit lead behavior, not a daemon
 or polling loop.
 
 Run `python gates/gate_runner.py components` before each dispatch and resolve
@@ -388,7 +391,9 @@ not tuned for coding. Host compaction is not a failure and is not a trigger.
    move.
 4. Archive the predecessor only after `--expect` passes.
 
-Never rotate a child mid-task or while it waits on a permission prompt. For a
+Re-check a flagged child with `get_session` before acting; the board is a
+snapshot. Never rotate a child mid-task or while it waits on a permission
+prompt; if it has not reached a boundary an hour after the flag, tell the owner. For a
 mid-REQ rotation, an independent reviewer (a different model family when the
 host offers one; `review.crossFamily`) checks that the Handoff carries the
 predecessor's failed approaches.

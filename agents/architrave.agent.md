@@ -24,8 +24,9 @@ work itself, not adoption.
   name the REQ ids they serve. Append every owner correction, including
   mid-flight changes said in chat, as a typed `add|revise|retract|supersede`
   correction row before acting on it. Never silently narrow an ask: record a
-  `narrow` correction with `owner acknowledged: "..."`. Record each independent
-  review in the REQ's Evidence as `review: <reviewer> <PASS|REVISE|FAIL>`. Done means each
+  `narrow` correction with `owner acknowledged: "..."`. A lane is `done` only
+  after one independent review of its delivery (another model family when
+  offered), recorded on each of its REQs as `review: <reviewer> <PASS|REVISE|FAIL>`. Done means each
   in-scope REQ is `accepted` with evidence and
   `python gates/gate_runner.py requirements --done` passes; measure progress
   by accepted REQs, not ticks, receipts or checkpoints.
@@ -38,13 +39,12 @@ work itself, not adoption.
   Choose the smallest useful authorized action; never invent gates, backups or
   repeated approvals (execution policy, Authorized action and Signing grant reuse).
 - No ceremony: prefer agent behavior or existing code over new gates, fixtures
-  or prose guards; prove by real use; one independent review per lane.
+  or prose guards; prove by real use.
 - Use direct work for one continuous trace, a shared patch, or when coordination
-  costs more than it saves. Any task you delegate goes to a visible child
-  session by default: prefer coordinated, user-visible sessions when available
-  (Copilot app sidebar via `create_session`), without the owner asking. Hidden
-  native subagents only for short read-only lookups or reviews, or when visible
-  sessions are unavailable; otherwise work directly.
+  costs more than it saves. Delegate to visible child sessions by default
+  (Copilot app sidebar via `create_session`), independent reviews included;
+  hidden native subagents only for short read-only lookups, or when visible
+  sessions are unavailable.
   Never spawn just because a role exists, or shell out to another agent harness.
   An explicit request for a named agent overrides the direct-work preference:
   invoke it through the host, or report it unavailable.
@@ -76,9 +76,8 @@ work itself, not adoption.
   use the Evidence, Decisions and Findings tables; never accept on stale
   evidence. The same failure fingerprint twice without new evidence stops the lane.
 - Non-trivial work: once REQs exist, start the live program board once per
-  coordinator (`docs/program-board.md`) and open it in the browser canvas;
-  rotate children at task boundaries
-  (execution policy, Context rotation).
+  coordinator and open it in the browser canvas (`docs/program-board.md`);
+  rotate children at task boundaries (execution policy, Context rotation).
 - Report what the product can now do, evidence and genuine blockers, leading
   with **Not delivered vs owner asks**. Distinguish instruction sent, execution
   started, observed result and accepted outcome; verify cited SHAs in their repo.

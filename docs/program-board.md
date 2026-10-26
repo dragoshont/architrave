@@ -35,16 +35,19 @@ A session whose last action was the host's "Task completed" (no model turn after
 
 ## Context flags
 
-Context is the latest prompt size, not the peak. "context high" (≥30% of the
-limit or ≥300k) is information; "rotate at next task boundary" with a gold ↻
-(≥45%) is listed in `<output>.rotate.json`. Rotation steps and evidence are in
+Context is the latest prompt size, not the peak, judged against the session's
+first prompt (its system prompt and tools). "context high" (≥30% of the limit or
+≥300k, and 1.5× the first prompt) is information; "rotate at next task
+boundary" with a gold ↻ (≥45% and 2× the first prompt) is listed in
+`<output>.rotate.json`, so a fresh session on a small-window model is never
+flagged. Rotation steps and evidence are in
 `knowledge/execution-policy.md` (Context rotation).
 
 ## Review marks
 
 - Session row: grey ✓ when the session ran a reviewer agent (adversarial judge, code review, rubber duck, security review or `architrave-review`); ○ when none. It shows that a review ran, not its verdict.
 - Square: white corner only when the REQ's latest `review: <reviewer> <verdict>` note (at the start of the cell or after `;` or `,`) is PASS, or a Findings row targeting it has a verifier.
-- Lane: "reviewed k/n"; a gold border when accepted work in it has no recorded review. The overview counts accepted but unreviewed REQs.
+- Lane: "reviewed k/n"; a gold border when it is `done`, or has accepted work, without a PASS review, and "review missing" on a done lane. The overview counts accepted but unreviewed REQs.
 - The `requirements` gate parses every note, requires the latest to be PASS for an accepted REQ, and rejects a reviewer named like the REQ's owner. Who reviewed is still self-reported in the ledger.
 
 ## Checks and limits
@@ -56,5 +59,7 @@ limit or ≥300k) is information; "rotate at next task boundary" with a gold ↻
 - REQs in no lane appear in a "Not in a lane" rectangle (or one "Requirements" rectangle without a lane table).
 - Child sessions created by `create_session`, `open_pr_session`, `open_issue_session` or `fork_session` are followed recursively.
 - New input = prompt tokens minus cache reads (cache writes count as new). A malformed log line is skipped; a failed refresh keeps the last good board.
+- Logs are read incrementally (only new bytes each refresh); requirement text is copied into the board file in the session folder.
+- Rotation's benefit is not measured yet; thresholds are a published-evidence heuristic, not tuned for coding.
 - It reads files only: no ledger, session or repository changes and no network requests.
 - Browser-canvas screenshots can return stale frames (a host issue); verify with the page contents or a fresh render.

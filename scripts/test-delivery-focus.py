@@ -182,7 +182,7 @@ required = {
     "isolated branch identity": (execution, "verify their intended base, not identical branch names"),
     "worker verifies destination": (work_skill, "Before writing, verify cwd, repository identity and branch/base"),
     "no unchanged denied retries": (execution, "Never retry permission-denied operations unchanged"),
-    "visible-session parallelism": (agent, "prefer coordinated, user-visible sessions"),
+    "visible-session parallelism": (agent, "Delegate to visible child sessions by default"),
     "spec is source of truth": (execution, "The repository requirements file (config `requirements`, else `SPEC.md`) is the source of truth"),
     "spec-driven default": (agent, "Spec-driven by default. The repository requirements file is the source of truth"),
     "spec trivial exemption": (agent, "Exempt: read-only questions and trivial one-line edits"),

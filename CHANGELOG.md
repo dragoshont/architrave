@@ -5,6 +5,19 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## 0.21.22
+
+- A lane is `done` only after one independent review of its delivery, recorded
+  on each of its REQs; `requirements --done` fails on a done lane without a PASS,
+  and the board marks such lanes "review missing".
+- Independent reviews run as visible sidebar sessions by default; hidden
+  subagents only for short read-only lookups.
+- Program board: logs are read incrementally (only new bytes per refresh);
+  context flags are judged against each session's first prompt so fresh
+  small-window sessions are never flagged; the coordinator re-checks a flagged
+  child with `get_session` and tells the owner if no boundary comes within an
+  hour.
+
 ## 0.21.21
 
 - Context rotation reworked after an independent killer review and online

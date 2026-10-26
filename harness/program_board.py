@@ -52,93 +52,116 @@ def as_int(value: object) -> int:
         return 0
 
 
-CACHE: dict[tuple[str, datetime | None], tuple[tuple[int, float], dict]] = {}
+STATE: dict[tuple[str, datetime | None], dict] = {}
+
+
+def fresh_state(sid: str) -> dict:
+    return {"offset": 0, "pending": {}, "turn_open": None, "info": {
+        "id": sid, "start": None, "end": None, "turns": [], "calls": 0, "input": 0, "cached": 0, "output": 0,
+        "max_context": 0, "context_limit": 0, "context": 0, "context_at": None, "baseline": 0, "model": None,
+        "agent": None, "children": [], "reviews": set(), "completed": None, "turn_after_complete": False}}
 
 
 def read_session(sid: str, since: datetime | None = None) -> dict | None:
+    """Parse a session log incrementally: only bytes appended since the last call are read."""
     path = STATE_HOME / sid / "events.jsonl"
     if not path.is_file():
         return None
-    stat = path.stat()
-    key, sig = (sid, since), (stat.st_size, stat.st_mtime)
-    if key in CACHE and CACHE[key][0] == sig:
-        cached = dict(CACHE[key][1])
-        cached["idle_min"] = ((datetime.now(timezone.utc) - cached["end"]).total_seconds() / 60) if cached["end"] else None
-        return cached
-    info = parse_session(sid, path, since)
-    CACHE[key] = (sig, info)
-    return dict(info)
+    key = (sid, since)
+    state = STATE.get(key)
+    size = path.stat().st_size
+    if state is None or size < state["offset"]:
+        state = STATE[key] = fresh_state(sid)
+    if size > state["offset"]:
+        with path.open("rb") as handle:
+            handle.seek(state["offset"])
+            chunk = handle.read(size - state["offset"])
+        complete = chunk.rfind(b"\n") + 1
+        tail = chunk[complete:]
+        if tail.strip():
+            try:
+                json.loads(tail)
+                complete = len(chunk)
+            except ValueError:
+                pass
+        for line in chunk[:complete].splitlines():
+            consume(state, line, since)
+        state["offset"] += complete
+    return derive(state)
 
 
-def parse_session(sid: str, path: Path, since: datetime | None) -> dict:
-    info = {"id": sid, "start": None, "end": None, "turns": [], "calls": 0, "input": 0, "cached": 0, "output": 0,
-            "max_context": 0, "context_limit": 0, "model": None, "agent": None, "children": [], "reviews": set(), "completed": None, "turn_after_complete": False, "context": 0}
-    pending: dict[str, tuple[str, str | None]] = {}
-    turn_open = None
-    for line in path.open(encoding="utf-8", errors="ignore"):
-        try:
-            event = json.loads(line)
-        except ValueError:
-            continue
-        if not isinstance(event, dict):
-            continue
-        data = event.get("data") if isinstance(event.get("data"), dict) else {}
-        kind = event.get("type")
-        stamp = when(event["timestamp"]) if isinstance(event.get("timestamp"), str) else None
-        if since and stamp and stamp < since:
-            continue
-        if stamp:
-            info["start"] = min(info["start"], stamp) if info["start"] else stamp
-            info["end"] = max(info["end"], stamp) if info["end"] else stamp
-        if kind == "session.start":
-            info["model"] = data.get("selectedModel") if isinstance(data.get("selectedModel"), str) else info["model"]
-            if not since and isinstance(data.get("startTime"), str):
-                info["start"] = when(data["startTime"]) or info["start"]
-        elif kind == "subagent.selected":
-            name = data.get("agentName") if isinstance(data.get("agentName"), str) else None
-            if not info["turns"] and turn_open is None:
-                info["agent"] = name
-            elif name and REVIEWER.search(name):
-                info["reviews"].add(name)
-        elif kind == "skill.invoked" and REVIEWER.search(str(data.get("name") or data.get("skillName") or "")):
-            info["reviews"].add(str(data.get("name") or data.get("skillName")))
-        elif kind == "tool.execution_start" and data.get("toolName") == "task" and isinstance(data.get("arguments"), dict) \
-                and REVIEWER.search(str(data["arguments"].get("agent_type", ""))):
-            info["reviews"].add(str(data["arguments"]["agent_type"]))
-        elif kind == "assistant.turn_start":
-            turn_open = stamp
-            if info["completed"]:
-                info["turn_after_complete"] = True
-        elif kind == "session.task_complete":
-            info["completed"], info["turn_after_complete"] = stamp, False
-        elif kind == "assistant.turn_end" and turn_open and stamp:
-            info["turns"].append((turn_open, stamp))
-            turn_open = None
-        elif kind == "session.usage_record":
-            usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
-            prompt, cached = as_int(usage.get("inputTokens")), as_int(usage.get("cacheReadTokens"))
-            info["calls"] += 1
-            info["input"] += max(prompt - cached, 0)
-            info["cached"] += cached
-            info["output"] += as_int(usage.get("outputTokens"))
-            info["max_context"] = max(info["max_context"], prompt)
-            if prompt and (not info.get("context_at") or (stamp and stamp >= info["context_at"])):
+def consume(state: dict, line: bytes, since: datetime | None) -> None:
+    info = state["info"]
+    try:
+        event = json.loads(line)
+    except ValueError:
+        return
+    if not isinstance(event, dict):
+        return
+    data = event.get("data") if isinstance(event.get("data"), dict) else {}
+    kind = event.get("type")
+    stamp = when(event["timestamp"]) if isinstance(event.get("timestamp"), str) else None
+    if since and stamp and stamp < since:
+        return
+    if stamp:
+        info["start"] = min(info["start"], stamp) if info["start"] else stamp
+        info["end"] = max(info["end"], stamp) if info["end"] else stamp
+    if kind == "session.start":
+        info["model"] = data.get("selectedModel") if isinstance(data.get("selectedModel"), str) else info["model"]
+        if not since and isinstance(data.get("startTime"), str):
+            info["start"] = when(data["startTime"]) or info["start"]
+    elif kind == "subagent.selected":
+        name = data.get("agentName") if isinstance(data.get("agentName"), str) else None
+        if not info["turns"] and state["turn_open"] is None:
+            info["agent"] = name
+        elif name and REVIEWER.search(name):
+            info["reviews"].add(name)
+    elif kind == "skill.invoked" and REVIEWER.search(str(data.get("name") or data.get("skillName") or "")):
+        info["reviews"].add(str(data.get("name") or data.get("skillName")))
+    elif kind == "tool.execution_start" and data.get("toolName") == "task" and isinstance(data.get("arguments"), dict) \
+            and REVIEWER.search(str(data["arguments"].get("agent_type", ""))):
+        info["reviews"].add(str(data["arguments"]["agent_type"]))
+    elif kind == "assistant.turn_start":
+        state["turn_open"] = stamp
+        if info["completed"]:
+            info["turn_after_complete"] = True
+    elif kind == "session.task_complete":
+        info["completed"], info["turn_after_complete"] = stamp, False
+    elif kind == "assistant.turn_end" and state["turn_open"] and stamp:
+        info["turns"].append((state["turn_open"], stamp))
+        state["turn_open"] = None
+    elif kind == "session.usage_record":
+        usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+        prompt, cached = as_int(usage.get("inputTokens")), as_int(usage.get("cacheReadTokens"))
+        info["calls"] += 1
+        info["input"] += max(prompt - cached, 0)
+        info["cached"] += cached
+        info["output"] += as_int(usage.get("outputTokens"))
+        info["max_context"] = max(info["max_context"], prompt)
+        if prompt:
+            info["baseline"] = info["baseline"] or prompt
+            if not info["context_at"] or (stamp and stamp >= info["context_at"]):
                 info["context"], info["context_at"] = prompt, stamp
-            info["context_limit"] = max(info["context_limit"], as_int(usage.get("maxPromptTokens")))
-            if isinstance(usage.get("model"), str):
-                info["model"] = usage["model"]
-        elif kind == "tool.execution_start" and data.get("toolName") in SPAWN_TOOLS:
-            args = data.get("arguments") if isinstance(data.get("arguments"), dict) else {}
-            kickoff = args.get("kickoff") if isinstance(args.get("kickoff"), dict) else {}
-            name = args.get("name") if isinstance(args.get("name"), str) else str(data.get("toolName"))
-            pending[str(data.get("toolCallId"))] = (name, kickoff.get("agent") if isinstance(kickoff.get("agent"), str) else None)
-        elif kind == "tool.execution_complete" and str(data.get("toolCallId")) in pending:
-            match = SESSION_ID.search(json.dumps(data.get("result", "")))
-            name, agent = pending.pop(str(data.get("toolCallId")))
-            if match:
-                info["children"].append({"id": match.group(1).lower(), "name": name, "agent": agent})
-    if turn_open and info["end"]:
-        info["turns"].append((turn_open, info["end"]))
+        info["context_limit"] = max(info["context_limit"], as_int(usage.get("maxPromptTokens")))
+        if isinstance(usage.get("model"), str):
+            info["model"] = usage["model"]
+    elif kind == "tool.execution_start" and data.get("toolName") in SPAWN_TOOLS:
+        args = data.get("arguments") if isinstance(data.get("arguments"), dict) else {}
+        kickoff = args.get("kickoff") if isinstance(args.get("kickoff"), dict) else {}
+        name = args.get("name") if isinstance(args.get("name"), str) else str(data.get("toolName"))
+        state["pending"][str(data.get("toolCallId"))] = (name, kickoff.get("agent") if isinstance(kickoff.get("agent"), str) else None)
+    elif kind == "tool.execution_complete" and str(data.get("toolCallId")) in state["pending"]:
+        match = SESSION_ID.search(json.dumps(data.get("result", "")))
+        name, agent = state["pending"].pop(str(data.get("toolCallId")))
+        if match:
+            info["children"].append({"id": match.group(1).lower(), "name": name, "agent": agent})
+
+
+def derive(state: dict) -> dict:
+    """Return a snapshot with computed fields; the parse state is not mutated."""
+    info = dict(state["info"])
+    info["turns"] = list(info["turns"]) + ([(state["turn_open"], info["end"])] if state["turn_open"] and info["end"] else [])
+    info["children"], info["reviews"] = list(info["children"]), set(info["reviews"])
     merged: list[tuple[datetime, datetime]] = []
     for a, b in sorted(info["turns"]):
         if merged and (a - merged[-1][1]).total_seconds() < 60:
@@ -150,9 +173,12 @@ def parse_session(sid: str, path: Path, since: datetime | None) -> dict:
     info["wall_min"] = ((info["end"] - info["start"]).total_seconds() / 60) if info["start"] and info["end"] else 0
     info["idle_min"] = ((datetime.now(timezone.utc) - info["end"]).total_seconds() / 60) if info["end"] else None
     info["done"] = bool(info["completed"]) and not info["turn_after_complete"]
-    frac = info["context"] / info["context_limit"] if info["context_limit"] else 0
-    info["rotate"] = None if info["done"] else ("hard" if frac >= 0.45
-                                                else "soft" if frac >= 0.30 or info["context"] >= 300_000 else None)
+    context, limit, base = info["context"], info["context_limit"], info["baseline"] or 1
+    frac = context / limit if limit else 0
+    # A fresh session already carries the system prompt and tools; only growth beyond that baseline is sheddable.
+    info["rotate"] = None if info["done"] else (
+        "hard" if frac >= 0.45 and context >= 2 * base
+        else "soft" if (frac >= 0.30 or context >= 300_000) and context >= 1.5 * base else None)
     return info
 
 
@@ -322,10 +348,11 @@ def render(data: dict) -> str:
             f"aria-label='{esc(r)} {esc(reqs[r]['status'] if r in reqs else 'unknown')}'></button>" for r in ids)
         done = sum(1 for r in ids if r in reqs and reqs[r]["status"].lower() == "accepted")
         rev = sum(1 for r in ids if r in reviewed)
-        risky = any(r in reqs and reqs[r]["status"].lower() == "accepted" and r not in reviewed for r in ids)
+        missing = lane["state"].lower() == "done" and any(r not in reviewed for r in ids)
+        risky = missing or any(r in reqs and reqs[r]["status"].lower() == "accepted" and r not in reviewed for r in ids)
         tone = LANE_TONE.get(lane["state"].lower(), "open")
         boxes.append(f"<section class='box {tone}{' unrev' if risky else ''}'><h3>{esc(lane['lane'])}</h3>"
-                     f"<p>{esc(lane['state'])} · {done}/{len(ids)} accepted · reviewed {rev}/{len(ids)}</p>"
+                     f"<p>{esc(lane['state'])}{' · review missing' if missing else ''} · {done}/{len(ids)} accepted · reviewed {rev}/{len(ids)}</p>"
                      f"<div class='grid'>{squares}</div></section>")
     css = """
 :root{color-scheme:dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#10161e;color:#edf3f8}
@@ -347,7 +374,7 @@ footer{font-size:9px;color:#8fa1b3;margin-top:10px;line-height:1.5}
 """
     legend = ("<div class='legend'><span><i class='done'></i>accepted</span><span><i class='active'></i>claimed</span>"
               "<span><i class='blocked'></i>blocked</span><span><i class='open'></i>open</span><span><i class='open warn'></i>evidence unresolved</span>"
-              "<span><i class='sq rev open'></i>reviewed</span><span><i class='unrevkey'></i>lane has accepted but unreviewed work</span></div>")
+              "<span><i class='sq rev open'></i>reviewed</span><span><i class='unrevkey'></i>done or accepted work without a PASS review</span></div>")
     script = ("<script>const d=document.getElementById('detail');document.querySelectorAll('.sq').forEach(b=>b.onclick=()=>{"
               "document.querySelectorAll('.sq.sel').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');d.textContent=b.dataset.d});</script>")
     return (f"<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width'>"

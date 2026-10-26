@@ -764,6 +764,13 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
             errors.append(f"not done: narrow corrections lack owner acknowledgement: {', '.join(unacked)}")
         if blockers:
             errors.append(f"not done: open serious findings: {', '.join(blockers)}")
+        for lane in ledger_table(text, ("lane", "repo", "project id"), LANE_COLUMNS):
+            if lane["state"].lower() != "done":
+                continue
+            unreviewed = [rid for rid in re.findall(r"REQ-[A-Za-z0-9_.-]+", lane["req ids"], re.I)
+                          if rid.upper() in reqs and [v for _r, v in review_notes(reqs[rid.upper()]["evidence"]) if v][-1:] != ["PASS"]]
+            if unreviewed:
+                errors.append(f"not done: lane {lane['lane']} is done without a PASS review on {', '.join(unreviewed)}")
     if claim is not None and not errors:
         lines = []
         in_requirements = False

@@ -268,6 +268,13 @@ Verify: `make e2e`
         self.assertIn("is not independent of the owner", out)
         code, out = self.requirements(example.replace(row, row + "; review: 1 FAIL"))
         self.assertIn("review note must read", out)
+        lane = ("\n| Lane | Repo | Project ID | Branch | Push target | REQ IDs | Depends on | Session ID | Assignment ID | State | "
+                "Mutable paths | Heavy build | Preflight | Preflight evidence | Preflight reported | Owner-only decisions | Superseded by |\n"
+                + "|---" * 17 + "|\n| L1 | me/app | p | b | private | REQ-02 | - | - | - | done | src | no | ok | - | no | [] | - |\n")
+        code, out = self.requirements(example + lane, "--done")
+        self.assertIn("lane L1 is done without a PASS review on REQ-02", out)
+        code, out = self.requirements(example.replace(row, row + "; review: judge PASS") + lane, "--done")
+        self.assertNotIn("is done without a PASS review", out)
 
     def test_spec_md_is_the_default_requirements_file_and_checks_validate_it(self):
         (self.hub / "architrave.config.json").write_text(json.dumps(
