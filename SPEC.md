@@ -72,10 +72,11 @@ Source of truth for Architrave's own development (spec-driven, see
 | C-22 | revise | REQ-25, REQ-26, REQ-27, REQ-28 | Coordinator, 2026-10-26: their acceptance proves instruction text only; live multi-repo behavior is not claimed until REQ-30 passes |
 | C-23 | add | REQ-31, REQ-32, REQ-33, REQ-34, REQ-35, REQ-36 | Owner, 2026-10-26: "what else did we missed? please deliver a full architarev product as for it depends to major projects". Gaps from the Ode audit and run: owner ask silently narrowed (C-19), coordinator context loss (1311 turns/44 compactions; manual restarts), unverified SHA evidence, "what is remaining on each stream" repeatedly asked, stale/duplicate sessions, no real-program acceptance. Harness: GHC (C-21) |
 | C-24 | revise | REQ-30 | Coordinator, 2026-10-26: the `--done --handoff` acceptance applies to the live run's program ledger; Architrave's own SPEC.md `--done` legitimately fails while REQ-31..36 are open and must not block REQ-30 |
+| C-25 | revise | REQ-29, REQ-30, REQ-31, REQ-32, REQ-33, REQ-34, REQ-35, REQ-36 | Owner, 2026-10-26: "i s till feel you spend way to much time on fixture and ceremony". Acceptance is working code used for real: a few direct unit tests where cheap, no per-clause removal mutants or prose guards, one independent review per lane (not per REQ), no fixture programs. REQ-30's live proof runs on the real X Ode program (merged with REQ-36's first day), not on fixture repos; the REQ-30 fixture-ledger variant from C-24 is dropped |
 
 ## Handoff
 
-Next: (critical) full-product backlog REQ-29..36 per C-21/C-23. Lanes: L1 REQ-29→REQ-30 (session 7684e590); L2 REQ-31, REQ-33, REQ-35 (independent); L3 REQ-32, REQ-34 after REQ-29; REQ-36 dogfood last. Coordinator (this ledger's writer) merges lanes and owns REQ status. Extend existing gate_runner/native/lead structures; no release until REQ-30 live evidence.
+Next: (critical) full-product backlog REQ-29..36 per C-21/C-23. Lanes: L1 REQ-29→REQ-30 (session 7684e590); L2 REQ-31, REQ-33, REQ-35 (independent); L3 REQ-32, REQ-34 after REQ-29; REQ-36 dogfood last. Coordinator (this ledger's writer) merges lanes and owns REQ status. C-25: ship working code fast, prove it live on Ode, minimal tests. Extend existing gate_runner/native/lead structures; no release until REQ-30 live evidence.
 
 Previous: REQ-25..28 accepted/released at https://github.com/dragoshont/architrave/releases/tag/v0.21.10 (PR #30, merge/tag ab182145d9970711002e6f28036ce5dd32a3456f); Copilot/Codex/native 0.21.10 installed and verified; fresh sessions load it.
 
