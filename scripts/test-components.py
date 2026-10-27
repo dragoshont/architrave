@@ -780,16 +780,23 @@ class ReviewVerification(unittest.TestCase):
                                {"type": "tool.execution_complete", "data": {"toolCallId": "c1", "result": f"Created session 'L1' (id: {child})"}}])
         self.log(successor, [{"type": "tool.execution_start", "data": {"toolName": "send_session_message",
                                                                        "arguments": {"session_id": child, "message": "report to me"}}}])
-        self.log(reviewer, [{"type": "user.message", "data": {"content": f"review lane session {child}"}}])
+        self.log(reviewer, [{"type": "user.message", "data": {"content": f"review lane session {child}"}},
+                            {"type": "tool.execution_start", "data": {"toolName": "bash", "toolCallId": "b1"}},
+                            {"type": "tool.execution_complete", "data": {"toolCallId": "b1", "result": f"Created session 'L1' (id: {child})"}}])
+        sibling = "eeeeeeee-9999-2222-3333-444444444444"
+        self.log(sibling, [{"type": "tool.execution_start", "data": {"toolName": "send_session_message",
+                                                                     "arguments": {"session_id": child, "message": "your build is ready"}}}])
+        lanes = lanes + [{"lane": "L2", "state": "running", "session id": sibling}]
         self.log(child, [{"type": "session.start", "data": {}}])
         old = os.environ.get("COPILOT_AGENT_SESSION_ID")
         try:
-            for session, expected in ((coordinator, True), (successor, True), (reviewer, False), (child, False)):
+            for session, expected in ((coordinator, True), (successor, True), (reviewer, False), (child, False), (sibling, False)):
                 os.environ["COPILOT_AGENT_SESSION_ID"] = session
                 self.assertEqual(bool(self.gate.board_note(lanes, ledger)), expected, session)
             os.environ["COPILOT_AGENT_SESSION_ID"] = coordinator
             note = self.gate.board_note(lanes, ledger)
-            self.assertIn("1 lane running", note)
+            self.assertIn("2 lanes running", note)
+            self.assertIn("1 lane running", self.gate.board_note(lanes[:1], ledger))
             self.assertIn(f"--ledger {ledger}", note)
             self.assertIn(str(Path(RUNNER).resolve().parents[1] / "harness" / "program_board.py"), note)
             output = self.home / "board.html"
@@ -805,7 +812,7 @@ class ReviewVerification(unittest.TestCase):
             os.utime(output, None)
             pointer.write_text(json.dumps(dict(live, pid=2 ** 22 + 12345)))
             self.assertIsNotNone(self.gate.board_note(lanes, ledger), "a dead watcher does not")
-            self.assertIsNone(self.gate.board_note([dict(lanes[0], state="done")], ledger))
+            self.assertIsNone(self.gate.board_note([dict(lane, state="done") for lane in lanes], ledger))
             self.assertTrue(self.gate.pid_alive(os.getpid()))
             self.assertFalse(self.gate.pid_alive(0))
             self.assertFalse(self.gate.pid_alive(2 ** 22 + 12345))

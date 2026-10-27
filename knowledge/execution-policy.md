@@ -412,7 +412,7 @@ The coordinator rotates itself only between waves, with no children running:
 commit its Handoff and lane table, then `create_session` in the ledger's
 project with `detached: true`, kickoff `agent: "architrave:architrave"` and the
 same short kickoff. A detached successor has no creator link to the old
-coordinator or its children: it tells each live child to report to it, starts
+coordinator or its children: it tells each open (idle, not mid-task) child to report to it, starts
 its own program board, and the owner archives the old coordinator.
 
 ## Lead detail (on demand)

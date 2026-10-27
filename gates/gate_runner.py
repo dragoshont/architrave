@@ -404,6 +404,17 @@ def board_watcher(session: str, ledger: Path) -> dict[str, object] | None:
         return None
 
 
+SESSION_CREATORS = {"create_session", "open_pr_session", "open_issue_session", "fork_session"}
+
+
+def log_event(line: bytes) -> dict[str, object]:
+    try:
+        event = json.loads(line)
+    except ValueError:
+        return {}
+    return event if isinstance(event, dict) else {}
+
+
 def coordinates(session: str, lane_sessions: set[str]) -> bool:
     """True when this session's own log created or messaged one of the lane sessions."""
     import mmap
@@ -417,15 +428,24 @@ def coordinates(session: str, lane_sessions: set[str]) -> bool:
                     end = len(data) if end == -1 else end
                     line = data[start:end]
                     if (b"Created session" in line or b"send_session_message" in line) and b"execution_" in line:
-                        try:
-                            event = json.loads(line)
-                        except ValueError:
-                            event = {}
-                        info = event.get("data") if isinstance(event, dict) and isinstance(event.get("data"), dict) else {}
+                        event = log_event(line)
+                        info = event.get("data") if isinstance(event.get("data"), dict) else {}
                         arguments = info.get("arguments") if isinstance(info.get("arguments"), dict) else {}
-                        if (info.get("toolName") == "send_session_message" and str(arguments.get("session_id", "")).lower() == lane
-                                or event.get("type") == "tool.execution_complete" and "Created session" in json.dumps(info.get("result"))):
+                        if info.get("toolName") == "send_session_message" and str(arguments.get("session_id", "")).lower() == lane:
                             return True
+                        call = str(info.get("toolCallId") or "")
+                        if event.get("type") == "tool.execution_complete" and call and "Created session" in json.dumps(info.get("result")):
+                            # Only a result of this session's own session-creating call counts, not printed output.
+                            begin = data.rfind(call.encode(), 0, start)
+                            while begin != -1:
+                                origin = data[data.rfind(b"\n", 0, begin) + 1:max(data.find(b"\n", begin), begin)]
+                                started = log_event(origin)
+                                head = started.get("data") if isinstance(started.get("data"), dict) else {}
+                                if started.get("type") == "tool.execution_start" and head.get("toolCallId") == call:
+                                    if head.get("toolName") in SESSION_CREATORS:
+                                        return True
+                                    break
+                                begin = data.rfind(call.encode(), 0, begin)
                     pos = data.find(needle, end)
     except (OSError, ValueError):
         return False
@@ -435,12 +455,15 @@ def coordinates(session: str, lane_sessions: set[str]) -> bool:
 def board_note(lanes: list[dict[str, str]], ledger: Path) -> str | None:
     """A reminder for the coordinator of running lanes when it has no live board; other sessions are not reminded.
 
-    The coordinator is the session whose own log created or messaged a running lane's session.
+    The coordinator is a session named in no lane row whose own log created or messaged a running lane's
+    session (lanes message their siblings, so a lane session is never the coordinator).
     """
     session = os.environ.get("COPILOT_AGENT_SESSION_ID", "").lower()
     running = [lane for lane in lanes if lane["state"].lower() == "running"]
     lane_sessions = {lane["session id"].lower() for lane in running if SESSION_UUID.fullmatch(lane["session id"].lower())}
     if not lane_sessions or not SESSION_UUID.fullmatch(session) or not session_home().is_dir():
+        return None
+    if any(lane["session id"].lower() == session for lane in lanes):
         return None
     if board_watcher(session, ledger) or not coordinates(session, lane_sessions):
         return None
@@ -448,8 +471,10 @@ def board_note(lanes: list[dict[str, str]], ledger: Path) -> str | None:
     if not script.is_file():
         script = Path("~/.copilot/installed-plugins/architrave/architrave/harness/program_board.py")
     count = f"{len(running)} lane{'s' if len(running) != 1 else ''}"
+    import shlex
     return (f"{count} running and no live program board for this coordinator; start "
-            f"`python3 {script} --ledger {ledger} --watch 120` and open its output in the browser canvas")
+            f"`python3 {shlex.quote(str(script))} --ledger {shlex.quote(str(ledger))} --watch 120` "
+            "and open its output in the browser canvas")
 
 
 def strict_reviews() -> bool:

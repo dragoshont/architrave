@@ -14,10 +14,10 @@ Releases at or before **v0.8.12** are on the
   the gate cannot see hidden subagents a named session used internally.
 - The program-board watcher registers itself in the coordinator session's
   `files/program-board.watch`. `requirements` notes, with the full start
-  command, when the coordinator of running lanes (the session whose log created
-  or messaged them) has no live board for that ledger; live means the pid
-  exists and the output is fresh. Other sessions are not reminded; never a
-  failure.
+  command, when the coordinator of running lanes (a session in no lane row whose
+  log created or messaged them) has no live board for that ledger; live means
+  the pid exists and the output is fresh. Lanes, reviewers and other sessions
+  are not reminded; never a failure.
 - `program_board.py --session` must be a session UUID; the pointer write is
   covered by the watcher's cleanup.
 - Watcher liveness uses one helper that never signals on Windows (signal 0 is

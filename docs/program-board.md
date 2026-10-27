@@ -21,9 +21,12 @@ starts it for every non-trivial task. A watcher registers itself in the
 coordinator session's `files/program-board.watch` (pid, output, ledger,
 interval). While lanes are running, `requirements` prints a note with the full
 start command when the coordinator has no live board for that ledger. The
-coordinator is the session whose own log created or messaged a running lane's
-session; lanes, reviewers and other sessions are not reminded. Live means the
-pid exists and the output was rewritten within two intervals. A killed watcher
+coordinator is a session named in no lane row whose own log created (a
+session-creating tool call) or messaged a running lane's session; lanes,
+reviewers and other sessions are not reminded, so record a coordinator's direct
+work in a lane row with session `-`. Live means the pid exists and the output
+was rewritten within two intervals plus a minute. A session keeps one
+registration, so a coordinator watching two ledgers is reminded about one. A killed watcher
 leaves a stale pointer, which the next watcher replaces. It is a reminder,
 never a failure. After a coordinator rotates, start the board under the
 successor.
