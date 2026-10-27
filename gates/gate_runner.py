@@ -367,13 +367,18 @@ def pid_alive(pid: int) -> bool:
         return False
     if os.name == "nt":
         import ctypes
-        handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.restype = ctypes.c_void_p
+        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+        kernel32.GetExitCodeProcess.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong)]
+        handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
         if not handle:
-            return False
-        code = ctypes.c_ulong()
-        ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
-        ctypes.windll.kernel32.CloseHandle(handle)
-        return code.value == 259  # STILL_ACTIVE
+            return ctypes.get_last_error() == 5  # access denied: it exists under another user
+        try:
+            code = ctypes.c_ulong()
+            return not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)) or code.value == 259  # STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
     try:
         os.kill(pid, 0)
     except PermissionError:
@@ -383,25 +388,68 @@ def pid_alive(pid: int) -> bool:
     return True
 
 
-def board_watcher(session: str) -> dict[str, object] | None:
-    """The live program-board watcher a coordinator session registered (files/program-board.watch), if any."""
+def board_watcher(session: str, ledger: Path) -> dict[str, object] | None:
+    """The live program board a coordinator session registered for this ledger (files/program-board.watch).
+
+    Live means the watcher pid exists and its output was rewritten within two refresh intervals, which also
+    rules out a reused pid and a watcher whose refreshes fail.
+    """
     try:
         pointer = json.loads((session_home() / session / "files" / BOARD_POINTER).read_text(encoding="utf-8"))
-        return pointer if pid_alive(int(pointer["pid"])) else None
+        if Path(str(pointer["ledger"])).resolve() != ledger.resolve() or not pid_alive(int(pointer["pid"])):
+            return None
+        age = time.time() - Path(str(pointer["output"])).stat().st_mtime
+        return pointer if age <= 2 * max(int(pointer.get("interval", 120)), 30) + 60 else None
     except (OSError, ValueError, KeyError, TypeError):
         return None
 
 
-def board_note(lanes: list[dict[str, str]]) -> str | None:
-    """A reminder when a coordinator with running lanes has no live board; lane sessions are never reminded."""
+def coordinates(session: str, lane_sessions: set[str]) -> bool:
+    """True when this session's own log created or messaged one of the lane sessions."""
+    import mmap
+    log = session_home() / session / "events.jsonl"
+    try:
+        with log.open("rb") as handle, mmap.mmap(handle.fileno(), 0, access=mmap.ACCESS_READ) as data:
+            for lane in lane_sessions - {session}:
+                needle, pos = lane.encode(), data.find(lane.encode())
+                while pos != -1:
+                    start, end = data.rfind(b"\n", 0, pos) + 1, data.find(b"\n", pos)
+                    end = len(data) if end == -1 else end
+                    line = data[start:end]
+                    if (b"Created session" in line or b"send_session_message" in line) and b"execution_" in line:
+                        try:
+                            event = json.loads(line)
+                        except ValueError:
+                            event = {}
+                        info = event.get("data") if isinstance(event, dict) and isinstance(event.get("data"), dict) else {}
+                        arguments = info.get("arguments") if isinstance(info.get("arguments"), dict) else {}
+                        if (info.get("toolName") == "send_session_message" and str(arguments.get("session_id", "")).lower() == lane
+                                or event.get("type") == "tool.execution_complete" and "Created session" in json.dumps(info.get("result"))):
+                            return True
+                    pos = data.find(needle, end)
+    except (OSError, ValueError):
+        return False
+    return False
+
+
+def board_note(lanes: list[dict[str, str]], ledger: Path) -> str | None:
+    """A reminder for the coordinator of running lanes when it has no live board; other sessions are not reminded.
+
+    The coordinator is the session whose own log created or messaged a running lane's session.
+    """
     session = os.environ.get("COPILOT_AGENT_SESSION_ID", "").lower()
     running = [lane for lane in lanes if lane["state"].lower() == "running"]
-    if not running or not SESSION_UUID.fullmatch(session) or not session_home().is_dir():
+    lane_sessions = {lane["session id"].lower() for lane in running if SESSION_UUID.fullmatch(lane["session id"].lower())}
+    if not lane_sessions or not SESSION_UUID.fullmatch(session) or not session_home().is_dir():
         return None
-    if any(lane["session id"].lower() == session for lane in running) or board_watcher(session):
+    if board_watcher(session, ledger) or not coordinates(session, lane_sessions):
         return None
-    return (f"{len(running)} lanes running and no program board for this coordinator; start "
-            "`python harness/program_board.py --watch 120` and open it in the browser canvas")
+    script = Path(__file__).resolve().parents[1] / "harness" / "program_board.py"
+    if not script.is_file():
+        script = Path("~/.copilot/installed-plugins/architrave/architrave/harness/program_board.py")
+    count = f"{len(running)} lane{'s' if len(running) != 1 else ''}"
+    return (f"{count} running and no live program board for this coordinator; start "
+            f"`python3 {script} --ledger {ledger} --watch 120` and open its output in the browser canvas")
 
 
 def strict_reviews() -> bool:
@@ -939,7 +987,7 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
     errors.extend([cap_error] if cap_error else [])
     errors.extend(lane_errors(text, reqs, max_parallel))
     lanes = ledger_table(text, ("lane", "repo", "project id"), LANE_COLUMNS)
-    reminder = board_note(lanes)
+    reminder = board_note(lanes, path.parent)
     if reminder:
         print(f"note  {reminder}")
     ids = [part.strip() for part in (claim or "").split(",") if part.strip()]
@@ -989,7 +1037,7 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
                 errors.append(f"not done: lane {lane['lane']} is done without the session that did the work")
             elif lane["state"].lower() == "done" and strict and session_facts(lane["session id"]) is None:
                 errors.append(f"not done: lane {lane['lane']} session {lane['session id'][:8]} is not logged on this machine; "
-                              "record the visible session that did the work")
+                              "run --done on the machine that hosted it, or correct the session ID")
             unreviewed = lane_review_gaps(lane, reqs, strict, bool((config.get("review") or {}).get("crossFamily"))
                                           if isinstance(config.get("review"), dict) else False)
             if unreviewed:

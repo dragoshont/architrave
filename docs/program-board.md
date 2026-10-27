@@ -18,9 +18,15 @@ session's `files/program-board.html`; open it in the browser canvas. With
 `--watch` it rewrites the file every 120 seconds, the page reloads itself, and
 the watcher exits after the program has been quiet for two hours. The lead
 starts it for every non-trivial task. A watcher registers itself in the
-coordinator session's `files/program-board.watch`; while lanes are running,
-`requirements` run by the coordinator prints a note when no live watcher is
-registered (lane sessions are never reminded). It is a reminder, not a failure.
+coordinator session's `files/program-board.watch` (pid, output, ledger,
+interval). While lanes are running, `requirements` prints a note with the full
+start command when the coordinator has no live board for that ledger. The
+coordinator is the session whose own log created or messaged a running lane's
+session; lanes, reviewers and other sessions are not reminded. Live means the
+pid exists and the output was rewritten within two intervals. A killed watcher
+leaves a stale pointer, which the next watcher replaces. It is a reminder,
+never a failure. After a coordinator rotates, start the board under the
+successor.
 
 ## What it shows
 

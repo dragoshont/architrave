@@ -772,21 +772,40 @@ class ReviewVerification(unittest.TestCase):
 
     def test_board_note_reminds_only_a_coordinator_without_a_live_watcher(self):
         coordinator, child = "aaaaaaaa-9999-2222-3333-444444444444", "bbbbbbbb-9999-2222-3333-444444444444"
+        reviewer, successor = "cccccccc-9999-2222-3333-444444444444", "dddddddd-9999-2222-3333-444444444444"
+        ledger = self.home / "ledger"
+        ledger.mkdir()
         lanes = [{"lane": "L1", "state": "running", "session id": child}]
+        self.log(coordinator, [{"type": "tool.execution_start", "data": {"toolName": "create_session", "toolCallId": "c1"}},
+                               {"type": "tool.execution_complete", "data": {"toolCallId": "c1", "result": f"Created session 'L1' (id: {child})"}}])
+        self.log(successor, [{"type": "tool.execution_start", "data": {"toolName": "send_session_message",
+                                                                       "arguments": {"session_id": child, "message": "report to me"}}}])
+        self.log(reviewer, [{"type": "user.message", "data": {"content": f"review lane session {child}"}}])
+        self.log(child, [{"type": "session.start", "data": {}}])
         old = os.environ.get("COPILOT_AGENT_SESSION_ID")
         try:
+            for session, expected in ((coordinator, True), (successor, True), (reviewer, False), (child, False)):
+                os.environ["COPILOT_AGENT_SESSION_ID"] = session
+                self.assertEqual(bool(self.gate.board_note(lanes, ledger)), expected, session)
             os.environ["COPILOT_AGENT_SESSION_ID"] = coordinator
-            (self.home / "session-state").mkdir(parents=True, exist_ok=True)
-            self.assertIn("no program board", self.gate.board_note(lanes))
+            note = self.gate.board_note(lanes, ledger)
+            self.assertIn("1 lane running", note)
+            self.assertIn(f"--ledger {ledger}", note)
+            self.assertIn(str(Path(RUNNER).resolve().parents[1] / "harness" / "program_board.py"), note)
+            output = self.home / "board.html"
+            output.write_text("x")
             pointer = self.home / "session-state" / coordinator / "files" / self.gate.BOARD_POINTER
             pointer.parent.mkdir(parents=True)
-            pointer.write_text(json.dumps({"pid": os.getpid(), "output": "x.html"}))
-            self.assertIsNone(self.gate.board_note(lanes), "a live watcher satisfies it")
-            pointer.write_text(json.dumps({"pid": 2 ** 22 + 12345, "output": "x.html"}))
-            self.assertIn("no program board", self.gate.board_note(lanes), "a dead watcher does not")
-            os.environ["COPILOT_AGENT_SESSION_ID"] = child
-            self.assertIsNone(self.gate.board_note(lanes), "lane sessions are not reminded")
-            self.assertIsNone(self.gate.board_note([dict(lanes[0], state="done")]))
+            live = {"pid": os.getpid(), "output": str(output), "ledger": str(ledger), "interval": 120}
+            pointer.write_text(json.dumps(live))
+            self.assertIsNone(self.gate.board_note(lanes, ledger), "a live, fresh watcher for this ledger satisfies it")
+            self.assertIsNotNone(self.gate.board_note(lanes, self.home), "a board for another ledger does not")
+            os.utime(output, (time.time() - 3600, time.time() - 3600))
+            self.assertIsNotNone(self.gate.board_note(lanes, ledger), "a stale output means a dead or failing watcher")
+            os.utime(output, None)
+            pointer.write_text(json.dumps(dict(live, pid=2 ** 22 + 12345)))
+            self.assertIsNotNone(self.gate.board_note(lanes, ledger), "a dead watcher does not")
+            self.assertIsNone(self.gate.board_note([dict(lanes[0], state="done")], ledger))
             self.assertTrue(self.gate.pid_alive(os.getpid()))
             self.assertFalse(self.gate.pid_alive(0))
             self.assertFalse(self.gate.pid_alive(2 ** 22 + 12345))

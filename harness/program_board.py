@@ -413,6 +413,10 @@ def main() -> int:
     if not args.session:
         print("program-board: no --session and COPILOT_AGENT_SESSION_ID is unset", file=sys.stderr)
         return 2
+    args.session = args.session.lower()
+    if not gate.SESSION_UUID.fullmatch(args.session):
+        print(f"program-board: --session {args.session!r} is not a host session UUID", file=sys.stderr)
+        return 2
     if args.ledger:
         ledger = Path(args.ledger).expanduser().resolve()
     elif (Path.cwd() / "SPEC.md").is_file():
@@ -454,10 +458,12 @@ def main() -> int:
                     return 0
         os.write(fd, str(os.getpid()).encode())
         os.close(fd)
-        pointer = STATE_HOME / args.session / "files" / gate.BOARD_POINTER
-        pointer.parent.mkdir(parents=True, exist_ok=True)
-        pointer.write_text(json.dumps({"pid": os.getpid(), "output": str(out), "ledger": str(ledger)}), encoding="utf-8")
+    pointer = STATE_HOME / args.session / "files" / gate.BOARD_POINTER
     try:
+        if args.watch:
+            pointer.parent.mkdir(parents=True, exist_ok=True)
+            pointer.write_text(json.dumps({"pid": os.getpid(), "output": str(out), "ledger": str(ledger),
+                                           "interval": max(args.watch, 30)}), encoding="utf-8")
         while True:
             try:
                 data = build(ledger, args.session)
@@ -487,7 +493,6 @@ def main() -> int:
     finally:
         if args.watch and lock.is_file() and lock.read_text().strip() == str(os.getpid()):
             lock.unlink()
-            pointer = STATE_HOME / args.session / "files" / gate.BOARD_POINTER
             try:
                 if json.loads(pointer.read_text(encoding="utf-8")).get("pid") == os.getpid():
                     pointer.unlink()

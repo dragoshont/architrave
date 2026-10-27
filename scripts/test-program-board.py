@@ -96,9 +96,17 @@ class ProgramBoard(unittest.TestCase):
             self.assertNotIn("<b>sync</b>", page)
             self.assertNotIn("http", page.split("</style>")[1].split("<script>")[0])
             self.assertNotIn("http-equiv", page)
+            pointer = state / COORD / "files" / "program-board.watch"
+            pointer.parent.mkdir(parents=True, exist_ok=True)
+            pointer.write_text(json.dumps({"pid": 2 ** 22 + 12345, "output": "old", "ledger": "old"}))
             watch = subprocess.run([sys.executable, str(ROOT / "harness/program_board.py"), "--ledger", str(ledger),
                                     "--output", str(out), "--watch", "120"], capture_output=True, text=True, env=env, timeout=30)
             self.assertEqual(watch.returncode, 0, watch.stderr)
+            self.assertFalse(pointer.exists(), "the watcher registers itself (replacing a stale pointer) and unregisters on exit")
+            bad = subprocess.run([sys.executable, str(ROOT / "harness/program_board.py"), "--ledger", str(ledger),
+                                  "--session", "../escape", "--output", str(out)], capture_output=True, text=True, env=env, timeout=30)
+            self.assertEqual(bad.returncode, 2)
+            self.assertIn("not a host session UUID", bad.stderr)
             self.assertIn("http-equiv='refresh' content='120'", out.read_text())
             out.with_suffix(".pid").write_text(str(os.getpid()))
             dup = subprocess.run([sys.executable, str(ROOT / "harness/program_board.py"), "--ledger", str(ledger),

@@ -176,7 +176,9 @@ exist it counts a PASS only when that session's log shows a reviewer kickoff rol
 that verdict. Start the reviewer's report with a `Verdict:` line and use a fresh reviewer session for each
 delivery. A done lane names the session that did the work; where local session logs exist that
 session must be logged on this machine (hidden subagents have no session UUID, so a lane is always a
-visible session or the coordinator's own direct work). This catches mistakes, not deliberate forgery.
+visible session or the coordinator's own direct work; the gate cannot see hidden subagents a named
+session used internally). Run `--done` on the machine that hosted the lane sessions. This catches
+mistakes, not deliberate forgery.
 `python gates/gate_runner.py requirements` enforces this table. This is explicit lead behavior, not a daemon
 or polling loop.
 
@@ -410,7 +412,8 @@ The coordinator rotates itself only between waves, with no children running:
 commit its Handoff and lane table, then `create_session` in the ledger's
 project with `detached: true`, kickoff `agent: "architrave:architrave"` and the
 same short kickoff. A detached successor has no creator link to the old
-coordinator or its children; the owner archives the old coordinator.
+coordinator or its children: it tells each live child to report to it, starts
+its own program board, and the owner archives the old coordinator.
 
 ## Lead detail (on demand)
 

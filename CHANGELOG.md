@@ -9,13 +9,19 @@ Releases at or before **v0.8.12** are on the
 
 - `requirements --done` fails on a done lane without a session ID and, where
   local session logs exist, on a done lane whose session is not logged on this
-  machine. Hidden subagents have no session UUID, so lanes are visible sessions
-  (or the coordinator's own direct work).
+  machine (run `--done` where the lanes ran). Hidden subagents have no session
+  UUID, so a lane is a visible session or the coordinator's own direct work;
+  the gate cannot see hidden subagents a named session used internally.
 - The program-board watcher registers itself in the coordinator session's
-  `files/program-board.watch`; `requirements` run by a coordinator with running
-  lanes notes when no live board is registered.
+  `files/program-board.watch`. `requirements` notes, with the full start
+  command, when the coordinator of running lanes (the session whose log created
+  or messaged them) has no live board for that ledger; live means the pid
+  exists and the output is fresh. Other sessions are not reminded; never a
+  failure.
+- `program_board.py --session` must be a session UUID; the pointer write is
+  covered by the watcher's cleanup.
 - Watcher liveness uses one helper that never signals on Windows (signal 0 is
-  CTRL_C_EVENT there) and treats another user's live process as running.
+  CTRL_C_EVENT there) and counts a live process of another user as running.
 
 ## 0.21.23
 
