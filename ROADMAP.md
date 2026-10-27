@@ -1,6 +1,8 @@
 # Roadmap
 
-Delivered in source, not yet released: issue #31 (REQ-48..50) strengthens
+## v0.21.25 - Evidence-first analysis (#31, REQ-48..50)
+
+Issue #31 (REQ-48..50) strengthens
 evidence-first analysis in existing contracts and semantic calibration, including
 honest compatible question metrics. Independent review PASS; retained synthetic
 misses are not proof of eliminated reasoning errors or measured productivity benefit.

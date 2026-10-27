@@ -5,6 +5,20 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## 0.21.25
+
+- Evidence-first analysis guidance for source authority, passage entailment,
+  settled owner intent, correction propagation, constrained forecasts, usable
+  handoffs and revision assets, loaded through existing lead/research/review seams.
+- Twelve synthetic decision/artifact cases extend existing semantic calibration;
+  retained failures and rationale contamination remain explicit limitations,
+  not proof of improved productivity or eliminated reasoning errors.
+- Semantic scoring now fails missing/mismatched results and missed unverified
+  responsibilities instead of printing uncertainty misses while returning success.
+- Benchmark question counts are explicitly lexical. `question_mentions` and
+  basis/unknown-necessity fields supplement the unchanged legacy
+  `unnecessary_questions` integer; unattended defaults remain unchanged.
+
 ## 0.21.24
 
 - `requirements --done` fails on a done lane without a session ID and, where
