@@ -469,7 +469,7 @@ def board_note(lanes: list[dict[str, str]], ledger: Path) -> str | None:
         return None
     script = Path(__file__).resolve().parents[1] / "harness" / "program_board.py"
     if not script.is_file():
-        script = Path("~/.copilot/installed-plugins/architrave/architrave/harness/program_board.py")
+        script = Path.home() / ".copilot/installed-plugins/architrave/architrave/harness/program_board.py"
     count = f"{len(running)} lane{'s' if len(running) != 1 else ''}"
     import shlex
     return (f"{count} running and no live program board for this coordinator; start "

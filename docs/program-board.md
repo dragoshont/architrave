@@ -23,8 +23,8 @@ interval). While lanes are running, `requirements` prints a note with the full
 start command when the coordinator has no live board for that ledger. The
 coordinator is a session named in no lane row whose own log created (a
 session-creating tool call) or messaged a running lane's session; lanes,
-reviewers and other sessions are not reminded, so record a coordinator's direct
-work in a lane row with session `-`. Live means the pid exists and the output
+reviewers and other sessions are not reminded, and neither is a coordinator
+that records its own session in a lane row for direct work. Live means the pid exists and the output
 was rewritten within two intervals plus a minute. A session keeps one
 registration, so a coordinator watching two ledgers is reminded about one. A killed watcher
 leaves a stale pointer, which the next watcher replaces. It is a reminder,
