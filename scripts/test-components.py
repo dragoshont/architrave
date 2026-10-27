@@ -787,6 +787,9 @@ class ReviewVerification(unittest.TestCase):
             os.environ["COPILOT_AGENT_SESSION_ID"] = child
             self.assertIsNone(self.gate.board_note(lanes), "lane sessions are not reminded")
             self.assertIsNone(self.gate.board_note([dict(lanes[0], state="done")]))
+            self.assertTrue(self.gate.pid_alive(os.getpid()))
+            self.assertFalse(self.gate.pid_alive(0))
+            self.assertFalse(self.gate.pid_alive(2 ** 22 + 12345))
         finally:
             if old is None:
                 os.environ.pop("COPILOT_AGENT_SESSION_ID", None)

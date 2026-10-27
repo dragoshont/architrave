@@ -14,6 +14,8 @@ Releases at or before **v0.8.12** are on the
 - The program-board watcher registers itself in the coordinator session's
   `files/program-board.watch`; `requirements` run by a coordinator with running
   lanes notes when no live board is registered.
+- Watcher liveness uses one helper that never signals on Windows (signal 0 is
+  CTRL_C_EVENT there) and treats another user's live process as running.
 
 ## 0.21.23
 

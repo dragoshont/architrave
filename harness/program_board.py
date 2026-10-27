@@ -435,7 +435,8 @@ def main() -> int:
             other = None
             try:
                 other = int(lock.read_text())
-                os.kill(other, 0)
+                if not gate.pid_alive(other):
+                    raise ValueError("stale")
                 print(f"program-board: watcher {other} already running for {out}")
                 return 0
             except (OSError, ValueError):

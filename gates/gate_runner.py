@@ -361,12 +361,33 @@ def review_session(reviewer: str, verdict: str, final: bool = True) -> tuple[str
 BOARD_POINTER = "program-board.watch"
 
 
+def pid_alive(pid: int) -> bool:
+    """True when a process with this pid exists. Never signals on Windows, where signal 0 is CTRL_C_EVENT."""
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        import ctypes
+        handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False
+        code = ctypes.c_ulong()
+        ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
+        ctypes.windll.kernel32.CloseHandle(handle)
+        return code.value == 259  # STILL_ACTIVE
+    try:
+        os.kill(pid, 0)
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
 def board_watcher(session: str) -> dict[str, object] | None:
     """The live program-board watcher a coordinator session registered (files/program-board.watch), if any."""
     try:
         pointer = json.loads((session_home() / session / "files" / BOARD_POINTER).read_text(encoding="utf-8"))
-        os.kill(int(pointer["pid"]), 0)
-        return pointer
+        return pointer if pid_alive(int(pointer["pid"])) else None
     except (OSError, ValueError, KeyError, TypeError):
         return None
 
