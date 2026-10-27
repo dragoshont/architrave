@@ -1,10 +1,16 @@
 # Roadmap
 
-## Critical - Cross-repository GHC coordination (REQ-29 through REQ-35)
+## v0.21.24 - Visible lanes and live board (REQ-43 through REQ-46)
 
-- [ ] Lead/CTO/skill behavior preserves owner intent, verifies evidence, rotates at the context budget, answers stream status from one machine-readable lane table, and never resurrects superseded sessions.
-- [ ] The Ode coordinator owns live proof for REQ-30/36; this lane does not start competing Ode sessions.
-- [ ] No new gate subcommand, runtime, fixture program, release, publication or reinstall.
+- [x] Context flags use current usage and rotate at task boundaries; self-rotation is between waves.
+- [x] Visible lanes, independently reviewed deliveries, session-verified review notes, and coordinator-only board startup checks are implemented and released.
+- [x] `requirements --done --handoff` passes for Architrave: 46 accepted requirements, one withdrawn.
+
+## Completed - Cross-repository GHC coordination (REQ-29 through REQ-35)
+
+- [x] Lead/CTO/skill behavior preserves owner intent, verifies evidence, rotates at the context budget, answers stream status from one machine-readable lane table, and never resurrects superseded sessions.
+- [x] REQ-30's narrowed live mechanics proof is recorded in SPEC.md; the one-day REQ-36 dogfood was withdrawn by the owner (C-35).
+- [x] Delivery remained in lead/CTO/skill behavior; no new gate subcommand, runtime, or fixture program was added.
 
 ## v0.21.10 - Multi-repository lanes (REQ-25 through REQ-28)
 
