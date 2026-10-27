@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import importlib.util
+from contextlib import redirect_stdout
+import io
 import json
 import tempfile
 import unittest
@@ -27,6 +29,92 @@ def load_script(name: str):
 JUDGE = load_script("judge-bench.py")
 BENCH = load_script("bench-architrave.py")
 SUMMARY = load_script("summarize-bench.py")
+SEMANTIC = load_script("score-semantic-cases.py")
+
+
+class SemanticCalibrationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.data = json.loads(SEMANTIC.CASES.read_text(encoding="utf-8"))
+
+    def score(self, mode: str, answers: list[dict]) -> int:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "answers.json"
+            path.write_text(json.dumps(answers), encoding="utf-8")
+            args = ["score-semantic-cases.py", str(path)] + ([mode] if mode else [])
+            with patch.object(SEMANTIC.sys, "argv", args), redirect_stdout(io.StringIO()):
+                return SEMANTIC.main()
+
+    def answers(self, key: str) -> list[dict]:
+        if key == "analysis_cases":
+            return [{"case": c["id"], "result": c["expected"], "rationale": "fixture"} for c in self.data[key]]
+        if key == "hard_cases":
+            return [{"case": c["id"], **c["expected"]} for c in self.data[key]]
+        return [
+            {"case": c["id"], "verdict": c["expected"]["verdict"],
+             "responsibilities": {r: c["expected"][r] for r in c["responsibilities"]}}
+            for c in self.data[key]
+        ]
+
+    def test_existing_modes_reject_unflagged_insufficient_evidence(self) -> None:
+        for mode, key in (("", "cases"), ("--hard", "hard_cases")):
+            answers = self.answers(key)
+            for row in answers:
+                if key == "cases":
+                    row["responsibilities"] = {
+                        r: ("preserved" if value == "unverified" else value)
+                        for r, value in row["responsibilities"].items()
+                    }
+                else:
+                    row["unverified"] = []
+            with self.subTest(mode=mode):
+                self.assertEqual(self.score(mode, answers), 1)
+
+    def test_existing_exact_answers_pass_but_missing_responsibilities_do_not(self) -> None:
+        for mode, key in (("", "cases"), ("--hard", "hard_cases")):
+            answers = self.answers(key)
+            self.assertEqual(self.score(mode, answers), 0)
+            if key == "cases":
+                answers[0]["responsibilities"] = {}
+            else:
+                answers[0]["lost"] = []
+            self.assertEqual(self.score(mode, answers), 1)
+
+    def test_analysis_requires_all_final_artifacts_and_reasoning(self) -> None:
+        answers = self.answers("analysis_cases")
+        self.assertEqual(self.score("--analysis", answers), 0)
+        for mutation in ("missing-case", "missing-artifact", "wrong-forecast", "no-rationale", "bool-is-not-int"):
+            altered = json.loads(json.dumps(answers))
+            if mutation == "missing-case":
+                altered.pop()
+            elif mutation == "missing-artifact":
+                del altered[5]["result"]["diagram_owner"]
+            elif mutation == "wrong-forecast":
+                altered[6]["result"]["earliest_possible_day_lower_bound"] = 3
+            elif mutation == "no-rationale":
+                altered[0]["rationale"] = ""
+            else:
+                altered[0]["result"]["deploy"] = 0
+            with self.subTest(mutation=mutation):
+                self.assertEqual(self.score("--analysis", altered), 1)
+
+    def test_modes_reject_duplicate_and_unknown_case_ids(self) -> None:
+        for mode, key in (("", "cases"), ("--hard", "hard_cases"), ("--analysis", "analysis_cases")):
+            answers = self.answers(key)
+            with self.subTest(mode=mode):
+                with self.assertRaisesRegex(ValueError, "duplicate"):
+                    self.score(mode, answers + [answers[0]])
+                with self.assertRaisesRegex(ValueError, "unknown"):
+                    self.score(mode, answers + [{"case": "invented"}])
+
+    def test_all_blind_modes_hide_expected_outcomes(self) -> None:
+        for mode, key in (("", "cases"), ("--hard", "hard_cases"), ("--analysis", "analysis_cases")):
+            out = io.StringIO()
+            args = ["score-semantic-cases.py", "--blind"] + ([mode] if mode else [])
+            with patch.object(SEMANTIC.sys, "argv", args), redirect_stdout(out):
+                self.assertEqual(SEMANTIC.main(), 0)
+            blind = json.loads(out.getvalue())
+            self.assertEqual(len(blind), len(self.data[key]))
+            self.assertTrue(all("expected" not in case for case in blind))
 
 
 class JudgeSecurityTests(unittest.TestCase):
@@ -140,6 +228,34 @@ class JudgeSecurityTests(unittest.TestCase):
 
 
 class BenchmarkExecutionTests(unittest.TestCase):
+    def test_question_metric_is_lexical_and_preserves_legacy_consumers(self) -> None:
+        # A log mentioning the tool and a legitimate decision question look the
+        # same to the old regex. Neither proves an unnecessary intervention.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "agent.stdout").write_text(
+                'Documentation mentions ask_user. Please confirm the release target.',
+                encoding="utf-8",
+            )
+            (root / "agent.stderr").write_text("", encoding="utf-8")
+            with patch.object(BENCH, "run_to_files", return_value=(0, False, 1)):
+                metrics = BENCH.run_arm(
+                    {"runner": "shell", "command": ["unused"]}, root, "task", root, 1, 1
+                )
+        self.assertEqual(metrics["unnecessary_questions"], 2)
+        self.assertEqual(metrics["question_mentions"], 2)
+        self.assertEqual(metrics["question_metric_basis"], "lexical-mentions-not-necessity")
+        self.assertIsNone(metrics["question_necessity"])
+
+    def test_unattended_question_behavior_is_unchanged(self) -> None:
+        command = BENCH.copilot_command(
+            {"runner": "copilot"}, Path("worktree"), "task", Path("session.md")
+        )
+        self.assertIn("--no-ask-user", command)
+        self.assertIn("Do not ask the user for confirmation", BENCH.prompt_for(
+            {"id": "test", "lane": "knowledge", "prompt": "task"}, {}, 0
+        ))
+
     def test_scenario_validation_can_skip_only_unavailable_external_repositories(self) -> None:
         config = {
             "scenarios": [

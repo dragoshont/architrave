@@ -1,5 +1,10 @@
 # Roadmap
 
+Delivered in source, not yet released: issue #31 (REQ-48..50) strengthens
+evidence-first analysis in existing contracts and semantic calibration, including
+honest compatible question metrics. Independent review PASS; retained synthetic
+misses are not proof of eliminated reasoning errors or measured productivity benefit.
+
 ## v0.21.24 - Visible lanes and live board (REQ-43 through REQ-46)
 
 - [x] Context flags use current usage and rotate at task boundaries; self-rotation is between waves.

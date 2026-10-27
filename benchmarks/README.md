@@ -49,6 +49,75 @@ Each benchmark run emits one JSONL row per `(scenario, arm, repeat)`.
 
 Context tier is recorded as requested-only unless the host emits observable context telemetry. Do not claim that a context treatment was honored when it cannot be observed.
 
+### Question metrics
+
+`agent.question_mentions` is a lexical count of `ask_user`/`ask-user`/`ask user`,
+`please confirm`, `could you clarify` and `should I proceed` in captured stdout.
+It counts mentions inside prose and log payloads, not necessarily tool calls.
+`agent.unnecessary_questions` retains exactly that legacy integer for existing
+consumers; it is a deprecated lexical alias, not a necessity score.
+`question_metric_basis` names this limitation, and `question_necessity: null`
+means unassessed (not zero unnecessary questions). Necessity, successful delivery
+and substantive answer require decision context and observed results. Benchmark
+approval and `--no-ask-user` defaults are unchanged. No host answer handler is
+changed or host result shape inferred here.
+
+## Evidence-first analysis calibration (#31)
+
+Use the existing `semantic-cases.json` and `score-semantic-cases.py` seam.
+The map below distinguishes already-covered rules from uncovered behavioral
+checks; it is not a new workflow or a claim that instructions guarantee behavior.
+Policy detail lives in execution policy's **Evidence-first analysis**, loaded on
+demand by the lead and research role and assessed by the existing judge rubric.
+
+| Behavior | Existing rule / preserved coverage | Added action/artifact check |
+|---|---|---|
+| Consequential, discoverable and settled decisions | Lead: consequential questions, contradictions, owner corrections; worker: evidence first | A1 unresolved transport with safe work, A2 settled owner choice, A3 discoverable command (positive controls) |
+| Source authority and passage entailment | Worker: primary sources/passages; evidence gate explicitly structural; C6 contradiction, C8 unsupported FIPS, C9 stale edition, H3 unverified provider behavior | A4 authoritative edition vs editorial summary, pagination owner, proposed vs demonstrated, exact restriction |
+| Coverage confidence and historical evidence | Worker: facts/interpretations/unknowns; policy: historical vs current observations | A5 strong local finding with partial coverage and failed current access |
+| Correction propagation | Lead: apply owner corrections; C9 detects stale decision | A6 final prose/table/diagram/REQ/estimate/decision values, not just acknowledgement |
+| Forecast and numeric integrity | Lead: no silent scope reduction; strengthened policy supplies constraint detail | A7 constrained lanes, dependencies, work windows, shared overhead once, human acceptance, waits, unknown QA; A11 target/estimate/sensitivity/required vs measured improvement |
+| Bounded handoff and truthful receipt | Policy: ownership, explicit guidance loading, recoverable assignments; worker: sent/started/observed/accepted | A8 usable inline input, decision, owner, acceptance, stop/return route, no assumed runtime grant; A12 admission vs delivery vs verification |
+| Revision evidence and assets | Policy: evidence chain and preservation; strengthened asset rule | A9 retained revision with matching relative asset and named owner |
+| Verification level | Policy/rubric: required checks cannot be replaced by semantic PASS | A10 structural/source success cannot replace failed rendering, unavailable runtime or owner acceptance |
+
+Generate blind inputs (expected results are omitted), give the cases plus the
+applicable contract to a supported agent, and retain its produced JSON array:
+
+```bash
+python3 scripts/score-semantic-cases.py --blind
+python3 scripts/score-semantic-cases.py --hard --blind
+python3 scripts/score-semantic-cases.py --analysis --blind
+python3 scripts/score-semantic-cases.py --analysis /path/to/answers.json
+```
+
+Analysis answers are `{"case":"A1","result":{...},"rationale":"..."}`. Tasks
+request final decision/artifact values, including preserved file contents, not
+promises. The scorer compares complete typed JSON results and requires a
+nonempty rationale; it does **not** grade that rationale. It rejects missing,
+duplicate, unknown and mismatching cases; regular/hard modes now also fail
+missed unverified responsibilities rather than merely printing the misses.
+Positive mechanical fixtures test the scorer, not agent quality.
+
+A separate semantic assessment must inspect the produced decisions, artifact
+contents and rationale against the supplied source and owner context, including
+whether a question is necessary and a passage entails the claim. An exact enum
+or numeric match is not semantic PASS. Keep evaluation inputs, answers, scorer
+output and review references as evidence. Synthetic A1 describes transport
+without an answer; it is not a captured host result or a handler integration test.
+No live question-result shape, rendering/runtime capability, general productivity
+gain or intervention reduction is established by these small synthetic cases.
+Use comparative repeated runs before making improvement claims.
+
+Recorded trial: `results/evidence-first-analysis-2026-10-27.json` retains all
+answers and scorer output, including failures: regular 9/10 verdicts; hard 4/4
+verdicts but 5/7 lost responsibilities and 0/1 unverified; analysis initially
+10/12 exact artifacts, then 12/12 after A1/A4 identifier-only clarification.
+That follow-up is not an independent trial or reasoning improvement. A7's
+rationale imports an unsupported sensitivity from another case, despite correct
+numeric artifacts. These observations calibrate the evaluation; they are not a
+blanket semantic PASS or evidence that the behavioral problem is eliminated.
+
 ## Primary Arms
 
 Start small and controlled:

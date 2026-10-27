@@ -22,6 +22,15 @@ Use 0-5 for each dimension:
 
 Findings must cite evidence from the row, validation, diff, artifacts, or transcript tail. Do not reward verbosity. Do not penalize small diffs unless they omit required behavior or safety.
 
+For evidence-first analysis, use the execution policy's Evidence-first analysis
+and the coverage map in `benchmarks/README.md`. Judge decisions and final
+artifacts, not promises or instruction phrases. Necessary and unanswered
+questions differ from unnecessary ones; lexical counts alone establish none of
+necessity, delivery or substantive answer. Unattended scenarios remain unattended:
+an unresolved owner-only decision is reported, not guessed or used to halt
+independently safe work. Check passage entailment and correction propagation
+semantically; deterministic numeric/enum scores cannot establish reasoning quality.
+
 ## Human Review
 
 Recommend human review when the run changes UX visuals, backend contracts, infra, security/policy, or when the LLM judge is uncertain.

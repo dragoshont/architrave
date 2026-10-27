@@ -393,9 +393,15 @@ def run_arm(
     redact_file(raw_stderr, env)
     metrics = parse_copilot_events(raw_stdout) if arm["runner"] == "copilot" else {}
     output_text = raw_stdout.read_text(encoding="utf-8", errors="replace")
-    metrics["unnecessary_questions"] = len(
+    question_mentions = len(
         re.findall(r"(?i)(?:ask[_ -]?user|please confirm|could you clarify|should I proceed)", output_text)
     )
+    metrics.update({
+        "question_mentions": question_mentions,
+        "question_metric_basis": "lexical-mentions-not-necessity",
+        "question_necessity": None,
+        "unnecessary_questions": question_mentions,  # Legacy lexical alias.
+    })
     metrics.update({"returncode": returncode, "timed_out": timed_out, "duration_ms": duration_ms})
     return metrics
 

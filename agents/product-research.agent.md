@@ -23,6 +23,9 @@ Open `architrave.config.json` to identify the platform, stack, design source, ba
 - Call out source limitations: paywalls, stale docs, unverifiable screenshots, and assumptions.
 - Separate patterns to copy from visual styling to merely reference.
 - Surface missing backend data explicitly instead of smoothing it over in UI copy.
+- For consequential conclusions, apply `knowledge/execution-policy.md`'s
+  Evidence-first analysis: source authority and passage support, bounded
+  confidence, correction propagation and truthful verification levels.
 
 ## Output
 Return:

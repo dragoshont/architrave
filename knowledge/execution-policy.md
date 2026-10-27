@@ -49,7 +49,11 @@ the same unavailable authorization; preserve the human hold and report the
 exact host blocker. These are launch checks, not new receipts or report files.
 
 A short native child assignment needs only an objective, owned scope, relevant
-context and expected result. Use host limits; do not invent per-child budget,
+context and expected result. For consequential handoffs, make these usable:
+include resolvable inputs and applicable decisions, acceptance, a stop condition
+and an evidence-return route (for example a reply to the assigning session).
+Verify needed files, guidance, capabilities and permissions rather than assuming
+the child's cwd or inherited context. Use host limits; do not invent per-child budget,
 receipt or planning fields for a brief lookup. Return the answer or change,
 actual checks and any blocker, not a transcript or a mandatory status form.
 For persistent implementation, external effects or expensive experiments, add
@@ -253,6 +257,49 @@ tables to the requirements file. `requirements` checks the links, independence,
 `<repo>@<commit>:<path>` freshness and serious-finding dispositions; it does not
 judge whether a source supports a claim. Mark evidence `stale`/`contradicted`
 and the decision `reconsider` when the implementation disagrees.
+
+### Evidence-first analysis
+
+Use this detail for consequential research, analysis and estimates, not a
+universal inventory or another phase for simple questions.
+
+- Establish source authority and edition: requirements and current owner
+  decisions govern; implementation proposals, editorial summaries and historical
+  observations are not interchangeable with them. Reconcile supplied conflicts
+  against authorized context. Investigate discoverable facts yourself; ask one
+  focused question only for an unresolved consequential owner decision. Apply
+  explicit later decisions without reopening them. A question's successful
+  transport is not a substantive answer: keep that decision unresolved and
+  continue independently safe work. Do not invent host result-shape parsing.
+- Bind consequential assertions to inspected passages supporting their meaning
+  and precision, not merely a related URL, product term, endpoint or successful
+  tool call. Separate provider-native capability, application responsibility,
+  proposed integration and demonstrated behavior. Bound completeness to inspected
+  sources; high confidence in a supported local finding does not imply exhaustive
+  coverage. Access failure now neither erases inspected historical evidence nor
+  upgrades it to current capability proof.
+- Propagate changed premises through affected current prose, tables, diagrams,
+  requirement mappings, estimates and supporting decisions: update them or flag
+  them explicitly as unresolved. A correction row or chat acknowledgement alone
+  is not propagation. Retain superseded decisions as historical, not conflicting
+  current instructions. Apply the owner's exact restriction without turning it
+  into an unrelated terminology ban. Keep the requested outcome intact; an
+  infeasible target does not authorize silently substituting a smaller one.
+- Separate owner targets, assistant estimates, sensitivity assumptions, required
+  improvement and measured outcomes. Precise historical numeric attributions need
+  their own evidence. Forecast with actual work windows, non-interchangeable lane
+  skills/capacity, dependencies, shared research/review capacity, human-only work
+  and external waits. Charge shared overhead once. Unknown remaining work is not
+  zero; spare aggregate capacity cannot rescue a constrained critical lane.
+  State uncertainty or infeasibility without invented savings or deleting scope.
+- Preserve decision-critical evidence and references with a named owner. If
+  retaining a document revision, retain the assets it references too, with
+  resolvable links; do not duplicate every transcript or temporary file.
+- Distinguish structural validity, source inspection, rendered readability,
+  runtime behavior and owner acceptance. A failed or unavailable bounded check
+  remains a limitation at its required level, not PASS under an easier criterion.
+  Session-verified reviewer identity/verdict establishes execution facts, not
+  substantive review quality.
 
 ## Verification
 

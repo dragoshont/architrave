@@ -92,6 +92,7 @@ Do not reload this contract or preload the table. Read only the relevant source:
 | Need | Source |
 |---|---|
 | Child dispatch, host differences, risk floors | `knowledge/execution-policy.md` |
+| Consequential research, corrections, forecasts and handoffs | `knowledge/execution-policy.md`, Evidence-first analysis |
 | Adopted resumable work, external mutation, recovery, primary stalls | `knowledge/runtime-v2.md`; canonical Run API |
 | Child execution | `architrave-work`, assigned mode only |
 | Minimum sufficient change | `knowledge/yagni.md` |
