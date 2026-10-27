@@ -358,6 +358,31 @@ def review_session(reviewer: str, verdict: str, final: bool = True) -> tuple[str
     return "verified", None
 
 
+BOARD_POINTER = "program-board.watch"
+
+
+def board_watcher(session: str) -> dict[str, object] | None:
+    """The live program-board watcher a coordinator session registered (files/program-board.watch), if any."""
+    try:
+        pointer = json.loads((session_home() / session / "files" / BOARD_POINTER).read_text(encoding="utf-8"))
+        os.kill(int(pointer["pid"]), 0)
+        return pointer
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def board_note(lanes: list[dict[str, str]]) -> str | None:
+    """A reminder when a coordinator with running lanes has no live board; lane sessions are never reminded."""
+    session = os.environ.get("COPILOT_AGENT_SESSION_ID", "").lower()
+    running = [lane for lane in lanes if lane["state"].lower() == "running"]
+    if not running or not SESSION_UUID.fullmatch(session) or not session_home().is_dir():
+        return None
+    if any(lane["session id"].lower() == session for lane in running) or board_watcher(session):
+        return None
+    return (f"{len(running)} lanes running and no program board for this coordinator; start "
+            "`python harness/program_board.py --watch 120` and open it in the browser canvas")
+
+
 def strict_reviews() -> bool:
     """On a host that keeps local session logs, completion requires session-verified reviews."""
     return session_home().is_dir()
@@ -892,6 +917,10 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
     max_parallel, cap_error = parallel_cap(config)
     errors.extend([cap_error] if cap_error else [])
     errors.extend(lane_errors(text, reqs, max_parallel))
+    lanes = ledger_table(text, ("lane", "repo", "project id"), LANE_COLUMNS)
+    reminder = board_note(lanes)
+    if reminder:
+        print(f"note  {reminder}")
     ids = [part.strip() for part in (claim or "").split(",") if part.strip()]
     if expect is not None and not handoff:
         errors.append("--expect requires --handoff")
@@ -933,8 +962,14 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
             errors.append(f"not done: narrow corrections lack owner acknowledgement: {', '.join(unacked)}")
         if blockers:
             errors.append(f"not done: open serious findings: {', '.join(blockers)}")
-        for lane in ledger_table(text, ("lane", "repo", "project id"), LANE_COLUMNS):
-            unreviewed = lane_review_gaps(lane, reqs, strict_reviews(), bool((config.get("review") or {}).get("crossFamily"))
+        strict = strict_reviews()
+        for lane in lanes:
+            if lane["state"].lower() == "done" and lane["session id"] in {"", "-"}:
+                errors.append(f"not done: lane {lane['lane']} is done without the session that did the work")
+            elif lane["state"].lower() == "done" and strict and session_facts(lane["session id"]) is None:
+                errors.append(f"not done: lane {lane['lane']} session {lane['session id'][:8]} is not logged on this machine; "
+                              "record the visible session that did the work")
+            unreviewed = lane_review_gaps(lane, reqs, strict, bool((config.get("review") or {}).get("crossFamily"))
                                           if isinstance(config.get("review"), dict) else False)
             if unreviewed:
                 errors.append(f"not done: lane {lane['lane']} ({lane['state']}) lacks a PASS review on {', '.join(unreviewed)}")

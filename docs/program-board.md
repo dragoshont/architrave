@@ -17,7 +17,10 @@ coordinator session defaults to `COPILOT_AGENT_SESSION_ID` and the output to tha
 session's `files/program-board.html`; open it in the browser canvas. With
 `--watch` it rewrites the file every 120 seconds, the page reloads itself, and
 the watcher exits after the program has been quiet for two hours. The lead
-starts it for every non-trivial task.
+starts it for every non-trivial task. A watcher registers itself in the
+coordinator session's `files/program-board.watch`; while lanes are running,
+`requirements` run by the coordinator prints a note when no live watcher is
+registered (lane sessions are never reminded). It is a reminder, not a failure.
 
 ## What it shows
 

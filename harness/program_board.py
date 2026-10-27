@@ -453,6 +453,9 @@ def main() -> int:
                     return 0
         os.write(fd, str(os.getpid()).encode())
         os.close(fd)
+        pointer = STATE_HOME / args.session / "files" / gate.BOARD_POINTER
+        pointer.parent.mkdir(parents=True, exist_ok=True)
+        pointer.write_text(json.dumps({"pid": os.getpid(), "output": str(out), "ledger": str(ledger)}), encoding="utf-8")
     try:
         while True:
             try:
@@ -483,6 +486,12 @@ def main() -> int:
     finally:
         if args.watch and lock.is_file() and lock.read_text().strip() == str(os.getpid()):
             lock.unlink()
+            pointer = STATE_HOME / args.session / "files" / gate.BOARD_POINTER
+            try:
+                if json.loads(pointer.read_text(encoding="utf-8")).get("pid") == os.getpid():
+                    pointer.unlink()
+            except (OSError, ValueError, AttributeError):
+                pass
 
 
 if __name__ == "__main__":

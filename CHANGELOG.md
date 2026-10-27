@@ -5,6 +5,16 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## 0.21.24
+
+- `requirements --done` fails on a done lane without a session ID and, where
+  local session logs exist, on a done lane whose session is not logged on this
+  machine. Hidden subagents have no session UUID, so lanes are visible sessions
+  (or the coordinator's own direct work).
+- The program-board watcher registers itself in the coordinator session's
+  `files/program-board.watch`; `requirements` run by a coordinator with running
+  lanes notes when no live board is registered.
+
 ## 0.21.23
 
 - Review notes can name the reviewer session: `review: <session-uuid> <verdict>`

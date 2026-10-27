@@ -320,6 +320,11 @@ Verify: `make e2e`
         self.assertNotIn("lacks a PASS review", out)
         code, out = self.requirements(example.replace(row, row + "; review: deadbeef-0000-0000-0000-000000000000 PASS") + lane, "--done")
         self.assertIn("lacks a PASS review on REQ-02", out, "a session not logged here is unverified")
+        self.assertIn("lane L1 is done without the session that did the work", out)
+        for lane_session, expected in (("4eeeeeee-1111-2222-3333-444444444444", True), (good, False)):
+            code, out = self.requirements(example.replace(row, row + f"; review: {good} PASS")
+                                          + lane.replace("| - | - | done |", f"| {lane_session} | - | done |"), "--done")
+            self.assertEqual("is not logged on this machine" in out, expected, out)
 
     def test_spec_md_is_the_default_requirements_file_and_checks_validate_it(self):
         (self.hub / "architrave.config.json").write_text(json.dumps(
@@ -764,6 +769,29 @@ class ReviewVerification(unittest.TestCase):
                                ("Verdict: pass", "PASS"), ("Pass the gate first.", None)):
             self.assertEqual(self.gate.ruling(text), expected, text)
         self.assertEqual(self.gate.review_session(report, "PASS")[0], "contradicted")
+
+    def test_board_note_reminds_only_a_coordinator_without_a_live_watcher(self):
+        coordinator, child = "aaaaaaaa-9999-2222-3333-444444444444", "bbbbbbbb-9999-2222-3333-444444444444"
+        lanes = [{"lane": "L1", "state": "running", "session id": child}]
+        old = os.environ.get("COPILOT_AGENT_SESSION_ID")
+        try:
+            os.environ["COPILOT_AGENT_SESSION_ID"] = coordinator
+            (self.home / "session-state").mkdir(parents=True, exist_ok=True)
+            self.assertIn("no program board", self.gate.board_note(lanes))
+            pointer = self.home / "session-state" / coordinator / "files" / self.gate.BOARD_POINTER
+            pointer.parent.mkdir(parents=True)
+            pointer.write_text(json.dumps({"pid": os.getpid(), "output": "x.html"}))
+            self.assertIsNone(self.gate.board_note(lanes), "a live watcher satisfies it")
+            pointer.write_text(json.dumps({"pid": 2 ** 22 + 12345, "output": "x.html"}))
+            self.assertIn("no program board", self.gate.board_note(lanes), "a dead watcher does not")
+            os.environ["COPILOT_AGENT_SESSION_ID"] = child
+            self.assertIsNone(self.gate.board_note(lanes), "lane sessions are not reminded")
+            self.assertIsNone(self.gate.board_note([dict(lanes[0], state="done")]))
+        finally:
+            if old is None:
+                os.environ.pop("COPILOT_AGENT_SESSION_ID", None)
+            else:
+                os.environ["COPILOT_AGENT_SESSION_ID"] = old
 
     def test_cross_family_and_parallel_cap(self):
         lane_sid, review_sid = "dddddddd-1111-2222-3333-444444444444", "eeeeeeee-1111-2222-3333-444444444444"
