@@ -60,12 +60,15 @@ compact waterfall: full name/model at left, shared-timeline activity bar in the
 middle, and compact context/consumption indicators at right. Timing stays
 beneath the bar. The context circle labels the approximate current size; its
 filled area is proportional to current context / model limit, inside a fixed
-capacity outline. Token bars stack new input, cached input and output on the
-same scale relative to the busiest session, not a capacity or monetary cost.
+capacity outline. Token bars and labels use **In / Out / Cache**: In is uncached
+input, Out is generated text, and Cache is reused input. Segments share the same
+scale relative to the busiest session, not a capacity or monetary cost.
 On narrow screens the indicators move below the bar, preserving aligned names
-and activity tracks. Per-row Details holds exact metrics, UUID, full UTC
+and activity tracks. Expand the model label under a session name for exact
+metrics, full status, agent identity, UUID, full UTC
 timestamps and observed reviewer roles; print includes these automatically.
 There is no separate duplicate metrics list or hover-only value.
+Ordinary desktop rows fit within 50px; longer names wrap rather than truncate.
 
 ## Completion
 

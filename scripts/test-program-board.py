@@ -81,7 +81,7 @@ class ProgramBoard(unittest.TestCase):
             self.assertNotIn("sq done warn' data-d='REQ-1", page)
             self.assertIn("L2-remote", page)
             self.assertIn("not logged on this machine", page)
-            self.assertIn("130,000 new input / 40,000 cached / 910 output tokens", page)
+            self.assertIn("130,000 uncached input / 910 output / 40,000 cached input tokens", page)
             self.assertEqual(page.count("<article class='session-record'>"), 3)
             self.assertNotIn("Full session names and exact history metrics", page)
             self.assertNotIn("Hover a row", page)
@@ -312,11 +312,11 @@ class EvidenceAndSnapshots(unittest.TestCase):
         self.assertAlmostEqual((radius / 14) ** 2, 122299 / 272000, delta=.001)
         self.assertIn(">122k</text>", page)
         self.assertIn("Current context 122,299 of 272,000; peak 222,272", page)
-        segments = re.findall(r"class='token-(?:new|cache|out)' x='([\d.]+)' width='([\d.]+)'", page)
+        segments = re.findall(r"class='token-(?:in|cache|out)' x='([\d.]+)' width='([\d.]+)'", page)
         self.assertEqual(len(segments), 3)
-        self.assertEqual([round(float(w) / 92 * 350) for _, w in segments], [100, 200, 50])
+        self.assertEqual([round(float(w) / 92 * 350) for _, w in segments], [100, 50, 200])
         self.assertAlmostEqual(sum(float(w) for _, w in segments), 92, places=2)
-        self.assertIn("100 new input / 200 cached / 50 output tokens", page)
+        self.assertIn("100 uncached input / 50 output / 200 cached input tokens", page)
         session.update(context=0, context_limit=0)
         self.assertIn("limit unavailable", self.pb.render(data))
 
@@ -447,16 +447,19 @@ class EvidenceAndSnapshots(unittest.TestCase):
                         self.assertTrue(record.locator("h3").is_visible())
                         self.assertTrue(record.locator(".history-visual .track").is_visible())
                         self.assertTrue(record.locator(".context-circle").is_visible())
-                        self.assertIn(" cache", record.locator(".token-usage").inner_text())
-                        self.assertIn(" out", record.locator(".token-usage").inner_text())
+                        self.assertTrue(record.locator(".session-model").is_visible())
+                        self.assertEqual(record.locator(".token-counts small").all_text_contents(), ["In", "Out", "Cache"])
                     self.assertTrue(page.locator(".session-record").evaluate_all("""rows => rows.every(row => {
                         const name = row.querySelector('h3').getBoundingClientRect();
                         const bar = row.querySelector('.track').getBoundingClientRect();
                         return name.right <= bar.left && Math.abs(name.top - bar.top) < 3;
                     })"""), "names and activity bars retain aligned waterfall rows")
+                    if width == 760:
+                        self.assertLessEqual(page.locator(".session-record").first.bounding_box()["height"], 50,
+                                             "ordinary desktop rows must remain compact")
                     details = page.locator(".session-provenance").first
                     details.locator("summary").click()
-                    self.assertIn("output tokens", details.inner_text())
+                    self.assertIn("uncached input", details.inner_text())
                     self.assertIn("Context", details.inner_text())
                     details.locator("summary").click()
                     page.screenshot(path=str(output / f"board-{width}.png"), full_page=True)
@@ -483,7 +486,7 @@ class EvidenceAndSnapshots(unittest.TestCase):
                     if "Cumulative session history" in content:
                         self.assertIn("Coordinator", content, "timeline heading must not be orphaned")
                 for content in pages[1:-1]:
-                    self.assertGreaterEqual(content.count("new input /"), 3, "unexpected large pagination gap")
+                    self.assertGreaterEqual(content.count("uncached input /"), 3, "unexpected large pagination gap")
                 # Completion after the saved/observed page is not retroactive.
                 with log.open("a") as handle:
                     handle.write(json.dumps({"type": "session.task_complete", "timestamp": "2026-10-29T09:00:00Z", "data": {}}) + "\n")

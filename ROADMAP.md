@@ -10,7 +10,9 @@ History refinement (REQ-57): preserve the compact waterfall while combining each
 row's activity bar with its full name, model and exact metrics; remove the
 duplicate metrics list without dropping print or per-row log details.
 Compact context circles show approximate current size with proportional area;
-stacked bars distinguish new, cached and output token consumption.
+stacked bars distinguish In (uncached), Out and Cache token consumption.
+Rows are tightened to 50px for ordinary desktop names, with full metadata in
+the model-label disclosure.
 
 Artifact locator/digest recognition, separate declared review bindings and
 placeholder rejection extend the existing board/gates. Snapshot generation,

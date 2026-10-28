@@ -371,32 +371,39 @@ def timeline(sessions: list[dict], lane_by_session: dict, remote: list[dict] = (
         ctx = (s["context"] / s["context_limit"]) if s["context_limit"] else 0
         radius = 14 * min(max(ctx, 0), 1) ** .5
         segments, token_x = [], 0
-        for field, kind in (("input", "new"), ("cached", "cache"), ("output", "out")):
+        for field, kind in (("input", "in"), ("output", "out"), ("cached", "cache")):
             segment_width = gauge * s[field] / top_tokens
             segments.append(f"<rect class='token-{kind}' x='{token_x:.3f}' width='{segment_width:.3f}' height='6'/>")
             token_x += segment_width
         capacity = f"of {s['context_limit']:,}" if s["context_limit"] else "limit unavailable"
         review = ("ran reviewer " + ", ".join(sorted(s["reviews"])) + " (verdict is in the ledger, not checked here)"
                   if s["reviews"] else "no reviewer run")
+        status = state_of(s, lane)
+        brief_status = status.removeprefix("coordinator · ").split(" · ")[0]
+        rotation = (" <span class='rotation' aria-label='Rotate at next task boundary'>↻</span>"
+                    if s.get("rotate") == "hard" else "")
         rows.append(
             f"<article class='session-record'><h3>{esc(s['name'])}</h3>"
-            f"<p class='session-model'>{esc(s['agent'] or 'default')} · {esc(s['model'] or 'model unavailable')}</p>"
             f"<div class='history-visual'><div>"
             f"<svg class='timeline' viewBox='0 0 {width} 10' preserveAspectRatio='none' role='img' aria-label='Session activity on the shared UTC timeline'>"
             f"<rect class='lane-bg' width='{width}' height='10'/><rect class='track {tone}' x='{x:.1f}' width='{w:.1f}' height='10'/>{marks}</svg>"
-            f"<p>{'started earlier · ' if s['start'] < t0 else ''}{s['active_min']:.1f} model / {s['wall_min']:.1f} wall minutes · {s['calls']:,} calls</p>"
-            f"<p>{esc(state_of(s, lane))}</p></div><div class='session-usage'>"
+            f"<p>{'started earlier · ' if s['start'] < t0 else ''}{s['active_min']:.0f}m model · {s['wall_min']:.0f}m elapsed · {esc(brief_status)}{rotation}</p>"
+            f"</div><div class='session-usage'>"
             f"<svg class='context-circle' viewBox='0 0 32 32' role='img' aria-label='Current context {s['context']:,} {capacity}; peak {s['max_context']:,}'>"
             f"<circle class='context-limit' cx='16' cy='16' r='14'/><circle class='context-disc' cx='16' cy='16' r='{radius:.2f}'/>"
             f"<text class='context-value' x='16' y='19' text-anchor='middle'>{num(s['context'])}</text></svg>"
             f"<div class='token-usage'><svg class='timeline token-bar' viewBox='0 0 {gauge} 6' preserveAspectRatio='none' role='img' "
-            f"aria-label='Cumulative tokens: {s['input']:,} new, {s['cached']:,} cached, {s['output']:,} output'>"
+            f"aria-label='Cumulative tokens: {s['input']:,} uncached input, {s['output']:,} output, {s['cached']:,} cached input'>"
             f"<rect class='gauge' width='{gauge}' height='6'/>{''.join(segments)}</svg>"
-            f"<p>{num(s['input'])} new · {num(s['cached'])} cache · {num(s['output'])} out</p></div></div></div>"
-            f"<details class='session-provenance'><summary class='interactive-only' aria-label='Exact metrics and log details (UTC)'>Details</summary>"
-            f"<p>{s['input']:,} new input / {s['cached']:,} cached / {s['output']:,} output tokens; "
+            f"<div class='token-counts'><span><b>{num(s['input'])}</b><small>In</small></span>"
+            f"<span><b>{num(s['output'])}</b><small>Out</small></span><span><b>{num(s['cached'])}</b><small>Cache</small></span></div></div></div></div>"
+            f"<details class='session-provenance'><summary class='interactive-only' aria-label='Exact metrics and log details (UTC)'>"
+            f"<span class='session-model'>{esc(s['model'] or 'model unavailable')}</span></summary>"
+            f"<p>{s['input']:,} uncached input / {s['output']:,} output / {s['cached']:,} cached input tokens; "
             f"Context {s['context']:,} / {s['context_limit']:,} · peak {s['max_context']:,}</p>"
-            f"<p>{esc(s['id'])} · {s['start'].astimezone(timezone.utc).isoformat(timespec='seconds')} to "
+            f"<p>{s['active_min']:.1f} model / {s['wall_min']:.1f} wall minutes · {s['calls']:,} calls · {esc(status)}</p>"
+            f"<p>{esc(s['agent'] or 'default')} · {esc(s['model'] or 'model unavailable')} · {esc(s['id'])} · "
+            f"{s['start'].astimezone(timezone.utc).isoformat(timespec='seconds')} to "
             f"{s['end'].astimezone(timezone.utc).isoformat(timespec='seconds')} · {esc(review)}</p></details></article>")
     for lane in remote:
         rows.append(f"<article class='session-record'><h3>{esc(lane['lane'])}</h3>"
@@ -406,7 +413,8 @@ def timeline(sessions: list[dict], lane_by_session: dict, remote: list[dict] = (
     return (f"<div class='history-axis'><div>{ticks}</div></div>{''.join(rows)}"
             + ("<p class='note'>No local session logs found for this program.</p>" if not timed else "")
             + "<p class='note'>Bars share the UTC timeline; dark marks are model turns. Circle area: current context / limit. "
-            "Token bars: new, cached, output; relative to the busiest session, not monetary cost. Exact values: Details.</p>")
+            "In = uncached input; Out = generated; Cache = reused input. Token bars share the busiest-session scale, not monetary cost. "
+            "Expand a model label for exact values.</p>")
 
 
 def render(data: dict) -> str:
@@ -429,7 +437,7 @@ def render(data: dict) -> str:
              ("accepted, not reviewed", str(len(unreviewed_accepted))),
              ("PASS review executions verified", f"{len(verified & set(active_req))}/{len(reviewed & set(active_req))}"),
              ("worker lanes running", f"{running}/{len(workers)}"),
-             ("history sessions", str(len(sessions))), ("history tokens new/cache/out", f"{num(total_in)}/{num(total_cached)}/{num(total_out)}"),
+             ("history sessions", str(len(sessions))),              ("history tokens in/out/cache", f"{num(total_in)}/{num(total_out)}/{num(total_cached)}"),
              ("model min, cumulative history", f"{active:.0f}"), ("history span min", f"{wall:.0f}")]
     overview = "".join(f"<div><b>{esc(v)}</b><span>{esc(k)}</span></div>" for k, v in stats)
     boxes = []
@@ -467,27 +475,30 @@ h1{margin:0;font-size:17px;font-weight:650;letter-spacing:-.02em}h2{margin:16px 
 #detail{min-height:28px;margin:8px 0 0;padding-top:6px;border-top:1px solid #415064;font-size:11px;color:#c6d4e1;overflow-wrap:anywhere}
 .timeline{width:100%;height:12px;display:block}.token-bar{height:6px}.lane-bg,.gauge{fill:#1b2632}.turn{fill:#0b1016;opacity:.55}
 .session-usage{display:flex;align-items:flex-start;gap:8px}.token-usage{flex:1;min-width:0}
-.context-circle{width:36px;height:36px;flex-shrink:0}.context-limit{fill:none;stroke:#506071;stroke-width:1}
+.context-circle{width:32px;height:32px;flex-shrink:0}.context-limit{fill:none;stroke:#506071;stroke-width:1}
 .context-disc{fill:#d6aa4b;fill-opacity:.35}.context-value{fill:#edf3f8;font-size:8.5px;font-weight:600}
-.token-new{fill:#479bc1}.token-cache{fill:#506071}.token-out{fill:#38aa6b}
+.rotation{color:#d6aa4b}
+.token-in{fill:#479bc1}.token-cache{fill:#506071}.token-out{fill:#38aa6b}
+.token-counts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;padding-top:3px;font-variant-numeric:tabular-nums}
+.token-counts span{display:flex;flex-direction:column}.token-counts b{font-size:11px;font-weight:500}.token-counts small{font-size:9px;color:#b8c6d5}
 .history-axis,.session-record{display:grid;grid-template-columns:minmax(95px,1fr) minmax(0,2.6fr) minmax(0,1.6fr);column-gap:14px}
 .history-axis{margin:12px 0 5px;color:#b8c6d5;font-size:10px}
 .history-axis>div{grid-column:2;display:flex;justify-content:space-between}
 .history-visual{display:contents}
 .history-visual>div{min-width:0}.history-visual p{font-variant-numeric:tabular-nums;line-height:1.45}
-.history-visual>div:first-child{grid-column:2;grid-row:1/4}
-.history-visual>div:last-child{grid-column:3;grid-row:1/4}
-.session-record h3,.session-model,.session-provenance{grid-column:1}
+.history-visual>div:first-child{grid-column:2;grid-row:1/3}
+.history-visual>div:last-child{grid-column:3;grid-row:1/3}
+.session-record h3,.session-provenance{grid-column:1}
 .session-model{color:#b8c6d5;font-size:10px}.session-provenance{color:#b8c6d5}.session-provenance summary{margin:3px 0;font-size:10px}
-.session-provenance[open]{grid-column:1/-1;grid-row:4}
+.session-provenance[open]{grid-column:1/-1;grid-row:3}
 @media(max-width:520px){
 .history-axis,.session-record{grid-template-columns:95px minmax(0,1fr);column-gap:10px}
-.history-visual>div:last-child{grid-column:2;grid-row:4;margin-top:6px}
-.session-provenance[open]{grid-row:5}
+.history-visual>div:last-child{grid-column:2;grid-row:3;margin-top:6px}
+.session-provenance[open]{grid-row:4}
 }
 footer{font-size:9px;color:#8fa1b3;margin-top:10px;line-height:1.5}
 .provenance,.session-record,.evidence-record{overflow-wrap:anywhere}
-.session-record{padding:9px 0;font-size:11px}
+.session-record{padding:4px 0;font-size:11px}
 .session-record h3{margin:0;font-size:12px}.session-record p{margin:3px 0}
 .evidence-record{font-size:11px;margin:6px 0}
 summary{cursor:pointer;font-size:11px;margin:8px 0}
@@ -545,7 +556,7 @@ details,details>*,details::details-content{display:block;content-visibility:visi
             f"<p id='page-observation'>Page observation unavailable until loaded in a script-enabled consumer.</p>"
             f"<p id='export-observation'>No print/export observation recorded in these generated bytes.</p></div>"
             f"<div class='stats'>{overview}</div>"
-            f"<p class='note'>Cumulative history totals: {total_in:,} new input / {total_cached:,} cached / {total_out:,} output tokens.</p>"
+            f"<p class='note'>Cumulative history totals: {total_in:,} uncached input / {total_out:,} output / {total_cached:,} cached input tokens.</p>"
             f"<p class='note'>Completion acceptance: {esc(completion)}.</p>"
             + ("<ul class='issues'>" + "".join(f"<li>{esc(e)}</li>" for e in data["errors"]) + "</ul>" if data["errors"] else "")
             + ("<ul class='issues'>" + "".join(f"<li>Open serious finding blocks completion: {esc(e)}</li>" for e in data["blockers"]) + "</ul>" if data["blockers"] else "")
@@ -554,8 +565,7 @@ details,details>*,details::details-content{display:block;content-visibility:visi
             f"<p id='detail' role='status'>Select a square to see its requirement.</p>"
             + (f"<details open><summary>Artifact identity and unresolved evidence</summary><ul>{identity_rows}</ul></details>" if identity_rows else "")
             + f"<h2>Cumulative session history (not current-task cost)</h2>"
-            f"<p class='note'>Selected REQs above; recursive coordinator history below may span multiple tasks. "
-            f"Child metrics start no earlier than the coordinator. Synthetic requirement groups are not workers.</p>"
+            f"<p class='note'>Coordinator and child history; totals may include earlier tasks.</p>"
             f"{timeline(sessions, data['lane_by_session'], data['remote'])}"
             f"<footer>Squares show ledger status. A gold ring marks unsupported, incomplete, missing, changed or unreadable evidence. "
             f"A resolving commit establishes existence only, not a particular artifact's identity. Artifact SHA256 and declared review "
