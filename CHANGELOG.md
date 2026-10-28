@@ -5,6 +5,27 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## 0.21.26
+
+- Session boards require explicit REQ selection (`--reqs`), or an intentional
+  repository-wide history view (`--all-reqs`). Startup reminders use lane REQs;
+  invalid scope fails before watcher registration or output replacement.
+- Preserve the tile dashboard, full legend and compact waterfall while removing
+  explanatory header prose. Short titles and deduplicated repository names
+  replace worktree labels; technical metadata stays under Board details.
+- Show context k-tokens inside an outline ring, concentric In/Out rings and a
+  separate Cache ring, plus reported model-bound reasoning effort and recorded
+  assistant-turn counts. Unknown effort is not inferred.
+- Distinguish artifact identity, declared review binding, semantic acceptance,
+  generated snapshots, consumer observations and cumulative session history.
+  Print preserves exact values, full names and all errors.
+- Extend source/actor-provenance calibration without claiming model-performance
+  improvement. Background-command/REQ linking remains unimplemented.
+
+Updating a checkout does not update an installed plugin. Update the plugin and
+start a fresh session; restart/regenerate existing boards with explicit REQ
+scope. Historical requirements remain in their repository ledger.
+
 ## 0.21.25
 
 - Evidence-first analysis guidance for source authority, passage entailment,

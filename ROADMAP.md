@@ -1,6 +1,6 @@
 # Roadmap
 
-## Unreleased - Truthful program-board evidence (#32, REQ-53..55)
+## v0.21.26 - Session-scoped program board (#32, REQ-53..59)
 
 Session-scoped follow-up (REQ-56): board generation requires selected session
 REQs or an explicit repository-wide view; startup reminders supply lane REQs
