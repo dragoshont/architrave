@@ -31,9 +31,10 @@ plugin-only structural scope are labelled separately. History is cumulative;
 synthetic groups are not workers. Print preserves full names/exact values and
 all errors, with optional real-browser/PDF acceptance cases. Actor-provenance
 and scoped-review semantic fixtures extend evidence-first calibration. Source
-delivery accepted with independent review PASS, local manifests and a real
-five-page synthetic PDF/browser check; no new model-performance, release or
-installed-behavior claim.
+delivery accepted with independent review PASS, local manifests and actual
+browser/PDF checks. Published v0.21.26 from dd4889f; downloaded public archives
+match all 282 tagged files. No new model-performance or installed-behavior claim:
+plugin update and fresh sessions/board regeneration are still needed for adoption.
 
 ## v0.21.25 - Evidence-first analysis (#31, REQ-48..50)
 
