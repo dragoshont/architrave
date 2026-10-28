@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 """Program board renders lanes, REQ dots, children and metrics from a ledger and local session logs."""
+import argparse
+from datetime import datetime, timezone
+import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -7,11 +11,13 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 COORD = "11111111-1111-1111-1111-111111111111"
 CHILD = "22222222-2222-2222-2222-222222222222"
 REMOTE = "33333333-3333-3333-3333-333333333333"
+BROWSER_OUTPUT = None
 LANE = ("| Lane | Repo | Project ID | Branch | Push target | REQ IDs | Depends on | Session ID | Assignment ID | State | "
         "Mutable paths | Heavy build | Preflight | Preflight evidence | Preflight reported | Owner-only decisions | Superseded by |\n"
         + "|---" * 17 + "|\n")
@@ -107,7 +113,8 @@ class ProgramBoard(unittest.TestCase):
                                   "--session", "../escape", "--output", str(out)], capture_output=True, text=True, env=env, timeout=30)
             self.assertEqual(bad.returncode, 2)
             self.assertIn("not a host session UUID", bad.stderr)
-            self.assertIn("http-equiv='refresh' content='120'", out.read_text())
+            self.assertNotIn("http-equiv='refresh'", out.read_text())
+            self.assertIn("Stopped watcher; static snapshot", out.read_text())
             out.with_suffix(".pid").write_text(str(os.getpid()))
             dup = subprocess.run([sys.executable, str(ROOT / "harness/program_board.py"), "--ledger", str(ledger),
                                   "--output", str(out), "--watch", "120"], capture_output=True, text=True, env=env, timeout=30)
@@ -162,5 +169,251 @@ class Parsing(unittest.TestCase):
             self.assertEqual(clipped["baseline"], 70000, "baseline is the first prompt even when events are clipped")
 
 
+class EvidenceAndSnapshots(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.base = Path(self.tmp.name)
+        self.ledger = self.base / "ledger"
+        self.ledger.mkdir()
+        self.env = patch.dict(os.environ, {"COPILOT_HOME": str(self.base / "home")})
+        self.env.start()
+        self.addCleanup(self.env.stop)
+        spec = importlib.util.spec_from_file_location("board_fixture", ROOT / "harness/program_board.py")
+        self.pb = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.pb)
+        self.state = self.pb.STATE_HOME
+        self.source = self.ledger / "SPEC.md"
+        self.source.write_text(
+            "| ID | Requirement | Acceptance | Owner | Status | Evidence |\n|---|---|---|---|---|---|\n"
+            "| REQ-1 | Initial task | Read it | writer | open | - |\n"
+            "\n## Handoff\nNext: finish\nFailed approaches: none\nVerify: read\n")
+        events(self.state / COORD, [{"type": "session.start", "timestamp": "2026-10-26T23:00:00-07:00",
+                                    "data": {"selectedModel": "fixture"}}])
+
+    def git(self, *args):
+        return subprocess.run(["git", "-C", str(self.ledger), *args], capture_output=True, text=True, check=True).stdout.strip()
+
+    def commit_seed(self):
+        self.git("init", "-q")
+        (self.ledger / "seed").write_text("unrelated")
+        self.git("add", "seed")
+        self.git("-c", "user.email=a@b", "-c", "user.name=a", "commit", "-qm", "unrelated")
+        return self.git("rev-parse", "HEAD")
+
+    def test_artifact_identity_and_declared_review_are_separate(self):
+        unrelated = self.commit_seed()
+        artifact = self.ledger / "uncommitted report.md"
+        artifact.write_bytes(b"reviewed artifact\n")
+        digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+
+        def claim(**extra):
+            return "artifact: " + json.dumps({"path": artifact.name, "sha256": digest, **extra})
+
+        def identity(text):
+            return self.pb.evidence_identity(text, self.ledger, [self.ledger])
+
+        self.assertEqual(identity("-")["state"], "missing")
+        self.assertEqual(identity("artifact: report.md " + unrelated)["state"], "unsupported")
+        self.assertEqual(identity("artifact: " + json.dumps({"path": artifact.name}))["state"], "incomplete")
+        self.assertEqual(identity(digest + " " + unrelated)["state"], "unsupported")
+        self.assertEqual(identity("artifact: {} " + unrelated)["state"], "unsupported")
+        result = identity(claim())
+        self.assertEqual(result["state"], "verified")
+        self.assertIn("review binding missing", result["detail"])
+        bound = claim(reviewed_sha256=digest) + "; review: judge PASS"
+        self.assertFalse(self.pb.evidence_resolves(bound + " " + unrelated, [self.ledger]))
+        result = identity(bound)
+        self.assertEqual(result["state"], "verified")
+        self.assertIn("declared digest binding; review note only", result["detail"])
+        self.assertIn("review binding missing", identity(claim(reviewed_sha256="0" * 64) + "; review: judge PASS")["detail"])
+        reviewer = self.state / CHILD
+        events(reviewer, [
+            {"type": "subagent.selected", "data": {"agentName": "architrave:adversarial-judge"}},
+            {"type": "session.task_complete", "data": {"summary": "Verdict: PASS\nInspected the supplied artifact."}}])
+        self.assertIn("review execution verified", identity(claim(reviewed_sha256=digest) + f"; review: {CHILD} PASS")["detail"])
+        artifact.write_text("changed")
+        self.assertEqual(identity(bound + " " + unrelated)["state"], "changed")
+        artifact.unlink()
+        self.assertEqual(identity(bound + " " + unrelated)["state"], "missing")
+        self.assertEqual(identity("commit " + unrelated)["state"], "commit")
+        self.assertIn("artifact identity", identity(unrelated)["detail"])
+        self.assertEqual(identity("artifact: " + json.dumps({"path": str(self.ledger), "sha256": digest}))["state"], "unavailable")
+
+    def test_plugin_only_notes_blockers_source_and_six_errors(self):
+        sha = self.commit_seed()
+        data = self.pb.build(self.ledger, COORD)
+        self.assertEqual(data["source_state"], "untracked")
+        self.assertEqual(data["source_digest"], hashlib.sha256(self.source.read_bytes()).hexdigest())
+        self.assertEqual(data["commit"], sha)
+        page = self.pb.render(data)
+        self.assertIn("<b>0/0</b><span>worker lanes running", page)
+        self.assertIn("Synthetic requirement group (not a worker lane)", page)
+        self.assertIn("ledger structural checks", page)
+        self.assertIn("unavailable here: no repository configuration", page)
+        self.assertFalse((self.ledger / "architrave.config.json").exists())
+        self.git("add", "SPEC.md")
+        self.git("-c", "user.email=a@b", "-c", "user.name=a", "commit", "-qm", "ledger")
+        self.assertEqual(self.pb.build(self.ledger, COORD)["source_state"], "clean")
+        self.source.write_text(self.source.read_text().replace("Initial task", "Final correction"))
+        changed = self.pb.build(self.ledger, COORD)
+        self.assertEqual(changed["source_state"], "modified")
+        self.assertNotEqual(data["source_digest"], changed["source_digest"])
+        self.source.write_text(self.source.read_text() + (
+            "\n| ID | Question | Source | Claim | Author | Status | Reviewed by |\n|---|---|---|---|---|---|---|\n"
+            "| E-1 | Route | absent@abcdef1:route.md | Route exists | writer | unverified | - |\n"
+            "\n| ID | Severity | Target | Finding | Raised by | Disposition | Verified by | Evidence |\n|---|---|---|---|---|---|---|---|\n"
+            "| F-1 | high | REQ-1 | Auth uncertain | judge | open | - | - |\n"))
+        noted = self.pb.build(self.ledger, COORD)
+        self.assertTrue(noted["notes"])
+        self.assertEqual(noted["blockers"], ["F-1"])
+        self.assertIn("absent checkout not configured", self.pb.render(noted))
+        self.assertIn("Open serious finding blocks completion: F-1", self.pb.render(noted))
+        bad_rows = "".join(f"| REQ-bad{i} | Bad row {i} | check | writer | invalid-{i} | - |\n" for i in range(6))
+        self.source.write_text(self.source.read_text().replace("\n\n## Handoff", "\n" + bad_rows + "\n## Handoff"))
+        data = self.pb.build(self.ledger, COORD)
+        self.assertEqual(len(data["errors"]), 6)
+        for i in range(6):
+            self.assertIn(f"REQ-bad{i} status", self.pb.render(data))
+
+    def test_completion_and_multi_day_utc_history(self):
+        log = self.state / COORD / "events.jsonl"
+        with log.open("a") as handle:
+            handle.write("\n" + json.dumps({"type": "session.task_complete", "timestamp": "2026-10-29T01:00:00-07:00", "data": {}}))
+        complete = self.pb.build(self.ledger, COORD)
+        self.assertIn("Host task completion observed", self.pb.render(complete))
+        self.assertIn("10-27 06:00 UTC", self.pb.render(complete))
+        self.assertIn("10-29 08:00 UTC", self.pb.render(complete))
+        with log.open("a") as handle:
+            handle.write("\n" + json.dumps({"type": "assistant.turn_start", "timestamp": "2026-10-29T08:01:00Z", "data": {}}))
+        active = self.pb.build(self.ledger, COORD)
+        self.assertIn("pre-completion projection", self.pb.render(active))
+        self.assertIn("Cumulative session history (not current-task cost)", self.pb.render(active))
+        self.assertNotIn("http-equiv", self.pb.render(active))
+
+    def test_live_watcher_stops_with_fresh_static_snapshot(self):
+        out = self.base / "watched.html"
+        (self.state / COORD / "events.jsonl").write_text(json.dumps({
+            "type": "session.start", "timestamp": datetime.now(timezone.utc).isoformat(), "data": {}}) + "\n")
+        env = dict(os.environ, COPILOT_AGENT_SESSION_ID=COORD)
+        process = subprocess.Popen([sys.executable, str(ROOT / "harness/program_board.py"), "--ledger", str(self.ledger),
+                                    "--output", str(out), "--watch", "30"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
+        self.addCleanup(lambda: process.kill() if process.poll() is None else None)
+        self.assertIn("program-board:", process.stdout.readline())
+        self.assertIsNone(process.poll())
+        self.source.write_text(self.source.read_text().replace("Initial task", "Final correction"))
+        process.terminate()
+        process.communicate(timeout=10)
+        self.assertIn("Stopped watcher; static snapshot", out.read_text())
+        self.assertIn("Final correction", out.read_text())
+        self.assertIn(hashlib.sha256(self.source.read_bytes()).hexdigest(), out.read_text())
+        self.assertFalse(out.with_suffix(".pid").exists())
+        self.assertFalse((self.state / COORD / "files/program-board.watch").exists())
+
+    def test_browser_print_and_observation(self):
+        if BROWSER_OUTPUT is None:
+            self.skipTest("use --browser-output for actual PDF and interactive checks")
+        from playwright.sync_api import sync_playwright
+        from pypdf import PdfReader
+        output = BROWSER_OUTPUT.resolve()
+        output.mkdir(parents=True, exist_ok=True)
+        history = []
+        names = []
+        for i in range(26):
+            sid = f"{i + 10:08x}-2222-4222-8222-222222222222"
+            name = f"Worker {i:02d} complete long session name retained in static export"
+            names.append(name)
+            history += [
+                {"type": "tool.execution_start", "timestamp": "2026-10-28T08:00:00Z",
+                 "data": {"toolName": "create_session", "toolCallId": sid, "arguments": {"name": name}}},
+                {"type": "tool.execution_complete", "timestamp": "2026-10-28T08:00:01Z",
+                 "data": {"toolCallId": sid, "result": f"Created session {sid}"}}]
+            events(self.state / sid, [
+                {"type": "session.start", "timestamp": "2026-10-28T08:00:02Z", "data": {"selectedModel": "fixture"}},
+                {"type": "session.usage_record", "timestamp": "2026-10-29T08:00:00Z",
+                 "data": {"usage": {"inputTokens": 2345678, "cacheReadTokens": 1111111,
+                                    "outputTokens": 987654, "maxPromptTokens": 3000000, "model": "fixture"}}}])
+        log = self.state / COORD / "events.jsonl"
+        with log.open("a") as handle:
+            handle.write("\n" + "\n".join(json.dumps(row) for row in history) + "\n")
+        bad_rows = "".join(f"| REQ-bad{i} | Bad row {i} | check | writer | invalid-{i} | - |\n" for i in range(6))
+        self.source.write_text(self.source.read_text().replace("\n\n## Handoff", "\n" + bad_rows + "\n## Handoff"))
+        html_path = output / "program-board-print.html"
+        html_path.write_text(self.pb.render(self.pb.build(self.ledger, COORD)))
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(headless=True)
+            try:
+                page = browser.new_page(viewport={"width": 760, "height": 900})
+                page.goto(html_path.as_uri(), wait_until="networkidle")
+                self.assertIn("Page observed at", page.locator("#page-observation").inner_text())
+                original_snapshot = page.locator("#snapshot").get_attribute("data-snapshot")
+                page.locator("button.sq").first.focus()
+                page.keyboard.press("Enter")
+                self.assertIn("Initial task", page.locator("#detail").inner_text())
+                page.keyboard.press("Space")
+                self.assertIn("Initial task", page.locator("#detail").inner_text())
+                self.assertEqual(page.locator("#detail").get_attribute("role"), "status")
+                self.source.write_text(self.source.read_text().replace("Initial task", "Final correction"))
+                html_path.write_text(self.pb.render(self.pb.build(self.ledger, COORD)))
+                self.assertEqual(page.locator("#snapshot").get_attribute("data-snapshot"), original_snapshot,
+                                 "saved bytes are not a new consumer observation")
+                self.assertNotIn("Final correction", page.locator("button.sq").first.get_attribute("aria-label"))
+                page.reload(wait_until="networkidle")
+                self.assertNotEqual(page.locator("#snapshot").get_attribute("data-snapshot"), original_snapshot)
+                self.assertIn("Final correction", page.locator("button.sq").first.get_attribute("aria-label"))
+                self.assertIn("pre-completion projection", page.locator(".provenance").inner_text())
+                for i in range(6):
+                    self.assertIn(f"REQ-bad{i} status", page.locator(".issues").inner_text())
+                for width in (390, 760):
+                    page.set_viewport_size({"width": width, "height": 900})
+                    self.assertTrue(page.evaluate("document.documentElement.scrollWidth <= innerWidth"))
+                    self.assertTrue(page.locator(".session-record").evaluate_all(
+                        "nodes=>nodes.every(n=>n.scrollWidth<=n.clientWidth)"))
+                    page.screenshot(path=str(output / f"board-{width}.png"), full_page=True)
+                page.emulate_media(media="print")
+                self.assertFalse(page.locator("#detail").is_visible())
+                self.assertFalse(page.locator(".interactive-only").is_visible())
+                pdf_path = output / "program-board.pdf"
+                page.pdf(path=str(pdf_path), prefer_css_page_size=True, print_background=True)
+                pdf = PdfReader(pdf_path)
+                self.assertGreaterEqual(len(pdf.pages), 3)
+                self.assertLessEqual(len(pdf.pages), 8)
+                pages = [" ".join(p.extract_text().split()) for p in pdf.pages]
+                text = " ".join(pages)
+                for name in names:
+                    self.assertIn(name, text)
+                for value in ("1,234,567", "1,111,111", "987,654", "2,345,678", "3,000,000"):
+                    self.assertIn(value, text)
+                self.assertNotIn("Select a square", text)
+                self.assertNotIn("Hover a row", text)
+                self.assertIn("Print/export requested at", text)
+                self.assertIn("pre-completion projection", text)
+                for content in pages:
+                    if "Full session names and exact history metrics" in content:
+                        self.assertIn("Coordinator", content, "history heading must stay with its first record")
+                    if "Cumulative session history" in content:
+                        self.assertIn("Coordinator", content, "timeline heading must not be orphaned")
+                for content in pages[1:-1]:
+                    self.assertGreaterEqual(content.count("new input /"), 3, "unexpected large pagination gap")
+                # Completion after the saved/observed page is not retroactive.
+                with log.open("a") as handle:
+                    handle.write(json.dumps({"type": "session.task_complete", "timestamp": "2026-10-29T09:00:00Z", "data": {}}) + "\n")
+                self.assertIn("pre-completion projection", page.locator(".provenance").inner_text())
+                html_path.write_text(self.pb.render(self.pb.build(self.ledger, COORD)))
+                page.reload(wait_until="networkidle")
+                self.assertIn("Host task completion observed", page.locator(".provenance").inner_text())
+                (output / "browser-result.json").write_text(json.dumps({
+                    "pdf_pages": len(pdf.pages), "full_names_checked": len(names), "errors_exposed": 6,
+                    "keyboard_enter_space": "passed", "saved_vs_observed": "passed",
+                    "completion_after_snapshot": "passed", "screen_widths": [390, 760],
+                    "browser": browser.version, "synthetic_only": True}, indent=2))
+            finally:
+                browser.close()
+
+
 if __name__ == "__main__":
-    unittest.main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--browser-output", type=Path, help="also verify a real multi-page PDF and keyboard interaction (requires playwright and pypdf)")
+    args, remaining = parser.parse_known_args()
+    BROWSER_OUTPUT = args.browser_output
+    unittest.main(argv=[sys.argv[0], *remaining])

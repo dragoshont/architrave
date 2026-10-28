@@ -546,7 +546,8 @@ def review_notes(evidence: str) -> list[tuple[str, str | None]]:
     for note in REVIEW_NOTE.finditer(evidence):
         match = re.fullmatch(r"([A-Za-z][\w:.@/-]*|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
                              r"\s+(PASS|REVISE|FAIL)\b.*", note.group(1).strip(), re.I)
-        notes.append((match.group(1), match.group(2).upper()) if match else (note.group(1).strip(), None))
+        notes.append((match.group(1), match.group(2).upper()) if match and not unresolved_reviewer(match.group(1))
+                     else (note.group(1).strip(), None))
     return notes
 
 
@@ -785,7 +786,7 @@ def chain_errors(root: Path, text: str, reqs: dict[str, dict[str, str]],
             errors.append(f"{eid} needs a source and the claim it supports")
         if status == "supported":
             reviewer = row["reviewed by"].strip()
-            if reviewer in {"", "-"} or who(reviewer) == who(row["author"]):
+            if unresolved_reviewer(reviewer) or who(reviewer) == who(row["author"]):
                 errors.append(f"{eid} is supported without an independent reviewer (not the author)")
         if re.search(r"https?://", row["source"]) and not re.search(r"\d{4}-\d{2}-\d{2}", row["source"]):
             errors.append(f"{eid} web source needs a retrieval date (YYYY-MM-DD)")
@@ -831,7 +832,7 @@ def chain_errors(root: Path, text: str, reqs: dict[str, dict[str, str]],
             verifier = who(row["verified by"])
             owners = {who(reqs[t]["owner"]) for t in targets if t in reqs}
             owners |= {who(evidence[t]["author"]) for t in targets if t in evidence}
-            if verifier in {"", "-"} or verifier in owners:
+            if unresolved_reviewer(row["verified by"]) or verifier in owners:
                 errors.append(f"{fid} {severity} finding needs verification by someone other than the target's owner")
         if serious and disposition in {"accepted-risk", "deferred"} and not OWNER_ACK.search(row["evidence"]):
             errors.append(f"{fid} {severity} finding is {disposition} without a quoted owner acknowledgement")
@@ -841,6 +842,11 @@ def chain_errors(root: Path, text: str, reqs: dict[str, dict[str, str]],
                 if target in reqs and reqs[target]["status"].lower() == "accepted":
                     errors.append(f"{target} is accepted while {severity} finding {fid} is open")
     return errors, blockers, notes
+
+
+def unresolved_reviewer(value: str) -> bool:
+    return value.strip().casefold() in {"", "-", "pending", "tbd", "todo", "unknown", "unassigned",
+                                         "none", "n/a", "not reviewed", "awaiting review"}
 
 
 DEFAULT_REQUIREMENTS = "SPEC.md"

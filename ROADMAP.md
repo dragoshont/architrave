@@ -1,5 +1,16 @@
 # Roadmap
 
+## Unreleased - Truthful program-board evidence (#32, REQ-53..55)
+
+Artifact locator/digest recognition, separate declared review bindings and
+placeholder rejection extend the existing board/gates. Snapshot generation,
+page/export observations, terminal state, working-tree ledger identity and
+plugin-only structural scope are labelled separately. History is cumulative;
+synthetic groups are not workers. Print preserves full names/exact values and
+all errors, with optional real-browser/PDF acceptance cases. Actor-provenance
+and scoped-review semantic fixtures extend evidence-first calibration; no
+new model-performance, release or installed-behavior claim.
+
 ## v0.21.25 - Evidence-first analysis (#31, REQ-48..50)
 
 Issue #31 (REQ-48..50) strengthens

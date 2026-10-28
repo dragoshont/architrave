@@ -3,7 +3,7 @@
 
 Usage: python harness/program_board.py --ledger <dir with SPEC.md> --session <coordinator-session-id> --output <file.html>
 
-Reads only committed ledger tables (REQs, lanes) and the host's local session logs
+Reads working-tree ledger tables (REQs, lanes) and the host's local session logs
 (~/.copilot/session-state/<id>/events.jsonl) for the coordinator and the child
 sessions it created. Writes one HTML file with no network requests; open it in
 the browser canvas. It never changes a ledger, session or repository.
@@ -13,14 +13,16 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import html
+import hashlib
 import importlib.util
 import json
 import os
 from pathlib import Path
 import re
+import signal
 import subprocess
 import sys
-import time
+import threading
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("gate_runner", ROOT / "gates" / "gate_runner.py")
@@ -211,6 +213,8 @@ RESOLVED: dict[tuple[str, str], bool] = {}
 
 
 def evidence_resolves(evidence: str, repos: list[Path]) -> bool:
+    if re.search(r"\bartifact\s*:|\bsha256\b|\b[0-9a-fA-F]{64}\b", evidence, re.I):
+        return False
     for sha in re.findall(r"(?<![0-9a-fA-F])[0-9a-fA-F]{7,40}(?![0-9a-fA-F])", evidence):
         for repo in repos:
             key = (str(repo), sha)
@@ -220,13 +224,64 @@ def evidence_resolves(evidence: str, repos: list[Path]) -> bool:
     return False
 
 
+def evidence_identity(evidence: str, ledger: Path, repos: list[Path]) -> dict:
+    """Recognize identity only; declared review bindings do not certify semantic quality."""
+    starts = list(re.finditer(r"\bartifact\s*:", evidence, re.I))
+    if starts:
+        results = []
+        for start in starts:
+            try:
+                item, _ = json.JSONDecoder().raw_decode(evidence[start.end():].lstrip())
+            except ValueError:
+                results.append(("unsupported", "artifact metadata must be a JSON object"))
+                continue
+            if not isinstance(item, dict) or not isinstance(item.get("path"), str) or not item["path"].strip():
+                results.append(("unsupported", "artifact metadata needs a local path"))
+                continue
+            locator = item["path"]
+            digest = item.get("sha256")
+            if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", digest):
+                results.append(("incomplete", f"{locator}: missing or invalid sha256"))
+                continue
+            path = Path(locator).expanduser()
+            path = path if path.is_absolute() else ledger / path
+            try:
+                actual = hashlib.sha256(path.read_bytes()).hexdigest()
+            except FileNotFoundError:
+                results.append(("missing", f"{locator}: artifact missing"))
+                continue
+            except OSError as exc:
+                results.append(("unavailable", f"{locator}: cannot read artifact ({exc})"))
+                continue
+            if actual != digest.lower():
+                results.append(("changed", f"{locator}: content changed (expected {digest.lower()}, actual {actual})"))
+            else:
+                bound = str(item.get("reviewed_sha256", "")).lower() == actual
+                passed = gate.review_passed(evidence)
+                verified = gate.review_passed(evidence, strict=True)
+                review = ("declared digest binding; review execution verified" if verified else
+                          "declared digest binding; review note only") if bound and passed else "review binding missing or mismatched"
+                results.append(("verified", f"{locator}: SHA256 identity verified; {review}"))
+        failed = next((state for state, _ in results if state != "verified"), None)
+        return {"state": failed or "verified", "detail": "; ".join(detail for _, detail in results)}
+    if evidence.strip() in {"", "-"}:
+        return {"state": "missing", "detail": "no evidence supplied"}
+    # A bare digest is not a commit locator, even when accompanied by an unrelated commit.
+    if re.search(r"\b(?:sha256|[0-9a-fA-F]{64}\b)", evidence, re.I):
+        return {"state": "unsupported", "detail": "digest evidence needs artifact path/sha256 metadata"}
+    if evidence_resolves(evidence, repos):
+        return {"state": "commit", "detail": "commit exists; artifact identity and behavioral acceptance not established"}
+    return {"state": "unsupported", "detail": "no supported artifact metadata or resolving commit"}
+
+
 def build(ledger: Path, coordinator: str) -> dict:
     path = ledger / "SPEC.md"
-    text = path.read_text(encoding="utf-8")
+    source_bytes = path.read_bytes()
+    text = source_bytes.decode("utf-8-sig")
     reqs, _corrections, errors = gate.parse_requirements(text)
     lanes = gate.ledger_table(text, ("lane", "repo", "project id"), gate.LANE_COLUMNS)
     config = gate.load_config(ledger) if (ledger / "architrave.config.json").is_file() else {}
-    more, _blockers, _notes = gate.chain_errors(ledger, text, reqs, config)
+    more, blockers, notes = gate.chain_errors(ledger, text, reqs, config)
     cap, cap_error = gate.parallel_cap(config)
     errors += more + gate.header_errors(text) + gate.lane_errors(text, reqs, cap) + ([cap_error] if cap_error else [])
     repos = [ledger] + [gate.component_path(ledger, c["path"]) for c in config.get("components") or []
@@ -237,13 +292,19 @@ def build(ledger: Path, coordinator: str) -> dict:
     strict = gate.strict_reviews()
     review_cfg = config.get("review") if isinstance(config.get("review"), dict) else {}
     cross = bool(review_cfg.get("crossFamily"))
-    unverified = {rid for rid, r in reqs.items() if r["status"].lower() == "accepted" and not evidence_resolves(r["evidence"], repos)}
+    identities = {rid: evidence_identity(r["evidence"], ledger, repos) for rid, r in reqs.items()}
+    unverified = {rid for rid, r in reqs.items() if r["status"].lower() == "accepted"
+                  and identities[rid]["state"] not in {"verified", "commit"}}
     laned = {rid.upper() for lane in lanes for rid in re.findall(r"REQ-[A-Za-z0-9_.-]+", lane["req ids"], re.I)}
     loose = [rid for rid, r in reqs.items() if rid not in laned and r["status"].lower() not in gate.REQ_CLOSED]
     if loose:
         lanes = lanes + [dict.fromkeys(gate.LANE_COLUMNS, "") | {"lane": "Not in a lane" if lanes else "Requirements",
                                                                  "repo": ledger.name, "state": "idle", "req ids": ", ".join(loose), "synthetic": True}]
-    commit = subprocess.run(["git", "-C", str(ledger), "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
+    commit = gate.git(ledger, "rev-parse", "HEAD") or "unavailable (no repository HEAD)"
+    tracked = gate.git(ledger, "ls-files", "--error-unmatch", "--", path.name) is not None
+    dirty = gate.git(ledger, "status", "--porcelain", "--untracked-files=all", "--", path.name)
+    source_state = "untracked" if not tracked else "modified" if dirty else "clean"
+    source_digest = hashlib.sha256(source_bytes).hexdigest()
     root = read_session(coordinator)
     sessions = [root] if root else []
     names = {}
@@ -274,7 +335,10 @@ def build(ledger: Path, coordinator: str) -> dict:
     remote = [lane for sid, lane in lane_by_session.items() if sid.lower() not in seen and lane["state"].lower() not in {"superseded", "stopped"}]
     return {"ledger": ledger, "commit": commit, "reqs": reqs, "lanes": lanes, "sessions": sessions, "remote": remote,
             "lane_by_session": lane_by_session, "errors": errors, "unverified": unverified, "reviewed": reviewed, "verified": verified,
-            "strict": strict, "cross": cross, "generated": datetime.now(timezone.utc)}
+            "strict": strict, "cross": cross, "generated": datetime.now(timezone.utc), "coordinator": coordinator,
+            "identities": identities, "notes": notes, "blockers": blockers,
+            "configured": (ledger / "architrave.config.json").is_file(), "source_state": source_state,
+            "source_digest": source_digest}
 
 
 def timeline(sessions: list[dict], lane_by_session: dict, remote: list[dict] = ()) -> str:
@@ -319,12 +383,30 @@ def timeline(sessions: list[dict], lane_by_session: dict, remote: list[dict] = (
                     f"<rect class='lane-bg remote' x='{left}' y='{y}' width='{width}' height='10'/>"
                     f"<text class='sub' x='{left}' y='{y + 22}'>{esc(lane['state'])} · not logged on this machine</text></g>")
     ticks = "".join(f"<text class='tick' x='{left + f * width:.0f}' y='9' text-anchor='{'start' if f == 0 else 'end' if f == 1 else 'middle'}'>"
-                    f"{datetime.fromtimestamp(t0.timestamp() + f * span).strftime('%H:%M')}</text>" for f in (0, .5, 1))
+                    f"{datetime.fromtimestamp(t0.timestamp() + f * span, timezone.utc).strftime('%m-%d %H:%M')} UTC</text>" for f in (0, .5, 1))
     heads = (f"<text class='tick' x='{left + width + 12}' y='9'>context now · tokens</text>")
     return (f"<svg class='timeline' viewBox='0 0 {left + width + 12 + gauge} {16 + (len(timed) + len(remote)) * row}' role='img' "
             f"aria-label='How the sessions ran'>{ticks}{heads}{''.join(rows)}</svg>"
             f"<p class='note'>Bar: first to last event; dark marks: model turns. Gauges: current context against the "
-            f"model limit, and tokens relative to the busiest session. Hover a row for exact numbers.</p>")
+            f"model limit, and tokens relative to the busiest session. All dates/times are UTC. "
+            f"<span class='interactive-only'>Hover a row for exact numbers; full names and values follow.</span></p>")
+
+
+def session_details(sessions: list[dict], lane_by_session: dict, remote: list[dict]) -> str:
+    rows = []
+    for s in sessions:
+        rows.append(
+            f"<article class='session-record'><h3>{esc(s['name'])}</h3>"
+            f"<p>{esc(s['id'])} · {esc(s['agent'] or 'default')} · {esc(s['model'] or 'model unavailable')}</p>"
+            f"<p>{s['start'].astimezone(timezone.utc).isoformat(timespec='seconds')} to "
+            f"{s['end'].astimezone(timezone.utc).isoformat(timespec='seconds')} · {esc(state_of(s, lane_by_session.get(s['id']) or {}))}</p>"
+            f"<p>{s['input']:,} new input / {s['cached']:,} cached / {s['output']:,} output tokens; "
+            f"context {s['context']:,} / {s['context_limit']:,} (peak {s['max_context']:,}); {s['calls']:,} calls; "
+            f"{s['active_min']:.1f} model / {s['wall_min']:.1f} wall minutes.</p></article>")
+    for lane in remote:
+        rows.append(f"<article class='session-record'><h3>{esc(lane['lane'])}</h3>"
+                    f"<p>{esc(lane['session id'])} · {esc(lane['state'])} · not logged on this machine; metrics unavailable.</p></article>")
+    return "".join(rows) or "<p>No local history observed.</p>"
 
 
 def render(data: dict) -> str:
@@ -338,15 +420,17 @@ def render(data: dict) -> str:
     active = sum(s["active_min"] for s in sessions)
     wall = ((max(s["end"] for s in sessions) - sessions[0]["start"]).total_seconds() / 60) if sessions else 0
     running = sum(1 for lane in lanes if lane["state"].lower() == "running")
+    workers = [lane for lane in lanes if not lane.get("synthetic")]
     stats = [("REQs accepted", f"{accepted}/{len(active_req)}"),
-             ("gate", "PASS" if not data["errors"] else f"{len(data['errors'])} issues"),
+             ("ledger structural checks", "PASS" if not data["errors"] else f"{len(data['errors'])} issues"),
              ("lanes missing a review (blocks --done)", str(sum(1 for lane in lanes if not lane.get("synthetic")
                                                                  and gate.lane_review_gaps(lane, reqs, data["strict"], data["cross"])))),
              ("accepted, evidence unresolved", str(len(unverified & set(active_req)))),
              ("accepted, not reviewed", str(len(unreviewed_accepted))),
-             ("PASS reviews verified", f"{len(verified & set(active_req))}/{len(reviewed & set(active_req))}"), ("lanes running", f"{running}/{len(lanes)}"),
-             ("sessions", str(len(sessions))), ("tokens new/cache/out", f"{num(total_in)}/{num(total_cached)}/{num(total_out)}"),
-             ("model min, all sessions", f"{active:.0f}"), ("program min", f"{wall:.0f}")]
+             ("PASS review executions verified", f"{len(verified & set(active_req))}/{len(reviewed & set(active_req))}"),
+             ("worker lanes running", f"{running}/{len(workers)}"),
+             ("history sessions", str(len(sessions))), ("history tokens new/cache/out", f"{num(total_in)}/{num(total_cached)}/{num(total_out)}"),
+             ("model min, cumulative history", f"{active:.0f}"), ("history span min", f"{wall:.0f}")]
     overview = "".join(f"<div><b>{esc(v)}</b><span>{esc(k)}</span></div>" for k, v in stats)
     boxes = []
     for lane in lanes:
@@ -355,8 +439,8 @@ def render(data: dict) -> str:
                      and reqs[r]["status"].lower() not in gate.REQ_CLOSED | {"accepted", "blocked"}}
         squares = "".join(
             f"<button class='sq {'delivered' if r in delivered else REQ_TONE.get(reqs[r]['status'].lower(), 'open') if r in reqs else 'open'}{' warn' if r in unverified else ''}{' rev' if r in reviewed else ''}{' vrf' if r in verified else ''}' "
-            f"data-d='{esc(r)} · {esc(reqs[r]['status'] if r in reqs else 'unknown')}{' · delivered by this lane, awaiting acceptance' if r in delivered else ''}{' · no evidence commit resolves' if r in unverified else ''}{' · review verified in its session log' if r in verified else ' · reviewed (note only)' if r in reviewed else ' · not reviewed'} · {esc((reqs[r]['requirement'] if r in reqs else '')[:160])}' "
-            f"aria-label='{esc(r)} {esc(reqs[r]['status'] if r in reqs else 'unknown')}'></button>" for r in ids)
+            f"data-d='{esc(r)} · {esc(reqs[r]['status'] if r in reqs else 'unknown')}{' · delivered by this lane, awaiting acceptance' if r in delivered else ''} · {esc(data['identities'].get(r, {}).get('detail', 'no evidence'))}{' · review execution verified in its session log' if r in verified else ' · reviewed (note only)' if r in reviewed else ' · not reviewed'} · {esc((reqs[r]['requirement'] if r in reqs else ''))}' "
+            f"aria-label='{esc(r)} {esc(reqs[r]['status'] if r in reqs else 'unknown')}: {esc(reqs[r]['requirement'] if r in reqs else '')}'></button>" for r in ids)
         done = sum(1 for r in ids if r in reqs and reqs[r]["status"].lower() == "accepted")
         rev = sum(1 for r in ids if r in reviewed)
         missing = bool(gate.lane_review_gaps(lane, reqs, data["strict"], data["cross"])) and not lane.get("synthetic")
@@ -364,7 +448,7 @@ def render(data: dict) -> str:
             r in reqs and reqs[r]["status"].lower() == "accepted" and r not in reviewed for r in ids))
         tone = LANE_TONE.get(lane["state"].lower(), "open")
         boxes.append(f"<section class='box {tone}{' unrev' if risky else ''}'><h3>{esc(lane['lane'])}</h3>"
-                     f"<p>{esc(lane['state'])}{' · review missing' if missing else ''} · {done}/{len(ids)} accepted · reviewed {rev}/{len(ids)}</p>"
+                     f"<p>{'Synthetic requirement group (not a worker lane)' if lane.get('synthetic') else esc(lane['state'])}{' · review missing' if missing else ''} · {done}/{len(ids)} accepted · reviewed {rev}/{len(ids)}</p>"
                      f"<div class='grid'>{squares}</div></section>")
     css = """
 :root{color-scheme:dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#10161e;color:#edf3f8}
@@ -383,24 +467,77 @@ h1{margin:0;font-size:17px;font-weight:650;letter-spacing:-.02em}h2{margin:16px 
 #detail{min-height:28px;margin:8px 0 0;padding-top:6px;border-top:1px solid #415064;font-size:11px;color:#c6d4e1;overflow-wrap:anywhere}
 .timeline{width:100%;display:block}.timeline .label{fill:#edf3f8;font-size:8.5px;font-weight:600}.timeline .sub{fill:#9fb0c1;font-size:6.5px}.timeline .tick{fill:#8fa1b3;font-size:6.5px}.lane-bg,.gauge{fill:#1b2632}.turn{fill:#0b1016;opacity:.55}.ctxfill{fill:#d6aa4b}.tokfill{fill:#479bc1}
 footer{font-size:9px;color:#8fa1b3;margin-top:10px;line-height:1.5}
+.provenance,.session-record,.evidence-record{overflow-wrap:anywhere}
+.session-record{border-top:1px solid #415064;padding:6px 0;font-size:11px}
+.session-record h3{margin:0;font-size:12px}.session-record p{margin:3px 0}
+.evidence-record{font-size:11px;margin:6px 0}
+summary{cursor:pointer;font-size:11px;margin:8px 0}
+@media print{
+@page{size:A4;margin:14mm}
+:root,body{color-scheme:light;background:white;color:#111}
+main{max-width:none;padding:0}
+.stats{grid-template-columns:repeat(3,1fr);background:white}
+.stats div,.box{background:white;color:#111}
+.stats span,.box p,.note,.legend,h2,footer{color:#333}
+.box h3{white-space:normal;overflow:visible}
+.box,.session-record,.evidence-record,.stats div{break-inside:avoid}
+h2,h3,summary{break-after:avoid}
+.timeline,.interactive-only,#detail,script{display:none!important}
+.session-record p{font-size:10pt;line-height:1.35}
+.session-record h3{font-size:11pt}
+.issues{color:#8b1020}
+details,details>*,details::details-content{display:block;content-visibility:visible}
+}
 """
     legend = ("<div class='legend'><span><i class='done'></i>accepted</span><span><i class='active'></i>claimed</span>"
               "<span><i class='delivered'></i>delivered, awaiting acceptance</span><span><i class='blocked'></i>blocked</span><span><i class='open'></i>open</span><span><i class='open warn'></i>evidence unresolved</span>"
               "<span><i class='sq rev open'></i>reviewed</span><span><i class='unrevkey'></i>done or accepted work without a PASS review</span></div>")
-    script = ("<script>const d=document.getElementById('detail');document.querySelectorAll('.sq').forEach(b=>b.onclick=()=>{"
-              "document.querySelectorAll('.sq.sel').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');d.textContent=b.dataset.d});</script>")
+    script = ("<script>const d=document.getElementById('detail');document.querySelectorAll('button.sq').forEach(b=>b.onclick=()=>{"
+              "document.querySelectorAll('.sq.sel').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');d.textContent=b.dataset.d});"
+              "const snapshot=document.getElementById('snapshot').dataset.snapshot;"
+              "document.getElementById('page-observation').textContent='Page observed at '+new Date().toISOString()+' · snapshot '+snapshot+'. This does not observe later file rewrites.';"
+              "addEventListener('beforeprint',()=>{document.getElementById('export-observation').textContent="
+              "'Print/export requested at '+new Date().toISOString()+' · snapshot '+snapshot+'; export completion is not observed.';});</script>")
+    generated = data["generated"].isoformat(timespec="microseconds")
+    snapshot = generated + "/" + data["source_digest"][:12]
+    root = next((s for s in sessions if s["id"] == data["coordinator"]), None)
+    terminal = (f"Host task completion observed at {root['completed'].astimezone(timezone.utc).isoformat()}" if root and root["done"] else
+                "Host terminal completion not observed; pre-completion projection")
+    mode = ("Stopped watcher; static snapshot" if data.get("stopped") else
+            f"Auto-refresh snapshot every {data['refresh']}s (watcher liveness not established by this page)" if data.get("refresh")
+            else "Static snapshot; not live")
+    completion = ("not evaluated; run requirements --done with the repository configuration" if data["configured"] else
+                  "unavailable here: no repository configuration (plugin-only structural checks only; no adoption required)")
+    identity_rows = "".join(f"<li class='evidence-record'>{esc(rid)}: {esc(identity['state'])} · {esc(identity['detail'])}</li>"
+                            for rid, identity in data["identities"].items() if rid in active_req
+                            and (rid in unverified or identity["state"] == "verified"))
     return (f"<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width'>"
             + (f"<meta http-equiv='refresh' content='{data['refresh']}'>" if data.get("refresh") else "") + f"<title>Program board</title><style>{css}</style></head><body><main>"
-            f"<h1>{esc(data['ledger'].name)} · program</h1><p class='note'>ledger {esc(data['commit'])} · "
-            f"{data['generated'].strftime('%Y-%m-%d %H:%M UTC')} snapshot</p>"
+            f"<h1>{esc(data['ledger'].name)} · program</h1><div class='note provenance'>"
+            f"<p id='snapshot' data-snapshot='{esc(snapshot)}'>{esc(mode)} · generated bytes at {esc(generated)} UTC</p>"
+            f"<p>Repository HEAD: {esc(data['commit'])}<br>Ledger: working-tree SPEC.md ({esc(data['source_state'])}) · SHA256 {data['source_digest']}</p>"
+            f"<p>Session-log observation cutoff: {esc(max((s['end'].astimezone(timezone.utc) for s in sessions), default='unavailable'))} · {esc(terminal)}</p>"
+            f"<p id='page-observation'>Page observation unavailable until loaded in a script-enabled consumer.</p>"
+            f"<p id='export-observation'>No print/export observation recorded in these generated bytes.</p></div>"
             f"<div class='stats'>{overview}</div>"
-            + ("<ul class='issues'>" + "".join(f"<li>{esc(e)}</li>" for e in data["errors"][:5]) + "</ul>" if data["errors"] else "")
+            f"<p class='note'>Cumulative history totals: {total_in:,} new input / {total_cached:,} cached / {total_out:,} output tokens.</p>"
+            f"<p class='note'>Completion acceptance: {esc(completion)}.</p>"
+            + ("<ul class='issues'>" + "".join(f"<li>{esc(e)}</li>" for e in data["errors"]) + "</ul>" if data["errors"] else "")
+            + ("<ul class='issues'>" + "".join(f"<li>Open serious finding blocks completion: {esc(e)}</li>" for e in data["blockers"]) + "</ul>" if data["blockers"] else "")
+            + ("<ul class='note'>" + "".join(f"<li>{esc(e)}</li>" for e in data["notes"]) + "</ul>" if data["notes"] else "")
             + f"<h2>Lanes</h2>{legend}<div class='boxes'>{''.join(boxes) or '<p class=note>No lane table.</p>'}</div>"
-            f"<p id='detail'>Select a square to see its requirement.</p>"
-            f"<h2>How the sessions ran</h2>{timeline(sessions, data['lane_by_session'], data['remote'])}"
-            f"<footer>Squares show ledger status; a gold ring means no commit in its evidence resolves in the ledger or a "
-            f"configured component. Gate issues come from the same checks as `requirements`. Sessions not logged on this "
-            f"machine are listed without metrics.</footer>{script}</main></body></html>")
+            f"<p id='detail' role='status'>Select a square to see its requirement.</p>"
+            + (f"<details open><summary>Artifact identity and unresolved evidence</summary><ul>{identity_rows}</ul></details>" if identity_rows else "")
+            + f"<h2>Cumulative session history (not current-task cost)</h2>"
+            f"<p class='note'>Current ledger REQs above; recursive coordinator history below may span multiple tasks. "
+            f"Child metrics start no earlier than the coordinator. Synthetic requirement groups are not workers.</p>"
+            f"{timeline(sessions, data['lane_by_session'], data['remote'])}"
+            f"<details open><summary>Full session names and exact history metrics (UTC)</summary>"
+            f"{session_details(sessions, data['lane_by_session'], data['remote'])}</details>"
+            f"<footer>Squares show ledger status. A gold ring marks unsupported, incomplete, missing, changed or unreadable evidence. "
+            f"A resolving commit establishes existence only, not a particular artifact's identity. Artifact SHA256 and declared review "
+            f"binding are separate from semantic quality and behavioral acceptance. Structural checks are not completion acceptance. "
+            f"Sidecar files alone never establish live workers.</footer>{script}</main></body></html>")
 
 
 def main() -> int:
@@ -459,6 +596,11 @@ def main() -> int:
         os.write(fd, str(os.getpid()).encode())
         os.close(fd)
     pointer = STATE_HOME / args.session / "files" / gate.BOARD_POINTER
+    stopped = threading.Event()
+    handlers = {}
+    if args.watch:
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            handlers[sig] = signal.signal(sig, lambda _sig, _frame: stopped.set())
     try:
         if args.watch:
             pointer.parent.mkdir(parents=True, exist_ok=True)
@@ -489,8 +631,20 @@ def main() -> int:
                 newest = datetime.now(timezone.utc)
             if not args.watch or newest is None or (datetime.now(timezone.utc) - newest).total_seconds() > 7200:
                 return 0
-            time.sleep(max(args.watch, 30))
+            if stopped.wait(max(args.watch, 30)):
+                return 0
     finally:
+        if args.watch:
+            try:
+                data = build(ledger, args.session)
+                data["stopped"] = True
+                tmp = out.with_suffix(f".{os.getpid()}.tmp")
+                tmp.write_text(render(data), encoding="utf-8")
+                tmp.replace(out)
+            except Exception as exc:
+                print(f"program-board: final stopped snapshot failed; previous bytes retained: {exc}", file=sys.stderr, flush=True)
+            for sig, handler in handlers.items():
+                signal.signal(sig, handler)
         if args.watch and lock.is_file() and lock.read_text().strip() == str(os.getpid()):
             lock.unlink()
             try:

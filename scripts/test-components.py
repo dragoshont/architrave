@@ -219,6 +219,15 @@ Verify: `make e2e`
 
         code, out = run(ledger)
         self.assertEqual(code, 0, out)
+        for reviewer in ("", "-", "pending", " Pending ", "TBD", "todo", "unknown", "unassigned",
+                         "none", "n/a", "not reviewed", "awaiting review"):
+            with self.subTest(reviewer=reviewer):
+                code, out = run(ledger.replace("| review-b |", f"| {reviewer} |"))
+                self.assertEqual(code, 1, out)
+                self.assertIn("E-1 is supported without an independent reviewer", out)
+        for reviewer in ("review-b", "Rita Reviewer", "3632b07b-9983-4056-afe0-fec425e0c847"):
+            code, out = run(ledger.replace("| review-b |", f"| {reviewer} |"))
+            self.assertEqual(code, 0, out)
         (backend / "api.md").write_text("v2 route, auth required\n")
         git(backend, "-c", "user.email=a@b", "-c", "user.name=a", "commit", "-qam", "v2")
         code, out = run(ledger)

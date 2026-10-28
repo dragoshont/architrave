@@ -203,7 +203,7 @@ extensions and canvases:
 
 | Panel | What it shows |
 |---|---|
-| **Program board** | For a coordinated program, a compact side-panel view: overview, one rectangle per lane with a square per REQ coloured by ledger status, and how the coordinator and its child sessions ran over time with each session's tokens, current context against the limit, and model and wall minutes. The lead starts it for every non-trivial task; it refreshes every two minutes in the browser canvas — [docs](docs/program-board.md). |
+| **Program board** | A compact side-panel view of current ledger REQs and cumulative session history, with lane squares, tokens, context and minutes. It separates artifact identity, review execution, structural checks and completion acceptance; labels working-tree bytes, static snapshots and observation cutoffs; and preserves full names/values in print. The lead starts it for every non-trivial task; watched boards refresh every two minutes — [docs](docs/program-board.md). |
 | **Session companion** | Session activity, host-reported model and effort, context usage, and expandable SDK subagent rows with names, roles, assigned work, and lifecycle status. App-native child-session rows are not yet exposed by the host integration. |
 | **Route Ribbon** | Run snapshots showing the route, workstreams, blockers, stops, retries, and evidence, with completed work kept separate from verified product results. |
 
