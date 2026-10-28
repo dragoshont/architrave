@@ -8,8 +8,10 @@ page/export observations, terminal state, working-tree ledger identity and
 plugin-only structural scope are labelled separately. History is cumulative;
 synthetic groups are not workers. Print preserves full names/exact values and
 all errors, with optional real-browser/PDF acceptance cases. Actor-provenance
-and scoped-review semantic fixtures extend evidence-first calibration; no
-new model-performance, release or installed-behavior claim.
+and scoped-review semantic fixtures extend evidence-first calibration. Source
+delivery accepted with independent review PASS, local manifests and a real
+five-page synthetic PDF/browser check; no new model-performance, release or
+installed-behavior claim.
 
 ## v0.21.25 - Evidence-first analysis (#31, REQ-48..50)
 
