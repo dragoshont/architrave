@@ -69,7 +69,7 @@ class ProgramBoard(unittest.TestCase):
             out = base / "board.html"
             env = dict(os.environ, COPILOT_HOME=str(base / "home"), COPILOT_AGENT_SESSION_ID=COORD)
             proc = subprocess.run([sys.executable, str(ROOT / "harness/program_board.py"), "--ledger", str(ledger),
-                                   "--output", str(out), "--all-reqs"], capture_output=True, text=True, env=env)
+                                   "--output", str(out), "--all-reqs", "--title", "Current work"], capture_output=True, text=True, env=env)
             self.assertEqual(proc.returncode, 0, proc.stderr)
             page = out.read_text()
             self.assertIn("<b>2/5</b>", page)
@@ -99,7 +99,7 @@ class ProgramBoard(unittest.TestCase):
             self.assertNotIn(COORD, out.with_suffix(".rotate.json").read_text())
             self.assertIn("sq done rev", page)
             self.assertIn("box active unrev", page)
-            self.assertIn("reviewed 1/2", page)
+            self.assertIn("running · review missing · 1/2 accepted", page)
             self.assertIn("<b>1</b><span>accepted, not reviewed</span>", page)
             self.assertIn("Context 50,000 / 200,000", page)
             self.assertIn("10.0 model / 10.8 wall minutes", page)
@@ -110,7 +110,7 @@ class ProgramBoard(unittest.TestCase):
             pointer.parent.mkdir(parents=True, exist_ok=True)
             pointer.write_text(json.dumps({"pid": 2 ** 22 + 12345, "output": "old", "ledger": "old"}))
             watch = subprocess.run([sys.executable, str(ROOT / "harness/program_board.py"), "--ledger", str(ledger),
-                                    "--output", str(out), "--watch", "120", "--all-reqs"], capture_output=True, text=True, env=env, timeout=30)
+                                    "--output", str(out), "--watch", "120", "--all-reqs", "--title", "Current work"], capture_output=True, text=True, env=env, timeout=30)
             self.assertEqual(watch.returncode, 0, watch.stderr)
             self.assertFalse(pointer.exists(), "the watcher registers itself (replacing a stale pointer) and unregisters on exit")
             bad = subprocess.run([sys.executable, str(ROOT / "harness/program_board.py"), "--ledger", str(ledger),
@@ -119,6 +119,7 @@ class ProgramBoard(unittest.TestCase):
             self.assertIn("not a host session UUID", bad.stderr)
             self.assertNotIn("http-equiv='refresh'", out.read_text())
             self.assertIn("Stopped watcher; static snapshot", out.read_text())
+            self.assertIn("<h1>Current work</h1>", out.read_text())
             out.with_suffix(".pid").write_text(str(os.getpid()))
             dup = subprocess.run([sys.executable, str(ROOT / "harness/program_board.py"), "--ledger", str(ledger),
                                   "--output", str(out), "--watch", "120", "--all-reqs"], capture_output=True, text=True, env=env, timeout=30)
@@ -252,9 +253,12 @@ class EvidenceAndSnapshots(unittest.TestCase):
         self.assertEqual(data["commit"], sha)
         page = self.pb.render(data)
         self.assertIn("<b>0/0</b><span>worker lanes running", page)
-        self.assertIn("Synthetic requirement group (not a worker lane)", page)
+        self.assertIn("data-synthetic='true'", page)
+        self.assertIn("Requirement groups are not worker lanes", page)
         self.assertIn("ledger structural checks", page)
         self.assertIn("unavailable here: no repository configuration", page)
+        data["reqs"]["REQ-1"]["status"] = "accepted"
+        self.assertIn("review missing · 1/1 accepted", self.pb.render(data))
         self.assertFalse((self.ledger / "architrave.config.json").exists())
         self.git("add", "SPEC.md")
         self.git("-c", "user.email=a@b", "-c", "user.name=a", "commit", "-qm", "ledger")
@@ -295,6 +299,88 @@ class EvidenceAndSnapshots(unittest.TestCase):
         self.assertIn("Cumulative session history (not current-task cost)", self.pb.render(active))
         self.assertNotIn("http-equiv", self.pb.render(active))
 
+    def test_reported_effort_is_model_bound_and_turns_are_not_usage_calls(self):
+        log = self.state / COORD / "events.jsonl"
+        rows = [
+            {"type": "session.start", "timestamp": "2026-10-28T08:00:00Z",
+             "data": {"selectedModel": "first", "reasoningEffort": "high"}},
+            {"type": "assistant.turn_start", "timestamp": "2026-10-28T08:00:10Z", "data": {}},
+            *[{"type": "session.usage_record", "timestamp": "2026-10-28T08:00:20Z",
+               "data": {"usage": {"model": "first", "inputTokens": 20}}} for _ in range(3)],
+            {"type": "assistant.turn_end", "timestamp": "2026-10-28T08:01:00Z", "data": {}},
+            {"type": "assistant.turn_start", "timestamp": "2026-10-28T08:02:00Z", "data": {}},
+            {"type": "session.usage_checkpoint", "timestamp": "2026-10-28T08:02:01Z",
+             "data": {"promptCacheBreakState": [{"conversation": "main", "models": {
+                 "first": {"model": "first", "reasoning_effort": "medium"}}}]}},
+            {"type": "assistant.message", "timestamp": "2026-10-28T08:02:02Z",
+             "data": {"reasoningOpaque": "must-not-display"}}]
+        log.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+        observed = self.pb.read_session(COORD)
+        self.assertEqual(observed["reasoning_effort"], "medium")
+        self.assertEqual(observed["turn_count"], 2)
+        self.assertEqual(observed["calls"], 3)
+        self.assertEqual(self.pb.read_session(COORD)["turn_count"], 2, "incremental reads do not recount turns")
+        self.assertEqual(self.pb.read_session(COORD, self.pb.when("2026-10-28T08:01:30Z"))["turn_count"], 1)
+        rendered = self.pb.render(self.pb.build(self.ledger, COORD))
+        self.assertIn("2 turns", rendered)
+        self.assertIn("reasoning effort medium", rendered)
+        self.assertNotIn("must-not-display", rendered)
+        with log.open("a") as handle:
+            handle.write(json.dumps({"type": "session.model_change", "timestamp": "2026-10-28T08:03:00Z",
+                                     "data": {"newModel": "second", "reasoningEffort": None}}) + "\n")
+            handle.write(json.dumps({"type": "session.usage_checkpoint", "timestamp": "2026-10-28T08:03:01Z",
+                                     "data": {"promptCacheBreakState": [
+                                         {"conversation": "main", "models": {"first": {"reasoning_effort": "high"}}},
+                                         {"conversation": "child", "models": {"second": {"reasoning_effort": "high"}}},
+                                         None]}}) + "\n")
+        changed = self.pb.read_session(COORD)
+        self.assertEqual(changed["model"], "second")
+        self.assertIsNone(changed["reasoning_effort"], "old-model and child metadata cannot establish current effort")
+        self.assertIn("effort n/a", self.pb.render(self.pb.build(self.ledger, COORD)))
+        with log.open("a") as handle:
+            handle.write(json.dumps({"type": "session.model_change", "timestamp": "2026-10-28T08:03:02Z",
+                                     "data": {"newModel": "second", "reasoningEffort": "low"}}) + "\n")
+        self.assertEqual(self.pb.read_session(COORD)["reasoning_effort"], "low")
+        with log.open("a") as handle:
+            handle.write(json.dumps({"type": "session.usage_record", "timestamp": "2026-10-28T08:03:03Z",
+                                     "data": {"usage": {"model": "third", "inputTokens": 30}}}) + "\n")
+        self.assertIsNone(self.pb.read_session(COORD)["reasoning_effort"])
+
+    def test_concise_title_scoped_repositories_and_optional_details(self):
+        self.commit_seed()
+        self.git("remote", "add", "origin", "https://private-token@example.test/owner/board.git?token=private-query")
+        service = self.base / "service-worktree"
+        subprocess.run(["git", "init", "-q", str(service)], check=True)
+        subprocess.run(["git", "-C", str(service), "remote", "add", "origin",
+                        "git@example.test:owner/service.git"], check=True)
+        self.source.write_text(self.source.read_text().replace("\n## Handoff", (
+            "\n| REQ-old | Other task | Check | other | open | - |\n\n" + LANE
+            + f"| Current | {service} | p | b | origin | REQ-1 | - | - | - | idle | src | no | ok | - | no | [] | - |\n"
+            + f"| Same repo | {service} | p | other | origin | REQ-1 | - | - | - | idle | docs | no | ok | - | no | [] | - |\n"
+            + "| History | absent-history | p | b | origin | REQ-old | - | - | - | idle | docs | no | ok | - | no | [] | - |\n"
+            + "\n## Handoff")))
+        data = self.pb.build(self.ledger, COORD, ["REQ-1"], "Board <refinements>")
+        self.assertEqual(data["repositories"], ["owner/board", "owner/service"])
+        page = self.pb.render(data)
+        header = page.split("<header>", 1)[1].split("</header>", 1)[0]
+        self.assertIn("<h1>Board &lt;refinements&gt;</h1>", header)
+        self.assertIn("owner/board · owner/service", header)
+        self.assertIn("<b>0/1</b><span>Accepted", header)
+        self.assertNotIn("Lanes active", header)
+        for absent in ("private-token", "private-query", "absent-history"):
+            self.assertNotIn(absent, page)
+        for absent in ("SHA256", "print/export", "missing a review", "structural checks", "completion"):
+            self.assertNotIn(absent, header)
+        self.assertIn("<details class='board-details'>", page)
+        self.assertIn("id='export-observation' class='note print-only'", page)
+        self.assertIn("repository ledger structural checks", page)
+        self.git("remote", "set-url", "origin", "ssh://private-token@example.test/owner/board.git")
+        self.assertEqual(self.pb.repository_name(self.ledger), "owner/board")
+        self.git("remote", "set-url", "origin", "https://private-token@example.test/board.git")
+        self.assertEqual(self.pb.repository_name(self.ledger), "board")
+        self.git("remote", "remove", "origin")
+        self.assertEqual(self.pb.repository_name(self.ledger), "ledger")
+
     def test_merged_history_empty_and_remote_records(self):
         remote = [{"lane": "Remote worker with a complete name", "session id": REMOTE, "state": "running"}]
         page = self.pb.timeline([], {}, remote)
@@ -303,22 +389,26 @@ class EvidenceAndSnapshots(unittest.TestCase):
         self.assertNotIn("output tokens", page)
         self.assertIn("No local session logs found", self.pb.timeline([], {}))
 
-    def test_context_circle_area_and_stacked_consumption(self):
+    def test_context_cache_and_concentric_io_ring_proportions(self):
         data = self.pb.build(self.ledger, COORD)
         session = data["sessions"][0]
         session.update(context=122299, context_limit=272000, max_context=222272, input=100, cached=200, output=50)
         page = self.pb.render(data)
-        radius = float(re.search(r"class='context-disc'[^>]*r='([\d.]+)'", page)[1])
-        self.assertAlmostEqual((radius / 14) ** 2, 122299 / 272000, delta=.001)
+        arcs = dict(re.findall(r"class='ring-progress ring-(\w+)'[^>]*stroke-dasharray='([\d.]+) [\d.]+'", page))
+        for kind, fraction in {"context": 122299 / 272000, "in": 100 / 150, "out": 50 / 150, "cache": 200 / 350}.items():
+            self.assertAlmostEqual(float(arcs[kind]) / 100, fraction, delta=.00001)
+        self.assertIn("ring-in' cx='20' cy='20' r='18.5'", page)
+        self.assertIn("ring-out' cx='20' cy='20' r='14.5'", page)
         self.assertIn(">122k</text>", page)
         self.assertIn("Current context 122,299 of 272,000; peak 222,272", page)
-        segments = re.findall(r"class='token-(?:in|cache|out)' x='([\d.]+)' width='([\d.]+)'", page)
-        self.assertEqual(len(segments), 3)
-        self.assertEqual([round(float(w) / 92 * 350) for _, w in segments], [100, 50, 200])
-        self.assertAlmostEqual(sum(float(w) for _, w in segments), 92, places=2)
         self.assertIn("100 uncached input / 50 output / 200 cached input tokens", page)
-        session.update(context=0, context_limit=0)
-        self.assertIn("limit unavailable", self.pb.render(data))
+        self.assertNotIn("context-disc", page)
+        self.assertNotIn("token-bar", page)
+        session.update(context=0, context_limit=0, input=0, output=0, cached=0)
+        empty = self.pb.render(data)
+        self.assertIn("limit unavailable", empty)
+        self.assertNotIn("class='ring-progress", empty)
+        self.assertIn("100.000 0.000", self.pb.ring(120, 100, 18.5, "context"))
 
     def test_explicit_scope_excludes_historical_requirements(self):
         self.source.write_text(self.source.read_text().replace("| REQ-1 |", (
@@ -418,7 +508,7 @@ class EvidenceAndSnapshots(unittest.TestCase):
             try:
                 page = browser.new_page(viewport={"width": 760, "height": 900})
                 page.goto(html_path.as_uri(), wait_until="networkidle")
-                self.assertIn("Page observed at", page.locator("#page-observation").inner_text())
+                self.assertIn("Page observed at", page.locator("#page-observation").text_content())
                 original_snapshot = page.locator("#snapshot").get_attribute("data-snapshot")
                 page.locator("button.sq").first.focus()
                 page.keyboard.press("Enter")
@@ -434,7 +524,27 @@ class EvidenceAndSnapshots(unittest.TestCase):
                 page.reload(wait_until="networkidle")
                 self.assertNotEqual(page.locator("#snapshot").get_attribute("data-snapshot"), original_snapshot)
                 self.assertIn("Final correction", page.locator("button.sq").first.get_attribute("aria-label"))
-                self.assertIn("pre-completion projection", page.locator(".provenance").inner_text())
+                self.assertIn("pre-completion projection", page.locator(".provenance").text_content())
+                self.assertFalse(page.locator(".board-details").get_attribute("open"))
+                self.assertFalse(page.locator(".provenance").is_visible())
+                self.assertFalse(page.locator("#export-observation").is_visible())
+                self.assertEqual(page.locator(".primary-stats > div").count(), 6)
+                self.assertEqual(page.locator(".primary-stats").evaluate("n=>getComputedStyle(n).display"), "grid")
+                self.assertNotIn("Review gaps", page.locator(".primary-stats").inner_text())
+                self.assertNotIn("Evidence issues", page.locator(".primary-stats").inner_text())
+                self.assertLess(page.locator("header").bounding_box()["height"], 200)
+                self.assertLess(page.locator(".primary-stats").bounding_box()["y"],
+                                page.locator(".session-record").first.bounding_box()["y"])
+                self.assertEqual(page.locator(".legend > span").count(), 8)
+                for label in ("Accepted", "In progress", "Awaiting acceptance", "Blocked",
+                              "Open", "Evidence issue", "Reviewed", "Review missing"):
+                    self.assertIn(label, page.locator(".legend").inner_text())
+                self.assertTrue(page.locator(".legend").is_visible())
+                self.assertEqual(page.locator("header > p").count(), 1, "only repositories remain below the title")
+                page.locator(".board-details > summary").click()
+                self.assertTrue(page.locator(".provenance").is_visible())
+                self.assertFalse(page.locator("#export-observation").is_visible())
+                page.locator(".board-details > summary").click()
                 for i in range(6):
                     self.assertIn(f"REQ-bad{i} status", page.locator(".issues").inner_text())
                 for width in (390, 760):
@@ -442,13 +552,34 @@ class EvidenceAndSnapshots(unittest.TestCase):
                     self.assertTrue(page.evaluate("document.documentElement.scrollWidth <= innerWidth"))
                     self.assertTrue(page.locator(".session-record").evaluate_all(
                         "nodes=>nodes.every(n=>n.scrollWidth<=n.clientWidth)"))
+                    self.assertTrue(page.locator(".history-key").evaluate("""n => {
+                        const rows = document.querySelectorAll('.session-record');
+                        return n.getBoundingClientRect().top - rows[rows.length-1].getBoundingClientRect().bottom >= 20;
+                    }"""), "metric key is separated from session history")
+                    self.assertTrue(page.locator(".board-details").evaluate("""n =>
+                        n.getBoundingClientRect().top - document.querySelector('.history-key').getBoundingClientRect().bottom >= 20
+                    """), "board details have their own spacing")
                     self.assertEqual(page.locator(".session-record").count(), len(names) + 1)
                     for record in page.locator(".session-record").all():
                         self.assertTrue(record.locator("h3").is_visible())
                         self.assertTrue(record.locator(".history-visual .track").is_visible())
                         self.assertTrue(record.locator(".context-circle").is_visible())
                         self.assertTrue(record.locator(".session-model").is_visible())
-                        self.assertEqual(record.locator(".token-counts small").all_text_contents(), ["In", "Out", "Cache"])
+                        self.assertTrue(record.locator(".session-effort").is_visible())
+                        self.assertRegex(record.locator(".history-visual p").inner_text(), r"\d[\d,]* turns? ·")
+                        self.assertEqual(record.locator(".session-usage > svg").count(), 3)
+                        self.assertTrue(record.locator(".cache-circle").is_visible())
+                        self.assertEqual(record.locator(".io-value").evaluate_all(
+                            "nodes=>nodes.map(n=>n.textContent.trim().split(' ')[0])"), ["In", "Out"])
+                        self.assertTrue(record.locator(".session-usage svg").evaluate_all("""nodes=>nodes.every(svg=>
+                            [...svg.querySelectorAll('text')].every(text=>{
+                                const b=text.getBBox(); return b.x>=0 && b.y>=0 && b.x+b.width<=40 && b.y+b.height<=40;
+                            }))"""), "all metric values stay inside their circles")
+                        self.assertNotEqual(record.locator(".value-in").evaluate("n=>getComputedStyle(n).fill"),
+                                            record.locator(".value-out").evaluate("n=>getComputedStyle(n).fill"))
+                        if record.locator(".ring-in").count() and record.locator(".ring-out").count():
+                            self.assertNotEqual(record.locator(".ring-in").evaluate("n=>getComputedStyle(n).stroke"),
+                                                record.locator(".ring-out").evaluate("n=>getComputedStyle(n).stroke"))
                     self.assertTrue(page.locator(".session-record").evaluate_all("""rows => rows.every(row => {
                         const name = row.querySelector('h3').getBoundingClientRect();
                         const bar = row.querySelector('.track').getBoundingClientRect();
@@ -483,17 +614,17 @@ class EvidenceAndSnapshots(unittest.TestCase):
                 self.assertIn("Print/export requested at", text)
                 self.assertIn("pre-completion projection", text)
                 for content in pages:
-                    if "Cumulative session history" in content:
+                    if "Session history" in content:
                         self.assertIn("Coordinator", content, "timeline heading must not be orphaned")
                 for content in pages[1:-1]:
                     self.assertGreaterEqual(content.count("uncached input /"), 3, "unexpected large pagination gap")
                 # Completion after the saved/observed page is not retroactive.
                 with log.open("a") as handle:
                     handle.write(json.dumps({"type": "session.task_complete", "timestamp": "2026-10-29T09:00:00Z", "data": {}}) + "\n")
-                self.assertIn("pre-completion projection", page.locator(".provenance").inner_text())
+                self.assertIn("pre-completion projection", page.locator(".provenance").text_content())
                 html_path.write_text(self.pb.render(self.pb.build(self.ledger, COORD)))
                 page.reload(wait_until="networkidle")
-                self.assertIn("Host task completion observed", page.locator(".provenance").inner_text())
+                self.assertIn("Host task completion observed", page.locator(".provenance").text_content())
                 (output / "browser-result.json").write_text(json.dumps({
                     "pdf_pages": len(pdf.pages), "full_names_checked": len(names), "errors_exposed": 6,
                     "keyboard_enter_space": "passed", "saved_vs_observed": "passed",

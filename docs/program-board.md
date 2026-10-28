@@ -5,15 +5,15 @@ A one-page view of a coordinated program for the browser canvas. It answers
 store.
 
 ```text
-python3 ~/.copilot/installed-plugins/architrave/architrave/harness/program_board.py --watch 120 --reqs REQ-53,REQ-54,REQ-55
+python3 ~/.copilot/installed-plugins/architrave/architrave/harness/program_board.py --watch 120 --title "Program board refinements" --reqs REQ-53,REQ-54,REQ-55
 ```
 
 Replace the example IDs with this session's requirements. Scope is mandatory:
 `--reqs` selects the session view; `--all-reqs` deliberately shows the entire
 repository ledger, including historical work. Neither is inferred from ledger
 status: previously accepted requirements need not belong to this session.
-Unknown IDs fail without replacing the board. The scope is printed above the
-overview and retained on refresh and in the stopped snapshot. Historical rows
+Unknown IDs fail without replacing the board. The scope is available under
+**Board details** and retained on refresh and in the stopped snapshot. Historical rows
 remain in `SPEC.md`; they are not copied or deleted to create a session view.
 
 Start it once per coordinator in a background (detached) shell; a second start
@@ -45,11 +45,27 @@ successor.
 
 | Section | Source |
 |---|---|
-| Overview: selected accepted REQs and worker lanes, repository-wide structural checks, cumulative history sessions/tokens/minutes | Working-tree requirements file and local session logs |
+| Overview: short task title and repositories, then the tile dashboard with selected acceptance progress, sessions, cumulative history totals, verified reviews and any active lanes/issues | `--title` (default "Session work"), ledger/selected-lane repositories, requirements and local session logs |
+| Board details: repository-wide structural checks, review diagnostics, cumulative totals and snapshot identity | Working-tree requirements file and local session logs |
 | Lanes: one rectangle per lane, one square per REQ (green accepted, green hatching delivered by a done lane but not yet accepted, blue claimed, red blocked, grey open); select a square for its requirement | `## GHC Scheduler` lane table and REQ rows |
 | How the sessions ran: per session a time bar (first to last event, dark marks for model turns), agent, model/wall minutes, live state, a current-context gauge (latest prompt size) against the model limit and a token gauge | `~/.copilot/session-state/<id>/events.jsonl` of the coordinator and the child sessions it created with `create_session` |
 
-It is dense by design and fits a narrow side panel; there are no tables. Synthetic
+The header lists deduplicated repository names, using origin paths such as
+`owner/repo` when available and directory names otherwise. Credentials, remote
+hosts and URL query strings are never displayed. Repositories come from the
+ledger and selected lane paths, not unrelated historical lanes or every
+configured component. The title survives refresh and stopped snapshots.
+The previous tile dashboard and full status/evidence/review legend remain
+visible between the title and waterfall. Dashboard tiles use three columns on
+desktop and two on narrow screens. Only the repository list sits below the
+title, without the explanatory snapshot/export block. Labels are short and zero-warning tiles
+are omitted, rather than removing the dashboard. History totals remain
+cumulative, not an estimate for the selected requirements. Technical details
+are collapsed by default and print/export observations appear only in print.
+Actual structural failures, serious findings and unresolved evidence remain
+visible. The metric key is optional.
+
+It fits a narrow side panel; there are no tables. Synthetic
 "Requirements"/"Not in a lane" groups are not workers and do not enter the worker
 lane denominator. Session scope filters REQ counts, lane membership and
 review/evidence diagnostics. Structural checks still cover the whole repository
@@ -57,18 +73,29 @@ ledger and are labelled accordingly; a scoped view does not prove repository
 completion. Recursive history can span several tasks in one coordinator;
 its costs are not a current-task estimate. Each session appears once in the
 compact waterfall: full name/model at left, shared-timeline activity bar in the
-middle, and compact context/consumption indicators at right. Timing stays
-beneath the bar. The context circle labels the approximate current size; its
-filled area is proportional to current context / model limit, inside a fixed
-capacity outline. Token bars and labels use **In / Out / Cache**: In is uncached
-input, Out is generated text, and Cache is reused input. Segments share the same
-scale relative to the busiest session, not a capacity or monetary cost.
+middle, and three compact outline-ring gauges at right. Timing stays beneath
+the bar. Context shows its approximate k-token value inside, with arc length
+proportional to current context / model limit. The combined In/Out gauge has a
+blue outer In ring and green inner Out ring, with both values inside; each arc
+is its share of In+Out. Cache has a separate ring and interior value, with its
+arc representing cached input / all consumed tokens (In+Out+Cache).
+In means uncached input, Out generated text, and Cache reused input. These
+gauges do not estimate monetary cost. Empty or unknown denominators show only
+the neutral track, never a zero-length round-cap progress dot.
 On narrow screens the indicators move below the bar, preserving aligned names
 and activity tracks. Expand the model label under a session name for exact
 metrics, full status, agent identity, UUID, full UTC
 timestamps and observed reviewer roles; print includes these automatically.
 There is no separate duplicate metrics list or hover-only value.
 Ordinary desktop rows fit within 50px; longer names wrap rather than truncate.
+The model label also shows its reported reasoning effort (`effort n/a` if
+unreported). Effort comes from model selection events or the matching model's
+main-conversation usage checkpoint; a model change clears stale effort.
+This is a level, not reasoning content or a measured compute-time breakdown.
+The timing line includes recorded assistant-turn starts, including an open
+turn. This is separate from usage/call counts; clipped history counts only
+observed turns in its interval. History, Metric key and Board details have
+separate spacing without increasing individual row padding.
 
 ## Completion
 
@@ -106,16 +133,16 @@ flagged. A fresh session on a small-window model is never flagged. Rotation step
 ## Review marks
 
 - Session row: grey ✓ when the session ran a reviewer agent (adversarial judge, code review, rubber duck, security review or `architrave-review`); ○ when none. It shows that a review ran, not its verdict.
-- Square: a corner when the REQ's latest `review: <reviewer> <verdict>` note (at the start of the cell or after `;` or `,`) is PASS — white when the note names a reviewer session whose local log shows a reviewer role ending in PASS, grey when the note can't be checked. Findings verifiers do not count. The overview shows how many PASS reviews are verified.
-- Lane: "reviewed k/n"; a gold border and "review missing" when a `done` lane has any open REQ, or any lane has an accepted REQ, without a PASS review (withdrawn and superseded REQs are skipped). This is the same rule `requirements --done` enforces for ledger lanes; the "Not in a lane" box only gets the gold border for accepted, unreviewed REQs.
-- Review notes attach to REQs, not lanes: one PASS on a REQ covers every lane that lists it. The overview counts accepted but unreviewed REQs.
+- Square: a corner when the REQ's latest `review: <reviewer> <verdict>` note (at the start of the cell or after `;` or `,`) is PASS — white when the note names a reviewer session whose local log shows a reviewer role ending in PASS, grey when the note can't be checked. Findings verifiers do not count. Board details shows how many PASS reviews are verified.
+- Lane: a gold border and "review missing" when a `done` lane has any open REQ, or any lane has an accepted REQ, without a PASS review (withdrawn and superseded REQs are skipped). This is the same rule `requirements --done` enforces for ledger lanes; the "Not in a lane" box only gets the gold border for accepted, unreviewed REQs.
+- Review notes attach to REQs, not lanes: one PASS on a REQ covers every lane that lists it. Board details counts accepted but unreviewed REQs.
 - The `requirements` gate parses every note, requires the latest to be PASS for an accepted REQ, and rejects a reviewer named like the REQ's owner. A note naming a full session UUID is checked against `session-state/<uuid>/events.jsonl`: the kickoff agent (selected before the first turn) must be a reviewer role, and the ruling of the session's last report (its `task_complete` summary or a message it sent another session) must match. A ruling is the first labelled line (`Verdict: REVISE`, `Re-review of X: PASS`), else the first line opening with an upper-case verdict (`**PASS** on …`); quoted, backticked, `>` and table text and mid-sentence verdict words never count, so reviewers should start their report with a `Verdict:` line. Earlier notes naming the same session (a re-review) need only match one of its reports. A contradiction fails the gate. Use a fresh reviewer session for each delivery: a reused session's later ruling contradicts the earlier note.
 - Where local session logs exist (the Copilot app and CLI), `requirements --done` and the board's "review missing" count only verified PASS notes, so role names and sessions from other machines do not close a lane. On hosts without those logs every note is unverified and accepted as written. A reviewer that ran elsewhere (a cloud, Claude or Codex session) cannot close a lane on a machine that has logs; run the review as a local visible session. With `review.crossFamily`, every model the lane and the reviewer sessions used (start and mid-session switches) must be logged, not `auto`, and share no family, otherwise the lane shows a gap.
 - This catches mistakes and stale claims, not deliberate forgery: an agent that can write files can fake a log.
 
 ## Checks and limits
 
-- The overview labels **ledger structural checks**, not a generic gate PASS. It
+- Board details labels **ledger structural checks**, not a generic gate PASS. It
   preserves all errors, source-verification notes and open serious findings.
   Completion acceptance is not evaluated by the board. With a configuration,
   use `requirements --done` for completion; without one, the board explicitly

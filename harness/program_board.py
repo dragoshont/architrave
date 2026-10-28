@@ -59,9 +59,9 @@ STATE: dict[tuple[str, datetime | None], dict] = {}
 
 def fresh_state(sid: str) -> dict:
     return {"offset": 0, "pending": {}, "turn_open": None, "info": {
-        "id": sid, "start": None, "end": None, "turns": [], "calls": 0, "input": 0, "cached": 0, "output": 0,
+        "id": sid, "start": None, "end": None, "turns": [], "turn_count": 0, "calls": 0, "input": 0, "cached": 0, "output": 0,
         "max_context": 0, "context_limit": 0, "context": 0, "context_at": None, "baseline": 0, "model": None,
-        "agent": None, "children": [], "reviews": set(), "completed": None, "turn_after_complete": False}}
+        "reasoning_effort": None, "agent": None, "children": [], "reviews": set(), "completed": None, "turn_after_complete": False}}
 
 
 def read_session(sid: str, since: datetime | None = None) -> dict | None:
@@ -117,8 +117,27 @@ def consume(state: dict, line: bytes, since: datetime | None) -> None:
         info["end"] = max(info["end"], stamp) if info["end"] else stamp
     if kind == "session.start":
         info["model"] = data.get("selectedModel") if isinstance(data.get("selectedModel"), str) else info["model"]
+        effort = data.get("reasoningEffort")
+        info["reasoning_effort"] = effort if isinstance(effort, str) and effort.strip() else None
         if not since and isinstance(data.get("startTime"), str):
             info["start"] = when(data["startTime"]) or info["start"]
+    elif kind == "session.model_change":
+        if isinstance(data.get("newModel"), str):
+            info["model"] = data["newModel"]
+            effort = data.get("reasoningEffort")
+            info["reasoning_effort"] = effort if isinstance(effort, str) and effort.strip() else None
+    elif kind == "session.usage_checkpoint":
+        checkpoints = data.get("promptCacheBreakState")
+        for checkpoint in checkpoints if isinstance(checkpoints, list) else []:
+            if not isinstance(checkpoint, dict) or checkpoint.get("conversation") != "main":
+                continue
+            models = checkpoint.get("models")
+            if not isinstance(models, dict):
+                continue
+            for model, metadata in models.items():
+                if isinstance(metadata, dict) and (metadata.get("model") or model) == info["model"]:
+                    effort = metadata.get("reasoning_effort")
+                    info["reasoning_effort"] = effort if isinstance(effort, str) and effort.strip() else None
     elif kind == "subagent.selected":
         name = data.get("agentName") if isinstance(data.get("agentName"), str) else None
         if not info["turns"] and state["turn_open"] is None:
@@ -131,6 +150,7 @@ def consume(state: dict, line: bytes, since: datetime | None) -> None:
             and REVIEWER.fullmatch(str(data["arguments"].get("agent_type", ""))):
         info["reviews"].add(str(data["arguments"]["agent_type"]))
     elif kind == "assistant.turn_start":
+        info["turn_count"] += 1
         state["turn_open"] = stamp
         if info["completed"]:
             info["turn_after_complete"] = True
@@ -152,6 +172,8 @@ def consume(state: dict, line: bytes, since: datetime | None) -> None:
                 info["context"], info["context_at"] = prompt, stamp
         info["context_limit"] = max(info["context_limit"], as_int(usage.get("maxPromptTokens")))
         if isinstance(usage.get("model"), str):
+            if usage["model"] != info["model"]:
+                info["reasoning_effort"] = None
             info["model"] = usage["model"]
     elif kind == "tool.execution_start" and data.get("toolName") in SPAWN_TOOLS:
         args = data.get("arguments") if isinstance(data.get("arguments"), dict) else {}
@@ -274,7 +296,13 @@ def evidence_identity(evidence: str, ledger: Path, repos: list[Path]) -> dict:
     return {"state": "unsupported", "detail": "no supported artifact metadata or resolving commit"}
 
 
-def build(ledger: Path, coordinator: str, selected: list[str] | None = None) -> dict:
+def repository_name(path: Path) -> str:
+    remote = (gate.git(path, "remote", "get-url", "origin") or "").split("?", 1)[0].split("#", 1)[0]
+    match = re.match(r"^(?:(?:https?|ssh|git)://[^/]+/|[^/]+@[^:]+:)(.+)$", remote)
+    return match[1].strip("/").removesuffix(".git") if match else path.name
+
+
+def build(ledger: Path, coordinator: str, selected: list[str] | None = None, title: str | None = None) -> dict:
     path = ledger / "SPEC.md"
     source_bytes = path.read_bytes()
     text = source_bytes.decode("utf-8-sig")
@@ -293,6 +321,11 @@ def build(ledger: Path, coordinator: str, selected: list[str] | None = None) -> 
         reqs = {rid: row for rid, row in reqs.items() if rid in selected}
         lanes = [dict(lane, **{"req ids": ", ".join(rid for rid in gate.lane_reqs(lane) if rid in reqs)})
                  for lane in lanes if set(gate.lane_reqs(lane)) & reqs.keys()]
+    repositories = {repository_name(ledger)}
+    for lane in lanes:
+        if lane["repo"] and lane["repo"] != "-":
+            repo = Path(lane["repo"]).expanduser()
+            repositories.add(repository_name(repo if repo.is_absolute() else ledger / repo))
     repos = [ledger] + [gate.component_path(ledger, c["path"]) for c in config.get("components") or []
                         if isinstance(c, dict) and isinstance(c.get("path"), str)]
     repos = [r for r in repos if gate.git(r, "rev-parse", "--git-dir") is not None]
@@ -347,7 +380,17 @@ def build(ledger: Path, coordinator: str, selected: list[str] | None = None) -> 
             "strict": strict, "cross": cross, "generated": datetime.now(timezone.utc), "coordinator": coordinator,
             "identities": identities, "notes": notes, "blockers": blockers,
             "configured": (ledger / "architrave.config.json").is_file(), "source_state": source_state,
-            "source_digest": source_digest, "selected": selected}
+            "source_digest": source_digest, "selected": selected, "title": title or "Session work",
+            "repositories": sorted(repositories)}
+
+
+def ring(value: int, total: int, radius: float, tone: str) -> str:
+    track = f"<circle class='ring-track' cx='20' cy='20' r='{radius}'/>"
+    if value > 0 and total > 0:
+        percent = min(value / total, 1) * 100
+        track += (f"<circle class='ring-progress ring-{tone}' cx='20' cy='20' r='{radius}' pathLength='100' "
+                  f"stroke-dasharray='{percent:.3f} {100 - percent:.3f}' transform='rotate(-90 20 20)'/>")
+    return track
 
 
 def timeline(sessions: list[dict], lane_by_session: dict, remote: list[dict] = ()) -> str:
@@ -355,8 +398,7 @@ def timeline(sessions: list[dict], lane_by_session: dict, remote: list[dict] = (
     t0 = timed[0]["start"] if timed else None
     t1 = max((s["end"] for s in timed), default=None)
     span = max((t1 - t0).total_seconds(), 60) if timed else 60
-    top_tokens = max((s["input"] + s["cached"] + s["output"] for s in timed), default=0) or 1
-    width, gauge = 300, 92
+    width = 300
     rows = []
     for s in timed:
         if s["end"] < t0:
@@ -368,13 +410,8 @@ def timeline(sessions: list[dict], lane_by_session: dict, remote: list[dict] = (
         marks = "".join(f"<rect class='turn' x='{(max(a, t0) - t0).total_seconds() / span * width:.1f}' y='2' "
                         f"width='{max((b - max(a, t0)).total_seconds() / span * width, 1):.1f}' height='6'/>"
                         for a, b in s["spans"] if b >= t0)
-        ctx = (s["context"] / s["context_limit"]) if s["context_limit"] else 0
-        radius = 14 * min(max(ctx, 0), 1) ** .5
-        segments, token_x = [], 0
-        for field, kind in (("input", "in"), ("output", "out"), ("cached", "cache")):
-            segment_width = gauge * s[field] / top_tokens
-            segments.append(f"<rect class='token-{kind}' x='{token_x:.3f}' width='{segment_width:.3f}' height='6'/>")
-            token_x += segment_width
+        io_total = s["input"] + s["output"]
+        consumed = io_total + s["cached"]
         capacity = f"of {s['context_limit']:,}" if s["context_limit"] else "limit unavailable"
         review = ("ran reviewer " + ", ".join(sorted(s["reviews"])) + " (verdict is in the ledger, not checked here)"
                   if s["reviews"] else "no reviewer run")
@@ -387,22 +424,30 @@ def timeline(sessions: list[dict], lane_by_session: dict, remote: list[dict] = (
             f"<div class='history-visual'><div>"
             f"<svg class='timeline' viewBox='0 0 {width} 10' preserveAspectRatio='none' role='img' aria-label='Session activity on the shared UTC timeline'>"
             f"<rect class='lane-bg' width='{width}' height='10'/><rect class='track {tone}' x='{x:.1f}' width='{w:.1f}' height='10'/>{marks}</svg>"
-            f"<p>{'started earlier · ' if s['start'] < t0 else ''}{s['active_min']:.0f}m model · {s['wall_min']:.0f}m elapsed · {esc(brief_status)}{rotation}</p>"
+            f"<p>{'started earlier · ' if s['start'] < t0 else ''}{s['turn_count']:,} {'turn' if s['turn_count'] == 1 else 'turns'} · {s['active_min']:.0f}m model · {s['wall_min']:.0f}m elapsed · {esc(brief_status)}{rotation}</p>"
             f"</div><div class='session-usage'>"
-            f"<svg class='context-circle' viewBox='0 0 32 32' role='img' aria-label='Current context {s['context']:,} {capacity}; peak {s['max_context']:,}'>"
-            f"<circle class='context-limit' cx='16' cy='16' r='14'/><circle class='context-disc' cx='16' cy='16' r='{radius:.2f}'/>"
-            f"<text class='context-value' x='16' y='19' text-anchor='middle'>{num(s['context'])}</text></svg>"
-            f"<div class='token-usage'><svg class='timeline token-bar' viewBox='0 0 {gauge} 6' preserveAspectRatio='none' role='img' "
-            f"aria-label='Cumulative tokens: {s['input']:,} uncached input, {s['output']:,} output, {s['cached']:,} cached input'>"
-            f"<rect class='gauge' width='{gauge}' height='6'/>{''.join(segments)}</svg>"
-            f"<div class='token-counts'><span><b>{num(s['input'])}</b><small>In</small></span>"
-            f"<span><b>{num(s['output'])}</b><small>Out</small></span><span><b>{num(s['cached'])}</b><small>Cache</small></span></div></div></div></div>"
+            f"<svg class='metric-circle context-circle' viewBox='0 0 40 40' role='img' aria-label='Current context {s['context']:,} {capacity}; peak {s['max_context']:,}'>"
+            f"{ring(s['context'], s['context_limit'], 18.5, 'context')}"
+            f"<text class='metric-value context-value' x='20' y='21' text-anchor='middle'>{s['context'] / 1000:.0f}k</text>"
+            f"<text class='metric-label' x='20' y='29' text-anchor='middle'>Ctx</text></svg>"
+            f"<svg class='metric-circle io-circle' viewBox='0 0 40 40' role='img' "
+            f"aria-label='Uncached input {s['input']:,}; output {s['output']:,}; each ring is a share of combined input and output {io_total:,}'>"
+            f"{ring(s['input'], io_total, 18.5, 'in')}{ring(s['output'], io_total, 14.5, 'out')}"
+            f"<text class='io-value value-in' x='20' y='18' text-anchor='middle'><tspan class='io-label'>In </tspan>{num(s['input'])}</text>"
+            f"<text class='io-value value-out' x='20' y='26' text-anchor='middle'><tspan class='io-label'>Out </tspan>{num(s['output'])}</text></svg>"
+            f"<svg class='metric-circle cache-circle' viewBox='0 0 40 40' role='img' "
+            f"aria-label='Cached input {s['cached']:,} of all consumed tokens {consumed:,}'>"
+            f"{ring(s['cached'], consumed, 18.5, 'cache')}"
+            f"<text class='metric-value' x='20' y='21' text-anchor='middle'>{num(s['cached'])}</text>"
+            f"<text class='metric-label' x='20' y='29' text-anchor='middle'>Cache</text></svg></div></div>"
             f"<details class='session-provenance'><summary class='interactive-only' aria-label='Exact metrics and log details (UTC)'>"
-            f"<span class='session-model'>{esc(s['model'] or 'model unavailable')}</span></summary>"
+            f"<span class='session-model'>{esc(s['model'] or 'model unavailable')}</span>"
+            f"<span class='session-effort' title='Reported reasoning effort'> · {esc(s['reasoning_effort'] or 'effort n/a')}</span></summary>"
             f"<p>{s['input']:,} uncached input / {s['output']:,} output / {s['cached']:,} cached input tokens; "
             f"Context {s['context']:,} / {s['context_limit']:,} · peak {s['max_context']:,}</p>"
-            f"<p>{s['active_min']:.1f} model / {s['wall_min']:.1f} wall minutes · {s['calls']:,} calls · {esc(status)}</p>"
+            f"<p>{s['active_min']:.1f} model / {s['wall_min']:.1f} wall minutes · {s['turn_count']:,} recorded assistant-turn starts · {s['calls']:,} calls · {esc(status)}</p>"
             f"<p>{esc(s['agent'] or 'default')} · {esc(s['model'] or 'model unavailable')} · {esc(s['id'])} · "
+            f"reasoning effort {esc(s['reasoning_effort'] or 'unavailable')} · "
             f"{s['start'].astimezone(timezone.utc).isoformat(timespec='seconds')} to "
             f"{s['end'].astimezone(timezone.utc).isoformat(timespec='seconds')} · {esc(review)}</p></details></article>")
     for lane in remote:
@@ -412,9 +457,10 @@ def timeline(sessions: list[dict], lane_by_session: dict, remote: list[dict] = (
                      for f in (0, .5, 1)) if timed else "")
     return (f"<div class='history-axis'><div>{ticks}</div></div>{''.join(rows)}"
             + ("<p class='note'>No local session logs found for this program.</p>" if not timed else "")
-            + "<p class='note'>Bars share the UTC timeline; dark marks are model turns. Circle area: current context / limit. "
-            "In = uncached input; Out = generated; Cache = reused input. Token bars share the busiest-session scale, not monetary cost. "
-            "Expand a model label for exact values.</p>")
+            + "<details class='history-key'><summary>Metric key</summary><p class='note'>Bars share the UTC timeline; dark marks are model turns. Rings: context / model limit; "
+            "In and Out / combined In+Out; Cache / all consumed tokens. In = uncached input; Out = generated; Cache = reused input. "
+            "Turns count recorded assistant-turn starts, including an open turn, not usage calls. "
+            "Reasoning effort is the latest reported value for the displayed model. Expand a model label for exact values.</p></details>")
 
 
 def render(data: dict) -> str:
@@ -437,9 +483,27 @@ def render(data: dict) -> str:
              ("accepted, not reviewed", str(len(unreviewed_accepted))),
              ("PASS review executions verified", f"{len(verified & set(active_req))}/{len(reviewed & set(active_req))}"),
              ("worker lanes running", f"{running}/{len(workers)}"),
-             ("history sessions", str(len(sessions))),              ("history tokens in/out/cache", f"{num(total_in)}/{num(total_out)}/{num(total_cached)}"),
+             ("history sessions", str(len(sessions))), ("history tokens in/out/cache", f"{num(total_in)}/{num(total_out)}/{num(total_cached)}"),
              ("model min, cumulative history", f"{active:.0f}"), ("history span min", f"{wall:.0f}")]
     overview = "".join(f"<div><b>{esc(v)}</b><span>{esc(k)}</span></div>" for k, v in stats)
+    primary_stats = [("Accepted", f"{accepted}/{len(active_req)}"),
+                     ("Ledger structure", "PASS" if not data["errors"] else f"{len(data['errors'])} issues"),
+                     ("Sessions", str(len(sessions)))]
+    if sessions:
+        primary_stats += [("Tokens · In / Out / Cache", f"{num(total_in)} / {num(total_out)} / {num(total_cached)}"),
+                          ("Model time", f"{active:.0f}m"), ("History span", f"{wall:.0f}m")]
+    if reviewed & set(active_req):
+        primary_stats.append(("Reviews verified", f"{len(verified & set(active_req))}/{len(reviewed & set(active_req))}"))
+    if running:
+        primary_stats.append(("Lanes active", f"{running}/{len(workers)}"))
+    review_gaps = sum(1 for lane in workers if gate.lane_review_gaps(lane, reqs, data["strict"], data["cross"]))
+    if review_gaps:
+        primary_stats.append(("Review gaps", str(review_gaps)))
+    if unverified & set(active_req):
+        primary_stats.append(("Evidence issues", str(len(unverified & set(active_req)))))
+    if unreviewed_accepted:
+        primary_stats.append(("Unreviewed", str(len(unreviewed_accepted))))
+    primary = "".join(f"<div><b>{esc(v)}</b><span>{esc(k)}</span></div>" for k, v in primary_stats)
     boxes = []
     for lane in lanes:
         ids = [rid.upper() for rid in re.findall(r"REQ-[A-Za-z0-9_.-]+", lane["req ids"], re.I)]
@@ -450,21 +514,29 @@ def render(data: dict) -> str:
             f"data-d='{esc(r)} · {esc(reqs[r]['status'] if r in reqs else 'unknown')}{' · delivered by this lane, awaiting acceptance' if r in delivered else ''} · {esc(data['identities'].get(r, {}).get('detail', 'no evidence'))}{' · review execution verified in its session log' if r in verified else ' · reviewed (note only)' if r in reviewed else ' · not reviewed'} · {esc((reqs[r]['requirement'] if r in reqs else ''))}' "
             f"aria-label='{esc(r)} {esc(reqs[r]['status'] if r in reqs else 'unknown')}: {esc(reqs[r]['requirement'] if r in reqs else '')}'></button>" for r in ids)
         done = sum(1 for r in ids if r in reqs and reqs[r]["status"].lower() == "accepted")
-        rev = sum(1 for r in ids if r in reviewed)
         missing = bool(gate.lane_review_gaps(lane, reqs, data["strict"], data["cross"])) and not lane.get("synthetic")
         risky = missing or (lane.get("synthetic") and any(
             r in reqs and reqs[r]["status"].lower() == "accepted" and r not in reviewed for r in ids))
         tone = LANE_TONE.get(lane["state"].lower(), "open")
-        boxes.append(f"<section class='box {tone}{' unrev' if risky else ''}'><h3>{esc(lane['lane'])}</h3>"
-                     f"<p>{'Synthetic requirement group (not a worker lane)' if lane.get('synthetic') else esc(lane['state'])}{' · review missing' if missing else ''} · {done}/{len(ids)} accepted · reviewed {rev}/{len(ids)}</p>"
+        status = ([] if lane.get("synthetic") else [lane["state"]])
+        if risky:
+            status.append("review missing")
+        status.append(f"{done}/{len(ids)} accepted")
+        boxes.append(f"<section class='box {tone}{' unrev' if risky else ''}' data-synthetic='{'true' if lane.get('synthetic') else 'false'}'><h3>{esc(lane['lane'])}</h3>"
+                     f"<p>{esc(' · '.join(status))}</p>"
                      f"<div class='grid'>{squares}</div></section>")
     css = """
 :root{color-scheme:dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#10161e;color:#edf3f8}
 *{box-sizing:border-box}body{margin:0}main{padding:14px 14px 12px;max-width:760px;margin:auto}
-h1{margin:0;font-size:17px;font-weight:650;letter-spacing:-.02em}h2{margin:16px 0 6px;font-size:11px;font-weight:600;color:#b8c6d5;text-transform:uppercase;letter-spacing:.06em}
+h1{margin:0;font-size:17px;font-weight:650;letter-spacing:-.02em;overflow-wrap:anywhere}h2{margin:22px 0 10px;font-size:11px;font-weight:600;color:#b8c6d5;text-transform:uppercase;letter-spacing:.06em}
 .note{margin:3px 0;font-size:10px;color:#b8c6d5}
-.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:#2a3644;margin-top:10px;border:1px solid #2a3644}
-.stats div{background:#1b2632;padding:7px 8px}.stats b{display:block;font-size:15px;font-variant-numeric:tabular-nums}.stats span{font-size:10px;color:#b8c6d5}
+.stats{display:flex;flex-wrap:wrap;gap:8px 18px;margin:12px 0}
+.stats div{display:flex;gap:5px;align-items:baseline}.stats b{font-size:14px;font-variant-numeric:tabular-nums}.stats span{font-size:11px;color:#b8c6d5}
+.primary-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:#2a3644;border:1px solid #2a3644}
+.primary-stats div{display:block;background:#1b2632;padding:7px 8px;min-width:0;overflow-wrap:anywhere}
+.primary-stats b{display:block;font-size:15px}.primary-stats span{font-size:10px}
+.repo-list{margin:5px 0;color:#b8c6d5;font-size:11px;overflow-wrap:anywhere}
+.print-only{display:none}#detail:empty{display:none}
 .legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:10px;color:#d3dee8;margin:4px 0 8px}.legend i{display:inline-block;width:9px;height:9px;margin-right:4px;vertical-align:-1px}.legend i.warn{box-shadow:inset 0 0 0 2px #d6aa4b}.legend i.sq{width:9px;height:9px}.legend i.unrevkey{border:2px solid #d6aa4b}
 .done{background:#38aa6b;fill:#38aa6b}.active{background:#479bc1;fill:#479bc1}.blocked{background:#e05b6b;fill:#e05b6b}.open{background:#506071;fill:#506071}.gone{background:#33404e;fill:#33404e}
 .boxes{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}
@@ -473,14 +545,14 @@ h1{margin:0;font-size:17px;font-weight:650;letter-spacing:-.02em}h2{margin:16px 
 .grid{display:grid;grid-template-columns:repeat(auto-fill,11px);gap:1px}
 .sq{width:11px;height:11px;padding:0;border:0;cursor:pointer}.sq.warn{box-shadow:inset 0 0 0 2px #d6aa4b}.delivered{background:repeating-linear-gradient(135deg,#38aa6b 0 2px,#1b2632 2px 4px)}.sq{position:relative}.sq.rev::after{content:"";position:absolute;right:0;top:0;border-style:solid;border-width:0 5px 5px 0;border-color:transparent #8fa1b3 transparent transparent}.sq.vrf::after{border-color:transparent #fff transparent transparent}.box.unrev{border-color:#d6aa4b;box-shadow:inset 0 0 0 1px #d6aa4b}.rot{fill:#d6aa4b}.rv{fill:#38aa6b}.nrv{fill:#8fa1b3}.remote{fill:none;stroke:#506071;stroke-dasharray:3 2}.issues{margin:6px 0 0;padding-left:16px;font-size:10px;color:#f0a0aa}.sq:hover,.sq:focus-visible,.sq.sel{outline:1.5px solid #fff;outline-offset:0}
 #detail{min-height:28px;margin:8px 0 0;padding-top:6px;border-top:1px solid #415064;font-size:11px;color:#c6d4e1;overflow-wrap:anywhere}
-.timeline{width:100%;height:12px;display:block}.token-bar{height:6px}.lane-bg,.gauge{fill:#1b2632}.turn{fill:#0b1016;opacity:.55}
-.session-usage{display:flex;align-items:flex-start;gap:8px}.token-usage{flex:1;min-width:0}
-.context-circle{width:32px;height:32px;flex-shrink:0}.context-limit{fill:none;stroke:#506071;stroke-width:1}
-.context-disc{fill:#d6aa4b;fill-opacity:.35}.context-value{fill:#edf3f8;font-size:8.5px;font-weight:600}
+.timeline{width:100%;height:12px;display:block}.lane-bg{fill:#1b2632}.turn{fill:#0b1016;opacity:.55}
+.session-usage{display:flex;align-items:flex-start;gap:8px}
+.metric-circle{width:40px;height:40px;flex-shrink:0}
+.ring-track,.ring-progress{fill:none;stroke-width:2.5}.ring-track{stroke:#33404e}.ring-progress{stroke-linecap:round}
+.ring-context{stroke:#d6aa4b}.ring-in{stroke:#479bc1}.ring-out{stroke:#38aa6b}.ring-cache{stroke:#aebdcb}
+.metric-value{fill:#edf3f8;font-size:9px;font-weight:600}.metric-label{fill:#b8c6d5;font-size:6px}
+.io-value{font-size:7.2px;font-weight:600}.io-label{font-size:5.5px}.value-in{fill:#479bc1}.value-out{fill:#38aa6b}
 .rotation{color:#d6aa4b}
-.token-in{fill:#479bc1}.token-cache{fill:#506071}.token-out{fill:#38aa6b}
-.token-counts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;padding-top:3px;font-variant-numeric:tabular-nums}
-.token-counts span{display:flex;flex-direction:column}.token-counts b{font-size:11px;font-weight:500}.token-counts small{font-size:9px;color:#b8c6d5}
 .history-axis,.session-record{display:grid;grid-template-columns:minmax(95px,1fr) minmax(0,2.6fr) minmax(0,1.6fr);column-gap:14px}
 .history-axis{margin:12px 0 5px;color:#b8c6d5;font-size:10px}
 .history-axis>div{grid-column:2;display:flex;justify-content:space-between}
@@ -489,9 +561,10 @@ h1{margin:0;font-size:17px;font-weight:650;letter-spacing:-.02em}h2{margin:16px 
 .history-visual>div:first-child{grid-column:2;grid-row:1/3}
 .history-visual>div:last-child{grid-column:3;grid-row:1/3}
 .session-record h3,.session-provenance{grid-column:1}
-.session-model{color:#b8c6d5;font-size:10px}.session-provenance{color:#b8c6d5}.session-provenance summary{margin:3px 0;font-size:10px}
+.session-model,.session-effort{color:#b8c6d5;font-size:10px}.session-provenance{color:#b8c6d5}.session-provenance summary{margin:3px 0;font-size:10px}
 .session-provenance[open]{grid-column:1/-1;grid-row:3}
 @media(max-width:520px){
+.primary-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
 .history-axis,.session-record{grid-template-columns:95px minmax(0,1fr);column-gap:10px}
 .history-visual>div:last-child{grid-column:2;grid-row:3;margin-top:6px}
 .session-provenance[open]{grid-row:4}
@@ -502,6 +575,8 @@ footer{font-size:9px;color:#8fa1b3;margin-top:10px;line-height:1.5}
 .session-record h3{margin:0;font-size:12px}.session-record p{margin:3px 0}
 .evidence-record{font-size:11px;margin:6px 0}
 summary{cursor:pointer;font-size:11px;margin:8px 0}
+.history-key,.board-details{margin-top:20px;padding-top:12px;border-top:1px solid #2a3644}
+.history-key>summary,.board-details>summary{margin:0}
 @media print{
 @page{size:A4;margin:14mm}
 :root,body{color-scheme:light;background:white;color:#111}
@@ -513,6 +588,7 @@ main{max-width:none;padding:0}
 .box,.session-record,.evidence-record,.stats div{break-inside:avoid}
 h2,h3,summary{break-after:avoid}
 .timeline,.history-axis,.session-usage,.interactive-only,#detail,script{display:none!important}
+.print-only{display:block}
 .session-record{display:block;border-top:1px solid #415064}
 .history-visual{display:block}
 .history-visual>div:first-child,.history-visual>div:last-child{grid-column:auto;grid-row:auto}
@@ -522,9 +598,9 @@ h2,h3,summary{break-after:avoid}
 details,details>*,details::details-content{display:block;content-visibility:visible}
 }
 """
-    legend = ("<div class='legend'><span><i class='done'></i>accepted</span><span><i class='active'></i>claimed</span>"
-              "<span><i class='delivered'></i>delivered, awaiting acceptance</span><span><i class='blocked'></i>blocked</span><span><i class='open'></i>open</span><span><i class='open warn'></i>evidence unresolved</span>"
-              "<span><i class='sq rev open'></i>reviewed</span><span><i class='unrevkey'></i>done or accepted work without a PASS review</span></div>")
+    legend = ("<div class='legend'><span><i class='done'></i>Accepted</span><span><i class='active'></i>In progress</span>"
+              "<span><i class='delivered'></i>Awaiting acceptance</span><span><i class='blocked'></i>Blocked</span><span><i class='open'></i>Open</span><span><i class='open warn'></i>Evidence issue</span>"
+              "<span><i class='sq rev open'></i>Reviewed</span><span><i class='unrevkey'></i>Review missing</span></div>")
     script = ("<script>const d=document.getElementById('detail');document.querySelectorAll('button.sq').forEach(b=>b.onclick=()=>{"
               "document.querySelectorAll('.sq.sel').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');d.textContent=b.dataset.d});"
               "const snapshot=document.getElementById('snapshot').dataset.snapshot;"
@@ -548,29 +624,32 @@ details,details>*,details::details-content{display:block;content-visibility:visi
                             and (rid in unverified or identity["state"] == "verified"))
     return (f"<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width'>"
             + (f"<meta http-equiv='refresh' content='{data['refresh']}'>" if data.get("refresh") else "") + f"<title>Program board</title><style>{css}</style></head><body><main>"
-            f"<h1>{esc(data['ledger'].name)} · program</h1><div class='note provenance'>"
+            f"<header><h1>{esc(data['title'])}</h1>"
+            f"<p class='repo-list'>{esc(' · '.join(data['repositories']))}</p>"
+            f"<div class='stats primary-stats'>{primary}</div></header>"
+            + ("<ul class='issues'>" + "".join(f"<li>{esc(e)}</li>" for e in data["errors"]) + "</ul>" if data["errors"] else "")
+            + ("<ul class='issues'>" + "".join(f"<li>Open serious finding blocks completion: {esc(e)}</li>" for e in data["blockers"]) + "</ul>" if data["blockers"] else "")
+            + ("<ul class='note'>" + "".join(f"<li>{esc(e)}</li>" for e in data["notes"]) + "</ul>" if data["notes"] else "")
+            + f"<h2>{'Lanes' if workers else 'Requirements'}</h2>{legend}<div class='boxes'>{''.join(boxes) or '<p class=note>No requirements.</p>'}</div>"
+            f"<p id='detail' role='status'></p>"
+            + (f"<details{' open' if unverified else ''}><summary>{'Evidence issues' if unverified else 'Artifact details'}</summary><ul>{identity_rows}</ul></details>" if identity_rows else "")
+            + f"<h2>Session history <span class='note'>· cumulative</span></h2>"
+            f"{timeline(sessions, data['lane_by_session'], data['remote'])}"
+            f"<details class='board-details'><summary>Board details</summary><div class='note provenance'>"
             f"<p id='requirement-scope'>{esc(scope)}</p>"
             f"<p id='snapshot' data-snapshot='{esc(snapshot)}'>{esc(mode)} · generated bytes at {esc(generated)} UTC</p>"
             f"<p>Repository HEAD: {esc(data['commit'])}<br>Ledger: working-tree SPEC.md ({esc(data['source_state'])}) · SHA256 {data['source_digest']}</p>"
             f"<p>Session-log observation cutoff: {esc(max((s['end'].astimezone(timezone.utc) for s in sessions), default='unavailable'))} · {esc(terminal)}</p>"
-            f"<p id='page-observation'>Page observation unavailable until loaded in a script-enabled consumer.</p>"
-            f"<p id='export-observation'>No print/export observation recorded in these generated bytes.</p></div>"
+            f"<p id='page-observation'>Page observation unavailable until loaded in a script-enabled consumer.</p></div>"
+            f"<p id='export-observation' class='note print-only'>No print/export observation recorded in these generated bytes.</p>"
             f"<div class='stats'>{overview}</div>"
             f"<p class='note'>Cumulative history totals: {total_in:,} uncached input / {total_out:,} output / {total_cached:,} cached input tokens.</p>"
+            f"<p class='note'>Cumulative session history (not current-task cost). Requirement groups are not worker lanes.</p>"
             f"<p class='note'>Completion acceptance: {esc(completion)}.</p>"
-            + ("<ul class='issues'>" + "".join(f"<li>{esc(e)}</li>" for e in data["errors"]) + "</ul>" if data["errors"] else "")
-            + ("<ul class='issues'>" + "".join(f"<li>Open serious finding blocks completion: {esc(e)}</li>" for e in data["blockers"]) + "</ul>" if data["blockers"] else "")
-            + ("<ul class='note'>" + "".join(f"<li>{esc(e)}</li>" for e in data["notes"]) + "</ul>" if data["notes"] else "")
-            + f"<h2>Lanes</h2>{legend}<div class='boxes'>{''.join(boxes) or '<p class=note>No lane table.</p>'}</div>"
-            f"<p id='detail' role='status'>Select a square to see its requirement.</p>"
-            + (f"<details open><summary>Artifact identity and unresolved evidence</summary><ul>{identity_rows}</ul></details>" if identity_rows else "")
-            + f"<h2>Cumulative session history (not current-task cost)</h2>"
-            f"<p class='note'>Coordinator and child history; totals may include earlier tasks.</p>"
-            f"{timeline(sessions, data['lane_by_session'], data['remote'])}"
             f"<footer>Squares show ledger status. A gold ring marks unsupported, incomplete, missing, changed or unreadable evidence. "
             f"A resolving commit establishes existence only, not a particular artifact's identity. Artifact SHA256 and declared review "
             f"binding are separate from semantic quality and behavioral acceptance. Structural checks are not completion acceptance. "
-            f"Sidecar files alone never establish live workers.</footer>{script}</main></body></html>")
+            f"Sidecar files alone never establish live workers.</footer></details>{script}</main></body></html>")
 
 
 def main() -> int:
@@ -578,6 +657,7 @@ def main() -> int:
     parser.add_argument("--ledger", help="directory with the requirements file (default: resolved from the current repo)")
     parser.add_argument("--session", default=os.environ.get("COPILOT_AGENT_SESSION_ID"), help="coordinator session id (default: this session)")
     parser.add_argument("--output", help="HTML file (default: this session's files/program-board.html)")
+    parser.add_argument("--title", help="short description of this session's work")
     parser.add_argument("--watch", type=int, metavar="SECONDS", help="regenerate every SECONDS until the program is quiet for 2 hours")
     scope = parser.add_mutually_exclusive_group(required=True)
     scope.add_argument("--reqs", help="comma-separated REQ IDs handled by this session")
@@ -607,7 +687,7 @@ def main() -> int:
         print(f"program-board: {ledger}/SPEC.md not found", file=sys.stderr)
         return 2
     try:
-        initial_data = build(ledger, args.session, args.reqs)
+        initial_data = build(ledger, args.session, args.reqs, args.title)
     except (OSError, ValueError) as exc:
         print(f"program-board: cannot start: {exc}", file=sys.stderr)
         return 2
@@ -653,7 +733,7 @@ def main() -> int:
                                            "interval": max(args.watch, 30), "reqs": args.reqs}), encoding="utf-8")
         while True:
             try:
-                data = initial_data if initial_data is not None else build(ledger, args.session, args.reqs)
+                data = initial_data if initial_data is not None else build(ledger, args.session, args.reqs, args.title)
                 initial_data = None
                 data["refresh"] = args.watch
                 tmp = out.with_suffix(f".{os.getpid()}.tmp")
@@ -682,7 +762,7 @@ def main() -> int:
     finally:
         if args.watch:
             try:
-                data = build(ledger, args.session, args.reqs)
+                data = build(ledger, args.session, args.reqs, args.title)
                 data["stopped"] = True
                 tmp = out.with_suffix(f".{os.getpid()}.tmp")
                 tmp.write_text(render(data), encoding="utf-8")

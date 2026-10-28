@@ -9,10 +9,20 @@ instead of silently displaying the historical ledger.
 History refinement (REQ-57): preserve the compact waterfall while combining each
 row's activity bar with its full name, model and exact metrics; remove the
 duplicate metrics list without dropping print or per-row log details.
-Compact context circles show approximate current size with proportional area;
-stacked bars distinguish In (uncached), Out and Cache token consumption.
+Compact outline rings put current k-context and consumption values inside:
+context/model limit, concentric In/Out shares of In+Out, and separate
+Cache/(In+Out+Cache). In remains uncached input; blue/green distinguish In/Out.
 Rows are tightened to 50px for ordinary desktop names, with full metadata in
 the model-label disclosure.
+The model label includes reported reasoning effort, with no inference when
+unavailable; rows count recorded assistant-turn starts separately from calls.
+
+Overview cleanup (REQ-58): a short task title and deduplicated repository list
+replace the audit-style header while preserving the visual tile dashboard
+and complete status/evidence/review legend.
+Progress, history and review metrics have concise labels; empty warning tiles
+are omitted. Provenance and technical explanations move under Board details.
+Print/export metadata is print-only, while actionable issues remain visible.
 
 Artifact locator/digest recognition, separate declared review bindings and
 placeholder rejection extend the existing board/gates. Snapshot generation,
