@@ -352,70 +352,52 @@ def build(ledger: Path, coordinator: str, selected: list[str] | None = None) -> 
 
 def timeline(sessions: list[dict], lane_by_session: dict, remote: list[dict] = ()) -> str:
     timed = [s for s in sessions if s["start"] and s["end"]]
-    if not timed:
-        return "<p class='note'>No local session logs found for this program.</p>"
-    t0, t1 = timed[0]["start"], max(s["end"] for s in timed)
-    timed = [s for s in timed if s["end"] >= t0]
-    span = max((t1 - t0).total_seconds(), 60)
-    top_tokens = max(s["input"] + s["cached"] + s["output"] for s in timed) or 1
-    width, row, left, gauge = 300, 40, 104, 92
+    t0 = timed[0]["start"] if timed else None
+    t1 = max((s["end"] for s in timed), default=None)
+    span = max((t1 - t0).total_seconds(), 60) if timed else 60
+    top_tokens = max((s["input"] + s["cached"] + s["output"] for s in timed), default=0) or 1
+    width, gauge = 300, 92
     rows = []
-    for i, s in enumerate(timed):
-        y = 16 + i * row
+    for s in timed:
+        if s["end"] < t0:
+            continue
         lane = lane_by_session.get(s["id"]) or {}
         tone = "done" if s.get("done") else LANE_TONE.get(lane.get("state", "").lower(), "active")
-        x = left + max((s["start"] - t0).total_seconds(), 0) / span * width
+        x = max((s["start"] - t0).total_seconds(), 0) / span * width
         w = max((s["end"] - max(s["start"], t0)).total_seconds() / span * width, 2)
-        marks = "".join(f"<rect class='turn' x='{left + (a - t0).total_seconds() / span * width:.1f}' y='{y + 2}' "
-                        f"width='{max((b - a).total_seconds() / span * width, 1):.1f}' height='6'/>" for a, b in s["spans"] if b >= t0)
+        marks = "".join(f"<rect class='turn' x='{(max(a, t0) - t0).total_seconds() / span * width:.1f}' y='2' "
+                        f"width='{max((b - max(a, t0)).total_seconds() / span * width, 1):.1f}' height='6'/>"
+                        for a, b in s["spans"] if b >= t0)
         ctx = (s["context"] / s["context_limit"]) if s["context_limit"] else 0
         tok = (s["input"] + s["cached"] + s["output"]) / top_tokens
-        gx = left + width + 12
-        agent = (s["agent"] or "default").replace("architrave:", "")
-        rows.append(
-            f"<g><title>{esc(s['name'])}: {s['wall_min']:.0f} min wall, {s['active_min']:.0f} min model; "
-            f"{('ran reviewer ' + ', '.join(sorted(s['reviews'])) + ' (verdict is in the ledger, not checked here)') if s['reviews'] else 'no reviewer run'}; {s['calls']} calls; {s['input']:,} fresh in, {s['cached']:,} cached, {s['output']:,} out tokens; context now {s['context']:,}, peak {s['max_context']:,} of {s['context_limit']:,}</title>"
-            f"<text class='label' x='0' y='{y + 8}'>{esc(s['name'] if len(s['name']) <= 15 else s['name'][:14] + '…')}"
-            f"<tspan class='nrv'> {'✓' if s['reviews'] else '○'}</tspan>"
-            f"{'<tspan class=rot> ↻</tspan>' if s.get('rotate') == 'hard' else ''}</text>"
-            f"<text class='sub' x='0' y='{y + 19}'>{esc(agent[:22])}</text>"
-            f"<rect class='lane-bg' x='{left}' y='{y}' width='{width}' height='10'/>"
-            f"<rect class='track {tone}' x='{x:.1f}' y='{y}' width='{w:.1f}' height='10'/>{marks}"
-            f"<text class='sub' x='{left}' y='{y + 22}'>{'started earlier · ' if s['start'] < t0 else ''}{s['active_min']:.0f} model / {s['wall_min']:.0f} wall min · {esc(state_of(s, lane))}</text>"
-            f"<rect class='gauge' x='{gx}' y='{y}' width='{gauge}' height='4'/><rect class='ctxfill' x='{gx}' y='{y}' width='{gauge * min(ctx, 1):.1f}' height='4'/>"
-            f"<text class='sub' x='{gx}' y='{y + 12}'>ctx {num(s['context'])} / {num(s['context_limit'])}</text>"
-            f"<rect class='gauge' x='{gx}' y='{y + 16}' width='{gauge}' height='4'/><rect class='tokfill' x='{gx}' y='{y + 16}' width='{gauge * tok:.1f}' height='4'/>"
-            f"<text class='sub' x='{gx}' y='{y + 28}'>tok {num(s['input'])} new · {num(s['cached'])} cache · {num(s['output'])} out</text></g>")
-    for j, lane in enumerate(remote):
-        y = 16 + (len(timed) + j) * row
-        rows.append(f"<g><text class='label' x='0' y='{y + 8}'>{esc(lane['lane'][:17])}</text>"
-                    f"<rect class='lane-bg remote' x='{left}' y='{y}' width='{width}' height='10'/>"
-                    f"<text class='sub' x='{left}' y='{y + 22}'>{esc(lane['state'])} · not logged on this machine</text></g>")
-    ticks = "".join(f"<text class='tick' x='{left + f * width:.0f}' y='9' text-anchor='{'start' if f == 0 else 'end' if f == 1 else 'middle'}'>"
-                    f"{datetime.fromtimestamp(t0.timestamp() + f * span, timezone.utc).strftime('%m-%d %H:%M')} UTC</text>" for f in (0, .5, 1))
-    heads = (f"<text class='tick' x='{left + width + 12}' y='9'>context now · tokens</text>")
-    return (f"<svg class='timeline' viewBox='0 0 {left + width + 12 + gauge} {16 + (len(timed) + len(remote)) * row}' role='img' "
-            f"aria-label='How the sessions ran'>{ticks}{heads}{''.join(rows)}</svg>"
-            f"<p class='note'>Bar: first to last event; dark marks: model turns. Gauges: current context against the "
-            f"model limit, and tokens relative to the busiest session. All dates/times are UTC. "
-            f"<span class='interactive-only'>Hover a row for exact numbers; full names and values follow.</span></p>")
-
-
-def session_details(sessions: list[dict], lane_by_session: dict, remote: list[dict]) -> str:
-    rows = []
-    for s in sessions:
+        review = ("ran reviewer " + ", ".join(sorted(s["reviews"])) + " (verdict is in the ledger, not checked here)"
+                  if s["reviews"] else "no reviewer run")
         rows.append(
             f"<article class='session-record'><h3>{esc(s['name'])}</h3>"
-            f"<p>{esc(s['id'])} · {esc(s['agent'] or 'default')} · {esc(s['model'] or 'model unavailable')}</p>"
-            f"<p>{s['start'].astimezone(timezone.utc).isoformat(timespec='seconds')} to "
-            f"{s['end'].astimezone(timezone.utc).isoformat(timespec='seconds')} · {esc(state_of(s, lane_by_session.get(s['id']) or {}))}</p>"
-            f"<p>{s['input']:,} new input / {s['cached']:,} cached / {s['output']:,} output tokens; "
-            f"context {s['context']:,} / {s['context_limit']:,} (peak {s['max_context']:,}); {s['calls']:,} calls; "
-            f"{s['active_min']:.1f} model / {s['wall_min']:.1f} wall minutes.</p></article>")
+            f"<p class='session-model'>{esc(s['agent'] or 'default')} · {esc(s['model'] or 'model unavailable')}</p>"
+            f"<div class='history-visual'><div>"
+            f"<svg class='timeline' viewBox='0 0 {width} 10' preserveAspectRatio='none' role='img' aria-label='Session activity on the shared UTC timeline'>"
+            f"<rect class='lane-bg' width='{width}' height='10'/><rect class='track {tone}' x='{x:.1f}' width='{w:.1f}' height='10'/>{marks}</svg>"
+            f"<p>{'started earlier · ' if s['start'] < t0 else ''}{s['active_min']:.1f} model / {s['wall_min']:.1f} wall minutes · {s['calls']:,} calls</p>"
+            f"<p>{esc(state_of(s, lane))}</p></div><div>"
+            f"<svg class='timeline usage-gauge' viewBox='0 0 {gauge} 4' preserveAspectRatio='none' aria-hidden='true'>"
+            f"<rect class='gauge' width='{gauge}' height='4'/><rect class='ctxfill' width='{gauge * min(ctx, 1):.1f}' height='4'/></svg>"
+            f"<p>Context {s['context']:,} / {s['context_limit']:,} · peak {s['max_context']:,}</p>"
+            f"<svg class='timeline usage-gauge' viewBox='0 0 {gauge} 4' preserveAspectRatio='none' aria-hidden='true'>"
+            f"<rect class='gauge' width='{gauge}' height='4'/><rect class='tokfill' width='{gauge * tok:.1f}' height='4'/></svg>"
+            f"<p>{s['input']:,} new input / {s['cached']:,} cached / {s['output']:,} output tokens</p></div></div>"
+            f"<details class='session-provenance'><summary class='interactive-only'>Log details (UTC)</summary>"
+            f"<p>{esc(s['id'])} · {s['start'].astimezone(timezone.utc).isoformat(timespec='seconds')} to "
+            f"{s['end'].astimezone(timezone.utc).isoformat(timespec='seconds')} · {esc(review)}</p></details></article>")
     for lane in remote:
         rows.append(f"<article class='session-record'><h3>{esc(lane['lane'])}</h3>"
                     f"<p>{esc(lane['session id'])} · {esc(lane['state'])} · not logged on this machine; metrics unavailable.</p></article>")
-    return "".join(rows) or "<p>No local history observed.</p>"
+    ticks = ("".join(f"<span>{datetime.fromtimestamp(t0.timestamp() + f * span, timezone.utc).strftime('%m-%d %H:%M')} UTC</span>"
+                     for f in (0, .5, 1)) if timed else "")
+    return (f"<div class='history-axis'><div>{ticks}</div></div>{''.join(rows)}"
+            + ("<p class='note'>No local session logs found for this program.</p>" if not timed else "")
+            + "<p class='note'>Bars share the UTC timeline above; dark marks are model turns. Gauges show current context "
+            "against its limit and tokens relative to the busiest session. Exact values are shown in each row.</p>")
 
 
 def render(data: dict) -> str:
@@ -474,10 +456,16 @@ h1{margin:0;font-size:17px;font-weight:650;letter-spacing:-.02em}h2{margin:16px 
 .grid{display:grid;grid-template-columns:repeat(auto-fill,11px);gap:1px}
 .sq{width:11px;height:11px;padding:0;border:0;cursor:pointer}.sq.warn{box-shadow:inset 0 0 0 2px #d6aa4b}.delivered{background:repeating-linear-gradient(135deg,#38aa6b 0 2px,#1b2632 2px 4px)}.sq{position:relative}.sq.rev::after{content:"";position:absolute;right:0;top:0;border-style:solid;border-width:0 5px 5px 0;border-color:transparent #8fa1b3 transparent transparent}.sq.vrf::after{border-color:transparent #fff transparent transparent}.box.unrev{border-color:#d6aa4b;box-shadow:inset 0 0 0 1px #d6aa4b}.rot{fill:#d6aa4b}.rv{fill:#38aa6b}.nrv{fill:#8fa1b3}.remote{fill:none;stroke:#506071;stroke-dasharray:3 2}.issues{margin:6px 0 0;padding-left:16px;font-size:10px;color:#f0a0aa}.sq:hover,.sq:focus-visible,.sq.sel{outline:1.5px solid #fff;outline-offset:0}
 #detail{min-height:28px;margin:8px 0 0;padding-top:6px;border-top:1px solid #415064;font-size:11px;color:#c6d4e1;overflow-wrap:anywhere}
-.timeline{width:100%;display:block}.timeline .label{fill:#edf3f8;font-size:8.5px;font-weight:600}.timeline .sub{fill:#9fb0c1;font-size:6.5px}.timeline .tick{fill:#8fa1b3;font-size:6.5px}.lane-bg,.gauge{fill:#1b2632}.turn{fill:#0b1016;opacity:.55}.ctxfill{fill:#d6aa4b}.tokfill{fill:#479bc1}
+.timeline{width:100%;height:12px;display:block}.usage-gauge{height:4px}.lane-bg,.gauge{fill:#1b2632}.turn{fill:#0b1016;opacity:.55}.ctxfill{fill:#d6aa4b}.tokfill{fill:#479bc1}
+.history-axis{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:18px;margin:12px 0 5px;color:#b8c6d5;font-size:10px}
+.history-axis>div{display:flex;justify-content:space-between}
+.history-visual{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:18px;margin-top:8px}
+.history-visual>div{min-width:0}.history-visual p{font-variant-numeric:tabular-nums;line-height:1.45}
+.session-model{color:#b8c6d5}.session-provenance{color:#b8c6d5}.session-provenance summary{margin:5px 0;font-size:10px}
+@media(max-width:520px){.history-visual,.history-axis{grid-template-columns:1fr;gap:8px}}
 footer{font-size:9px;color:#8fa1b3;margin-top:10px;line-height:1.5}
 .provenance,.session-record,.evidence-record{overflow-wrap:anywhere}
-.session-record{border-top:1px solid #415064;padding:6px 0;font-size:11px}
+.session-record{border-top:1px solid #415064;padding:12px 0;font-size:11px}
 .session-record h3{margin:0;font-size:12px}.session-record p{margin:3px 0}
 .evidence-record{font-size:11px;margin:6px 0}
 summary{cursor:pointer;font-size:11px;margin:8px 0}
@@ -487,11 +475,11 @@ summary{cursor:pointer;font-size:11px;margin:8px 0}
 main{max-width:none;padding:0}
 .stats{grid-template-columns:repeat(3,1fr);background:white}
 .stats div,.box{background:white;color:#111}
-.stats span,.box p,.note,.legend,h2,footer{color:#333}
+.stats span,.box p,.note,.legend,.session-model,.session-provenance,h2,footer{color:#333}
 .box h3{white-space:normal;overflow:visible}
 .box,.session-record,.evidence-record,.stats div{break-inside:avoid}
 h2,h3,summary{break-after:avoid}
-.timeline,.interactive-only,#detail,script{display:none!important}
+.timeline,.history-axis,.interactive-only,#detail,script{display:none!important}
 .session-record p{font-size:10pt;line-height:1.35}
 .session-record h3{font-size:11pt}
 .issues{color:#8b1020}
@@ -544,8 +532,6 @@ details,details>*,details::details-content{display:block;content-visibility:visi
             f"<p class='note'>Selected REQs above; recursive coordinator history below may span multiple tasks. "
             f"Child metrics start no earlier than the coordinator. Synthetic requirement groups are not workers.</p>"
             f"{timeline(sessions, data['lane_by_session'], data['remote'])}"
-            f"<details open><summary>Full session names and exact history metrics (UTC)</summary>"
-            f"{session_details(sessions, data['lane_by_session'], data['remote'])}</details>"
             f"<footer>Squares show ledger status. A gold ring marks unsupported, incomplete, missing, changed or unreadable evidence. "
             f"A resolving commit establishes existence only, not a particular artifact's identity. Artifact SHA256 and declared review "
             f"binding are separate from semantic quality and behavioral acceptance. Structural checks are not completion acceptance. "

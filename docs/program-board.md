@@ -55,8 +55,11 @@ lane denominator. Session scope filters REQ counts, lane membership and
 review/evidence diagnostics. Structural checks still cover the whole repository
 ledger and are labelled accordingly; a scoped view does not prove repository
 completion. Recursive history can span several tasks in one coordinator;
-its costs are not a current-task estimate. Full session names and exact values
-follow the compact chart and remain available in print.
+its costs are not a current-task estimate. Each session appears once: its full
+name and model sit above its activity bar, with exact timing, token and context
+values beside it (stacked on narrow screens). Per-row log details hold the UUID,
+full UTC timestamps and observed reviewer roles; print includes those details
+automatically. There is no separate duplicate metrics list or hover-only value.
 
 ## Completion
 

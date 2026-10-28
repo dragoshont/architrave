@@ -80,7 +80,10 @@ class ProgramBoard(unittest.TestCase):
             self.assertNotIn("sq done warn' data-d='REQ-1", page)
             self.assertIn("L2-remote", page)
             self.assertIn("not logged on this machine", page)
-            self.assertIn("tok 130k new · 40k cache · 910 out", page)
+            self.assertIn("130,000 new input / 40,000 cached / 910 output tokens", page)
+            self.assertEqual(page.count("<article class='session-record'>"), 3)
+            self.assertNotIn("Full session names and exact history metrics", page)
+            self.assertNotIn("Hover a row", page)
             self.assertIn("class='sq done", page)
             self.assertIn("class='sq blocked'", page)
             self.assertIn("L1 app", page)
@@ -97,8 +100,8 @@ class ProgramBoard(unittest.TestCase):
             self.assertIn("box active unrev", page)
             self.assertIn("reviewed 1/2", page)
             self.assertIn("<b>1</b><span>accepted, not reviewed</span>", page)
-            self.assertIn("ctx 50k / 200k", page)
-            self.assertIn("10 model / 11 wall min", page)
+            self.assertIn("Context 50,000 / 200,000", page)
+            self.assertIn("10.0 model / 10.8 wall minutes", page)
             self.assertNotIn("<b>sync</b>", page)
             self.assertNotIn("http", page.split("</style>")[1].split("<script>")[0])
             self.assertNotIn("http-equiv", page)
@@ -291,6 +294,14 @@ class EvidenceAndSnapshots(unittest.TestCase):
         self.assertIn("Cumulative session history (not current-task cost)", self.pb.render(active))
         self.assertNotIn("http-equiv", self.pb.render(active))
 
+    def test_merged_history_empty_and_remote_records(self):
+        remote = [{"lane": "Remote worker with a complete name", "session id": REMOTE, "state": "running"}]
+        page = self.pb.timeline([], {}, remote)
+        self.assertIn("Remote worker with a complete name", page)
+        self.assertIn("metrics unavailable", page)
+        self.assertNotIn("output tokens", page)
+        self.assertIn("No local session logs found", self.pb.timeline([], {}))
+
     def test_explicit_scope_excludes_historical_requirements(self):
         self.source.write_text(self.source.read_text().replace("| REQ-1 |", (
             "| REQ-old | Historical work | Check | old-owner | accepted | old prose note |\n| REQ-1 |")))
@@ -413,10 +424,17 @@ class EvidenceAndSnapshots(unittest.TestCase):
                     self.assertTrue(page.evaluate("document.documentElement.scrollWidth <= innerWidth"))
                     self.assertTrue(page.locator(".session-record").evaluate_all(
                         "nodes=>nodes.every(n=>n.scrollWidth<=n.clientWidth)"))
+                    self.assertEqual(page.locator(".session-record").count(), len(names) + 1)
+                    for record in page.locator(".session-record").all():
+                        self.assertTrue(record.locator("h3").is_visible())
+                        self.assertTrue(record.locator(".history-visual").is_visible())
+                        self.assertIn("output tokens", record.inner_text())
+                        self.assertIn("Context", record.inner_text())
                     page.screenshot(path=str(output / f"board-{width}.png"), full_page=True)
                 page.emulate_media(media="print")
                 self.assertFalse(page.locator("#detail").is_visible())
-                self.assertFalse(page.locator(".interactive-only").is_visible())
+                self.assertTrue(page.locator(".interactive-only").evaluate_all(
+                    "nodes=>nodes.every(n=>getComputedStyle(n).display==='none')"))
                 pdf_path = output / "program-board.pdf"
                 page.pdf(path=str(pdf_path), prefer_css_page_size=True, print_background=True)
                 pdf = PdfReader(pdf_path)
@@ -433,8 +451,6 @@ class EvidenceAndSnapshots(unittest.TestCase):
                 self.assertIn("Print/export requested at", text)
                 self.assertIn("pre-completion projection", text)
                 for content in pages:
-                    if "Full session names and exact history metrics" in content:
-                        self.assertIn("Coordinator", content, "history heading must stay with its first record")
                     if "Cumulative session history" in content:
                         self.assertIn("Coordinator", content, "timeline heading must not be orphaned")
                 for content in pages[1:-1]:
