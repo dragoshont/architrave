@@ -585,6 +585,11 @@ def main() -> int:
     if not (ledger / "SPEC.md").is_file():
         print(f"program-board: {ledger}/SPEC.md not found", file=sys.stderr)
         return 2
+    try:
+        initial_data = build(ledger, args.session, args.reqs)
+    except (OSError, ValueError) as exc:
+        print(f"program-board: cannot start: {exc}", file=sys.stderr)
+        return 2
     out = Path(args.output).expanduser().resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
     lock = out.with_suffix(".pid")
@@ -627,7 +632,8 @@ def main() -> int:
                                            "interval": max(args.watch, 30), "reqs": args.reqs}), encoding="utf-8")
         while True:
             try:
-                data = build(ledger, args.session, args.reqs)
+                data = initial_data if initial_data is not None else build(ledger, args.session, args.reqs)
+                initial_data = None
                 data["refresh"] = args.watch
                 tmp = out.with_suffix(f".{os.getpid()}.tmp")
                 tmp.write_text(render(data), encoding="utf-8")

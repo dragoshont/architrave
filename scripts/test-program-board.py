@@ -312,10 +312,14 @@ class EvidenceAndSnapshots(unittest.TestCase):
         self.assertNotIn("REQ-old", page)
         self.assertNotIn("Historical work", page)
         self.assertNotIn("old prose note", page)
-        unknown = subprocess.run(command + ["--reqs", "REQ-missing"], capture_output=True, text=True)
-        self.assertNotEqual(unknown.returncode, 0)
-        self.assertIn("unknown session REQ IDs", unknown.stderr)
-        self.assertEqual(out.read_text(), page)
+        for mode in ([], ["--watch", "120"]):
+            unknown = subprocess.run(command + ["--reqs", "REQ-missing"] + mode,
+                                     capture_output=True, text=True, timeout=3)
+            self.assertNotEqual(unknown.returncode, 0)
+            self.assertIn("unknown session REQ IDs", unknown.stderr)
+            self.assertEqual(out.read_text(), page)
+            self.assertFalse(out.with_suffix(".pid").exists())
+            self.assertFalse((self.state / COORD / "files/program-board.watch").exists())
         all_reqs = subprocess.run(command + ["--all-reqs"], capture_output=True, text=True)
         self.assertEqual(all_reqs.returncode, 0, all_reqs.stderr)
         self.assertIn("Repository-wide requirements", out.read_text())
