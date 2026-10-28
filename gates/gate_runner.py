@@ -465,15 +465,22 @@ def board_note(lanes: list[dict[str, str]], ledger: Path) -> str | None:
         return None
     if any(lane["session id"].lower() == session for lane in lanes):
         return None
-    if board_watcher(session, ledger) or not coordinates(session, lane_sessions):
+    reqs = sorted({rid for lane in running for rid in lane_reqs(lane)})
+    watcher = board_watcher(session, ledger)
+    if watcher and "reqs" in watcher and (watcher["reqs"] is None or
+            isinstance(watcher["reqs"], list) and set(reqs).issubset(watcher["reqs"])):
+        return None
+    if not coordinates(session, lane_sessions):
         return None
     script = Path(__file__).resolve().parents[1] / "harness" / "program_board.py"
     if not script.is_file():
         script = Path.home() / ".copilot/installed-plugins/architrave/architrave/harness/program_board.py"
     count = f"{len(running)} lane{'s' if len(running) != 1 else ''}"
     import shlex
+    if not reqs:
+        return f"{count} running without REQ IDs; record their requirement scope before starting the program board"
     return (f"{count} running and no live program board for this coordinator; start "
-            f"`python3 {shlex.quote(str(script))} --ledger {shlex.quote(str(ledger))} --watch 120` "
+            f"`python3 {shlex.quote(str(script))} --ledger {shlex.quote(str(ledger))} --watch 120 --reqs {','.join(reqs)}` "
             "and open its output in the browser canvas")
 
 

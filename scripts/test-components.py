@@ -784,7 +784,7 @@ class ReviewVerification(unittest.TestCase):
         reviewer, successor = "cccccccc-9999-2222-3333-444444444444", "dddddddd-9999-2222-3333-444444444444"
         ledger = self.home / "ledger"
         ledger.mkdir()
-        lanes = [{"lane": "L1", "state": "running", "session id": child}]
+        lanes = [{"lane": "L1", "state": "running", "session id": child, "req ids": "REQ-1"}]
         self.log(coordinator, [{"type": "tool.execution_start", "data": {"toolName": "create_session", "toolCallId": "c1"}},
                                {"type": "tool.execution_complete", "data": {"toolCallId": "c1", "result": f"Created session 'L1' (id: {child})"}}])
         self.log(successor, [{"type": "tool.execution_start", "data": {"toolName": "send_session_message",
@@ -795,7 +795,7 @@ class ReviewVerification(unittest.TestCase):
         sibling = "eeeeeeee-9999-2222-3333-444444444444"
         self.log(sibling, [{"type": "tool.execution_start", "data": {"toolName": "send_session_message",
                                                                      "arguments": {"session_id": child, "message": "your build is ready"}}}])
-        lanes = lanes + [{"lane": "L2", "state": "running", "session id": sibling}]
+        lanes = lanes + [{"lane": "L2", "state": "running", "session id": sibling, "req ids": "REQ-2"}]
         self.log(child, [{"type": "session.start", "data": {}}])
         old = os.environ.get("COPILOT_AGENT_SESSION_ID")
         try:
@@ -807,14 +807,22 @@ class ReviewVerification(unittest.TestCase):
             self.assertIn("2 lanes running", note)
             self.assertIn("1 lane running", self.gate.board_note(lanes[:1], ledger))
             self.assertIn(f"--ledger {ledger}", note)
+            self.assertIn("--reqs REQ-1,REQ-2", note)
             self.assertIn(str(Path(RUNNER).resolve().parents[1] / "harness" / "program_board.py"), note)
             output = self.home / "board.html"
             output.write_text("x")
             pointer = self.home / "session-state" / coordinator / "files" / self.gate.BOARD_POINTER
             pointer.parent.mkdir(parents=True)
-            live = {"pid": os.getpid(), "output": str(output), "ledger": str(ledger), "interval": 120}
+            live = {"pid": os.getpid(), "output": str(output), "ledger": str(ledger), "interval": 120, "reqs": ["REQ-1", "REQ-2"]}
             pointer.write_text(json.dumps(live))
             self.assertIsNone(self.gate.board_note(lanes, ledger), "a live, fresh watcher for this ledger satisfies it")
+            pointer.write_text(json.dumps(dict(live, reqs=["REQ-1"])))
+            self.assertIsNotNone(self.gate.board_note(lanes, ledger), "a board missing a running lane's REQs does not cover this program")
+            pointer.write_text(json.dumps({k: v for k, v in live.items() if k != "reqs"}))
+            self.assertIsNotNone(self.gate.board_note(lanes, ledger), "a legacy unscoped watcher must not silently satisfy session scope")
+            pointer.write_text(json.dumps(dict(live, reqs=None)))
+            self.assertIsNone(self.gate.board_note(lanes, ledger), "an explicitly repository-wide watcher covers the running lanes")
+            pointer.write_text(json.dumps(live))
             self.assertIsNotNone(self.gate.board_note(lanes, self.home), "a board for another ledger does not")
             os.utime(output, (time.time() - 3600, time.time() - 3600))
             self.assertIsNotNone(self.gate.board_note(lanes, ledger), "a stale output means a dead or failing watcher")

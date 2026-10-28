@@ -5,8 +5,16 @@ A one-page view of a coordinated program for the browser canvas. It answers
 store.
 
 ```text
-python3 ~/.copilot/installed-plugins/architrave/architrave/harness/program_board.py --watch 120
+python3 ~/.copilot/installed-plugins/architrave/architrave/harness/program_board.py --watch 120 --reqs REQ-53,REQ-54,REQ-55
 ```
+
+Replace the example IDs with this session's requirements. Scope is mandatory:
+`--reqs` selects the session view; `--all-reqs` deliberately shows the entire
+repository ledger, including historical work. Neither is inferred from ledger
+status: previously accepted requirements need not belong to this session.
+Unknown IDs fail without replacing the board. The scope is printed above the
+overview and retained on refresh and in the stopped snapshot. Historical rows
+remain in `SPEC.md`; they are not copied or deleted to create a session view.
 
 Start it once per coordinator in a background (detached) shell; a second start
 exits because a watcher already holds `<output>.pid`. Use the plugin's actual
@@ -19,8 +27,10 @@ session's `files/program-board.html`; open it in the browser canvas. With
 the watcher exits after the program has been quiet for two hours. The lead
 starts it for every non-trivial task. A watcher registers itself in the
 coordinator session's `files/program-board.watch` (pid, output, ledger,
-interval). While lanes are running, `requirements` prints a note with the full
-start command when the coordinator has no live board for that ledger. The
+interval, selected REQ IDs). While lanes are running, `requirements` prints a
+start command scoped to the running lanes' REQs when the coordinator has no live
+board covering them for that ledger. Legacy unscoped registrations and boards
+missing those REQs do not satisfy the reminder. The
 coordinator is a session named in no lane row whose own log created (a
 session-creating tool call) or messaged a running lane's session; lanes,
 reviewers and other sessions are not reminded, and neither is a coordinator
@@ -35,13 +45,16 @@ successor.
 
 | Section | Source |
 |---|---|
-| Overview: current-ledger accepted REQs, actual worker lanes, cumulative history sessions/tokens/minutes | Working-tree requirements file and local session logs |
+| Overview: selected accepted REQs and worker lanes, repository-wide structural checks, cumulative history sessions/tokens/minutes | Working-tree requirements file and local session logs |
 | Lanes: one rectangle per lane, one square per REQ (green accepted, green hatching delivered by a done lane but not yet accepted, blue claimed, red blocked, grey open); select a square for its requirement | `## GHC Scheduler` lane table and REQ rows |
 | How the sessions ran: per session a time bar (first to last event, dark marks for model turns), agent, model/wall minutes, live state, a current-context gauge (latest prompt size) against the model limit and a token gauge | `~/.copilot/session-state/<id>/events.jsonl` of the coordinator and the child sessions it created with `create_session` |
 
 It is dense by design and fits a narrow side panel; there are no tables. Synthetic
 "Requirements"/"Not in a lane" groups are not workers and do not enter the worker
-lane denominator. Recursive history can span several tasks in one coordinator;
+lane denominator. Session scope filters REQ counts, lane membership and
+review/evidence diagnostics. Structural checks still cover the whole repository
+ledger and are labelled accordingly; a scoped view does not prove repository
+completion. Recursive history can span several tasks in one coordinator;
 its costs are not a current-task estimate. Full session names and exact values
 follow the compact chart and remain available in print.
 

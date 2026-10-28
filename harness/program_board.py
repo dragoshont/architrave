@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Program board: one standalone HTML view of a coordinated program.
 
-Usage: python harness/program_board.py --ledger <dir with SPEC.md> --session <coordinator-session-id> --output <file.html>
+Usage: python harness/program_board.py --ledger <dir with SPEC.md> --reqs REQ-1,REQ-2 --session <coordinator-session-id> --output <file.html>
 
 Reads working-tree ledger tables (REQs, lanes) and the host's local session logs
 (~/.copilot/session-state/<id>/events.jsonl) for the coordinator and the child
@@ -274,7 +274,7 @@ def evidence_identity(evidence: str, ledger: Path, repos: list[Path]) -> dict:
     return {"state": "unsupported", "detail": "no supported artifact metadata or resolving commit"}
 
 
-def build(ledger: Path, coordinator: str) -> dict:
+def build(ledger: Path, coordinator: str, selected: list[str] | None = None) -> dict:
     path = ledger / "SPEC.md"
     source_bytes = path.read_bytes()
     text = source_bytes.decode("utf-8-sig")
@@ -284,6 +284,15 @@ def build(ledger: Path, coordinator: str) -> dict:
     more, blockers, notes = gate.chain_errors(ledger, text, reqs, config)
     cap, cap_error = gate.parallel_cap(config)
     errors += more + gate.header_errors(text) + gate.lane_errors(text, reqs, cap) + ([cap_error] if cap_error else [])
+    if selected is not None:
+        if not selected:
+            raise ValueError("session scope needs at least one REQ ID")
+        unknown = set(selected) - reqs.keys()
+        if unknown:
+            raise ValueError("unknown session REQ IDs: " + ", ".join(sorted(unknown)))
+        reqs = {rid: row for rid, row in reqs.items() if rid in selected}
+        lanes = [dict(lane, **{"req ids": ", ".join(rid for rid in gate.lane_reqs(lane) if rid in reqs)})
+                 for lane in lanes if set(gate.lane_reqs(lane)) & reqs.keys()]
     repos = [ledger] + [gate.component_path(ledger, c["path"]) for c in config.get("components") or []
                         if isinstance(c, dict) and isinstance(c.get("path"), str)]
     repos = [r for r in repos if gate.git(r, "rev-parse", "--git-dir") is not None]
@@ -338,7 +347,7 @@ def build(ledger: Path, coordinator: str) -> dict:
             "strict": strict, "cross": cross, "generated": datetime.now(timezone.utc), "coordinator": coordinator,
             "identities": identities, "notes": notes, "blockers": blockers,
             "configured": (ledger / "architrave.config.json").is_file(), "source_state": source_state,
-            "source_digest": source_digest}
+            "source_digest": source_digest, "selected": selected}
 
 
 def timeline(sessions: list[dict], lane_by_session: dict, remote: list[dict] = ()) -> str:
@@ -422,7 +431,7 @@ def render(data: dict) -> str:
     running = sum(1 for lane in lanes if lane["state"].lower() == "running")
     workers = [lane for lane in lanes if not lane.get("synthetic")]
     stats = [("REQs accepted", f"{accepted}/{len(active_req)}"),
-             ("ledger structural checks", "PASS" if not data["errors"] else f"{len(data['errors'])} issues"),
+             ("repository ledger structural checks", "PASS" if not data["errors"] else f"{len(data['errors'])} issues"),
              ("lanes missing a review (blocks --done)", str(sum(1 for lane in lanes if not lane.get("synthetic")
                                                                  and gate.lane_review_gaps(lane, reqs, data["strict"], data["cross"])))),
              ("accepted, evidence unresolved", str(len(unverified & set(active_req)))),
@@ -508,12 +517,15 @@ details,details>*,details::details-content{display:block;content-visibility:visi
             else "Static snapshot; not live")
     completion = ("not evaluated; run requirements --done with the repository configuration" if data["configured"] else
                   "unavailable here: no repository configuration (plugin-only structural checks only; no adoption required)")
+    scope = ("Session requirements: " + ", ".join(data["selected"]) + " · other repository requirements excluded"
+             if data["selected"] is not None else "Repository-wide requirements · includes historical work, not this session's scope")
     identity_rows = "".join(f"<li class='evidence-record'>{esc(rid)}: {esc(identity['state'])} · {esc(identity['detail'])}</li>"
                             for rid, identity in data["identities"].items() if rid in active_req
                             and (rid in unverified or identity["state"] == "verified"))
     return (f"<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width'>"
             + (f"<meta http-equiv='refresh' content='{data['refresh']}'>" if data.get("refresh") else "") + f"<title>Program board</title><style>{css}</style></head><body><main>"
             f"<h1>{esc(data['ledger'].name)} · program</h1><div class='note provenance'>"
+            f"<p id='requirement-scope'>{esc(scope)}</p>"
             f"<p id='snapshot' data-snapshot='{esc(snapshot)}'>{esc(mode)} · generated bytes at {esc(generated)} UTC</p>"
             f"<p>Repository HEAD: {esc(data['commit'])}<br>Ledger: working-tree SPEC.md ({esc(data['source_state'])}) · SHA256 {data['source_digest']}</p>"
             f"<p>Session-log observation cutoff: {esc(max((s['end'].astimezone(timezone.utc) for s in sessions), default='unavailable'))} · {esc(terminal)}</p>"
@@ -529,7 +541,7 @@ details,details>*,details::details-content{display:block;content-visibility:visi
             f"<p id='detail' role='status'>Select a square to see its requirement.</p>"
             + (f"<details open><summary>Artifact identity and unresolved evidence</summary><ul>{identity_rows}</ul></details>" if identity_rows else "")
             + f"<h2>Cumulative session history (not current-task cost)</h2>"
-            f"<p class='note'>Current ledger REQs above; recursive coordinator history below may span multiple tasks. "
+            f"<p class='note'>Selected REQs above; recursive coordinator history below may span multiple tasks. "
             f"Child metrics start no earlier than the coordinator. Synthetic requirement groups are not workers.</p>"
             f"{timeline(sessions, data['lane_by_session'], data['remote'])}"
             f"<details open><summary>Full session names and exact history metrics (UTC)</summary>"
@@ -546,7 +558,14 @@ def main() -> int:
     parser.add_argument("--session", default=os.environ.get("COPILOT_AGENT_SESSION_ID"), help="coordinator session id (default: this session)")
     parser.add_argument("--output", help="HTML file (default: this session's files/program-board.html)")
     parser.add_argument("--watch", type=int, metavar="SECONDS", help="regenerate every SECONDS until the program is quiet for 2 hours")
+    scope = parser.add_mutually_exclusive_group(required=True)
+    scope.add_argument("--reqs", help="comma-separated REQ IDs handled by this session")
+    scope.add_argument("--all-reqs", action="store_true", help="deliberately show the entire repository ledger, including history")
     args = parser.parse_args()
+    if args.reqs is not None:
+        args.reqs = list(dict.fromkeys(rid.strip().upper() for rid in args.reqs.split(",") if rid.strip()))
+        if not args.reqs:
+            parser.error("--reqs needs at least one REQ ID")
     if not args.session:
         print("program-board: no --session and COPILOT_AGENT_SESSION_ID is unset", file=sys.stderr)
         return 2
@@ -605,10 +624,10 @@ def main() -> int:
         if args.watch:
             pointer.parent.mkdir(parents=True, exist_ok=True)
             pointer.write_text(json.dumps({"pid": os.getpid(), "output": str(out), "ledger": str(ledger),
-                                           "interval": max(args.watch, 30)}), encoding="utf-8")
+                                           "interval": max(args.watch, 30), "reqs": args.reqs}), encoding="utf-8")
         while True:
             try:
-                data = build(ledger, args.session)
+                data = build(ledger, args.session, args.reqs)
                 data["refresh"] = args.watch
                 tmp = out.with_suffix(f".{os.getpid()}.tmp")
                 tmp.write_text(render(data), encoding="utf-8")
@@ -636,7 +655,7 @@ def main() -> int:
     finally:
         if args.watch:
             try:
-                data = build(ledger, args.session)
+                data = build(ledger, args.session, args.reqs)
                 data["stopped"] = True
                 tmp = out.with_suffix(f".{os.getpid()}.tmp")
                 tmp.write_text(render(data), encoding="utf-8")

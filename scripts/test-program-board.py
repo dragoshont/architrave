@@ -68,7 +68,7 @@ class ProgramBoard(unittest.TestCase):
             out = base / "board.html"
             env = dict(os.environ, COPILOT_HOME=str(base / "home"), COPILOT_AGENT_SESSION_ID=COORD)
             proc = subprocess.run([sys.executable, str(ROOT / "harness/program_board.py"), "--ledger", str(ledger),
-                                   "--output", str(out)], capture_output=True, text=True, env=env)
+                                   "--output", str(out), "--all-reqs"], capture_output=True, text=True, env=env)
             self.assertEqual(proc.returncode, 0, proc.stderr)
             page = out.read_text()
             self.assertIn("<b>2/5</b>", page)
@@ -106,18 +106,18 @@ class ProgramBoard(unittest.TestCase):
             pointer.parent.mkdir(parents=True, exist_ok=True)
             pointer.write_text(json.dumps({"pid": 2 ** 22 + 12345, "output": "old", "ledger": "old"}))
             watch = subprocess.run([sys.executable, str(ROOT / "harness/program_board.py"), "--ledger", str(ledger),
-                                    "--output", str(out), "--watch", "120"], capture_output=True, text=True, env=env, timeout=30)
+                                    "--output", str(out), "--watch", "120", "--all-reqs"], capture_output=True, text=True, env=env, timeout=30)
             self.assertEqual(watch.returncode, 0, watch.stderr)
             self.assertFalse(pointer.exists(), "the watcher registers itself (replacing a stale pointer) and unregisters on exit")
             bad = subprocess.run([sys.executable, str(ROOT / "harness/program_board.py"), "--ledger", str(ledger),
-                                  "--session", "../escape", "--output", str(out)], capture_output=True, text=True, env=env, timeout=30)
+                                  "--session", "../escape", "--output", str(out), "--all-reqs"], capture_output=True, text=True, env=env, timeout=30)
             self.assertEqual(bad.returncode, 2)
             self.assertIn("not a host session UUID", bad.stderr)
             self.assertNotIn("http-equiv='refresh'", out.read_text())
             self.assertIn("Stopped watcher; static snapshot", out.read_text())
             out.with_suffix(".pid").write_text(str(os.getpid()))
             dup = subprocess.run([sys.executable, str(ROOT / "harness/program_board.py"), "--ledger", str(ledger),
-                                  "--output", str(out), "--watch", "120"], capture_output=True, text=True, env=env, timeout=30)
+                                  "--output", str(out), "--watch", "120", "--all-reqs"], capture_output=True, text=True, env=env, timeout=30)
             self.assertIn("already running", dup.stdout)
 
 
@@ -291,13 +291,52 @@ class EvidenceAndSnapshots(unittest.TestCase):
         self.assertIn("Cumulative session history (not current-task cost)", self.pb.render(active))
         self.assertNotIn("http-equiv", self.pb.render(active))
 
+    def test_explicit_scope_excludes_historical_requirements(self):
+        self.source.write_text(self.source.read_text().replace("| REQ-1 |", (
+            "| REQ-old | Historical work | Check | old-owner | accepted | old prose note |\n| REQ-1 |")))
+        command = [sys.executable, str(ROOT / "harness/program_board.py"), "--ledger", str(self.ledger),
+                   "--session", COORD, "--output", str(self.base / "scoped.html")]
+        missing = subprocess.run(command, capture_output=True, text=True)
+        self.assertEqual(missing.returncode, 2)
+        self.assertIn("--reqs", missing.stderr)
+        self.assertIn("--all-reqs", missing.stderr)
+        for flags in (["--reqs", " , "], ["--reqs", "REQ-1", "--all-reqs"]):
+            rejected = subprocess.run(command + flags, capture_output=True, text=True)
+            self.assertEqual(rejected.returncode, 2, rejected.stderr)
+        out = self.base / "scoped.html"
+        scoped = subprocess.run(command + ["--reqs", "req-1,REQ-1"], capture_output=True, text=True)
+        self.assertEqual(scoped.returncode, 0, scoped.stderr)
+        page = out.read_text()
+        self.assertIn("Session requirements: REQ-1", page)
+        self.assertIn("<b>0/1</b><span>REQs accepted", page)
+        self.assertNotIn("REQ-old", page)
+        self.assertNotIn("Historical work", page)
+        self.assertNotIn("old prose note", page)
+        unknown = subprocess.run(command + ["--reqs", "REQ-missing"], capture_output=True, text=True)
+        self.assertNotEqual(unknown.returncode, 0)
+        self.assertIn("unknown session REQ IDs", unknown.stderr)
+        self.assertEqual(out.read_text(), page)
+        all_reqs = subprocess.run(command + ["--all-reqs"], capture_output=True, text=True)
+        self.assertEqual(all_reqs.returncode, 0, all_reqs.stderr)
+        self.assertIn("Repository-wide requirements", out.read_text())
+        self.assertIn("REQ-old", out.read_text())
+        # A mixed lane is projected to selected IDs; unrelated lanes are not workers in this view.
+        self.source.write_text(self.source.read_text() + LANE
+            + f"| Mixed | app | p | b | origin | REQ-old, REQ-1 | - | {CHILD} | - | ready | src | no | ok | - | no | [] | - |\n"
+            + f"| Historic | app | p | b | origin | REQ-old | - | {REMOTE} | - | done | docs | no | ok | - | no | [] | - |\n")
+        data = self.pb.build(self.ledger, COORD, ["REQ-1"])
+        self.assertEqual(len(data["lanes"]), 1)
+        self.assertEqual(data["lanes"][0]["req ids"], "REQ-1")
+        self.assertEqual(set(data["identities"]), {"REQ-1"})
+        self.assertNotIn("REQ-old", self.pb.render(data))
+
     def test_live_watcher_stops_with_fresh_static_snapshot(self):
         out = self.base / "watched.html"
         (self.state / COORD / "events.jsonl").write_text(json.dumps({
             "type": "session.start", "timestamp": datetime.now(timezone.utc).isoformat(), "data": {}}) + "\n")
         env = dict(os.environ, COPILOT_AGENT_SESSION_ID=COORD)
         process = subprocess.Popen([sys.executable, str(ROOT / "harness/program_board.py"), "--ledger", str(self.ledger),
-                                    "--output", str(out), "--watch", "30"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
+                                    "--output", str(out), "--watch", "30", "--reqs", "REQ-1"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
         self.addCleanup(lambda: process.kill() if process.poll() is None else None)
         self.assertIn("program-board:", process.stdout.readline())
         self.assertIsNone(process.poll())
@@ -306,6 +345,7 @@ class EvidenceAndSnapshots(unittest.TestCase):
         process.communicate(timeout=10)
         self.assertIn("Stopped watcher; static snapshot", out.read_text())
         self.assertIn("Final correction", out.read_text())
+        self.assertIn("Session requirements: REQ-1", out.read_text())
         self.assertIn(hashlib.sha256(self.source.read_bytes()).hexdigest(), out.read_text())
         self.assertFalse(out.with_suffix(".pid").exists())
         self.assertFalse((self.state / COORD / "files/program-board.watch").exists())

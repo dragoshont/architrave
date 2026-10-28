@@ -2,6 +2,10 @@
 
 ## Unreleased - Truthful program-board evidence (#32, REQ-53..55)
 
+Session-scoped follow-up (REQ-56): board generation requires selected session
+REQs or an explicit repository-wide view; startup reminders supply lane REQs
+instead of silently displaying the historical ledger.
+
 Artifact locator/digest recognition, separate declared review bindings and
 placeholder rejection extend the existing board/gates. Snapshot generation,
 page/export observations, terminal state, working-tree ledger identity and
