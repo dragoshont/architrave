@@ -6,9 +6,11 @@ Session-scoped follow-up (REQ-56): board generation requires selected session
 REQs or an explicit repository-wide view; startup reminders supply lane REQs
 instead of silently displaying the historical ledger.
 
-History refinement (REQ-57): one visual row per session combines the activity
-bar with its full name, model and exact metrics; the duplicate metrics list is
-removed without dropping print or per-row log details.
+History refinement (REQ-57): preserve the compact waterfall while combining each
+row's activity bar with its full name, model and exact metrics; remove the
+duplicate metrics list without dropping print or per-row log details.
+Compact context circles show approximate current size with proportional area;
+stacked bars distinguish new, cached and output token consumption.
 
 Artifact locator/digest recognition, separate declared review bindings and
 placeholder rejection extend the existing board/gates. Snapshot generation,

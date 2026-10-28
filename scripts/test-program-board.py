@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import hashlib
 import importlib.util
 import json
+import re
 import os
 from pathlib import Path
 import subprocess
@@ -302,6 +303,23 @@ class EvidenceAndSnapshots(unittest.TestCase):
         self.assertNotIn("output tokens", page)
         self.assertIn("No local session logs found", self.pb.timeline([], {}))
 
+    def test_context_circle_area_and_stacked_consumption(self):
+        data = self.pb.build(self.ledger, COORD)
+        session = data["sessions"][0]
+        session.update(context=122299, context_limit=272000, max_context=222272, input=100, cached=200, output=50)
+        page = self.pb.render(data)
+        radius = float(re.search(r"class='context-disc'[^>]*r='([\d.]+)'", page)[1])
+        self.assertAlmostEqual((radius / 14) ** 2, 122299 / 272000, delta=.001)
+        self.assertIn(">122k</text>", page)
+        self.assertIn("Current context 122,299 of 272,000; peak 222,272", page)
+        segments = re.findall(r"class='token-(?:new|cache|out)' x='([\d.]+)' width='([\d.]+)'", page)
+        self.assertEqual(len(segments), 3)
+        self.assertEqual([round(float(w) / 92 * 350) for _, w in segments], [100, 200, 50])
+        self.assertAlmostEqual(sum(float(w) for _, w in segments), 92, places=2)
+        self.assertIn("100 new input / 200 cached / 50 output tokens", page)
+        session.update(context=0, context_limit=0)
+        self.assertIn("limit unavailable", self.pb.render(data))
+
     def test_explicit_scope_excludes_historical_requirements(self):
         self.source.write_text(self.source.read_text().replace("| REQ-1 |", (
             "| REQ-old | Historical work | Check | old-owner | accepted | old prose note |\n| REQ-1 |")))
@@ -427,9 +445,20 @@ class EvidenceAndSnapshots(unittest.TestCase):
                     self.assertEqual(page.locator(".session-record").count(), len(names) + 1)
                     for record in page.locator(".session-record").all():
                         self.assertTrue(record.locator("h3").is_visible())
-                        self.assertTrue(record.locator(".history-visual").is_visible())
-                        self.assertIn("output tokens", record.inner_text())
-                        self.assertIn("Context", record.inner_text())
+                        self.assertTrue(record.locator(".history-visual .track").is_visible())
+                        self.assertTrue(record.locator(".context-circle").is_visible())
+                        self.assertIn(" cache", record.locator(".token-usage").inner_text())
+                        self.assertIn(" out", record.locator(".token-usage").inner_text())
+                    self.assertTrue(page.locator(".session-record").evaluate_all("""rows => rows.every(row => {
+                        const name = row.querySelector('h3').getBoundingClientRect();
+                        const bar = row.querySelector('.track').getBoundingClientRect();
+                        return name.right <= bar.left && Math.abs(name.top - bar.top) < 3;
+                    })"""), "names and activity bars retain aligned waterfall rows")
+                    details = page.locator(".session-provenance").first
+                    details.locator("summary").click()
+                    self.assertIn("output tokens", details.inner_text())
+                    self.assertIn("Context", details.inner_text())
+                    details.locator("summary").click()
                     page.screenshot(path=str(output / f"board-{width}.png"), full_page=True)
                 page.emulate_media(media="print")
                 self.assertFalse(page.locator("#detail").is_visible())

@@ -369,7 +369,13 @@ def timeline(sessions: list[dict], lane_by_session: dict, remote: list[dict] = (
                         f"width='{max((b - max(a, t0)).total_seconds() / span * width, 1):.1f}' height='6'/>"
                         for a, b in s["spans"] if b >= t0)
         ctx = (s["context"] / s["context_limit"]) if s["context_limit"] else 0
-        tok = (s["input"] + s["cached"] + s["output"]) / top_tokens
+        radius = 14 * min(max(ctx, 0), 1) ** .5
+        segments, token_x = [], 0
+        for field, kind in (("input", "new"), ("cached", "cache"), ("output", "out")):
+            segment_width = gauge * s[field] / top_tokens
+            segments.append(f"<rect class='token-{kind}' x='{token_x:.3f}' width='{segment_width:.3f}' height='6'/>")
+            token_x += segment_width
+        capacity = f"of {s['context_limit']:,}" if s["context_limit"] else "limit unavailable"
         review = ("ran reviewer " + ", ".join(sorted(s["reviews"])) + " (verdict is in the ledger, not checked here)"
                   if s["reviews"] else "no reviewer run")
         rows.append(
@@ -379,14 +385,17 @@ def timeline(sessions: list[dict], lane_by_session: dict, remote: list[dict] = (
             f"<svg class='timeline' viewBox='0 0 {width} 10' preserveAspectRatio='none' role='img' aria-label='Session activity on the shared UTC timeline'>"
             f"<rect class='lane-bg' width='{width}' height='10'/><rect class='track {tone}' x='{x:.1f}' width='{w:.1f}' height='10'/>{marks}</svg>"
             f"<p>{'started earlier · ' if s['start'] < t0 else ''}{s['active_min']:.1f} model / {s['wall_min']:.1f} wall minutes · {s['calls']:,} calls</p>"
-            f"<p>{esc(state_of(s, lane))}</p></div><div>"
-            f"<svg class='timeline usage-gauge' viewBox='0 0 {gauge} 4' preserveAspectRatio='none' aria-hidden='true'>"
-            f"<rect class='gauge' width='{gauge}' height='4'/><rect class='ctxfill' width='{gauge * min(ctx, 1):.1f}' height='4'/></svg>"
-            f"<p>Context {s['context']:,} / {s['context_limit']:,} · peak {s['max_context']:,}</p>"
-            f"<svg class='timeline usage-gauge' viewBox='0 0 {gauge} 4' preserveAspectRatio='none' aria-hidden='true'>"
-            f"<rect class='gauge' width='{gauge}' height='4'/><rect class='tokfill' width='{gauge * tok:.1f}' height='4'/></svg>"
-            f"<p>{s['input']:,} new input / {s['cached']:,} cached / {s['output']:,} output tokens</p></div></div>"
-            f"<details class='session-provenance'><summary class='interactive-only'>Log details (UTC)</summary>"
+            f"<p>{esc(state_of(s, lane))}</p></div><div class='session-usage'>"
+            f"<svg class='context-circle' viewBox='0 0 32 32' role='img' aria-label='Current context {s['context']:,} {capacity}; peak {s['max_context']:,}'>"
+            f"<circle class='context-limit' cx='16' cy='16' r='14'/><circle class='context-disc' cx='16' cy='16' r='{radius:.2f}'/>"
+            f"<text class='context-value' x='16' y='19' text-anchor='middle'>{num(s['context'])}</text></svg>"
+            f"<div class='token-usage'><svg class='timeline token-bar' viewBox='0 0 {gauge} 6' preserveAspectRatio='none' role='img' "
+            f"aria-label='Cumulative tokens: {s['input']:,} new, {s['cached']:,} cached, {s['output']:,} output'>"
+            f"<rect class='gauge' width='{gauge}' height='6'/>{''.join(segments)}</svg>"
+            f"<p>{num(s['input'])} new · {num(s['cached'])} cache · {num(s['output'])} out</p></div></div></div>"
+            f"<details class='session-provenance'><summary class='interactive-only' aria-label='Exact metrics and log details (UTC)'>Details</summary>"
+            f"<p>{s['input']:,} new input / {s['cached']:,} cached / {s['output']:,} output tokens; "
+            f"Context {s['context']:,} / {s['context_limit']:,} · peak {s['max_context']:,}</p>"
             f"<p>{esc(s['id'])} · {s['start'].astimezone(timezone.utc).isoformat(timespec='seconds')} to "
             f"{s['end'].astimezone(timezone.utc).isoformat(timespec='seconds')} · {esc(review)}</p></details></article>")
     for lane in remote:
@@ -396,8 +405,8 @@ def timeline(sessions: list[dict], lane_by_session: dict, remote: list[dict] = (
                      for f in (0, .5, 1)) if timed else "")
     return (f"<div class='history-axis'><div>{ticks}</div></div>{''.join(rows)}"
             + ("<p class='note'>No local session logs found for this program.</p>" if not timed else "")
-            + "<p class='note'>Bars share the UTC timeline above; dark marks are model turns. Gauges show current context "
-            "against its limit and tokens relative to the busiest session. Exact values are shown in each row.</p>")
+            + "<p class='note'>Bars share the UTC timeline; dark marks are model turns. Circle area: current context / limit. "
+            "Token bars: new, cached, output; relative to the busiest session, not monetary cost. Exact values: Details.</p>")
 
 
 def render(data: dict) -> str:
@@ -456,16 +465,29 @@ h1{margin:0;font-size:17px;font-weight:650;letter-spacing:-.02em}h2{margin:16px 
 .grid{display:grid;grid-template-columns:repeat(auto-fill,11px);gap:1px}
 .sq{width:11px;height:11px;padding:0;border:0;cursor:pointer}.sq.warn{box-shadow:inset 0 0 0 2px #d6aa4b}.delivered{background:repeating-linear-gradient(135deg,#38aa6b 0 2px,#1b2632 2px 4px)}.sq{position:relative}.sq.rev::after{content:"";position:absolute;right:0;top:0;border-style:solid;border-width:0 5px 5px 0;border-color:transparent #8fa1b3 transparent transparent}.sq.vrf::after{border-color:transparent #fff transparent transparent}.box.unrev{border-color:#d6aa4b;box-shadow:inset 0 0 0 1px #d6aa4b}.rot{fill:#d6aa4b}.rv{fill:#38aa6b}.nrv{fill:#8fa1b3}.remote{fill:none;stroke:#506071;stroke-dasharray:3 2}.issues{margin:6px 0 0;padding-left:16px;font-size:10px;color:#f0a0aa}.sq:hover,.sq:focus-visible,.sq.sel{outline:1.5px solid #fff;outline-offset:0}
 #detail{min-height:28px;margin:8px 0 0;padding-top:6px;border-top:1px solid #415064;font-size:11px;color:#c6d4e1;overflow-wrap:anywhere}
-.timeline{width:100%;height:12px;display:block}.usage-gauge{height:4px}.lane-bg,.gauge{fill:#1b2632}.turn{fill:#0b1016;opacity:.55}.ctxfill{fill:#d6aa4b}.tokfill{fill:#479bc1}
-.history-axis{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:18px;margin:12px 0 5px;color:#b8c6d5;font-size:10px}
-.history-axis>div{display:flex;justify-content:space-between}
-.history-visual{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:18px;margin-top:8px}
+.timeline{width:100%;height:12px;display:block}.token-bar{height:6px}.lane-bg,.gauge{fill:#1b2632}.turn{fill:#0b1016;opacity:.55}
+.session-usage{display:flex;align-items:flex-start;gap:8px}.token-usage{flex:1;min-width:0}
+.context-circle{width:36px;height:36px;flex-shrink:0}.context-limit{fill:none;stroke:#506071;stroke-width:1}
+.context-disc{fill:#d6aa4b;fill-opacity:.35}.context-value{fill:#edf3f8;font-size:8.5px;font-weight:600}
+.token-new{fill:#479bc1}.token-cache{fill:#506071}.token-out{fill:#38aa6b}
+.history-axis,.session-record{display:grid;grid-template-columns:minmax(95px,1fr) minmax(0,2.6fr) minmax(0,1.6fr);column-gap:14px}
+.history-axis{margin:12px 0 5px;color:#b8c6d5;font-size:10px}
+.history-axis>div{grid-column:2;display:flex;justify-content:space-between}
+.history-visual{display:contents}
 .history-visual>div{min-width:0}.history-visual p{font-variant-numeric:tabular-nums;line-height:1.45}
-.session-model{color:#b8c6d5}.session-provenance{color:#b8c6d5}.session-provenance summary{margin:5px 0;font-size:10px}
-@media(max-width:520px){.history-visual,.history-axis{grid-template-columns:1fr;gap:8px}}
+.history-visual>div:first-child{grid-column:2;grid-row:1/4}
+.history-visual>div:last-child{grid-column:3;grid-row:1/4}
+.session-record h3,.session-model,.session-provenance{grid-column:1}
+.session-model{color:#b8c6d5;font-size:10px}.session-provenance{color:#b8c6d5}.session-provenance summary{margin:3px 0;font-size:10px}
+.session-provenance[open]{grid-column:1/-1;grid-row:4}
+@media(max-width:520px){
+.history-axis,.session-record{grid-template-columns:95px minmax(0,1fr);column-gap:10px}
+.history-visual>div:last-child{grid-column:2;grid-row:4;margin-top:6px}
+.session-provenance[open]{grid-row:5}
+}
 footer{font-size:9px;color:#8fa1b3;margin-top:10px;line-height:1.5}
 .provenance,.session-record,.evidence-record{overflow-wrap:anywhere}
-.session-record{border-top:1px solid #415064;padding:12px 0;font-size:11px}
+.session-record{padding:9px 0;font-size:11px}
 .session-record h3{margin:0;font-size:12px}.session-record p{margin:3px 0}
 .evidence-record{font-size:11px;margin:6px 0}
 summary{cursor:pointer;font-size:11px;margin:8px 0}
@@ -479,7 +501,10 @@ main{max-width:none;padding:0}
 .box h3{white-space:normal;overflow:visible}
 .box,.session-record,.evidence-record,.stats div{break-inside:avoid}
 h2,h3,summary{break-after:avoid}
-.timeline,.history-axis,.interactive-only,#detail,script{display:none!important}
+.timeline,.history-axis,.session-usage,.interactive-only,#detail,script{display:none!important}
+.session-record{display:block;border-top:1px solid #415064}
+.history-visual{display:block}
+.history-visual>div:first-child,.history-visual>div:last-child{grid-column:auto;grid-row:auto}
 .session-record p{font-size:10pt;line-height:1.35}
 .session-record h3{font-size:11pt}
 .issues{color:#8b1020}

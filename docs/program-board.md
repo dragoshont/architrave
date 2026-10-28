@@ -55,11 +55,17 @@ lane denominator. Session scope filters REQ counts, lane membership and
 review/evidence diagnostics. Structural checks still cover the whole repository
 ledger and are labelled accordingly; a scoped view does not prove repository
 completion. Recursive history can span several tasks in one coordinator;
-its costs are not a current-task estimate. Each session appears once: its full
-name and model sit above its activity bar, with exact timing, token and context
-values beside it (stacked on narrow screens). Per-row log details hold the UUID,
-full UTC timestamps and observed reviewer roles; print includes those details
-automatically. There is no separate duplicate metrics list or hover-only value.
+its costs are not a current-task estimate. Each session appears once in the
+compact waterfall: full name/model at left, shared-timeline activity bar in the
+middle, and compact context/consumption indicators at right. Timing stays
+beneath the bar. The context circle labels the approximate current size; its
+filled area is proportional to current context / model limit, inside a fixed
+capacity outline. Token bars stack new input, cached input and output on the
+same scale relative to the busiest session, not a capacity or monetary cost.
+On narrow screens the indicators move below the bar, preserving aligned names
+and activity tracks. Per-row Details holds exact metrics, UUID, full UTC
+timestamps and observed reviewer roles; print includes these automatically.
+There is no separate duplicate metrics list or hover-only value.
 
 ## Completion
 
