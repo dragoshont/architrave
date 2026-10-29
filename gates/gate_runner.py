@@ -982,7 +982,7 @@ def handoff_errors(root: Path, path: Path, expect: str | None = None) -> list[st
 
 def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bool,
                       requested_root: Path | None = None, handoff: bool = False,
-                      expect: str | None = None) -> int:
+                      expect: str | None = None, delivery_session: str | None = None) -> int:
     """Validate the ledger; record coordinator-owned claims only after every check passes."""
     try:
         value = configured_requirements(root, load_config(root))
@@ -1060,6 +1060,20 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
     if handoff:
         errors.extend(handoff_errors(root, path, expect))
     if done:
+        # A declaration makes authenticity part of completion, not an optional
+        # green-test substitute. Historical ledgers without a declaration retain
+        # their documented legacy scope.
+        from delivery_check import check_session, declared_for
+
+        current_session = delivery_session or os.environ.get("COPILOT_AGENT_SESSION_ID")
+        if current_session:
+            try:
+                declared = declared_for(root, current_session)
+            except (ValueError, KeyError, OSError, TypeError, AttributeError) as exc:
+                errors.append(str(exc))
+                declared = False
+            if delivery_session or declared:
+                errors.extend(check_session(root, current_session, allow_withdrawal=False))
         pending = [rid for rid, row in reqs.items() if row["status"].lower() in REQ_ACTIVE - {"accepted"}]
         if pending:
             errors.append(f"not done: {len(pending)} active REQs are not accepted: {', '.join(pending[:20])}")
@@ -1313,8 +1327,12 @@ def quality(root: Path, hook_json: bool) -> int:
 
 
 def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] == "delivery-audit":
+        from delivery_audit import main as delivery_main
+
+        return delivery_main(sys.argv[2:])
     parser = argparse.ArgumentParser()
-    parser.add_argument("gate", choices=["checks", "reconcile", "quality-gate", "backend-checks", "message-lint", "components", "requirements"])
+    parser.add_argument("gate", choices=["checks", "reconcile", "quality-gate", "backend-checks", "message-lint", "components", "requirements", "delivery-audit"])
     parser.add_argument("--quick", action="store_true")
     parser.add_argument("--test", action="store_true", help="components: run service then ui tests")
     parser.add_argument("--hook-json", action="store_true")
@@ -1325,6 +1343,7 @@ def main() -> int:
     parser.add_argument("--handoff", action="store_true",
                         help="requirements: fail unless hand-off state is committed and not stranded in a worktree ledger")
     parser.add_argument("--expect", help="requirements --handoff: require this predecessor commit SHA in HEAD history")
+    parser.add_argument("--delivery-session", help="requirements --done: require this session's source-bound delivery check")
     parser.add_argument("--file", help="message-lint: text file to check (default stdin)")
     args = parser.parse_args()
     if args.gate == "message-lint":
@@ -1350,7 +1369,10 @@ def main() -> int:
     if args.gate == "components":
         return components(root, args.test)
     if args.gate == "requirements":
-        return requirements_gate(root, args.claim, args.owner, args.done, Path(args.repo), args.handoff, args.expect)
+        if args.delivery_session and not args.done:
+            parser.error("--delivery-session requires --done")
+        return requirements_gate(root, args.claim, args.owner, args.done, Path(args.repo), args.handoff, args.expect,
+                                 args.delivery_session)
     return quality(root, args.hook_json)
 
 

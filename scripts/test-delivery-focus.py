@@ -37,6 +37,18 @@ codex_roles = "\n".join(
 )
 
 required = {
+    "original owner acceptance": (execution, "Compare original owner messages and attached reference assets against REQs and docs"),
+    "visual acceptance separately measured": (execution, "intended rendered width and component coverage separately from prose"),
+    "no substitute fresh execution": (execution, "No new fixtures, fakes, mocks, stubs, canned or replayed result substitutes"),
+    "explicit emulator allowance": (execution, "Official local DTS/Azurite and dev-to-Azure selection"),
+    "prior grants survive unanswered asks": (execution, "An unanswered redundant ask neither revokes an existing grant nor authorizes a fake fallback"),
+    "direct work board startup": (agent, "including direct work"),
+    "board observed before implementation": (lead_skill, "open and read one scoped program board before implementation"),
+    "worker no recursive board": (work_skill, "Do not start a recursive program board"),
+    "review compares original sources": (review_skill, "original owner messages and attached reference assets"),
+    "review no recursive board": (review_skill, "Do not start a recursive program board"),
+    "backend no substitute implementation": (implementer, "No unrequested fixtures, fakes, mocks, stubs or feature/integration flags"),
+    "rubric rejects narrowed reconstruction": (rubric, "An agent-narrowed SPEC is not a replacement for original owner intent"),
     "cto duplicate signing gates": (cto_agent, "Remove duplicate signing approval gates"),
     "cto skill signing reuse": (cto_skill, "Reuse existing scoped signing grants"),
     "rubric signing reuse": (rubric, "Repeated signing approval for a current matching owner grant"),
@@ -364,6 +376,8 @@ for text, stale in (
 for name, text in (("skill", lead_skill), ("stanza", stanza)):
     if len(text.split()) > 200:
         missing.append(f"{name} duplicates too much of the lead contract")
+if len(agent.split()) > 1068:
+    missing.append("lead exceeds its 1068-word baseline")
 for phrase in ("visible intake block", "non-trivial work has canonical",
                "Missing artifacts are a Major concern"):
     if contains_guidance(rubric, phrase):

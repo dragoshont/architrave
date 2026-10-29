@@ -17,3 +17,4 @@ __pycache__/
 .architrave/runtime.key
 .architrave/resources.lock
 .architrave/bench/
+.architrave/test-fixtures/

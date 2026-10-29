@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT / "harness"))
 from architrave_runtime import RunStore, RuntimeFailure
 from ribbon import ribbon_snapshot
 from worker_adapters import workspace_fingerprint
+from platform_launch import configured_recipe
 
 spec = importlib.util.spec_from_file_location("ribbon_installer", ROOT / "tools" / "install_update.py")
 installer = importlib.util.module_from_spec(spec)
@@ -69,8 +70,7 @@ class RibbonTests(unittest.TestCase):
 
     def test_taskless_current_product_observation_verifies_completed_delivery(self):
         from legibility import LegibilityRunner
-        command = ("& '" + sys.executable.replace("'", "''") + "' -c \"print('observed')\""
-                   if os.name == "nt" else shlex.join([sys.executable, "-c", "print('observed')"]))
+        command = configured_recipe([sys.executable, "-c", "print('observed')"])
         (self.repo / "architrave.config.json").write_text(json.dumps({
             "kind": "knowledge", "build": command, "test": command}), encoding="utf-8")
         self.git("add", ".")
@@ -316,8 +316,7 @@ class RibbonTests(unittest.TestCase):
                 self.assertNotEqual("FAILED", self.store.verify(run_id)[0]["status"])
 
     def test_old_deterministic_failure_is_historical_after_source_resume(self):
-        command = ("& '" + sys.executable.replace("'", "''") + "' -c \"raise SystemExit(1)\""
-                   if os.name == "nt" else shlex.join([sys.executable, "-c", "raise SystemExit(1)"]))
+        command = configured_recipe([sys.executable, "-c", "raise SystemExit(1)"])
         (self.repo / "architrave.config.json").write_text(json.dumps({
             "kind": "knowledge", "build": command, "test": command}), encoding="utf-8")
         self.git("add", ".")

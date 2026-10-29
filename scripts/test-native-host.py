@@ -1070,9 +1070,9 @@ console.log("SDK event/hookless/admission fixture: PASS (not native evidence)");
         run_id, task_id = self.task()
         with (self.repo / ".gitignore").open("a", encoding="utf-8") as handle:
             handle.write("dist/\n")
-        command = (f"& '{sys.executable}' -c \"from pathlib import Path; Path('dist').mkdir(); Path('dist/out').write_text('built')\""
-                   if sys.platform == "win32" else
-                   f"'{sys.executable}' -c \"from pathlib import Path; Path('dist').mkdir(); Path('dist/out').write_text('built')\"")
+        from platform_launch import configured_recipe
+        command = configured_recipe([sys.executable, "-c",
+            "from pathlib import Path; Path('dist').mkdir(); Path('dist/out').write_text('built')"])
         (self.repo / "architrave.config.json").write_text(json.dumps({
             "kind": "knowledge", "build": command, "test": "echo fixture",
         }), encoding="utf-8")
@@ -1121,8 +1121,8 @@ def prepare_live(path):
         "from pathlib import Path\n"
         "assert 'forty-two' in Path('README.md').read_text()\n"
         "print('fixture: PASS')\n", encoding="utf-8")
-    recipe = (f"& '{sys.executable}' fixture_test.py" if sys.platform == "win32"
-              else f"'{sys.executable}' fixture_test.py")
+    from platform_launch import configured_recipe
+    recipe = configured_recipe([sys.executable, "fixture_test.py"])
     (repo / "architrave.config.json").write_text(json.dumps({
         "platform": "web", "stack": "other", "designSource": {"type": "design-doc", "path": "README.md"},
         "applyTo": ["src/**"], "build": recipe, "test": recipe,

@@ -1,5 +1,14 @@
 # Architrave Benchmarks
 
+The existing analysis suite also includes D1-D6 delivery-authenticity decisions:
+original mandate versus a narrowed SPEC, fake/flag-off fresh-demo rejection,
+approved local emulators and environment selection, explicitly requested
+isolated test doubles, visual-reference preservation, stale source/config
+evidence, and reuse of an already valid owner grant. These are evaluation inputs,
+not substitute product integrations. `score-semantic-cases.py --analysis --blind`
+withholds expected answers. Mechanical expected-answer matches alone do not
+establish semantic quality, live enforcement or improved model performance.
+
 This directory is the foundation for Architrave's autonomous evaluation loop: frozen tasks, isolated worktrees, repeatable agent arms, deterministic gates, trace artifacts, and reviewable scores.
 
 The goal is not to create a toy leaderboard. The goal is to answer the enterprise question: does Architrave improve real work in real repositories without hiding cost, complexity, or regressions?

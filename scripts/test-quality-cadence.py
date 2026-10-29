@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The old quick validator is retained; only automatic scheduling is retired."""
+"""Explicit quick checks remain; scoped startup/completion hooks never poll."""
 from __future__ import annotations
 
 import contextlib
@@ -105,6 +105,21 @@ class QualityCadenceTests(unittest.TestCase):
         with contextlib.redirect_stdout(output):
             self.assertEqual(0, gate.quality(self.repo, True))
         self.assertEqual({"continue": True}, json.loads(output.getvalue()))
+
+    def test_scoped_session_hooks_do_not_restore_quality_polling(self):
+        hooks = json.loads((ROOT / "hooks.json").read_text(encoding="utf-8"))["hooks"]
+        self.assertEqual({"sessionStart", "preToolUse"}, set(hooks))
+        self.assertEqual("^task_complete$", hooks["preToolUse"][0]["matcher"])
+        for entries in hooks.values():
+            for entry in entries:
+                self.assertEqual("command", entry["type"])
+                for command in (entry["bash"], entry["powershell"]):
+                    self.assertIn("session_guard.py", command)
+                    self.assertNotIn("quality-gate", command)
+        docs = (ROOT / "docs" / "quality-check-cadence.md").read_text(encoding="utf-8")
+        self.assertIn("command timeouts fail open", docs)
+        self.assertIn("not complete enforcement", docs)
+        self.assertIn("not Claude compatibility", docs.replace("\n", " "))
 
     def test_agent_skill_cadence_and_ci_coverage_are_explicit(self):
         text = " ".join((ROOT / "agents/architrave.agent.md").read_text().split())

@@ -18,6 +18,9 @@ skill's reported directory (`../..`), not repository cwd or guessed caches.
   rows first; do not retry listed failed approaches. Report status and
   evidence per REQ, and record new failed approaches in Handoff. Never mark a
   REQ `accepted` without evidence; never edit REQs you were not assigned.
+  Compare the original owner messages and attached reference assets with that
+  scope; report missing sources or narrowed acceptance to the parent.
+  Do not start a recursive program board or redeclare the parent's work.
 - Keep the assigned outcome, owned scope, expected result and any authorization
   holds. Use host limits for brief tasks; explicit acceptance checks, finite
   budgets and recovery detail apply when assigned or required by risk.
@@ -53,6 +56,11 @@ Read the relevant contract, existing implementation and nearby tests first.
 Reuse the working seam; make the smallest complete change in owned paths.
 Reproduce a bug before fixing it where feasible. Check the actual requested
 behavior with focused existing tests/builds, including relevant error paths.
+No unrequested fixtures, fakes, mocks, stubs, canned/replayed result substitutes
+or feature/integration flags, including test-only substitutes. Preserve existing
+tests and real safety controls. Honor explicitly approved official emulators
+and dev-to-Azure selection; requested algorithms/cache/history are not fake fresh
+execution. Apply execution policy's Owner intent and authentic execution.
 Do not call compilation product acceptance. Report unavailable hardware,
 services or authorization separately from source checks. Do not silently
 swallow errors, change unrelated files or claim checks you did not execute.

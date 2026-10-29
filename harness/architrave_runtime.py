@@ -560,6 +560,18 @@ class RunStore:
     def _assert_requirements_accepted(self, state: dict[str, Any]) -> None:
         document = self.requirements_document()
         bound = {rid for task in state["tasks"] for rid in task.get("reqs", [])}
+        session_id = os.environ.get("COPILOT_AGENT_SESSION_ID")
+        if session_id:
+            from delivery_check import check_session, declared_for
+
+            try:
+                errors = (check_session(self.repository, session_id, allow_withdrawal=False)
+                          if declared_for(self.repository, session_id) else [])
+            except (ValueError, KeyError, OSError, TypeError, AttributeError) as exc:
+                errors = [str(exc)]
+            if errors:
+                raise RuntimeFailure("DELIVERY_NOT_ACCEPTED", "declared delivery has unresolved acceptance checks",
+                                     details={"errors": errors})
         if document is None:
             if bound:
                 raise RuntimeFailure("REQ_SOURCE_MISSING", "bound requirements source is no longer available",

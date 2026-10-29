@@ -6,6 +6,8 @@ from __future__ import annotations
 import json
 import re
 import os
+import shlex
+import shutil
 import time
 from pathlib import Path
 import subprocess
@@ -30,9 +32,10 @@ def checkout(path: Path, origin: str) -> Path:
 
 
 def python_command(args):
-    if sys.platform == "win32":
-        return "& '" + sys.executable.replace("'", "''") + "' " + args
-    return f'"{sys.executable}" ' + args
+    # Match the configured-recipe launcher, which prefers an available POSIX shell.
+    if shutil.which("bash") or shutil.which("sh"):
+        return shlex.quote(sys.executable) + " " + args
+    return subprocess.list2cmdline([sys.executable]) + " " + args
 
 
 class ComponentGate(unittest.TestCase):
@@ -806,7 +809,7 @@ class ReviewVerification(unittest.TestCase):
             note = self.gate.board_note(lanes, ledger)
             self.assertIn("2 lanes running", note)
             self.assertIn("1 lane running", self.gate.board_note(lanes[:1], ledger))
-            self.assertIn(f"--ledger {ledger}", note)
+            self.assertIn(f"--ledger {shlex.quote(str(ledger))}", note)
             self.assertIn("--reqs REQ-1,REQ-2", note)
             self.assertIn(str(Path(RUNNER).resolve().parents[1] / "harness" / "program_board.py"), note)
             output = self.home / "board.html"

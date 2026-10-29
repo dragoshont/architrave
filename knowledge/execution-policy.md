@@ -230,7 +230,8 @@ The repository requirements file (config `requirements`, else `SPEC.md`) is the
 source of truth. Turn the user request or existing product contract into short
 REQ rows with testable acceptance there, then build the first useful
 end-to-end product slice that satisfies them. Begin implementation as soon as
-the REQs and their real blockers are known; the spec is a few table rows, not a
+the REQs and their real blockers are known and scoped board startup below is
+observed or explicitly unavailable; the spec is a few table rows, not a
 document phase, and needs no separate evidence receipt per requirement beyond
 the row's Evidence cell.
 Once scope is frozen, stop adding planning documents. Map the contract directly
@@ -251,6 +252,80 @@ turn each evidence item into a separate implementation phase by default.
 At progress updates, lead with the behavior now available, the evidence that
 shows it, and the next product blocker. If product behavior has not changed,
 say so plainly; do not use document, task, test, or artifact counts as a proxy.
+
+### Non-trivial startup and completion
+
+Every non-trivial task, including ordinary direct work in a default session,
+starts from REQs reconciled against original owner sources. Resolve the kit
+from the invoked skill's reported path, not a guessed cache. Follow
+`docs/program-board.md`: declare the session's REQ scope, start or reuse ONE
+existing program board for that scope, then open and read it through the host
+browser canvas before implementation. A watcher process, generated HTML or
+an unobserved open request alone does not satisfy this step.
+
+Read-only questions and trivial edits do not declare work or start a board.
+Assigned children/reviewers inherit their parent's scope and board, not another
+coordinator or recursive board. A new coordinator must observe its own board.
+If the host lacks a canvas, denies permission or cannot observe the page,
+report that exact limitation without fabricating a panel or retrying unchanged.
+Continue independently safe authorized work; required board acceptance stays
+unverified until the observation exists.
+
+The Copilot command hook adds only a compact `sessionStart` pointer. The sole
+`preToolUse` matcher is `task_complete`: an existing session-owned
+`architrave-delivery.json` declares work and invokes the read-only delivery
+checker. Both `prepared` and `sealed` reports are checked; only current accepted
+sealed evidence can complete active work. The checker can retire a sealed scope
+only with a digest-bound reviewer PASS, sealing time and later actual host
+completion; a new declaration archives it, never overwrites active work.
+Missing declarations leave unrelated/read-only work unchanged.
+This report binds evidence, not another requirements ledger or a
+permission grant. Bind `requirements --done` to that session with
+`--delivery-session <uuid>`; file presence, a success-shaped summary or an
+old accepted count is not acceptance.
+
+No PostToolUse quality polling, stop-hook forced continuation, permission
+auto-allow, output rewriting or global configuration edits are added.
+Command timeouts fail open in Copilot; disabled/unsupported hooks, undeclared
+work and mutable local evidence limit enforcement. The hook is a scoped
+acceptance barrier, not tamper-proof supervision or proof that every agent
+self-declares. Copilot/Claude compatibility and failure details are in
+`docs/quality-check-cadence.md`.
+
+### Owner intent and authentic execution
+
+Compare original owner messages and attached reference assets against REQs and docs,
+not merely against an agent's reconstruction. Preserve their source/event
+identities and authorized asset locators/digests; do not copy private context
+into shared repositories. Missing or unreadable sources remain an explicit
+acceptance gap. A narrowed SPEC, later summary or transported agent message
+does not erase an owner criterion. Record acknowledged scope changes through
+the existing corrections path.
+
+No new fixtures, fakes, mocks, stubs, canned or replayed result substitutes
+without an explicit owner request, including test-only substitutes. Do not add
+feature/integration flags that suppress a required service or make the fake
+path pass. Preserve existing tests and real safety controls, and use actual
+provider/service execution for required integration acceptance.
+Official local DTS/Azurite and dev-to-Azure selection are valid when explicitly
+approved, not fake integrations. Requested deterministic algorithms, cache and
+history readback are real features; presenting their output as a fresh required
+execution is not. A provider outage, unavailable credential or denied operation
+remains blocked, never an invented success or a silent fallback.
+
+For visual work, retain the original image/reference identity and digest.
+Verify intended rendered width and component coverage separately from prose
+completeness: inspect the actual rendered surface at the requested width and
+compare all requested components against the source reference. A Markdown
+outline, screenshot path or component count alone does not establish visual
+acceptance. Name missing assets and distinguish inspected, rendered and
+owner-accepted evidence.
+
+Record permissions already granted with their target, operation and limits.
+An unanswered redundant ask neither revokes an existing grant nor authorizes a fake fallback.
+Reuse a current matching grant; preserve genuine host/Run, expiry, revocation
+and human-only boundaries. Do not interpret an unanswered new consequential
+decision as approval.
 
 ### Evidence chain (consequential work only)
 
@@ -486,6 +561,11 @@ its own program board, and the owner archives the old coordinator.
 
 Moved from the always-on lead contract; read when the situation applies.
 
+- Give a child only its matching role (`backend-implementer` for backend writes,
+  `cto` for an established stall); otherwise use the default with `architrave-work`.
+  Read-only roles stay read-only. Verify repository, workspace and intended
+  branch before writes. Retire idle children through supported host lifecycle
+  controls before replacing them; never duplicate an owned lane.
 - Long programs (more than one repository, more than one day or more than two
   children) also need: `requirements --claim <ids> --owner <lane>` passing
   before each dispatch; it records owner and claimed status; commit that change before dispatch,
@@ -569,9 +649,10 @@ An old evidence reference alone is not new evidence. Primary-criterion controls,
 global budgets, human holds and uncertain-side-effect reconciliation still apply.
 
 The Copilot bridge consumes native lifecycle invalidations, with one bounded
-deadline (not a polling loop), and checks the real admitted owner. It registers
-no tool-blocking hooks. Descendant limits are instructions and host-owned
-settings, not interception of ordinary session/task tools.
+deadline (not a polling loop), and checks the real admitted owner. The bridge
+itself registers no tool-blocking hooks; the plugin's scoped completion check
+above does not intercept ordinary session/task tools. Descendant limits remain
+instructions and host-owned settings.
 Native turn events enforce the packet's turn bound; hosts lacking
 those signals still have the time/output bounds and must not claim turn
 telemetry. Direct host use outside this bridge must honor the same core

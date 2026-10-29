@@ -20,6 +20,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 JSON_FILES = (
     'plugin.json',
+    'hooks.json',
     '.codex-plugin/plugin.json',
     '.agents/plugins/marketplace.json',
     '.github/plugin/marketplace.json',
@@ -47,6 +48,9 @@ JSON_FILES = (
     'benchmarks/fixtures/tessera-shaped/deploy/live.json',
 )
 PYTHON_FILES = (
+    'gates/delivery_audit.py',
+    'gates/delivery_check.py',
+    'gates/session_guard.py',
     'harness/architrave_runtime.py',
     'harness/worker_adapters.py',
     'harness/native_host.py',
@@ -73,6 +77,9 @@ PYTHON_FILES = (
     'benchmarks/fixtures/tessera-shaped/tests/*.py',
 )
 RUNTIME_TESTS = (
+    'scripts/test-delivery-audit.py',
+    'scripts/test-delivery-check.py',
+    'scripts/test-session-guard.py',
     'scripts/test-runtime-v2.py',
     'scripts/test-worker-adapters.py',
     'scripts/test-native-host.py',

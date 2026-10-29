@@ -6,6 +6,8 @@ from __future__ import annotations
 import os
 import shutil
 import re
+import shlex
+import subprocess
 from typing import Sequence
 from typing import Callable, Optional
 
@@ -40,3 +42,11 @@ def configured_shell_command(
             return [cmd, "/d", "/s", "/c", command]
         raise LaunchError("no command shell is available; install Git Bash or ensure cmd.exe is on PATH")
     raise LaunchError("no POSIX shell is available")
+
+
+def configured_recipe(
+    argv: Sequence[str], *, platform: str | None = None, which: Which = shutil.which,
+) -> str:
+    """Quote argv for the shell selected by the configured-recipe executor."""
+    selection = configured_shell_command(":", platform=platform, which=which)
+    return shlex.join(argv) if selection[1] == "-c" else subprocess.list2cmdline(argv)

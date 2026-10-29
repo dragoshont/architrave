@@ -11,11 +11,13 @@ import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "harness"))
+from platform_launch import configured_recipe
 
 
 def python_recipe(code):
     argv = [sys.executable, '-c', code]
-    return subprocess.list2cmdline(argv) if os.name == 'nt' else shlex.join(argv)
+    return configured_recipe(argv)
 
 
 def main():

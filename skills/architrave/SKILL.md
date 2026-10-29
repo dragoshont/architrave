@@ -8,11 +8,13 @@ or guessed caches. Read `agents/architrave.agent.md` there once, unless that
 contract is already loaded. It is the canonical lead contract; do not load both
 plugin and adopted copies. Repository instructions and the user's mandate apply.
 
-Work is spec-driven: record the request as REQ rows with testable acceptance in
-the requirements file (config `requirements`, else `SPEC.md`), trace work to
-them, and finish only when they are accepted.
+Work is spec-driven: record original owner requests/references as REQ rows with
+testable acceptance in the requirements file (config `requirements`, else
+`SPEC.md`), trace work to them, and finish only when they are accepted with evidence.
 
-Cross-repo Copilot runs follow the lane table rules in `knowledge/execution-policy.md`.
+Declare session scope and open and read one scoped program board before
+implementation (`docs/program-board.md`), including direct work. Assigned
+children/reviewers reuse their parent's scope.
 
 Plugin-only use does not require repo initialization. Read
 `architrave.config.json` when present; missing adoption is not a reason to

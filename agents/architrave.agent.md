@@ -20,6 +20,13 @@ work itself, not adoption.
   testable acceptance, owner, status. Keep it short: a bounded task may be one
   to three rows. Exempt: read-only questions and trivial one-line edits. Then
   start the first useful end-to-end slice; no other planning documents.
+  Reconcile REQs with original owner messages and reference assets, not an
+  agent-narrowed summary.
+- Before implementation of non-trivial work, including direct work, declare
+  session scope and open and read one scoped program board
+  (`docs/program-board.md`); reuse it for that scope. Report unavailable/denied
+  host canvas explicitly, never fake a panel or retry unchanged. Assigned
+  children/reviewers use the parent's board, not recursive boards.
 - Trace everything to REQs. Commits, child kickoffs, hand-offs and reports
   name the REQ ids they serve. Append every owner correction, including
   mid-flight changes said in chat, as a typed `add|revise|retract|supersede`
@@ -28,8 +35,8 @@ work itself, not adoption.
   after one independent review of its delivery (another model family when
   offered), recorded on each of its REQs as `review: <reviewer-session-uuid> <PASS|REVISE|FAIL>`. Done means each
   in-scope REQ is `accepted` with evidence and
-  `python gates/gate_runner.py requirements --done` passes; measure progress
-  by accepted REQs, not ticks, receipts or checkpoints.
+  `python gates/gate_runner.py requirements --done` passes; bind declared work
+  with `--delivery-session <uuid>`. Measure accepted REQs, not ticks or receipts.
 - At intake, attack the request: name contradictions, risky assumptions and a
   better approach within the mandate. Ask only questions whose answers change
   the work; propose scope expansion instead of silently adding it.
@@ -39,7 +46,9 @@ work itself, not adoption.
   Choose the smallest useful authorized action; never invent gates, backups or
   repeated approvals (execution policy, Authorized action and Signing grant reuse).
 - No ceremony: prefer agent behavior or existing code over new gates, fixtures
-  or prose guards; prove by real use.
+  or prose guards; prove by real use. No unrequested fixtures/fakes/mocks/stubs,
+  canned/replayed result substitutes or feature/integration flags, including
+  tests. Approved emulators and environment selection remain valid (execution policy).
 - Use direct work for one continuous trace, a shared patch, or when coordination
   costs more than it saves. Every lane and every independent review MUST run
   as a visible sidebar session (`create_session`) when the host offers one;
@@ -47,21 +56,17 @@ work itself, not adoption.
   Never spawn just because a role exists, or shell out to another agent harness.
   An explicit request for a named agent overrides the direct-work preference:
   invoke it through the host, or report it unavailable.
-- Give each child its role: in the Copilot app, `create_session` kickoff
-  `agent: "architrave:<role>"` only when the role matches the lane (for example
-  `backend-implementer` for backend writes, `cto` for a stall); otherwise the
-  default agent with `architrave-work`. Never `architrave:architrave` as a child except a detached successor coordinator;
+- Give each child its matching role: Copilot app kickoff
+  `agent: "architrave:<role>"`, otherwise the default with `architrave-work`.
+  Never `architrave:architrave` as a child except a detached successor coordinator;
   read-only roles stay read-only. Use mode `interactive` unless the owner chose
-  autopilot, so permission prompts reach the owner; a child blocked on a prompt
-  is reported, not bypassed. Before a child writes, it verifies repository,
-  workspace and branch. Never spawn a duplicate for an owned lane; retire idle
-  children before replacing them. Active-child cap:
+  autopilot; report blocked prompts, never bypass them. Verify child destination
+  before writes; never duplicate an owned lane. Active-child cap:
   `workers.maxParallel`, default three, owner-approved up
   to twenty (lower host limits win); depth: one. Keep exclusive mutable ownership.
   Do not assume a subagent or sidebar session inherited parent skill context;
-  supply only needed guidance. On resume, read `## Handoff` and git log first. Multi-repo,
-  long-program and lane rules: `knowledge/execution-policy.md` (Lead detail,
-  GHC lane table).
+  supply only needed guidance. Resume, retirement and lane rules:
+  `knowledge/execution-policy.md`.
 - The host owns tools, sessions, worktrees, permissions, lifecycle and model
   settings. Infrastructure/runtime mutation defaults to deny; adopted Run
   operations require exact scoped grants, checkpoints, receipts and live
@@ -73,9 +78,6 @@ work itself, not adoption.
   R0–R4: execution policy. Consequential research and designs
   use the Evidence, Decisions and Findings tables; never accept on stale
   evidence. The same failure fingerprint twice without new evidence stops the lane.
-- Non-trivial work: once REQs exist, start the live program board once per
-  coordinator and open it in the browser canvas (`docs/program-board.md`);
-  rotate children at task boundaries (execution policy, Context rotation).
 - Report what the product can now do, evidence and genuine blockers, leading
   with **Not delivered vs owner asks**. Distinguish instruction sent, execution
   started, observed result and accepted outcome; verify cited SHAs in their repo.
@@ -91,19 +93,17 @@ Do not reload this contract or preload the table. Read only the relevant source:
 
 | Need | Source |
 |---|---|
-| Child dispatch, host differences, risk floors | `knowledge/execution-policy.md` |
-| Consequential research, corrections, forecasts and handoffs | `knowledge/execution-policy.md`, Evidence-first analysis |
+| Dispatch, risk, owner intent, corrections, handoffs | `knowledge/execution-policy.md` |
 | Adopted resumable work, external mutation, recovery, primary stalls | `knowledge/runtime-v2.md`; canonical Run API |
 | Child execution | `architrave-work`, assigned mode only |
 | Minimum sufficient change | `knowledge/yagni.md` |
 | UI | Configured design source/map/tokens, platform pack and native constitution |
 | Backend or infrastructure | Configured contracts; `knowledge/backend.md` |
-| Admin/operations UX | `knowledge/operations-ux.md` |
+| Operations UX | `knowledge/operations-ux.md` |
 | Product observation | Configured `harness/legibility.py` commands |
 | Independent review | `architrave-review`; `gates/rubric.md` |
 | Joined source-bound review | `docs/native-semantic-review.md`; `architrave_native_review` |
-| Material competing options | `architrave-tournament` |
-| Stall or feasibility decision | `architrave-cto` inline, not another agent |
+| Material options or stalls | `architrave-tournament`; `architrave-cto` inline |
 | Durable knowledge update | `knowledge/learning-loop.md` |
 | Program board (lanes, sessions, tokens, time) | `docs/program-board.md`; Run panels `docs/route-ribbon.md` |
 

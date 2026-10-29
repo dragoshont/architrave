@@ -54,6 +54,41 @@ owner a permission prompt. Sustained parallel delivery across many children
 See the [full capability set](#full-capability-set) and the plain-language
 guide to [long programs](docs/long-programs.md).
 
+## Delivery authenticity and default-session startup
+
+The Copilot plugin adds a small session-start pointer to Architrave, not a full
+crew of always-loaded instructions. Non-trivial work declares its REQs and
+original owner references, then starts one scoped program board and opens/reads
+it in the browser canvas before implementation. Read-only questions, trivial
+edits and assigned child reviewers do not create another coordinator.
+
+Do not introduce fixtures, fakes, mocks, stubs, canned/replayed provider results
+or feature/integration flags without an explicit user request for that purpose
+and scope, including new test-only substitutes. Preserve existing tests and
+safety controls. Approved official local DTS/Azurite and publishing-time Azure
+endpoint/adapter selection remain valid; they do not authorize fake application
+results or establish cloud deployment.
+
+`delivery-audit` inventories source/config/launcher/test candidates, binds source
+and contract identities to an explicit Git base, and retains original owner and
+visual-reference identities. Candidate words are not printed as values and do
+not automatically establish authorization. Review compares owner intent,
+requirements/docs, actual wiring, effective configuration and same-run
+provider/result evidence. Source-only, rendered and runtime claims stay separate.
+
+The existing requirements gate and a narrow Copilot `task_complete` hook verify
+declared work's source-bound evidence and digest-bound independent review.
+Missing/stale evidence, an unexecuted/disabled provider or old-result readback
+cannot accept a fresh integration. No full post-edit hook or stop-loop is added.
+The inventory is heuristic; a clean scan is not integration PASS. Hooks can be
+unavailable/disabled and host timeouts can fail open; writable logs are not
+tamper-proof. Declaration and semantic review remain essential.
+
+See [the workflow, commands and exact limits](docs/delivery-authenticity.md).
+The local session-evidence verifier and bootstrap hooks currently target
+Copilot's documented event format; other hosts retain explicit source/review
+checks rather than a claimed equivalent automatic completion barrier.
+
 ![Workflow diagram: a request and repository context lead to direct work or up to three scoped child sessions, then integration, checks, and a result; a dashed deployment-only branch adds scoped approval and live verification](assets/workflow.svg)
 
 ## What you can use it for
@@ -500,7 +535,7 @@ Everything Architrave ships, grouped by area. Paths point at the source of truth
 - Adversarial Judge with a PASS, REVISE or FAIL rubric covering spec conformance, root cause, YAGNI, UX, visual fidelity, accessibility, backend security, runtime and evidence — `agents/adversarial-judge.agent.md`, `gates/rubric.md`.
 - Semantic and tournament review launchers for Copilot, Claude or both — `harness/architrave_cli.py semantic-review`, `harness/architrave_cli.py tournament-review`.
 - Application legibility: health, release and deployment checks against the deployed artifact — `harness/legibility.py`, `docs/application-legibility.md`.
-- Explicit quality cadence rather than automatic hooks, plus safe retirement of legacy hooks — `docs/quality-check-cadence.md`.
+- Explicit quality cadence rather than post-edit hooks, plus the narrow default-session bootstrap and declared-completion check — `docs/quality-check-cadence.md`.
 
 ### Specialist roles and grounding
 - Fourteen roles: Architrave, CTO, Product Research, Operations UX, UX Architect, UI Visual, Platform Design, Service Architect, Backend Planner, Backend Implementer, Infra Engineer, Runtime Observer, Tournament Analyst and Adversarial Judge — `agents/`.

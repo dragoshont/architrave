@@ -21,6 +21,10 @@ Grade against the repository requirements file (config `requirements`, else
 checks needed to decide the result; do not require other intake or planning
 documents. Load only relevant repository
 sources and rubric dimensions. For knowledge work, do not invent a UI lane.
+Compare original owner messages and attached reference assets with those rows
+and docs, retaining source identities/digests and any genuine permission grants.
+An agent-narrowed SPEC is not a replacement for original owner intent.
+Missing original sources stay unverified, not implicitly waived.
 
 ## Rubric dimensions
 Score each **Pass / Concern / Fail** with a severity and cite evidence (a spec line, pack section, or doc rule).
@@ -32,6 +36,12 @@ Score each **Pass / Concern / Fail** with a severity and cite evidence (a spec l
    `accepted` with evidence, or acting on an owner correction that was never
    recorded as a correction row, is a Blocker. Missing other planning documents
    are not findings; scope mistakes and unverified claims are.
+   Required non-trivial board startup includes direct work: verify one scoped
+   board was opened and read before implementation, or an explicit unavailable/
+   denied outcome without a fabricated panel. Assigned children/reviewers do not
+   create recursive boards. An explicit, reviewed unavailable-board outcome is
+   acceptable without claiming display. Unavailable required delivery, visual
+   or integration observation cannot count as PASS.
 2. **Tournament & recommended-plan quality** — a full tournament is required for
    architecture/dependency choices, systemic failures, migrations, data loss,
    security, deployment, or materially ambiguous options. Routine bounded
@@ -61,6 +71,10 @@ Score each **Pass / Concern / Fail** with a severity and cite evidence (a spec l
 11. **Design↔code reconciliation** — `gates/gate_runner.py reconcile` clean: generated‑from‑tokens output matches committed code; any design‑value change went through `config.tokens` first.
 12. **Tests** — the repo's test pattern (`config.test`); cover the new logic **plus ≥ 1 adversarial/edge case** and capability honesty; deterministic and green.
 13. **Verification & ground truth** — `gates/gate_runner.py checks` green; for UI, a screenshot (`config.screenshot`) matches the Storybook reference; sibling‑instance consistency sweep done.
+    Preserve original visual-reference identity/digest and grade actual intended
+    rendered width and component coverage separately from prose completeness.
+    Missing reference assets, off-width renders and structural-only checks do
+    not establish visual acceptance.
 14. **Learning/audit trail** — inspect learning only when it is updated, and
     durable evidence only when it decides safety, release or recovery truth.
     Do not require a lesson, intake, tournament, plan or summary file for every
@@ -93,6 +107,13 @@ Score each **Pass / Concern / Fail** with a severity and cite evidence (a spec l
     gate, not mandatory safety. Existing-identity build/sign/stage grants must
     be scoped, persisted and checked for limits/expiry/revocation; new operations
     need coverage, and actual host/keychain/Run confirmation cannot be bypassed.
+    An unanswered redundant ask does not revoke an existing scoped grant or
+    authorize a fake fallback. Unrequested fixtures/fakes/mocks/stubs,
+    canned/replayed fresh-result substitutes or feature/integration flags
+    (including test-only substitutes) are Major and Blockers when they replace
+    required execution. Explicitly approved official local DTS/Azurite and
+    dev-to-Azure selection are valid. Requested algorithms/cache/history are
+    not fake integrations, but cannot impersonate a fresh required run.
 
 16. **Diagnostics, protocol leniency, and product copy** — failures carry the
     specific step and reason (redacted); collapsing distinct causes into one

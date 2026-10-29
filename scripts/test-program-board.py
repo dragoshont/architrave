@@ -466,12 +466,25 @@ class EvidenceAndSnapshots(unittest.TestCase):
         self.source.write_text(self.source.read_text().replace("Initial task", "Final correction"))
         process.terminate()
         process.communicate(timeout=10)
-        self.assertIn("Stopped watcher; static snapshot", out.read_text())
+        if os.name == "nt":
+            # Windows terminate is a hard kill, not delivery of Python SIGTERM.
+            self.assertIn("Auto-refresh snapshot", out.read_text())
+            refreshed = subprocess.run(
+                [sys.executable, str(ROOT / "harness/program_board.py"), "--ledger", str(self.ledger),
+                 "--output", str(out), "--reqs", "REQ-1"], env=env, capture_output=True, text=True)
+            self.assertEqual(refreshed.returncode, 0, refreshed.stderr)
+            self.assertIn("Static snapshot; not live", out.read_text())
+            self.assertNotIn("http-equiv='refresh'", out.read_text())
+        else:
+            self.assertIn("Stopped watcher; static snapshot", out.read_text())
         self.assertIn("Final correction", out.read_text())
         self.assertIn("Session requirements: REQ-1", out.read_text())
         self.assertIn(hashlib.sha256(self.source.read_bytes()).hexdigest(), out.read_text())
-        self.assertFalse(out.with_suffix(".pid").exists())
-        self.assertFalse((self.state / COORD / "files/program-board.watch").exists())
+        if os.name != "nt":
+            self.assertFalse(out.with_suffix(".pid").exists())
+            self.assertFalse((self.state / COORD / "files/program-board.watch").exists())
+        else:
+            self.assertFalse(self.pb.gate.pid_alive(process.pid))
 
     def test_browser_print_and_observation(self):
         if BROWSER_OUTPUT is None:

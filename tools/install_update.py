@@ -31,6 +31,9 @@ KNOWLEDGE_AGENTS = (
 )
 GATE_FILES = (
     "gate_runner.py",
+    "delivery_audit.py",
+    "delivery_check.py",
+    "session_guard.py",
     "rubric.md",
 )
 IGNORE_RULES = (
@@ -223,7 +226,8 @@ def install_native_host(kit: Path) -> int:
                      "harness/platform_launch.py", "gates/gate_runner.py"):
         require_source_file(kit / relative, "native-host-install")
     files = [(source, source.relative_to(kit).as_posix()) for source in sorted((kit / "harness").glob("*.py"))]
-    files.append((kit / "gates" / "gate_runner.py", "gates/gate_runner.py"))
+    files.extend((kit / "gates" / name, f"gates/{name}") for name in
+                 ("gate_runner.py", "delivery_audit.py", "delivery_check.py"))
     for source, _ in files:
         require_source_file(source, "native-host-install")
     digest = hashlib.sha256(extension.read_bytes())

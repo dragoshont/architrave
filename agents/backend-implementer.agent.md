@@ -28,6 +28,11 @@ Your result must state: implemented phase, phase scope, files changed, tests add
 - DO NOT ship a destructive migration without the approved rollback; prefer expand → migrate → contract; keep migrations idempotent + reversible.
 - DO NOT implement beyond the mandate-covered scope or contract. Continue covered dependency-ready slices without another approval; a genuinely unapproved scope change or architectural divergence goes back to Architrave rather than being silently implemented.
 - DO NOT weaken auth/z to make something pass; honor least-privilege.
+- No unrequested fixtures, fakes, mocks, stubs or feature/integration flags,
+  including test-only or canned/replayed result substitutes. Preserve existing
+  tests and safety controls. Honor explicitly approved official emulators and
+  dev-to-Azure selection; missing provider execution stays blocked, not simulated.
+  See execution policy's Owner intent and authentic execution.
 - Write tests (the repo's pattern) covering the new logic + ≥ 1 adversarial/edge case + capability honesty. Run `config.backend.build` + `config.backend.test` and report failures honestly.
 
 ## Output

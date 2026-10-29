@@ -5,13 +5,15 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 import os
+import shlex
+import subprocess
 import unittest
 from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "harness"))
-from platform_launch import LaunchError, configured_shell_command
+from platform_launch import LaunchError, configured_shell_command, configured_recipe
 
 
 class PlatformLaunchTests(unittest.TestCase):
@@ -51,6 +53,13 @@ class PlatformLaunchTests(unittest.TestCase):
             which=self.mapping({"bash": "/bin/bash", "sh": "/bin/sh"}),
         )
         self.assertEqual("/bin/bash", command[0])
+
+    def test_recipe_argv_matches_selected_shell_on_windows(self) -> None:
+        argv = [r"C:\Program Files\Python\python.exe", "-c", "print('actual result')"]
+        posix = configured_recipe(argv, platform="windows", which=self.mapping({"bash": "bash"}))
+        self.assertEqual(shlex.split(posix), argv)
+        cmd = configured_recipe(argv, platform="windows", which=self.mapping({"cmd": "cmd.exe"}))
+        self.assertEqual(cmd, subprocess.list2cmdline(argv))
 
 
 if __name__ == "__main__":

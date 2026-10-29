@@ -1,5 +1,14 @@
 # Roadmap
 
+## Current branch: delivery authenticity and compact default startup
+
+- REQ-60..64: source-bound substitute/flag inventory, owner/reference preservation,
+  declared-work acceptance checks, compact Copilot bootstrap and mandatory scoped
+  board startup for non-trivial work. Reuse requirements/review/board mechanisms.
+- Publish and install the verified branch from remote with local validation and
+  no hosted CI. Do not equate branch installation with a merged public release,
+  or typed observation checks with universal model/provider authenticity.
+
 ## v0.21.26 - Session-scoped program board (#32, REQ-53..59)
 
 Session-scoped follow-up (REQ-56): board generation requires selected session

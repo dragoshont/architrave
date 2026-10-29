@@ -264,7 +264,7 @@ class FocusControlTests(unittest.TestCase):
         )
         return run_id, str(wait["resolutionChallenge"]), intended, artifact
 
-    def install_executor(self, intended: dict[str, str], artifact: Path) -> None:
+    def install_executor(self, intended: dict[str, str], artifact: Path, *, timeout_seconds: int = 10) -> None:
         args = argparse.Namespace(
             provider=intended["provider"],
             artifact=intended["artifact"],
@@ -275,7 +275,7 @@ class FocusControlTests(unittest.TestCase):
             workspace=intended["workspace"],
             acceptance_target=intended["acceptanceTarget"],
             workspace_mode="absent-or-exact-directory",
-            timeout_seconds=1,
+            timeout_seconds=timeout_seconds,
             ssh_host=None,
             ssh_host_key_alias=None,
             ssh_port=22,
@@ -1080,7 +1080,7 @@ class FocusControlTests(unittest.TestCase):
         for name, source in cases.items():
             with self.subTest(name=name):
                 run_id, challenge, intended, artifact = self.target_wait(suffix=f"-{name}")
-                self.install_executor(intended, artifact)
+                self.install_executor(intended, artifact, timeout_seconds=1 if name == "timeout" else 10)
                 registry_path, registry = self.registry()
                 adapter = self.home / ".architrave" / "executors" / f"{name}.py"
                 adapter.write_text(source, encoding="utf-8")

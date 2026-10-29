@@ -26,6 +26,7 @@ _fixture_add_task = RunStore.add_task
 RunStore.add_task = lambda self, run_id, task, actor="coordinator": _fixture_add_task(
     self, run_id, {"pushback": "KEEP:test fixture", **task}, actor)
 from legibility import LegibilityRunner
+from platform_launch import configured_recipe
 
 
 class LegibilityTests(unittest.TestCase):
@@ -78,10 +79,7 @@ class LegibilityTests(unittest.TestCase):
     def python_command(self, source: str) -> str:
         payload = base64.b64encode(source.encode("utf-8")).decode("ascii")
         loader = f"import base64;exec(base64.b64decode('{payload}'))"
-        if os.name == "nt":
-            executable = str(Path(sys.executable)).replace("'", "''")
-            return f"& '{executable}' -c \"{loader}\""
-        return shlex.join([sys.executable, "-c", loader])
+        return configured_recipe([sys.executable, "-c", loader])
 
     def pass_command(self, output: str = "") -> str:
         return self.python_command(f"print({output!r}, end='')" if output else "pass")

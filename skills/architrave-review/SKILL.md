@@ -6,10 +6,15 @@ description: Explicitly run a read-only Architrave rubric review of a frozen pro
 Prefer the host-native reviewer. When the host provides one (GitHub Copilot
 `rubber-duck`, or `code-review` for diffs), run the semantic review through it
 instead of launching `adversarial-judge`, so there's never a double review.
-Pass the frozen review subject, acceptance criteria, `gates/rubric.md`, and
-deterministic evidence, and require one PASS/REVISE/FAIL verdict with findings
+Pass the frozen review subject, original owner messages and attached reference assets,
+acceptance criteria, `gates/rubric.md`, and deterministic evidence.
+Require one PASS/REVISE/FAIL verdict with findings
 by severity and uncovered requested criteria. Use the rubric's compact output;
 do not repeat the contract or score irrelevant dimensions.
+Compare reference identity, intended rendered width and component coverage
+separately from prose; unavailable sources remain unverified, not satisfied by
+an agent-narrowed SPEC. Do not start a recursive program board or redeclare
+the parent's scope.
 
 `adversarial-judge` (`architrave_judge` in Codex) stays the rubric source and
 the fallback when no native reviewer exists. The Codex role is advisory and
