@@ -5,6 +5,28 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## 0.21.27
+
+- Bind declared delivery acceptance to original owner references, source/config
+  identities, candidate dispositions and fresh integration or rendered evidence.
+  Approved official emulators and environment selection remain valid.
+- Load an 88-word default-session bootstrap and require a scoped program board
+  before non-trivial implementation, with an explicit unavailable-board outcome.
+  The lead agent shrinks from 1,068 to 1,041 words; no model pin is introduced.
+- Add narrow Copilot sessionStart and task_complete hooks, without automatic
+  PostToolUse builds or agentStop loops. Owner-bound amendments and withdrawal
+  preserve scope history; changed work cannot reuse stale completion evidence.
+- Preserve visual/reference intent and extend acceptance-decision cases without
+  claiming improved model performance. Retained blind calibration is 18/20.
+- Align recipe formatting with the selected shell and correct Windows-specific
+  validation expectations without changing executor selection or safety policy.
+
+Non-trivial task detection remains instruction-led. Local evidence is writable,
+host hook timeouts can fail open, and source tests do not establish live product
+behavior. See [delivery authenticity](docs/delivery-authenticity.md) for limits.
+Update the plugin and start a fresh session to load the new defaults; existing
+loaded sessions and native hosts are not retroactively certified.
+
 ## 0.21.26
 
 - Session boards require explicit REQ selection (`--reqs`), or an intentional
