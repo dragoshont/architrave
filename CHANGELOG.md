@@ -5,6 +5,25 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## 0.21.28
+
+- Scope native correction context to exact requirements, including explicit
+  correction-only chains. Retain global rules and unresolved legacy safety
+  context without turning historical grants into current authority.
+- Require explicit native Run selection and reject managed cross-run scratch
+  context and artifact paths, honoring the configured workspace root. Same-run
+  resume retains evidence with existing digest/source/authority checks.
+- Check selected source citations against HEAD, index and actual worktree
+  content, including deleted, staged and assume-unchanged paths, without
+  invalidating unrelated edits.
+- Reuse optional source-cited project maps and existing learning tools to
+  distinguish current accepted architecture from unresolved historical references.
+  No mandatory output folder, config or direct-task worktree is introduced.
+
+These are source/control-plane safeguards, not a filesystem sandbox or automatic
+semantic history classifier. Update the plugin and restart sessions to load new
+guidance; already-loaded hosts are not retroactively updated.
+
 ## 0.21.27
 
 - Bind declared delivery acceptance to original owner references, source/config

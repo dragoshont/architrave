@@ -733,9 +733,23 @@ def ref_ids(text: str, kind: str) -> list[str]:
 
 
 def git_source_errors(root: Path, sid: str, source: str, status: str, repos: dict[str, Path]) -> tuple[list[str], list[str]]:
-    """Resolve `<repo>@<commit>:<path>` sources; a changed file at the repo's HEAD makes the claim stale."""
+    """Resolve selected sources against HEAD, index and worktree, not unrelated dirt."""
     errors: list[str] = []
     notes: list[str] = []
+
+    def safe_parent(repo: Path, relative: str) -> bool:
+        parent = repo
+        try:
+            for part in Path(relative).parts[:-1]:
+                if part in {".", ".."}:
+                    return False
+                parent /= part
+                if parent.is_symlink() or not parent.is_dir():
+                    return False
+            return parent.resolve().is_relative_to(repo.resolve())
+        except (OSError, RuntimeError):
+            return False
+
     for name, commit, rel in GIT_SOURCE.findall(source):
         repo = repos.get(name)
         if repo is None or git(repo, "rev-parse", "--git-dir") is None:
@@ -748,12 +762,49 @@ def git_source_errors(root: Path, sid: str, source: str, status: str, repos: dic
         if cited is None:
             errors.append(f"{sid} source {rel} is absent at {name}@{commit}")
             continue
+        if not safe_parent(repo, rel):
+            errors.append(f"{sid} source {name}:{rel} has a missing, linked or external parent; current source unverified")
+            continue
         if subprocess.run(["git", "-C", str(repo), "merge-base", "--is-ancestor", commit, "HEAD"],
                           capture_output=True, check=False).returncode:
-            notes.append(f"{sid}: {name} HEAD does not contain {commit}; freshness of {rel} unverified here")
-            continue
+            notes.append(f"{sid}: {name} HEAD does not contain {commit}; comparing selected source content directly")
         current = git(repo, "rev-parse", f"HEAD:{rel}")
-        if current != cited and status not in {"stale", "superseded", "contradicted"}:
+        literal = f":(literal){rel}"
+        index_changed = subprocess.run(
+            ["git", "-C", str(repo), "diff", "--cached", "--quiet", commit, "--", literal],
+            capture_output=True, check=False).returncode
+        worktree_changed = subprocess.run(
+            ["git", "-C", str(repo), "diff", "--quiet", "--", literal],
+            capture_output=True, check=False).returncode
+        # Git diff may trust assume-unchanged/skip-worktree bits. Read selected
+        # blobs too, applying Git's filters so legitimate CRLF stays same-source.
+        selected = subprocess.run(
+            ["git", "-C", str(repo), "ls-tree", "-rz", commit, "--", literal],
+            capture_output=True, check=False)
+        worktree_changed = worktree_changed or selected.returncode
+        for entry in selected.stdout.split(b"\0"):
+            if not entry:
+                continue
+            metadata, filename = entry.split(b"\t", 1)
+            mode, kind, expected = metadata.split()
+            if kind != b"blob":
+                continue
+            path = repo / os.fsdecode(filename)
+            if not safe_parent(repo, os.fsdecode(filename)):
+                worktree_changed = True
+                continue
+            if mode == b"120000" and path.is_symlink():
+                observed = subprocess.run(
+                    ["git", "-C", str(repo), "hash-object", "--stdin"],
+                    input=os.fsencode(os.readlink(path)), capture_output=True, check=False)
+                actual = observed.stdout.strip() if not observed.returncode else None
+            elif mode != b"120000" and path.is_file() and not path.is_symlink():
+                value = git(repo, "hash-object", f"--path={os.fsdecode(filename)}", "--", os.fsdecode(filename))
+                actual = value.encode("ascii") if value is not None else None
+            else:
+                actual = None
+            worktree_changed = worktree_changed or actual != expected
+        if (current != cited or index_changed or worktree_changed) and status not in {"stale", "superseded", "contradicted"}:
             errors.append(f"{sid} source {name}:{rel} changed since {commit}; mark it stale and reconsider dependent decisions")
     return errors, notes
 

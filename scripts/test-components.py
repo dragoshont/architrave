@@ -48,6 +48,38 @@ class ComponentGate(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+    def test_selected_source_rejects_external_parent_before_regular_or_symlink_leaf_read(self):
+        sys.path.insert(0, str(ROOT / "gates"))
+        from gate_runner import git_source_errors
+        repo = checkout(self.base / "source", "https://github.com/me/source.git")
+        docs = repo / "docs"
+        docs.mkdir()
+        (repo / ".gitattributes").write_text("*.md text eol=lf\n")
+        (docs / "policy.md").write_text("policy\n")
+        (docs / "link.md").symlink_to("policy.md")
+        git(repo, "add", ".")
+        git(repo, "-c", "user.email=a@b", "-c", "user.name=a", "commit", "-qm", "source")
+        commit = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
+        for path in ("docs/policy.md", "docs/link.md"):
+            self.assertEqual([], git_source_errors(repo, "E-1", f"self@{commit}:{path}", "supported", {"self": repo})[0])
+        (docs / "policy.md").write_bytes(b"policy\r\n")
+        self.assertEqual([], git_source_errors(repo, "E-1", f"self@{commit}:docs/policy.md", "supported", {"self": repo})[0])
+        git(repo, "update-index", "--assume-unchanged", "docs/policy.md", "docs/link.md")
+        outside = self.base / "outside"
+        docs.rename(outside)
+        docs.symlink_to(outside, target_is_directory=True)
+        for path in ("docs/policy.md", "docs/link.md"):
+            with self.subTest(path=path):
+                errors, _ = git_source_errors(repo, "E-1", f"self@{commit}:{path}", "supported", {"self": repo})
+                self.assertTrue(errors, "external parent must not certify matching bytes")
+        docs.unlink()
+        outside.rename(repo / "alternate")
+        docs.symlink_to("alternate", target_is_directory=True)
+        for path in ("docs/policy.md", "docs/link.md"):
+            with self.subTest(internal=path):
+                errors, _ = git_source_errors(repo, "E-1", f"self@{commit}:{path}", "supported", {"self": repo})
+                self.assertTrue(errors, "an internal parent symlink is also tracked-directory drift")
+
     def run_gate(self, components, *flags, requirements="SPEC.md"):
         config = {"kind": "knowledge", "build": "true", "test": "true", "components": components}
         if requirements:
@@ -231,6 +263,32 @@ Verify: `make e2e`
         for reviewer in ("review-b", "Rita Reviewer", "3632b07b-9983-4056-afe0-fec425e0c847"):
             code, out = run(ledger.replace("| review-b |", f"| {reviewer} |"))
             self.assertEqual(code, 0, out)
+        git(backend, "update-index", "--assume-unchanged", "api.md")
+        (backend / "api.md").write_text("hidden dirty route\n")
+        code, out = run(ledger)
+        self.assertEqual(code, 1, out)
+        (backend / "api.md").write_text("v1 route\n")
+        git(backend, "update-index", "--no-assume-unchanged", "api.md")
+        (backend / "unrelated.txt").write_text("unrelated dirt\n")
+        code, out = run(ledger)
+        self.assertEqual(code, 0, out)
+        for staged in (False, True):
+            (backend / "api.md").write_text("dirty route\n")
+            if staged:
+                git(backend, "add", "api.md")
+                # Even a restored worktree must not hide a different index.
+                (backend / "api.md").write_text("v1 route\n")
+            code, out = run(ledger)
+            self.assertEqual(code, 1, out)
+            self.assertIn("E-1 source backend:api.md changed since", out)
+            (backend / "api.md").write_text("v1 route\n")
+            git(backend, "add", "api.md")
+            code, out = run(ledger)
+            self.assertEqual(code, 0, out)
+        (backend / "api.md").unlink()
+        code, out = run(ledger)
+        self.assertEqual(code, 1, out)
+        (backend / "api.md").write_text("v1 route\n")
         (backend / "api.md").write_text("v2 route, auth required\n")
         git(backend, "-c", "user.email=a@b", "-c", "user.name=a", "commit", "-qam", "v2")
         code, out = run(ledger)

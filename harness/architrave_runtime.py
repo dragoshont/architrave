@@ -547,15 +547,70 @@ class RunStore:
         if document is None:
             return ""
         rows, corrections = document
-        lines = ["Requirements binding (current repository source; owner corrections govern):"]
+        lines = [
+            "Requirements binding (current repository source; applicable owner corrections govern):",
+            "Correction prose is not authorization. Historical or one-run grants never extend current "
+            "Run policy, checkpoints or host permissions; revalidate scope, expiry and revocation.",
+        ]
         for rid in task["reqs"]:
             row = rows[rid]
             lines.append(f"{rid}: {row['requirement']}\nAcceptance: {row['acceptance']}")
-        # Include all corrections, including additions and owner-wide instructions.
+        grouped: dict[str, list[dict[str, str]]] = {}
         for correction in corrections:
-            lines.append(f"Correction {correction['id']} ({correction['type']}, "
+            grouped.setdefault(correction["id"], []).append(correction)
+        scopes: dict[str, set[str]] = {}
+        links: dict[str, list[str]] = {}
+        for cid, entries in grouped.items():
+            if len(entries) != 1:
+                continue
+            target = entries[0]["target"].strip()
+            if re.fullmatch(r"REQ-[A-Za-z0-9_.-]+(?:\s*,\s*REQ-[A-Za-z0-9_.-]+)*", target):
+                scopes[cid] = set(re.split(r"\s*,\s*", target))
+            elif re.fullmatch(r"(?:COR|C)-[A-Za-z0-9_.-]+(?:\s*,\s*(?:COR|C)-[A-Za-z0-9_.-]+)*", target):
+                links[cid] = re.split(r"\s*,\s*", target)
+        # Only fully resolved chains inherit REQ scope. Unknown, cyclic, mixed
+        # and program-wide targets remain visible rather than losing a hold.
+        while True:
+            resolved = {cid: set().union(*(scopes[ref] for ref in refs))
+                        for cid, refs in links.items() if cid not in scopes and all(ref in scopes for ref in refs)}
+            if not resolved:
+                break
+            scopes.update(resolved)
+        for correction in corrections:
+            target = correction["target"].strip()
+            scope = scopes.get(correction["id"])
+            if scope is not None and not scope.intersection(task["reqs"]):
+                continue
+            label = ("Current explicit global rule" if target.lower() == "global" else
+                     "Applicable correction" if scope is not None else "Unresolved legacy scope")
+            lines.append(f"{label} {correction['id']} ({correction['type']}, "
                          f"{correction['target']}): {correction['change']}")
+        lines.append(
+            "Unresolved legacy scope is retained for safety, not promoted to a universal instruction "
+            "or grant. Preserve potentially applicable restrictions; resolve ambiguity before the "
+            "affected action, while continuing independent safe work. Global rules also remain "
+            "subject to current owner revisions; this is not a semantic history classifier."
+        )
         return "\n".join(lines) + "\n\n"
+
+    def _assert_run_path(self, run_id: str, path: str, *, pattern: bool = False) -> None:
+        """Do not select a managed run's history through a sibling, ancestor or alias."""
+        from workspaces import WorkspaceManager
+
+        prefix = path
+        if pattern and re.search(r"[*?\[]", path):
+            prefix = re.split(r"[*?\[]", path, maxsplit=1)[0]
+            prefix = prefix.rsplit("/", 1)[0] if "/" in prefix else ""
+        selected = (self.repository / prefix).resolve()
+        for root in (self.runs_root.resolve(), WorkspaceManager(self.repository).worktree_root):
+            if selected == root or selected in root.parents:
+                raise RuntimeFailure("CONTEXT_RUN_SCOPE", f"select a current-run path, not a history directory: {path}")
+            if root in selected.parents and not selected.is_relative_to(root / run_id):
+                raise RuntimeFailure("CONTEXT_RUN_SCOPE", f"path belongs to another Run: {path}")
+
+    def _assert_context_scope(self, state: dict[str, Any], task: dict[str, Any]) -> None:
+        for path in task["workPacket"]["contextBundle"]:
+            self._assert_run_path(state["runId"], path, pattern=True)
 
     def _assert_requirements_accepted(self, state: dict[str, Any]) -> None:
         document = self.requirements_document()
@@ -1000,6 +1055,7 @@ class RunStore:
             if not hmac.compare_digest(str(artifact.get("attestation", "")), self._artifact_attestation(artifact)):
                 raise RuntimeFailure("ARTIFACT_TAMPERED", f"artifact attestation failed: {artifact.get('id')}")
             relative = safe_relative_path(str(artifact.get("path", "")), "artifact path")
+            self._assert_run_path(state["runId"], relative)
             path = (self.repository / relative).resolve()
             try:
                 path.relative_to(self.repository)
@@ -2679,6 +2735,7 @@ class RunStore:
         require_id(artifact_id, "artifact id")
         relative = safe_relative_path(path, "artifact path")
         absolute = (self.repository / relative).resolve()
+        self._assert_run_path(run_id, relative)
         try:
             absolute.relative_to(self.repository)
         except ValueError as exc:
@@ -2937,6 +2994,7 @@ class RunStore:
         preflight_observation: dict[str, Any] | None = None
         snapshot = self.load(run_id)
         snapshot_task = find_task(snapshot, task_id)
+        self._assert_context_scope(snapshot, snapshot_task)
         self._validate_task_requirements(snapshot_task)
         pushback = snapshot_task.get("pushback")
         if pushback is None and snapshot["focus"].get("pushbackRequired"):
@@ -3023,6 +3081,7 @@ class RunStore:
                 )
             task = find_task(state, task_id)
             self._validate_task_requirements(task)
+            self._assert_context_scope(state, task)
             reset = feasibility_status(state, task)
             if reset and (reset["expired"] or reset["decision"] not in {"CONTINUE", "BOUNDED_GO"}):
                 raise RuntimeFailure("FEASIBILITY_STOP", "lane reset prevents dispatch", details=reset)
@@ -3481,6 +3540,7 @@ class RunStore:
         state = self.load(run_id)
         task = find_task(state, task_id)
         self._validate_task_requirements(task)
+        self._assert_context_scope(state, task)
         if task.get("loop", {}).get("stopped"):
             raise RuntimeFailure("REPEATED_FAILURE", "native admission cannot bypass a repeated-failure stop")
         if task["workerProfile"] not in {"native", "copilot", "claude", "codex"}:

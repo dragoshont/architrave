@@ -86,6 +86,8 @@ def main():
         store = RunStore(request["repo"])
         action = request["action"]
         run_id = request["runId"]
+        if not isinstance(run_id, str) or not run_id.strip():
+            raise RuntimeFailure("NATIVE_RUN_REQUIRED", "native work requires an explicit Run id; latest history is not current context")
         if action == "status":
             summary = state_summary(store.load(run_id))
             summary["hostWorkers"] = request.get("hostWorkers") or summary["hostWorkers"]
@@ -143,6 +145,8 @@ def main():
         emit({
             "status": "prepared", "binding": ticket.binding,
             "prompt": requirements_kickoff(store, task, request.get("reqs")) + render_prompt(packet) + "\n"
+            + f"Current Run: {run_id}. Use declared context, not another Run's scratch, receipts or latest-history discovery. "
+            + "Explicit same-run reuse still requires current source and authority bindings.\n"
             + f"Use ONLY this isolated workspace, with absolute paths: {task['workspace']}\n"
             + "Do not launch another agent CLI, commit, mutate the source checkout, or change Run state.\n"
             + "Do not call Architrave control-plane extension tools. Return a candidate, never claim gate PASS.",

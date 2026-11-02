@@ -54,6 +54,15 @@ owner a permission prompt. Sustained parallel delivery across many children
 See the [full capability set](#full-capability-set) and the plain-language
 guide to [long programs](docs/long-programs.md).
 
+Native work selects an explicit Run and exact REQ corrections rather than loading
+all history. Explicit `global` rules remain current; ambiguous legacy targets
+remain visible but cannot grant permissions. Managed cross-run scratch selection
+is rejected, and selected source citations are checked against HEAD, index and
+worktree. Same-run resume retains evidence with existing binding checks. These
+are source/control-plane safeguards, not a host sandbox or automatic semantic
+staleness detector. Keep a concise, source-cited project map in existing repo
+instructions or the [optional repo profile](knowledge/learning-loop.md#repo-profile-shape).
+
 ## Delivery authenticity and default-session startup
 
 The Copilot plugin adds a small session-start pointer to Architrave, not a full

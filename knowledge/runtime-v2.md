@@ -32,8 +32,30 @@ the claim, and retries must reclaim it. Status exposes `requirementsBindings`.
 
 Native dispatch needs the canonical `reqs` list; batch needs a `reqs` map keyed
 by its `task_ids`. Python validates each packet before admission. Child prompts
-prepend current acceptance text and all correction rows, preserving owner
-corrections across context resets. Admission limits remain unchanged.
+prepend current acceptance text and applicable correction rows. Exact
+comma-separated REQ targets match whole IDs (`REQ-1` never matches `REQ-10`);
+Correction-only targets (`C-...` or `COR-...`) inherit scope when every referenced
+chain resolves to explicit REQ targets; unrelated direct/indirect chains are
+omitted too. Forward references work without relying on row order. `global`
+explicitly marks standing owner rules. Unknown, cyclic, duplicate-ID, program-wide
+and mixed legacy targets (such as `program`, `workers.maxParallel` or prose) are retained as
+**unresolved legacy scope**, not silently dropped or made universal. Resolve
+potentially applicable restrictions before the affected action without halting
+independent safe work. Correction prose, including historical one-run grants,
+never supplies Run policy, checkpoint or host authorization. Current policy and
+bindings still govern. Mis-scoped prose cannot be classified perfectly; reconcile
+true standing rules into `global` or repository instructions with owner authority.
+
+The native bridge requires an explicit Run id, including status reads; it never
+falls back to the newest historical Run. Dispatch rejects context paths selecting
+other managed Runs/worktrees or their broad parent directories, including direct
+symlink aliases and wildcard prefixes. Artifact registration and load enforce the
+same managed-run boundary. Existing same-run artifacts survive explicit resume,
+with digest verification on load and source/authority checks at evidence use.
+No artifacts are deleted or copied into a new output convention. Unmanaged files,
+host transcript inheritance and arbitrary filesystem reads are not isolated by
+these checks: a worktree is not a sandbox. Native workers retain their existing
+worktree behavior; ordinary direct/read-only work needs no new worktree mandate.
 
 Before completion, reread the file: all REQs ever bound to Run tasks must now
 be `accepted`, including cancelled/deferred tasks, or `REQ_NOT_ACCEPTED` blocks

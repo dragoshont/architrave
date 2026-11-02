@@ -1,5 +1,15 @@
 # Roadmap
 
+## v0.21.28 - Context freshness (REQ-66/67, release candidate)
+
+Targeted native correction scoping, explicit Run selection and managed-run context
+and artifact boundaries; selected ledger source freshness includes index/worktree.
+Preserve ambiguous legacy safety context and same-run resume without inheriting
+historical grants. Reuse optional source-cited project knowledge and existing
+learning tools; no mandatory `out/`, config, sandbox or direct-task worktree.
+The owner authorizes local build, commit/push, public release and installation
+under REQ-67. Source checks remain distinct from installed-host adoption.
+
 ## Current branch: delivery authenticity and compact default startup
 
 - REQ-60..64: source-bound substitute/flag inventory, owner/reference preservation,

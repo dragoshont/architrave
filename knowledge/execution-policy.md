@@ -143,6 +143,27 @@ claims are not fresh runtime evidence; retain them as provenance and reobserve
 the actual target when current runtime acceptance is required. This grants no
 new runtime permissions.
 
+New work selects its current Run/session artifacts explicitly, not the newest
+scratch directory or every historical correction. A pure comma-separated REQ
+target applies only to those exact REQs; use `global` for genuine standing rules.
+Keep ambiguous legacy restrictions visible until their applicability is resolved,
+but do not turn an old grant or an unrelated hold into current universal policy.
+The native boundary enforces managed-run path selection, not the host's context
+inheritance or general filesystem access (see `knowledge/runtime-v2.md`).
+For selected `repo@commit:path` ledger evidence, the requirements gate compares
+HEAD, index and current worktree content; unrelated dirty paths do not stale it.
+Matching bytes establish source identity, not current architectural authority.
+
+Use the existing optional source-cited repo profile or repository instructions
+as a compact project map: current accepted ADRs/contracts, active and retired
+surfaces, source-of-truth paths and verified commands. Validate citations against
+the current checkout before using them. A newer issue referring to deleted or
+superseded ADRs is unresolved context, not a reinstatement of retired architecture.
+Report the conflict for the affected decision and continue independent safe work;
+timestamps and hashes cannot automatically reconcile semantic contradictions.
+See `knowledge/learning-loop.md` for existing missing-link and reviewed-finding
+tools. No new config or indiscriminate history loading is required.
+
 Use the existing `components` map and requirements/Handoff for component
 identity, not a parallel inventory. Alongside the canonical `repo`, record its
 execution role (which side/process runs it), working branch/base when non-default,

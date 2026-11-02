@@ -99,6 +99,26 @@ The repo profile should be compact enough to load/read quickly:
 
 Each durable fact should either cite a file/command/run artifact or be marked as unvalidated. When a fact becomes a standing instruction, move it to the appropriate promoted target and leave a short pointer in the profile.
 
+Use `learning.repoProfilePath` when already configured, or the existing default
+profile; concise source-cited facts can instead live in repository instructions.
+Record current accepted authority and retired surfaces, not just recent issue
+titles. For example, an accepted `docs/ADR-0020.md` may retire an engine and
+supersede/delete ADR-0016 and ADR-0018 while a newer issue still references them.
+The project map should cite ADR-0020 as current and label those issue references
+unresolved; an issue timestamp does not revive the engine. A still-present
+superseded ADR also needs semantic review, not merely a successful link check.
+Do not silently edit or infer a new owner decision from the conflict.
+
+`python3 harness/architrave_cli.py mark-stale-learning` reports missing local
+links in the default learning files (`--apply` marks the exact lines
+`UNVALIDATED:` without deleting them). Semantic learning review and
+`apply-semantic-learning-findings` handle reviewed contradictions, with exact-text
+checks against stale findings. These are explicit tools, not automatic native
+dispatch preloading or a general ADR/supersession detector; custom profile paths
+must be inspected explicitly. The retained synthetic project-map case in
+`scripts/test-learning-tools.py` distinguishes missing references from semantic
+supersession and keeps the accepted authority visible.
+
 ## What the judge checks
 
 Missing optional learning artifacts are not a finding. Missing required safety

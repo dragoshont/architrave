@@ -45,6 +45,32 @@ def main() -> int:
         text = (repo / PROFILE).read_text()
         check("stale-apply", "UNVALIDATED: Broken" in text and "UNVALIDATED: Valid" not in text)
 
+        (repo / "docs/ADR-0020.md").write_text(
+            "# ADR-0020\nStatus: accepted\nRetire the engine; supersedes ADR-0016 and ADR-0018.\n")
+        (repo / "docs/ADR-0019.md").write_text("# ADR-0019\nStatus: superseded by ADR-0020.\n")
+        (repo / PROFILE).write_text(
+            "# Project map\n"
+            "Current architecture: [accepted ADR-0020](docs/ADR-0020.md); engine retired.\n"
+            "Unresolved issue references: [ADR-0016](docs/ADR-0016.md), [ADR-0018](docs/ADR-0018.md).\n"
+            "Historical engine plan: [ADR-0019](docs/ADR-0019.md).\n")
+        result = run(repo, "mark-stale-learning", "--apply")
+        text = (repo / PROFILE).read_text()
+        check("project-map-current-authority", result.returncode == 0
+              and "\nCurrent architecture:" in text and "engine retired" in text)
+        check("project-map-deleted-issue-references-unresolved",
+              "\nUNVALIDATED: Unresolved issue references:" in text)
+        check("project-map-existing-link-is-not-semantic-proof",
+              "\nHistorical engine plan:" in text)
+        findings = learning / "semantic-stale-facts.jsonl"
+        findings.write_text(json.dumps({
+            "file": PROFILE, "line": 4,
+            "currentText": "Historical engine plan: [ADR-0019](docs/ADR-0019.md).",
+            "severity": "major", "reason": "ADR-0020 retires this engine; ADR-0019 is superseded",
+        }) + "\n")
+        result = run(repo, "apply-semantic-learning-findings", "--apply")
+        check("project-map-reviewed-supersession",
+              result.returncode == 0 and "\nUNVALIDATED: Historical engine plan:" in (repo / PROFILE).read_text())
+
         (repo / PROFILE).write_text("# Repo Profile\n\nBuild uses make release on Windows.\nUNVALIDATED: Old claim.\n")
         (learning / "repo-lessons.md").write_text("# Repo Lessons\n\nNo durable semantic claims here.\n")
         result = run(repo, "semantic-learning-review", "--provider", "copilot")
