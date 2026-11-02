@@ -1,14 +1,18 @@
 # Roadmap
 
-## v0.21.28 - Context freshness (REQ-66/67, release candidate)
+## v0.21.28 - Context freshness (REQ-66/67, delivered)
 
 Targeted native correction scoping, explicit Run selection and managed-run context
 and artifact boundaries; selected ledger source freshness includes index/worktree.
 Preserve ambiguous legacy safety context and same-run resume without inheriting
 historical grants. Reuse optional source-cited project knowledge and existing
 learning tools; no mandatory `out/`, config, sandbox or direct-task worktree.
-The owner authorizes local build, commit/push, public release and installation
-under REQ-67. Source checks remain distinct from installed-host adoption.
+Published from 1479bf6 after full local validation and independent correction
+review PASS; 17 independent probes pass. Downloaded archives/checksums and all
+290 installed Copilot/Codex files match the public tag; native source/Python/
+extension pins verify. Installed focused suites pass, hosted CI remains disabled.
+Fresh sessions/reloaded extensions are needed; disk installation is not proof
+that existing sessions loaded new context.
 
 ## Current branch: delivery authenticity and compact default startup
 
