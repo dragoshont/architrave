@@ -49,11 +49,32 @@ work. There is no `active=false` escape: both `prepared` and `sealed`
 Completion of active work requires current accepted sealed evidence. This is
 an evidence artifact, not another requirements ledger.
 
+New declarations carry explicit source/dependency paths. Closure via
+`requirements --done --delivery-session <uuid>` checks that slice and its relevant
+blockers, not unrelated REQs/lanes; unscoped `--done` keeps program-wide meaning.
+Relevant config/docs and source drift still invalidate evidence. Legacy declarations
+without source paths retain full-repository freshness. Unchanged amendments can
+retain per-REQ evidence and original owner cutoffs, but never aggregate review.
+
 The checker may retire a sealed scope only with `sealed_at`, a verified
 digest-bound reviewer PASS and a later actual `session.task_complete` event.
 A new non-trivial declaration archives that completed report; active declarations
 cannot be overwritten. An earlier unrelated completion or an author-written
 inactive flag cannot retire prepared/unreviewed work.
+For later read-only follow-ups the hook accepts only the summary prefix
+`Read-only follow-up (no new delivery acceptance): ` and rejects recorded edits
+after original completion. It does not rerun historical acceptance merely due to
+unrelated checkout churn. Explicit delivery checks still revalidate all bound
+evidence; the hook-only exception grants no new delivery acceptance or authority.
+
+An active declaration can instead use `delivery-audit --pause blocked|waiting|handoff`
+with a one-line reason and actual `--evidence` files. This is an honest non-delivery
+terminal, never acceptance. The hook requires the exact printed non-delivery summary
+and unchanged source/owner/evidence identities, so a successful-delivery summary
+cannot accompany a pause. Automatic reminders leave it paused. `--resume` is a
+deliberate same-scope transition; changed scope requires a newer owner-bound amendment.
+`--seal` alone cannot escape a pause. See `docs/delivery-authenticity.md` for fields
+and limits; no state transition changes host permissions or repository REQ status.
 
 No declaration returns `{}` without importing the checker. An existing
 malformed/unreadable report, missing or stale required evidence (including
@@ -62,7 +83,7 @@ with `permissionDecision: "deny"` and `permissionDecisionReason`. Failures name
 the operation and exception type/OS error code without echoing raw inputs or
 exception messages that might contain secrets. Accepted evidence returns `{}`,
 not `allow`: normal host permissions still apply. The hook never denies
-unrelated tools, reads tool arguments as acceptance, rewrites results, logs
+unrelated tools, treats summary text as delivery evidence, rewrites results, logs
 prompts, grants permission or edits global user configuration.
 
 This is a **scoped acceptance barrier, not complete enforcement**. It cannot
@@ -73,6 +94,9 @@ but **command timeouts fail open**, including policy hooks; warnings do not
 constitute acceptance. No `agentStop`/`subagentStop` forced-continuation loop,
 generic PostToolUse quality polling or automatic permission approval is used.
 Retain explicit verification and the `requirements --delivery-session` boundary.
+Explicit edit events can expose renewed mutation after completion; arbitrary
+shell effects and undeclared work are not inferred. A read-only summary is a
+claim constrained by observed events, not a permission barrier around every tool.
 
 ## Host compatibility
 

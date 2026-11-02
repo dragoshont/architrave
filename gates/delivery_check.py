@@ -92,6 +92,34 @@ def timestamp(value: object) -> datetime:
     return parsed
 
 
+def current_scan(root: Path, report: dict) -> dict:
+    return audit.scan(root, base=report["base_sha"], all_files=bool(report.get("all_files")),
+                      documents=report.get("document_paths"), reqs=report["reqs"],
+                      source_paths=report.get("source_paths"))
+
+
+def source_evidence(snapshot: dict) -> str:
+    """Source/config/docs shared by every outcome, excluding mutable REQ rows."""
+    return audit.digest({
+        "base_sha": snapshot["base_sha"], "source_files": snapshot["source_files"],
+        "documents": snapshot["documents"][1:], "source_paths": snapshot.get("source_paths"),
+        "selection": snapshot["selection"],
+    })
+
+
+def owner_cutoff(report: dict, log: list[dict], ids: list[str] | None = None) -> datetime:
+    known = {r["event_id"] for r in report["owner_requests"]}
+    if ids is not None and (not isinstance(ids, list) or not all(isinstance(item, str) for item in ids)):
+        raise ValueError("freshness anchors must be lists of original owner event IDs")
+    selected = known if ids is None else set(ids)
+    if not selected or not selected <= known:
+        raise ValueError("freshness anchors must reference bound original owner events")
+    times = [timestamp(e.get("timestamp")) for e in log if e.get("id") in selected]
+    if len(times) != len(selected):
+        raise ValueError("freshness owner anchors are absent or ambiguous")
+    return max(times)
+
+
 def host_completed(report: dict, log: list[dict]) -> bool:
     if report.get("schema") != SCHEMA or report.get("state") != "sealed" or not report.get("sealed_at"):
         return False
@@ -184,7 +212,7 @@ def child_session(session_id: str, log: list[dict]) -> bool:
     return False
 
 
-def first_source_edit(root: Path, log: list[dict], after: datetime) -> datetime | None:
+def first_source_edit(root: Path, log: list[dict], after: datetime, *, include_ledger: bool = False) -> datetime | None:
     config = gate.load_config(root) if (root / "architrave.config.json").exists() else {}
     ledger = (root / config.get("requirements", "SPEC.md")).resolve()
     edits = []
@@ -204,7 +232,7 @@ def first_source_edit(root: Path, log: list[dict], after: datetime) -> datetime 
             paths = [args["path"]]
         for value in paths:
             path = (root / value).resolve()
-            if path != ledger and path.is_relative_to(root):
+            if (include_ledger or path != ledger) and path.is_relative_to(root):
                 edits.append(when)
     return min(edits) if edits else None
 
@@ -255,8 +283,7 @@ def board_errors(value: object, report: dict, log: list[dict]) -> list[str]:
     if not isinstance(value, dict):
         return ["non-trivial work requires an opened and observed scoped board"]
     try:
-        cutoff = max(timestamp(e.get("timestamp")) for e in log
-                     if e.get("id") in {r["event_id"] for r in report["owner_requests"]})
+        cutoff = owner_cutoff(report, log, report.get("board_owner_event_ids"))
         if value.get("unavailable") is True:
             if not isinstance(value.get("reason"), str) or not value["reason"].strip():
                 raise ValueError("unavailable board needs its explicit reason")
@@ -362,8 +389,7 @@ def check_report(root: Path, report: dict, *, require_review: bool = True) -> li
         reqs = report.get("reqs")
         if not isinstance(reqs, list) or not reqs or not all(isinstance(r, str) for r in reqs):
             raise ValueError("explicit delivery requirement scope is missing")
-        current = audit.scan(root, base=report["base_sha"], all_files=bool(report.get("all_files")),
-                             documents=report.get("document_paths"), reqs=reqs)
+        current = current_scan(root, report)
         if current["requirements"] != report.get("original_requirements"):
             errors.append("requirements/acceptance changed since owner-bound intake; explicitly re-declare corrections")
         if not isinstance(report.get("audit"), dict) or current["source_sha256"] != report["audit"].get("source_sha256"):
@@ -375,9 +401,9 @@ def check_report(root: Path, report: dict, *, require_review: bool = True) -> li
         for reference in owners:
             if owner_reference(reference["event_id"], log) != reference:
                 errors.append("original owner reference or attachment changed")
-        owner_times = [timestamp(e.get("timestamp")) for e in log
-                       if e.get("id") in {r["event_id"] for r in owners}]
-        owner_cutoff = max(owner_times)
+        anchors = report.get("owner_anchors")
+        if anchors is not None and (not isinstance(anchors, dict) or set(anchors) != set(reqs)):
+            raise ValueError("every requirement needs its owner freshness anchor")
         for reference in report.get("references", []):
             verify_file(reference)
         errors.extend(board_errors(report.get("board"), report, log))
@@ -422,7 +448,10 @@ def check_report(root: Path, report: dict, *, require_review: bool = True) -> li
                         raise ValueError("observation is neither this session nor a recorded child")
                     observed_log = log if observed_sid == session_id else events(observed_sid)
                     start, end = tool_evidence(row["tool_call_id"], observed_log)
-                    if timestamp(start.get("timestamp")) < owner_cutoff:
+                    cutoff = owner_cutoff(report, log, anchors[rid] if anchors is not None else None)
+                    if rid in report.get("proof_after", {}):
+                        cutoff = max(cutoff, timestamp(report["proof_after"][rid]))
+                    if timestamp(start.get("timestamp")) < cutoff:
                         errors.append(f"{rid}: earlier tool results cannot establish this task's fresh acceptance")
                     if timestamp(end.get("timestamp")) < timestamp(start.get("timestamp")):
                         errors.append(f"{rid}: observation ends before its invocation")
@@ -440,7 +469,7 @@ def check_report(root: Path, report: dict, *, require_review: bool = True) -> li
             if error:
                 errors.append(error)
             else:
-                rows, _, parse_errors = gate.parse_requirements(path.read_text(encoding="utf-8-sig"))
+                rows, _, parse_errors = gate.parse_requirements(path.read_text(encoding="utf-8-sig"), set(reqs))
                 errors.extend(parse_errors)
                 errors.extend(f"{rid}: requirement is not accepted" for rid in reqs
                               if rows.get(rid, {}).get("status", "").lower() != "accepted")
@@ -449,7 +478,49 @@ def check_report(root: Path, report: dict, *, require_review: bool = True) -> li
     return errors
 
 
-def check_session(root: Path, session_id: str, *, allow_withdrawal: bool = True) -> list[str]:
+def terminal_summary(report: dict) -> str:
+    terminal = report["terminal"]
+    return (f"Architrave {terminal['kind']}: NOT DELIVERED; no requirements accepted by this termination.\n"
+            f"Reason: {terminal['reason']}\n"
+            f"Evidence digest: {audit.digest(terminal['evidence'])}\n"
+            f"Source digest: {terminal['source_sha256']}")
+
+
+def terminal_errors(root: Path, report: dict) -> list[str]:
+    try:
+        if report.get("schema") != SCHEMA or Path(report["repo"]).resolve() != root.resolve():
+            raise ValueError("terminal repository/schema mismatch")
+        terminal = report["terminal"]
+        if report.get("state") != "paused" or terminal["kind"] not in {"blocked", "waiting", "handoff"}:
+            raise ValueError("unknown non-delivery terminal state")
+        if (not isinstance(terminal["reason"], str) or not terminal["reason"].strip()
+                or "\n" in terminal["reason"] or "\r" in terminal["reason"]):
+            raise ValueError("non-delivery reason must be one nonempty line")
+        timestamp(terminal["recorded_at"])
+        if not isinstance(terminal["evidence"], list) or not terminal["evidence"]:
+            raise ValueError("non-delivery termination needs actual evidence")
+        for evidence in terminal["evidence"]:
+            verify_file(evidence)
+        log = events(report["session_id"])
+        if not report["owner_requests"]:
+            raise ValueError("original owner references are missing")
+        for reference in report["owner_requests"]:
+            if owner_reference(reference["event_id"], log) != reference:
+                raise ValueError("terminal owner reference changed")
+        for reference in report.get("references", []):
+            verify_file(reference)
+        current = current_scan(root, report)
+        if current["requirements"] != report["original_requirements"]:
+            raise ValueError("requirements changed; amend against an original owner instruction")
+        if current["source_sha256"] != terminal["source_sha256"]:
+            raise ValueError("source changed after pause; deliberately resume or amend the scope")
+    except (ValueError, KeyError, OSError, TypeError) as exc:
+        return [f"non-delivery inspection blocked: {exc}"]
+    return []
+
+
+def check_session(root: Path, session_id: str, *, allow_withdrawal: bool = True,
+                  completion_hook: bool = False, completion_summary: str | None = None) -> list[str]:
     try:
         report = read_json(session_report_path(session_id))
         if report.get("session_id") != session_id.lower():
@@ -460,12 +531,27 @@ def check_session(root: Path, session_id: str, *, allow_withdrawal: bool = True)
         if report.get("state") == "withdrawn":
             errors = withdrawal_errors(root, report)
             return errors if allow_withdrawal or errors else ["scope was withdrawn; no delivery acceptance is claimed"]
+        if report.get("state") == "paused":
+            errors = terminal_errors(root, report)
+            if not allow_withdrawal:
+                errors.append("scope is paused; no delivery acceptance is claimed")
+            if completion_hook and completion_summary != terminal_summary(report):
+                errors.append("paused completion must use the exact non-delivery summary printed by --pause")
+            return errors
         # A later real host completion retires this declaration. The next
         # non-trivial task must prepare a new one; no author-written active=false.
-        if host_completed(report, events(session_id)):
-            errors = check_report(root, report)
-            return (["work changed after host completion; prepare a new owner-bound scope", *errors]
-                    if errors else [])
+        if completion_hook and host_completed(report, events(session_id)):
+            log = events(session_id)
+            completed = min(timestamp(e.get("timestamp")) for e in log
+                            if e.get("type") == "session.task_complete"
+                            and timestamp(e.get("timestamp")) > timestamp(report["sealed_at"]))
+            if first_source_edit(root, log, completed, include_ledger=True) is not None:
+                return ["new source edits after host completion require a new owner-bound scope"]
+            if (not isinstance(completion_summary, str)
+                    or not completion_summary.startswith("Read-only follow-up (no new delivery acceptance): ")):
+                return ["retired delivery permits only a 'Read-only follow-up (no new delivery acceptance): ' summary; "
+                        "new work requires a new owner-bound scope"]
+            return []
         return check_report(root, report)
     except (ValueError, OSError, KeyError, TypeError) as exc:
         return [f"delivery inspection blocked: {exc}"]
@@ -497,8 +583,7 @@ def withdrawal_errors(root: Path, report: dict, *, fresh: bool = True) -> list[s
         if not isinstance(quote, str) or not quote.strip() or quote not in event["data"]["content"]:
             raise ValueError("withdrawal quotation is not in the original owner instruction")
         if fresh:
-            current = audit.scan(root, base=report["base_sha"], all_files=bool(report.get("all_files")),
-                                 documents=report.get("document_paths"), reqs=report["reqs"])
+            current = current_scan(root, report)
             if current["source_sha256"] != report["withdrawal"]["source_sha256"]:
                 raise ValueError("source or requirements changed after withdrawal; prepare a new scope")
     except (ValueError, KeyError, OSError, TypeError, StopIteration) as exc:
@@ -533,14 +618,15 @@ def session_command(args) -> int:
         root = Path(args.repo).resolve()
         if args.prepare:
             reqs = list(dict.fromkeys(r.strip().upper() for r in (args.reqs or "").split(",") if r.strip()))
-            if not reqs or not args.request:
-                raise ValueError("--prepare requires --reqs and original --request event IDs")
+            if not reqs or not args.request or not args.source:
+                raise ValueError("--prepare requires --reqs, explicit --source paths and original --request event IDs")
             snapshot = audit.scan(root, base=args.base, all_files=args.all_files,
-                                  documents=args.document, reqs=reqs)
+                                  documents=args.document, reqs=reqs, source_paths=args.source)
             log = events(sid)
             if path.exists():
                 prior = read_json(path)
                 retired = (not withdrawal_errors(root, prior, fresh=False) if prior.get("state") == "withdrawn"
+                           else not terminal_errors(root, prior) if prior.get("state") == "paused"
                            else host_completed(prior, log))
                 if not retired:
                     raise ValueError("active declaration exists; use --amend or --withdraw with a newer owner instruction")
@@ -555,8 +641,11 @@ def session_command(args) -> int:
                 "prepared_at": datetime.now(timezone.utc).isoformat(),
                 "reqs": reqs, "base_sha": snapshot["base_sha"], "all_files": args.all_files,
                 "document_paths": args.document,
+                "source_paths": snapshot["source_paths"],
                 "original_requirements": snapshot["requirements"],
                 "owner_requests": [owner_reference(event_id, log) for event_id in args.request],
+                "owner_anchors": {rid: list(args.request) for rid in reqs},
+                "board_owner_event_ids": list(args.request),
                 "references": [file_identity(Path(name)) for name in args.reference or []],
                 "expected": {rid: {"kind": "unclassified"} for rid in reqs},
                 "audit": None, "board": None, "dispositions": {}, "observations": {}, "review": None,
@@ -570,6 +659,38 @@ def session_command(args) -> int:
         if (report.get("schema") != SCHEMA or Path(report["repo"]).resolve() != root
                 or report["session_id"] != sid):
             raise ValueError("declared delivery belongs to another repository/session")
+        if (args.seal or args.pause) and host_completed(report, events(sid)):
+            raise ValueError("host-completed work needs a new owner-bound --prepare or --amend")
+        if args.pause:
+            if report.get("state") not in {"prepared", "sealed"}:
+                raise ValueError("only active work may pause; use --resume before another transition")
+            if not args.reason or not args.evidence:
+                raise ValueError("--pause requires --reason and actual --evidence file paths")
+            current = current_scan(root, report)
+            report["terminal"] = {
+                "kind": args.pause, "reason": args.reason,
+                "recorded_at": datetime.now(timezone.utc).isoformat(),
+                "evidence": [file_identity(Path(name)) for name in args.evidence],
+                "source_sha256": current["source_sha256"], "prior_digest": report_digest(report),
+            }
+            report["state"] = "paused"
+            report["review"] = None
+            errors = terminal_errors(root, report)
+            if errors:
+                raise ValueError("; ".join(errors))
+            write_report(path, report)
+            print(terminal_summary(report))
+            return 0
+        if args.resume:
+            errors = terminal_errors(root, report)
+            if errors:
+                raise ValueError("; ".join(errors))
+            report.setdefault("terminal_history", []).append(report.pop("terminal"))
+            report["state"] = "prepared"
+            report["review"] = None
+            write_report(path, report)
+            print("delivery-audit: RESUMED unchanged scope; not delivery acceptance or new authority")
+            return 0
         if args.withdraw:
             log = events(sid)
             additions = newer_requests(report, args.request or [], log)
@@ -578,8 +699,7 @@ def session_command(args) -> int:
             event = next(e for e in log if e.get("id") == additions[0]["event_id"])
             if args.reason not in event["data"]["content"]:
                 raise ValueError("withdrawal reason must quote the original owner instruction")
-            current = audit.scan(root, base=report["base_sha"], all_files=bool(report.get("all_files")),
-                                 documents=report.get("document_paths"), reqs=report["reqs"])
+            current = current_scan(root, report)
             prior_digest = report_digest(report)
             prior_bytes = path.read_bytes()
             report["state"] = "withdrawn"
@@ -609,35 +729,77 @@ def session_command(args) -> int:
             if set(removed) != explicit_drop:
                 raise ValueError("--amend must explicitly name exactly the removed requirements with --drop")
             documents = args.document if args.document is not None else report.get("document_paths")
+            paths = args.source if args.source is not None else report.get("source_paths")
             current = audit.scan(root, base=report["base_sha"], all_files=bool(report.get("all_files")),
-                                 documents=documents, reqs=reqs)
+                                 documents=documents, reqs=reqs, source_paths=paths)
             prior_digest = report_digest(report)
-            changed = [rid for rid in reqs if rid in report["original_requirements"]["requirements"]
-                       and current["requirements"]["requirements"][rid] != report["original_requirements"]["requirements"][rid]]
+            def contract_for(contract, rid):
+                return {"requirement": contract["requirements"].get(rid),
+                        "corrections": [c for c in contract["corrections"]
+                                        if rid in re.findall(r"REQ-[A-Za-z0-9_.-]+", c["target"])
+                                        or c["target"].strip().lower() == "all"]}
+
+            changed = [rid for rid in reqs if contract_for(current["requirements"], rid)
+                       != contract_for(report["original_requirements"], rid)]
+            same_sources = (isinstance(report.get("audit"), dict)
+                            and source_evidence(current) == source_evidence(report["audit"])
+                            and not args.reference)
+            preserved = set(reqs) & set(report["reqs"]) - set(changed) if same_sources else set()
+            anchors = report.get("owner_anchors", {rid: sorted(known) for rid in report["reqs"]})
+            new_ids = [r["event_id"] for r in additions]
+            board_unchanged = (reqs == report["reqs"] and not changed
+                               and current.get("source_paths") == report.get("source_paths")
+                               and documents == report.get("document_paths"))
             report.setdefault("history", []).append({
                 "sha256": prior_digest, "requirements": report["original_requirements"],
                 "owner_event_ids": sorted(known),
                 "dropped_reqs": removed, "changed_reqs": changed,
+                "source_paths": report.get("source_paths"), "document_paths": report.get("document_paths"),
+                "preserved_reqs": sorted(preserved),
             })
+            if not board_unchanged:
+                report["board"] = None
+            report["board_owner_event_ids"] = (report.get("board_owner_event_ids", sorted(known))
+                                                if board_unchanged else new_ids)
+            old_observations = report.get("observations", {})
+            captured_at = datetime.now(timezone.utc).isoformat()
+            proof_after = report.get("proof_after", {})
             report.update(state="prepared", prepared_at=datetime.now(timezone.utc).isoformat(),
                           reqs=reqs, original_requirements=current["requirements"], document_paths=documents,
                           owner_requests=report["owner_requests"] + additions,
-                          expected={rid: {"kind": "unclassified"} for rid in reqs},
-                          audit=None, dispositions={}, observations={}, review=None)
+                          owner_anchors={rid: anchors[rid] if rid in preserved else new_ids for rid in reqs},
+                          proof_after={rid: proof_after[rid] if rid in preserved else captured_at
+                                       for rid in reqs if rid not in preserved or rid in proof_after},
+                          expected={rid: report["expected"][rid] if rid in preserved else {"kind": "unclassified"}
+                                    for rid in reqs},
+                          audit=current,
+                          dispositions={key: value for key, value in report.get("dispositions", {}).items()
+                                        if key in {row["id"] for row in current["findings"]}},
+                          observations={rid: old_observations[rid] for rid in preserved if rid in old_observations},
+                          review=None)
+            if paths is not None:
+                report["source_paths"] = current["source_paths"]
+            if "terminal" in report:
+                report.setdefault("terminal_history", []).append(report.pop("terminal"))
             report.pop("sealed_at", None)
             report["references"].extend(file_identity(Path(name)) for name in args.reference or [])
             write_report(path, report)
-            print(f"delivery-audit: AMENDED {path}; previous scope retained, acceptance cleared")
-            print(f"Scope diff: dropped={removed}; changed={changed}; current={reqs}")
+            print(f"delivery-audit: AMENDED {path}; previous scope retained, aggregate acceptance cleared")
+            print(f"Scope diff: dropped={removed}; changed={changed}; preserved={sorted(preserved)}; current={reqs}")
             print(f"Delivery digest: {report_digest(report)}")
             return 0
         if args.seal:
-            if report.get("state") == "withdrawn":
-                raise ValueError("withdrawn work needs a new owner-bound --prepare")
-            current = audit.scan(root, base=report["base_sha"], all_files=bool(report.get("all_files")),
-                                 documents=report.get("document_paths"), reqs=report["reqs"])
+            if report.get("state") not in {"prepared", "sealed"}:
+                raise ValueError("inactive work needs explicit --resume or a new owner-bound --prepare")
+            current = current_scan(root, report)
             if current["requirements"] != report["original_requirements"]:
                 raise ValueError("requirements changed; preserve the intake and re-declare against actual owner corrections")
+            if (isinstance(report.get("audit"), dict)
+                    and source_evidence(current) != source_evidence(report["audit"])):
+                # Re-sealing must not launder a successful run from older source.
+                report["observations"] = {}
+                report["proof_after"] = {rid: datetime.now(timezone.utc).isoformat() for rid in report["reqs"]}
+                print("delivery-audit: source changed; re-observe outcomes after this capture")
             report["audit"] = current
             report["state"] = "sealed"
             report["sealed_at"] = datetime.now(timezone.utc).isoformat()
@@ -646,7 +808,9 @@ def session_command(args) -> int:
             print(f"delivery-audit: SEALED {path}; {len(current['findings'])} candidates require disposition")
             print("Sealing source does not accept the task. Record observations/dispositions and obtain a digest-bound review.")
             return 0
-        errors = (withdrawal_errors(root, report) if report.get("state") == "withdrawn"
+        errors = (terminal_errors(root, report) + ["scope is paused; not delivery acceptance"]
+                  if report.get("state") == "paused" else
+                  withdrawal_errors(root, report) if report.get("state") == "withdrawn"
                   else check_report(root, report))
         for error in errors:
             print(f"BLOCK delivery: {error}")

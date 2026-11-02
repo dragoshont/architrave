@@ -29,10 +29,10 @@ authorization stays unresolved.
 From the repository root, using the installed kit's Python entrypoint:
 
 ```text
-python <kit>/gates/gate_runner.py delivery-audit --prepare --repo <repo> --base <reviewed-commit> --session <host-session-uuid> --reqs <REQ-IDs> --request <original-owner-event-id> --document <design-or-demo-doc>
+python <kit>/gates/gate_runner.py delivery-audit --prepare --repo <repo> --base <reviewed-commit> --session <host-session-uuid> --reqs <REQ-IDs> --request <original-owner-event-id> --source <source-or-dependency-path> --document <design-or-demo-doc>
 ```
 
-Repeat `--request`, `--document` and `--reference` as needed. A reference is an
+Repeat `--request`, `--source`, `--document` and `--reference` as needed. A reference is an
 original image/design file whose identity must survive the work. File
 attachments on the referenced owner events are also bound automatically.
 The host event must be an attributable original owner message, not an
@@ -41,18 +41,46 @@ The host's standard image-attachment reminder is allowed only with an attached
 image; the original owner message and attached file identities remain bound.
 No private message contents are copied into source control.
 
+New declarations require explicit repository-relative source/dependency paths.
+Files and bounded directories are supported; directory contents include
+nonignored tracked/untracked files and detect additions/deletions. Missing named
+files have a bound absent identity, so their later creation changes the evidence.
+Traversal, absolute paths, Git metadata and symlink/junction traversal are
+rejected. Include all relevant implementation, dependency, build/lock/config and
+contract paths; the checker does not infer a dependency graph. The selected
+requirement contract, `architrave.config.json` (including absence), and contract
+documents are always bound. The default contract document is README when present.
+Do not select credential stores; use redacted effective-config evidence.
+
+The report's `source_paths` is one shared boundary for all selected REQs, not a
+per-REQ dependency map. A change anywhere in that boundary conservatively affects
+every outcome. Only a newer-owner `--amend --source ...` can change the declared
+boundary; repeated sources replace the list, so repeat every retained path.
+The history preserves previous source/document scope, and final review must
+check additions **and removals** against owner intent. A legacy report without
+`source_paths` retains full-repository source/full-ledger-contract freshness;
+it is never silently upgraded or narrowed. Unscoped audit scans remain repository-wide.
+
 One session-owned `files/architrave-delivery.json` holds this task's evidence.
 It is not a second task ledger: REQs and their statuses stay in the repository
 requirements file. The report stores the original requirement/acceptance/
 correction scope; changing a status or adding evidence does not change it.
 Silently shrinking acceptance invalidates the report. Preserve the old intake
 and use `--amend --request <new-owner-event-id>` when a task's scope changes.
-An amendment requires a newer distinct original owner instruction, retains the
-previous requirement scope/digest and clears observations/review. It does not
+An amendment requires a newer distinct original owner instruction and retains the
+previous requirement scope/digest. It preserves expectations and observations
+only for unchanged requirement/acceptance/correction contracts whose previously
+captured shared source/document evidence is unchanged. Changed/new outcomes are
+unclassified and need proof invoked after amendment capture (`proof_after`), not
+merely after a possibly earlier owner message. `owner_anchors` retains each unchanged REQ's
+original event cutoff rather than using the latest event for every outcome.
+Adding reference assets also invalidates retained outcomes. Aggregate review
+always clears; a retained observation is not renewed delivery acceptance. It does not
 judge whether that instruction actually authorizes every proposed scope change;
 the independent reviewer must compare them. Dropping REQs additionally requires
 `--drop <exact-removed-IDs>`; the command prints dropped/changed scope alongside
-the delivery digest. Refresh the board scope when REQs change.
+the delivery digest. Refresh the board scope when REQs change; unchanged scope
+retains its original board-owner timing anchor.
 A verified, host-completed declaration is archived when `--prepare`
 starts the next task; an unfinished declaration cannot be silently overwritten.
 
@@ -65,6 +93,29 @@ someone else's repository requirements. A valid withdrawal permits an honest
 task-ending response but never integration/delivery acceptance:
 `requirements --done --delivery-session` and canonical Run completion reject it.
 Do not delete the declaration to bypass a blocker.
+
+For a genuine blocker, wait or bounded handoff that is **not delivery**, use:
+
+```text
+python <kit>/gates/gate_runner.py delivery-audit --pause blocked --repo <repo> --session <host-session-uuid> --reason "<one-line explanation>" --evidence <actual-local-file>
+```
+
+`--pause` accepts `blocked`, `waiting` or `handoff`; repeat `--evidence` as needed.
+It preserves requirements and prior evidence, records `state: paused` and a
+`terminal` object with reason, file identities, current source digest and timestamp,
+and clears aggregate review. It grants no permissions and accepts no requirements.
+Its exact printed summary is the only `task_complete` summary allowed for this
+state. The hook checks source/owner/reference/evidence identities and summary
+agreement, not the semantic truth of an arbitrary reason. Extra success claims,
+missing summaries or stale evidence fail closed. Automated continuation does not
+resume the declaration or create new owner authority. `--check` and
+`requirements --done --delivery-session` still reject paused delivery.
+
+`--resume` explicitly resumes an unchanged paused scope as `prepared`, preserving
+the terminal history. It is not new authorization or acceptance. Changed scope
+requires newer-owner `--amend` (or a new `--prepare` when the prior terminal
+identity remains valid); source drift while paused fails closed rather than
+silently resuming. `--seal` cannot resume paused/withdrawn work.
 
 Set each `expected` entry to its actual outcome kind before implementation:
 
@@ -98,17 +149,21 @@ python <kit>/gates/gate_runner.py delivery-audit --seal --repo <repo> --session 
 ```
 
 Sealing freezes the current source inventory. It does not declare completion.
-The original resolved base commit and full nonignored source-file hashes bind
-the evidence, including unchanged dependencies. Requirement status/evidence is
+The original resolved base commit and declared source-file hashes bind
+the evidence, including unchanged dependencies. Unrelated shared-checkout work
+does not invalidate a scoped declaration. Requirement status/evidence is
 excluded from the source fingerprint; the selected semantic contract is bound
 separately. Contract documents, references and effective configuration artifacts
 have their own identities. Ignored runtime/credential stores are not scanned;
 bind an explicitly selected redacted effective-config observation for integration
 acceptance instead of exposing credentials.
 
-The scanner inventories whole changed files and nonignored untracked source,
+Within explicit scope the scanner inspects all declared source/dependency files,
+including unchanged files. Without explicit scope it inventories whole changed
+files and nonignored untracked source,
 including effective dotenv/INI settings, launchers and tests. `--all` deliberately
-selects full-repository scanning. No directory is silently exempted as "test only".
+selects full-repository scanning for unscoped/legacy audits; it never broadens
+an explicit source boundary. No selected directory is silently exempted as "test only".
 Source candidates have stable digest-based IDs, fixed categories and locations,
 not potentially sensitive matched values.
 
@@ -145,6 +200,10 @@ Put the reviewer's session ID and the report digest in `review`; that reviewer's
 actual PASS report must contain `Delivery digest: <sha256>` on its own line.
 The digest covers every report field except `review`. Changed observations,
 requirements or source require renewed review, not copying a prior PASS.
+Re-sealing changed source clears old observations and records a `proof_after`
+cutoff: copying a proof produced before that capture cannot accept the new
+source. Re-observe the outcomes after capture. This deliberately favors a fresh
+run over guessing which prior integration result covered changed implementation.
 
 ## Completion
 
@@ -153,8 +212,13 @@ python <kit>/gates/gate_runner.py delivery-audit --check --repo <repo> --session
 python <kit>/gates/gate_runner.py requirements --done --repo <repo> --delivery-session <host-session-uuid>
 ```
 
-The existing requirements gate checks the declared delivery when a session is
-explicitly supplied, or its current host session has a declaration. Historical
+With explicit `--delivery-session`, the requirements gate checks the selected
+REQs, their linked decisions/evidence, relevant findings and lanes rather than
+requiring unrelated program work to finish. Ambiguous/global findings and
+unscoped lanes remain conservative blockers; repository-wide structural checks
+(including malformed ledgers and conflicting mutable owners) still apply.
+Without that explicit selector, `requirements --done` retains program-wide
+meaning, while checking the current host declaration when present. Historical
 ledgers without declarations retain their old validation scope; this is not
 retroactive certification of prior accepted work.
 
@@ -165,11 +229,18 @@ failed declared check denies that completion request. Report genuine blockers
 without calling incomplete work accepted. Read-only/undeclared sessions are
 untouched.
 
-After a host completion, the old report does not authorize later changed work:
-source, contract and ledger-scope freshness are checked again. A new task that
-changes them needs a newer owner-bound declaration. Source-neutral undeclared
+After verified host completion, the hook permits a read-only follow-up with the
+summary prefix `Read-only follow-up (no new delivery acceptance): ` and no
+recorded repository edits after the original completion. It does not demand
+repair of historical evidence merely because another writer changed the checkout.
+This hook-only retirement is not delivery revalidation: explicit `--check` and
+`requirements --done --delivery-session` still check current evidence. New work
+needs a newer owner-bound declaration. Source-neutral undeclared
 work cannot be classified reliably by this mechanism; default-session guidance
-still owns that intake decision. Subdirectory hook working directories resolve
+still owns that intake decision. Recorded edit detection is limited to explicit
+edit/create/apply_patch events, not arbitrary shell mutations; a read-only prefix
+is a bounded claim, not a sandbox or proof of inactivity.
+Subdirectory hook working directories resolve
 to the actual Git root rather than falsely becoming another repository.
 
 ## Limits

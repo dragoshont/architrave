@@ -5,6 +5,27 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## 0.21.30
+
+- Bind new delivery declarations to explicit owned sources and relevant
+  dependencies; selected-session completion no longer inherits unrelated
+  requirements and shared-checkout work. Legacy unscoped checks keep their
+  documented repository-wide behavior.
+- Preserve unaffected outcome evidence across owner-bound amendments while
+  invalidating changed contracts or dependency evidence.
+- Support truthful blocked, waiting and handoff termination without accepting
+  unfinished delivery, and keep historical completed declarations from forcing
+  read-only follow-ups to repair old work.
+- Clarify that automated reminders and unavailable-user fallbacks are not owner
+  approval, proposals stay inactive until agreed, and generic test permission
+  does not authorize new test substitutes. Prioritize a real vertical slice
+  before reusable support machinery.
+
+These are scoped closure and decision controls, not automatic understanding of
+owner intent or proof that a dependency list is complete. Updating installed
+files does not refresh already-loaded sessions; this release does not restart
+running sessions.
+
 ## 0.21.29
 
 - Make board snapshot generation time, refresh interval and selected requirement

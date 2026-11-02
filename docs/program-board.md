@@ -13,7 +13,7 @@ checkout or guess an installed-cache path. Declare the session's delivery scope
 through the existing gate, then start or reuse one board for that scope:
 
 ```text
-python "<kit-root>\gates\gate_runner.py" delivery-audit --prepare --repo "<repo-root>" --session <session-uuid> --reqs REQ-62,REQ-63 --request <original-owner-event-id>
+python "<kit-root>\gates\gate_runner.py" delivery-audit --prepare --repo "<repo-root>" --session <session-uuid> --reqs REQ-62,REQ-63 --request <original-owner-event-id> --source "<owned-source-path>" --source "<relevant-dependency-path>"
 python "<kit-root>\harness\program_board.py" --ledger "<repo-root>" --session <session-uuid> --watch 120 --title "Session work" --reqs REQ-62,REQ-63
 ```
 
@@ -23,6 +23,11 @@ is the runtime/log identity (`sessionId` in the Copilot hook or
 the original owner event, not an agent summary. Declaration writes one
 session-owned evidence report; it neither grants permissions nor starts
 another requirements ledger.
+New declarations explicitly name repository-relative owned sources and relevant
+dependencies with repeatable `--source`; include configuration and shared
+contracts that can affect the outcome. Do not select unrelated mutable work
+merely because it shares a checkout. See `docs/delivery-authenticity.md` for
+scope amendment and legacy declaration behavior.
 
 Open the returned HTML path in the supported host browser canvas and read the
 rendered page before implementation. Keep the real host observation tied to

@@ -27,6 +27,7 @@ work itself, not adoption.
   (`docs/program-board.md`); reuse it for that scope. Report unavailable/denied
   host canvas explicitly, never fake a panel or retry unchanged. Assigned
   children/reviewers use the parent's board, not recursive boards.
+  Bind owned sources and relevant dependencies explicitly.
 - Trace everything to REQs. Commits, child kickoffs, hand-offs and reports
   name the REQ ids they serve. Append every owner correction, including
   mid-flight changes said in chat, as a typed `add|revise|retract|supersede`
@@ -37,9 +38,10 @@ work itself, not adoption.
   in-scope REQ is `accepted` with evidence and
   `python gates/gate_runner.py requirements --done` passes; bind declared work
   with `--delivery-session <uuid>`. Measure accepted REQs, not ticks or receipts.
-- At intake, attack the request: name contradictions, risky assumptions and a
-  better approach within the mandate. Ask only questions whose answers change
+- At intake, attack the request; surface real blockers. Ask only questions whose answers change
   the work; propose scope expansion instead of silently adding it.
+  Automated reminders and unavailable-user fallbacks are not owner approval.
+  Proposals stay inactive until agreed.
 - Own integration and completion. Continue authorized dependency-ready work;
   a status update is not a stopping condition or a new phase approval.
   Owner corrections replace old scope; urgency never bypasses consent or scope.
@@ -49,6 +51,9 @@ work itself, not adoption.
   or prose guards; prove by real use. No unrequested fixtures/fakes/mocks/stubs,
   canned/replayed result substitutes or feature/integration flags, including
   tests. Approved emulators and environment selection remain valid (execution policy).
+  Generic test approval does not authorize new substitutes.
+  Prove one real vertical slice before supporting machinery; distinguish missing
+  code from unavailable targets.
 - Use direct work for one continuous trace, a shared patch, or when coordination
   costs more than it saves. Every lane and every independent review MUST run
   as a visible sidebar session (`create_session`) when the host offers one;
@@ -107,7 +112,5 @@ Do not reload this contract or preload the table. Read only the relevant source:
 | Durable knowledge update | `knowledge/learning-loop.md` |
 | Program board (lanes, sessions, tokens, time) | `docs/program-board.md`; Run panels `docs/route-ribbon.md` |
 
-Use adopted canonical Runs when resumability or external operations require
-them, never solely because work is "non-trivial". Without adoption, use supported
-host tracking; do not claim canonical gates or receipts. Permission and evidence
-requirements for external actions are not waived when support is unavailable.
+Use adopted canonical Runs when resumability or external operations require them.
+Never invent adoption or treat missing host capability as permission.

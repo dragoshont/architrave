@@ -37,6 +37,16 @@ codex_roles = "\n".join(
 )
 
 required = {
+    "automated reminders are not owner authority": (agent, "Automated reminders and unavailable-user fallbacks are not owner approval"),
+    "proposed work is not active scope": (agent, "Proposals stay inactive until agreed"),
+    "generic test approval is not substitute approval": (agent, "Generic test approval does not authorize new substitutes"),
+    "first real slice before machinery": (agent, "Prove one real vertical slice before supporting machinery"),
+    "separate blocked from accepted delivery": (execution, "A truthful blocked, waiting or handoff outcome is not delivery acceptance"),
+    "continuation preserves waiting state": (execution, "Automated continuation does not reopen a terminal non-delivery outcome"),
+    "extra work needs an acceptance dependency": (execution, "Name the failing original acceptance criterion before adding adjacent work"),
+    "proposals do not become active requirements": (execution, "Do not turn an analysis-before-agreement request into an active implementation REQ"),
+    "baseline checks do not broaden mandate": (execution, "A broad check finding unrelated baseline failures does not expand the mandate"),
+    "review respects non-delivery termination": (rubric, "A truthful terminal blocked/waiting/handoff outcome is not delivery acceptance"),
     "original owner acceptance": (execution, "Compare original owner messages and attached reference assets against REQs and docs"),
     "visual acceptance separately measured": (execution, "intended rendered width and component coverage separately from prose"),
     "no substitute fresh execution": (execution, "No new fixtures, fakes, mocks, stubs, canned or replayed result substitutes"),

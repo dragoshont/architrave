@@ -1,5 +1,16 @@
 # Roadmap
 
+## v0.21.30 - Scoped closure (#33, REQ-73..76)
+
+Repair completion amplification in existing delivery commands: explicit
+source/dependency boundaries, selected-requirement completion, retained
+unaffected amendment evidence and honest terminal non-delivery outcomes.
+Preserve provenance, relevant integrity checks and owner control rather than
+adding another supervisor or review phase. Compact guidance distinguishes
+automated continuation, proposals and specifically authorized test substitutes.
+Local validation and public-source installation are required; running sessions
+are not restarted or claimed to have reloaded instructions.
+
 ## v0.21.29 - Board freshness and owner attribution (REQ-68..72)
 
 Reviewed board repair makes generation time, refresh interval and requirement

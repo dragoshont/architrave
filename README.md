@@ -20,12 +20,20 @@ rows; the extra tables below appear only for consequential work.
 | **Decide** | Decision rows: choice, rejected alternatives, evidence | An active decision rests only on supported evidence. A REQ can't be accepted on a decision under reconsideration |
 | **Build** | REQ rows, owner corrections and the cross-repository lane table | One live owner per REQ and path; running lanes within `workers.maxParallel`; one heavy build at a time; dependencies done before a lane runs; running lanes have full session IDs; supersessions name an existing lane. Preflight and restart reconciliation are coordinator behavior, not gate checks |
 | **Challenge** | Finding rows from any review: severity, disposition, verifier, evidence | A fix needs a commit that resolves in a configured checkout, or an existing evidence or decision id; agreement alone doesn't count. A serious finding needs a verifier who isn't the target's owner or author. Deferral needs a quoted owner acknowledgement, which the gate can't authenticate. Open high findings block completion |
-| **Deliver** | Accepted REQs with evidence and a committed `## Handoff` | `--done` fails while any REQ is unaccepted or a narrowing or high finding is unresolved. `--handoff` requires the committed state and its predecessor commit |
+| **Deliver** | Accepted REQs with evidence and a committed `## Handoff` | Repository-wide `--done` checks all REQs; declared `--done --delivery-session` checks its selected requirements and relevant dependencies. Unaccepted requirements, narrowing or serious findings in that scope block delivery. `--handoff` requires committed state and its predecessor commit |
 
 Tables that look like these but use different headers fail rather than being skipped. The gate checks identity, provenance, freshness and links. Whether a source
 really supports its claim is the independent reviewer's call. The adversarial
 judge rebuilds high-risk claims from their sources and re-checks earlier
 audits, and agreement between agents never counts as evidence.
+
+Declared work binds explicit owned sources and dependencies, not every unrelated
+writer in a shared checkout. Unchanged outcomes retain valid evidence across
+scope additions; changed dependencies still require fresh proof. A recorded
+blocked, waiting or handoff outcome ends that attempt without accepting its
+delivery. See [delivery authenticity](docs/delivery-authenticity.md). Automated
+continuation is not new owner approval, and proposed work stays proposed until
+the owner agrees.
 
 **What is demonstrated and what is not.** In a live run on a multi-repository
 program, a coordinator committed the lane table, reused existing sessions, and

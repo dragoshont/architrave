@@ -259,6 +259,13 @@ Once scope is frozen, stop adding planning documents. Map the contract directly
 to code and test owners in the existing task graph; revise it only for a real
 scope change or newly observed blocker.
 
+Name the failing original acceptance criterion before adding adjacent work.
+If it has no demonstrated dependency on that criterion, propose it separately.
+Do not turn an analysis-before-agreement request into an active implementation REQ.
+Keep the proposal separate from accepted scope until the owner actually agrees.
+An automated reminder, transported agent message or unavailable-user fallback
+is not fresh owner approval, even when its transport role is `user`.
+
 Keep the live task graph small: group work by implementation owner and actual
 dependencies, and add a task only when it builds, tests, integrates, or unblocks
 the requested behavior. If a document, schema or fixture is the requested
@@ -273,6 +280,10 @@ turn each evidence item into a separate implementation phase by default.
 At progress updates, lead with the behavior now available, the evidence that
 shows it, and the next product blocker. If product behavior has not changed,
 say so plainly; do not use document, task, test, or artifact counts as a proxy.
+Prove one actual end-to-end entry point before reusable support machinery when
+the authorized target is available. Report missing implementation separately
+from missing environment, permission and evidence; source review is not API
+or product acceptance.
 
 ### Non-trivial startup and completion
 
@@ -333,6 +344,10 @@ approved, not fake integrations. Requested deterministic algorithms, cache and
 history readback are real features; presenting their output as a fresh required
 execution is not. A provider outage, unavailable credential or denied operation
 remains blocked, never an invented success or a silent fallback.
+Generic permission to fix or test does not override the specific authorization
+rule for new substitutes. Adding a fixture inside an existing test file does
+not make that fixture pre-existing. Actual temporary environments and existing
+regressions remain distinct from fabricated provider responses.
 
 For visual work, retain the original image/reference identity and digest.
 Verify intended rendered width and component coverage separately from prose
@@ -651,6 +666,17 @@ boundaries or the configured risk floor, never on unchanged source without a
 new reason. Collapsing distinct causes into one generic failure code is a gate
 finding. For replacement work the first gate is a parity test against that
 reference on the real flow, before any hardening.
+
+A broad check finding unrelated baseline failures does not expand the mandate.
+Report the baseline failure separately; repair it only when a necessary
+acceptance dependency or owner direction establishes scope. Batch connected
+corrections rather than opening a separate review cycle for each small edit.
+A truthful blocked, waiting or handoff outcome is not delivery acceptance.
+Use the existing delivery lifecycle's non-delivery transition when applicable;
+retain evidence and pending criteria instead of manufacturing a PASS.
+Automated continuation does not reopen a terminal non-delivery outcome.
+Resume only for new owner direction or a verified change to the recorded blocker;
+do not rerun an unchanged check merely to satisfy a completion reminder.
 
 Two semantic reopens require one coherent fix batch. A third non-PASS terminates
 that attempt. A Run with a declared primary criterion uses its event/path-based

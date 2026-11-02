@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import re
 import subprocess
 import sys
@@ -51,8 +51,12 @@ def git(root: Path, *args: str) -> bytes:
 
 
 def local_file(root: Path, name: str) -> Path:
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("path must be a nonempty repository-relative path")
+    name = name.replace("\\", "/")
     path = Path(name)
-    if path.is_absolute() or ".." in path.parts:
+    if (path.is_absolute() or PureWindowsPath(name).drive or ".." in path.parts
+            or ":" in name or ".git" in {p.lower() for p in path.parts}):
         raise ValueError(f"path must be repository-relative: {name}")
     path = root / path
     if not path.resolve().is_relative_to(root) or path.is_symlink():
@@ -105,7 +109,7 @@ def digest(value: object) -> str:
 def requirement_contract(text: str, selected: list[str] | None = None) -> dict:
     from gate_runner import parse_requirements
 
-    rows, corrections, errors = parse_requirements(text)
+    rows, corrections, errors = parse_requirements(text, set(selected) if selected is not None else None)
     if errors:
         raise ValueError("invalid requirements: " + "; ".join(errors))
     ids = sorted(set(selected if selected is not None else rows))
@@ -120,10 +124,33 @@ def requirement_contract(text: str, selected: list[str] | None = None) -> dict:
     }
 
 
-def source_snapshot(root: Path, excluded: set[str]) -> list[dict]:
+def normalize_source_paths(root: Path, paths: list[str]) -> list[str]:
+    if not isinstance(paths, list) or not paths:
+        raise ValueError("explicit source/dependency paths must be a nonempty list")
     result = []
-    for name in inventory(root, None, True):
-        if name in excluded:
+    for name in paths:
+        path = local_file(root, name)
+        if path == root:
+            raise ValueError("source paths must name bounded files/directories, not the repository root")
+        relative = path.resolve().relative_to(root)
+        current = root
+        for part in relative.parts:
+            current /= part
+            if current.exists() and part not in {entry.name for entry in current.parent.iterdir()}:
+                raise ValueError(f"source path spelling must match filesystem entries: {name}")
+        result.append(relative.as_posix())
+    return sorted(set(result))
+
+
+def source_snapshot(root: Path, excluded: set[str], paths: list[str] | None = None) -> list[dict]:
+    result = []
+    names = inventory(root, None, True)
+    if paths is not None:
+        names = sorted(set(
+            [name for name in names if any(Path(name).is_relative_to(p) for p in paths)]
+            + [p for p in paths if not local_file(root, p).is_dir()]))
+    for name in names:
+        if Path(name) in {Path(item) for item in excluded}:
             continue
         path = local_file(root, name)
         if path.is_dir():
@@ -134,11 +161,17 @@ def source_snapshot(root: Path, excluded: set[str]) -> list[dict]:
 
 
 def scan(root: Path, *, base: str | None = None, all_files: bool = False,
-         documents: list[str] | None = None, reqs: list[str] | None = None) -> dict:
+         documents: list[str] | None = None, reqs: list[str] | None = None,
+         source_paths: list[str] | None = None) -> dict:
     root = root.resolve()
     actual = Path(git(root, "rev-parse", "--show-toplevel").decode().strip()).resolve()
     if root != actual:
         raise ValueError("--repo must name the Git repository root")
+    paths = None
+    if source_paths is not None:
+        if reqs is None:
+            raise ValueError("explicit source scope requires selected requirements")
+        paths = normalize_source_paths(root, source_paths)
     config_path = root / "architrave.config.json"
     config = json.loads(read_text(local_file(root, "architrave.config.json"))) if config_path.exists() else {}
     if not isinstance(config, dict):
@@ -146,10 +179,13 @@ def scan(root: Path, *, base: str | None = None, all_files: bool = False,
     requirement = config.get("requirements", "SPEC.md")
     if not isinstance(requirement, str) or not requirement.strip():
         raise ValueError("requirements must name a repository-relative document")
+    requirement = local_file(root, requirement).relative_to(root).as_posix()
     base_sha = git(root, "rev-parse", "--verify", "--end-of-options",
                    (base or "HEAD") + "^{commit}").decode().strip()
     git(root, "merge-base", "--is-ancestor", base_sha, "HEAD")
-    names = list(dict.fromkeys([requirement, *(documents or (["README.md"] if (root / "README.md").exists() else []))]))
+    names = list(dict.fromkeys(
+        local_file(root, name).relative_to(root).as_posix()
+        for name in [requirement, *(documents or (["README.md"] if (root / "README.md").exists() else []))]))
     contracts = []
     contract_lines: list[tuple[str, int, str]] = []
     selected_contract = None
@@ -163,12 +199,15 @@ def scan(root: Path, *, base: str | None = None, all_files: bool = False,
         contract_lines.extend((name, n, line) for n, line in enumerate(text.splitlines(), 1))
         if name == requirement and reqs is not None:
             selected_contract = requirement_contract(text, reqs)
-            ledger_contract = requirement_contract(text)
-    sources = source_snapshot(root, {requirement}) if reqs is not None else source_snapshot(root, set())
+            if paths is None:
+                ledger_contract = requirement_contract(text)
+    bound_paths = sorted(set([*paths, "architrave.config.json", *names])) if paths is not None else None
+    sources = source_snapshot(root, {requirement} if reqs is not None else set(), bound_paths)
     source_hashes = {r["path"]: r["sha256"] for r in sources}
     findings = []
     inspected = []
-    for name in inventory(root, base_sha, all_files):
+    candidates = sorted(source_hashes) if paths is not None else inventory(root, base_sha, all_files)
+    for name in candidates:
         path = local_file(root, name)
         if not path.exists():
             # Deletions are not replacement implementations.
@@ -204,7 +243,10 @@ def scan(root: Path, *, base: str | None = None, all_files: bool = False,
         "ledger_contract": ledger_contract,
         "selection": "all-nonignored-files" if all_files else "changed-files",
     }
-    return {
+    if paths is not None:
+        identity["source_paths"] = paths
+        identity["selection"] = "declared-source-paths"
+    result = {
         "schema": "architrave.delivery-audit.v1",
         "status": "REVIEW_REQUIRED" if findings else "NO_CANDIDATES",
         "selection": identity["selection"],
@@ -218,6 +260,9 @@ def scan(root: Path, *, base: str | None = None, all_files: bool = False,
             "Review must join owner request, requirements/docs, runtime wiring, effective flags and provider observations.",
         ],
     }
+    if paths is not None:
+        result["source_paths"] = paths
+    return result
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -233,20 +278,30 @@ def main(argv: list[str] | None = None) -> int:
     action.add_argument("--prepare", action="store_true", help="declare non-trivial work in this host session")
     action.add_argument("--amend", action="store_true", help="rebind changed scope to a newer original owner event")
     action.add_argument("--withdraw", action="store_true", help="retain an owner-directed withdrawal, not delivery acceptance")
+    action.add_argument("--pause", choices=("blocked", "waiting", "handoff"),
+                        help="record an honest non-delivery terminal outcome")
+    action.add_argument("--resume", action="store_true", help="deliberately resume unchanged paused scope")
     action.add_argument("--seal", action="store_true", help="freeze current source inventory for review")
     action.add_argument("--check", action="store_true", help="verify the session's declared delivery")
     parser.add_argument("--session", help="host session UUID; defaults to COPILOT_AGENT_SESSION_ID")
     parser.add_argument("--reqs", help="explicit comma-separated requirement scope")
     parser.add_argument("--request", action="append", help="original owner event ID in this session (repeatable)")
     parser.add_argument("--reference", action="append", help="original visual/design reference path (repeatable)")
+    parser.add_argument("--source", action="append",
+                        help="explicit repository-relative source/dependency file or directory (repeatable)")
+    parser.add_argument("--evidence", action="append", help="--pause: actual local evidence file (repeatable)")
     parser.add_argument("--drop", help="--amend: explicitly acknowledge removed REQ IDs")
-    parser.add_argument("--reason", help="--withdraw: verbatim owner withdrawal quotation")
+    parser.add_argument("--reason", help="withdrawal quotation or bounded non-delivery explanation")
     args = parser.parse_args(argv)
     if args.drop and not args.amend:
         parser.error("--drop requires --amend")
-    if args.reason and not args.withdraw:
-        parser.error("--reason requires --withdraw")
-    if args.prepare or args.amend or args.withdraw or args.seal or args.check:
+    if args.reason and not (args.withdraw or args.pause):
+        parser.error("--reason requires --withdraw or --pause")
+    if args.source is not None and not (args.prepare or args.amend):
+        parser.error("--source requires --prepare or owner-bound --amend")
+    if args.evidence and not args.pause:
+        parser.error("--evidence requires --pause")
+    if args.prepare or args.amend or args.withdraw or args.pause or args.resume or args.seal or args.check:
         from delivery_check import session_command
 
         return session_command(args)

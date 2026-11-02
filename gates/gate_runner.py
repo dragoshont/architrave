@@ -558,7 +558,7 @@ def review_notes(evidence: str) -> list[tuple[str, str | None]]:
     return notes
 
 
-def parse_requirements(text: str) -> tuple[dict[str, dict[str, str]], list[dict[str, str]], list[str]]:
+def parse_requirements(text: str, selected: set[str] | None = None) -> tuple[dict[str, dict[str, str]], list[dict[str, str]], list[str]]:
     """Parse the long-program requirements file: REQ table, typed corrections and handoff."""
     reqs: dict[str, dict[str, str]] = {}
     corrections: list[dict[str, str]] = []
@@ -586,7 +586,7 @@ def parse_requirements(text: str) -> tuple[dict[str, dict[str, str]], list[dict[
             errors.append(f"{rid} has no testable acceptance")
         if status == "accepted" and not row["evidence"]:
             errors.append(f"{rid} is accepted without evidence")
-        notes = review_notes(row["evidence"])
+        notes = review_notes(row["evidence"]) if selected is None or rid in selected else []
         for index, (reviewer, verdict) in enumerate(notes):
             if verdict is None:
                 errors.append(f"{rid} review note must read 'review: <reviewer> <PASS|REVISE|FAIL>'")
@@ -810,7 +810,7 @@ def git_source_errors(root: Path, sid: str, source: str, status: str, repos: dic
 
 
 def chain_errors(root: Path, text: str, reqs: dict[str, dict[str, str]],
-                 config: dict[str, object]) -> tuple[list[str], list[str], list[str]]:
+                 config: dict[str, object], selected: set[str] | None = None) -> tuple[list[str], list[str], list[str]]:
     """Research -> decision -> requirement -> finding links: (errors, done-blockers, notes)."""
     evidence = {row["id"]: row for row in ledger_table(
         text, ("id", "question", "source"), ("id", "question", "source", "claim", "author", "status", "reviewed by"))}
@@ -826,6 +826,18 @@ def chain_errors(root: Path, text: str, reqs: dict[str, dict[str, str]],
         if isinstance(item, dict) and isinstance(item.get("name"), str) and isinstance(item.get("path"), str):
             repos[item["name"]] = component_path(root, item["path"])
     known = set(reqs) | set(evidence) | set(decisions)
+    relevant = set(known) if selected is None else set(selected)
+    if selected is not None:
+        # Follow declared decision/evidence references, not lexical similarity.
+        pending = list(selected)
+        while pending:
+            item = pending.pop()
+            row = reqs.get(item) or decisions.get(item) or evidence.get(item) or {}
+            for kind in ("D", "E"):
+                for linked in ref_ids(" ".join(row.values()), kind):
+                    if linked not in relevant:
+                        relevant.add(linked)
+                        pending.append(linked)
     local = [repo for repo in repos.values() if git(repo, "rev-parse", "--git-dir") is not None]
 
     def verifiable(value: str) -> bool:
@@ -842,26 +854,27 @@ def chain_errors(root: Path, text: str, reqs: dict[str, dict[str, str]],
             errors.append(f"{eid} status {row['status']!r} is not one of {', '.join(sorted(EVIDENCE_STATES))}")
         if not row["source"] or not row["claim"]:
             errors.append(f"{eid} needs a source and the claim it supports")
-        if status == "supported":
+        if status == "supported" and eid in relevant:
             reviewer = row["reviewed by"].strip()
             if unresolved_reviewer(reviewer) or who(reviewer) == who(row["author"]):
                 errors.append(f"{eid} is supported without an independent reviewer (not the author)")
         if re.search(r"https?://", row["source"]) and not re.search(r"\d{4}-\d{2}-\d{2}", row["source"]):
             errors.append(f"{eid} web source needs a retrieval date (YYYY-MM-DD)")
-        more, info = git_source_errors(root, eid, row["source"], status, repos)
-        errors += more
-        notes += info
+        if eid in relevant:
+            more, info = git_source_errors(root, eid, row["source"], status, repos)
+            errors += more
+            notes += info
     for did, row in decisions.items():
         status = row["status"].lower()
         if status not in DECISION_STATES:
             errors.append(f"{did} status {row['status']!r} is not one of {', '.join(sorted(DECISION_STATES))}")
-        if row["rejected"].strip() in {"", "-"}:
+        if did in relevant and row["rejected"].strip() in {"", "-"}:
             errors.append(f"{did} records no rejected alternatives")
         cited = ref_ids(row["evidence"], "E")
         for eid in cited:
             if eid not in evidence:
                 errors.append(f"{did} cites unknown {eid}")
-        if status == "active":
+        if status == "active" and did in relevant:
             if not cited:
                 errors.append(f"{did} is active without evidence")
             weak = [e for e in cited if e in evidence and evidence[e]["status"].lower() != "supported"]
@@ -871,7 +884,7 @@ def chain_errors(root: Path, text: str, reqs: dict[str, dict[str, str]],
         for did in ref_ids(" ".join((row["requirement"], row["acceptance"], row["evidence"])), "D"):
             if did not in decisions:
                 errors.append(f"{rid} cites unknown {did}")
-            elif row["status"].lower() == "accepted" and decisions[did]["status"].lower() in {"reconsider", "proposed"}:
+            elif rid in relevant and row["status"].lower() == "accepted" and decisions[did]["status"].lower() in {"reconsider", "proposed"}:
                 errors.append(f"{rid} is accepted on {did}, which is {decisions[did]['status']}")
     for row in findings:
         fid, severity, disposition = row["id"], row["severity"].lower(), row["disposition"].lower()
@@ -883,6 +896,11 @@ def chain_errors(root: Path, text: str, reqs: dict[str, dict[str, str]],
         for target in targets:
             if target not in known:
                 errors.append(f"{fid} targets unknown {target}")
+        exact_targets = re.fullmatch(
+            r"(?:REQ|D|E)-[A-Za-z0-9_.-]+(?:[\s,;]+(?:REQ|D|E)-[A-Za-z0-9_.-]+)*",
+            row["target"].strip())
+        if selected is not None and exact_targets and targets and not set(targets) & relevant:
+            continue
         serious = severity in SERIOUS
         if disposition in {"fixed", "rejected"} and not verifiable(row["evidence"]):
             errors.append(f"{fid} is {disposition} without verifiable evidence (a commit that resolves in a configured repo, or an existing E-/D- id); agreement is not evidence")
@@ -1065,9 +1083,26 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
         print("ARCHITRAVE-REQUIREMENTS: FAIL")
         return 1
     text = path.read_text(encoding="utf-8-sig")
-    reqs, corrections, errors = parse_requirements(text)
+    selected = None
+    delivery_errors = []
+    if done and delivery_session:
+        from delivery_check import check_session, read_json, session_report_path
+
+        delivery_errors = check_session(root, delivery_session, allow_withdrawal=False)
+        try:
+            declaration = read_json(session_report_path(delivery_session))
+            scope = declaration["reqs"]
+            if (Path(declaration["repo"]).resolve() != root.resolve()
+                    or not isinstance(scope, list) or not scope
+                    or not all(isinstance(rid, str) for rid in scope)):
+                raise ValueError("invalid delivery requirement scope")
+            selected = set(scope)
+        except (ValueError, KeyError, OSError, TypeError) as exc:
+            delivery_errors.append(f"delivery scope inspection blocked: {exc}")
+    reqs, corrections, errors = parse_requirements(text, selected)
+    errors.extend(delivery_errors)
     config = load_config(root)
-    more, blockers, notes = chain_errors(root, text, reqs, config)
+    more, blockers, notes = chain_errors(root, text, reqs, config, selected)
     errors.extend(more)
     for note in notes:
         print(f"note  {note}")
@@ -1123,19 +1158,28 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
             except (ValueError, KeyError, OSError, TypeError, AttributeError) as exc:
                 errors.append(str(exc))
                 declared = False
-            if delivery_session or declared:
+            if not delivery_session and declared:
                 errors.extend(check_session(root, current_session, allow_withdrawal=False))
-        pending = [rid for rid, row in reqs.items() if row["status"].lower() in REQ_ACTIVE - {"accepted"}]
+        pending = [rid for rid, row in reqs.items() if (selected is None or rid in selected)
+                   and row["status"].lower() in REQ_ACTIVE - {"accepted"}]
         if pending:
             errors.append(f"not done: {len(pending)} active REQs are not accepted: {', '.join(pending[:20])}")
         unacked = [c["id"] for c in corrections
-                   if c["type"].lower() == "narrow" and not OWNER_ACK.search(c["change"])]
+                   if c["type"].lower() == "narrow" and not OWNER_ACK.search(c["change"])
+                   and (selected is None or not ref_ids(c["target"], "REQ")
+                        or set(ref_ids(c["target"], "REQ")) & selected)]
         if unacked:
             errors.append(f"not done: narrow corrections lack owner acknowledgement: {', '.join(unacked)}")
         if blockers:
             errors.append(f"not done: open serious findings: {', '.join(blockers)}")
         strict = strict_reviews()
         for lane in lanes:
+            if selected is not None:
+                # Ambiguous legacy lanes remain in scope; exact unrelated lanes do not.
+                assigned = lane_reqs(lane)
+                if assigned and not set(assigned) & selected:
+                    continue
+                lane = dict(lane, **{"req ids": ",".join(rid for rid in assigned if rid in selected)})
             if lane["state"].lower() == "done" and lane["session id"] in {"", "-"}:
                 errors.append(f"not done: lane {lane['lane']} is done without the session that did the work")
             elif lane["state"].lower() == "done" and strict and session_facts(lane["session id"]) is None:

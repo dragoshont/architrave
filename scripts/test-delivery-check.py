@@ -120,6 +120,268 @@ class DeliveryChecks(unittest.TestCase):
     def errors(self, report=None):
         return check.check_report(self.repo, report or self.report, require_review=False)
 
+    def command(self, *args):
+        return subprocess.run(
+            [sys.executable, "-B", str(ROOT / "gates" / "gate_runner.py"),
+             "delivery-audit", "--repo", str(self.repo), "--session", SESSION, *args],
+            capture_output=True, text=True, encoding="utf-8")
+
+    def scoped(self):
+        self.report["source_paths"] = ["provider.py"]
+        self.report["audit"] = audit.scan(
+            self.repo, reqs=["REQ-01"], source_paths=["provider.py"])
+
+    def reviewed(self):
+        sha = check.report_digest(self.report)
+        self.report["review"] = {"session_id": REVIEWER, "sha256": sha}
+        self.write_log(REVIEWER, [
+            {"type": "subagent.selected", "data": {"agentName": "architrave:adversarial-judge"}},
+            {"type": "assistant.turn_start", "data": {}},
+            {"type": "session.task_complete",
+             "data": {"summary": f"Verdict: PASS\nDelivery digest: {sha}\nProtocol unit data only."}},
+        ])
+        check.write_report(check.session_report_path(SESSION), self.report)
+
+    def requirements_command(self, *args):
+        return subprocess.run(
+            [sys.executable, "-B", str(ROOT / "gates" / "gate_runner.py"),
+             "requirements", "--done", "--repo", str(self.repo), *args],
+            capture_output=True, text=True, encoding="utf-8")
+
+    def test_scoped_done_excludes_unrelated_requirements_lanes_and_findings(self):
+        (self.repo / "architrave.config.json").write_text(json.dumps({
+            "kind": "knowledge", "build": "git diff --check", "test": "python checks.py"}))
+        ledger = SPEC.replace("| owner | open | |\n", "| owner | accepted | observed |\n"
+                              "| REQ-02 | Unrelated task | Other result | other | open | |\n")
+        lane = dict.fromkeys(gate.LANE_COLUMNS, "-")
+        lane.update({"lane": "unrelated", "repo": "self", "req ids": "REQ-02", "state": "done",
+                     "owner-only decisions": "[]"})
+        ledger += ("\n| " + " | ".join(gate.LANE_COLUMNS) + " |\n| "
+                   + " | ".join("---" for _ in gate.LANE_COLUMNS) + " |\n| "
+                   + " | ".join(lane[c] for c in gate.LANE_COLUMNS) + " |\n")
+        ledger += """
+| ID | Severity | Target | Finding | Raised by | Disposition | Verified by | Evidence |
+|---|---|---|---|---|---|---|---|
+| F-1 | high | REQ-02 | Unrelated unfinished behavior | judge | open | - | - |
+"""
+        (self.repo / "SPEC.md").write_text(ledger)
+        self.scoped()
+        self.reviewed()
+        scoped = self.requirements_command("--delivery-session", SESSION)
+        self.assertEqual(scoped.returncode, 0, scoped.stdout + scoped.stderr)
+        full = self.requirements_command()
+        self.assertNotEqual(full.returncode, 0)
+        for expected in ("REQ-02", "lane unrelated", "open serious findings"):
+            self.assertIn(expected, full.stdout)
+        (self.repo / "SPEC.md").write_text(ledger.replace("| high | REQ-02 |", "| high | REQ-01 |"))
+        related = self.requirements_command("--delivery-session", SESSION)
+        self.assertNotEqual(related.returncode, 0)
+        self.assertIn("open serious findings", related.stdout)
+
+    def test_scoped_inventory_ignores_unrelated_churn_but_binds_dependencies(self):
+        self.scoped()
+        before = self.report["audit"]["source_sha256"]
+        (self.repo / "unrelated.py").write_text("result = FakeProvider()\n")
+        (self.repo / "SPEC.md").write_text(SPEC.replace(
+            "| owner | open | |\n", "| owner | open | |\n"
+            "| REQ-02 | Unrelated task | Other result | other | open | |\n"))
+        self.assertEqual(self.errors(), [])
+        self.assertEqual(before, audit.scan(
+            self.repo, reqs=["REQ-01"], source_paths=["provider.py"])["source_sha256"])
+        for name in ("provider.py", "README.md", "architrave.config.json"):
+            path = self.repo / name
+            old = path.read_bytes() if path.exists() else None
+            path.write_text("{}" if name.endswith(".json") else "changed\n")
+            self.assertTrue(any("inventory changed" in e for e in self.errors()), name)
+            if old is None:
+                path.unlink()
+            else:
+                path.write_bytes(old)
+
+    def test_scope_paths_reject_traversal_and_track_new_directory_files(self):
+        for source in ("../outside", ".", "", r"C:\outside", "/outside", ".git/config"):
+            with self.assertRaises(ValueError, msg=source):
+                audit.scan(self.repo, reqs=["REQ-01"], source_paths=[source])
+        (self.repo / "src").mkdir()
+        first = audit.scan(self.repo, reqs=["REQ-01"], source_paths=["src"])
+        (self.repo / "src" / "new.py").write_text("result = client.execute(request)\n")
+        self.assertNotEqual(first["source_sha256"], audit.scan(
+            self.repo, reqs=["REQ-01"], source_paths=["src"])["source_sha256"])
+
+    def test_scoped_directory_case_matches_host_filesystem(self):
+        source = self.repo / "gates"
+        source.mkdir()
+        implementation = source / "actual.py"
+        implementation.write_text("result = client.execute(request)\n")
+        self.git("add", "gates")
+        alias_exists = (self.repo / "GATES").is_dir()
+        try:
+            first = audit.scan(self.repo, reqs=["REQ-01"], source_paths=["GATES"])
+        except ValueError as exc:
+            self.assertTrue(alias_exists)
+            self.assertIn("source path spelling", str(exc))
+            first = audit.scan(self.repo, reqs=["REQ-01"], source_paths=["gates"])
+            implementation.write_text("result = other.execute(request)\n")
+            self.assertNotEqual(first["source_sha256"], audit.scan(
+                self.repo, reqs=["REQ-01"], source_paths=["gates"])["source_sha256"])
+            return
+        if alias_exists:
+            self.assertEqual(first["source_paths"], ["gates"])
+            self.assertIn("gates/actual.py", [row["path"] for row in first["source_files"]])
+            implementation.write_text("result = other.execute(request)\n")
+            self.assertNotEqual(first["source_sha256"], audit.scan(
+                self.repo, reqs=["REQ-01"], source_paths=["GATES"])["source_sha256"])
+        else:
+            self.assertNotIn("gates/actual.py", [row["path"] for row in first["source_files"]])
+            implementation.write_text("result = other.execute(request)\n")
+            self.assertEqual(first["source_sha256"], audit.scan(
+                self.repo, reqs=["REQ-01"], source_paths=["GATES"])["source_sha256"])
+
+    def test_scoped_symlink_and_symlink_parent_are_rejected(self):
+        link = self.repo / "linked"
+        try:
+            link.symlink_to(self.repo, target_is_directory=True)
+        except OSError as exc:
+            self.skipTest(f"host cannot create test symlink: {exc}")
+        for name in ("linked", "linked/provider.py"):
+            with self.assertRaises(ValueError):
+                audit.scan(self.repo, reqs=["REQ-01"], source_paths=[name])
+
+    def test_prepare_requires_explicit_sources_and_binds_owner_paths(self):
+        missing = self.command("--prepare", "--reqs", "REQ-01", "--request", "owner-event")
+        self.assertEqual(missing.returncode, 2)
+        self.assertIn("--source", missing.stderr)
+        result = self.command("--prepare", "--reqs", "REQ-01", "--request", "owner-event",
+                              "--source", "provider.py")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = check.read_json(check.session_report_path(SESSION))
+        self.assertEqual(report["source_paths"], ["provider.py"])
+        self.assertEqual(report["owner_anchors"], {"REQ-01": ["owner-event"]})
+
+    def test_unchanged_amendment_retains_outcomes_and_owner_anchor(self):
+        self.scoped()
+        check.write_report(check.session_report_path(SESSION), self.report, create=True)
+        self.log.append({"id": "owner-correction", "timestamp": "2026-01-02T10:00:00Z",
+                         "type": "user.message", "data": {"content": "Continue the unchanged scope."}})
+        self.write_log(SESSION, self.log)
+        result = self.command("--amend", "--request", "owner-correction")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        updated = check.read_json(check.session_report_path(SESSION))
+        self.assertEqual(updated["expected"], self.report["expected"])
+        self.assertEqual(updated["observations"], self.report["observations"])
+        self.assertEqual(updated["owner_anchors"]["REQ-01"], ["owner-event"])
+        self.assertIsNone(updated["review"])
+        result = self.command("--seal")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.errors(check.read_json(check.session_report_path(SESSION))), [])
+
+    def test_new_requirement_preserves_only_unchanged_owned_outcome(self):
+        self.scoped()
+        check.write_report(check.session_report_path(SESSION), self.report, create=True)
+        (self.repo / "SPEC.md").write_text(SPEC.replace(
+            "| owner | open | |\n", "| owner | open | |\n"
+            "| REQ-02 | Another check | Additional result | owner | open | |\n"))
+        self.log.append({"id": "owner-addition", "timestamp": "2026-01-02T10:00:00Z",
+                         "type": "user.message", "data": {"content": "Also check the additional result."}})
+        self.write_log(SESSION, self.log)
+        result = self.command("--amend", "--request", "owner-addition", "--reqs", "REQ-01,REQ-02")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = check.read_json(check.session_report_path(SESSION))
+        self.assertEqual(report["observations"], self.report["observations"])
+        self.assertEqual(report["expected"]["REQ-02"], {"kind": "unclassified"})
+        self.assertEqual(report["owner_anchors"], {"REQ-01": ["owner-event"], "REQ-02": ["owner-addition"]})
+        self.assertIsNone(report["board"])
+        self.assertEqual(report["board_owner_event_ids"], ["owner-addition"])
+
+    def test_changed_dependency_or_boundary_invalidates_outcomes_on_amendment(self):
+        self.scoped()
+        check.write_report(check.session_report_path(SESSION), self.report, create=True)
+        self.log.append({"id": "owner-change", "timestamp": "2026-01-01T10:00:30Z",
+                         "type": "user.message", "data": {"content": "Include the other dependency."}})
+        self.write_log(SESSION, self.log)
+        result = self.command("--amend", "--request", "owner-change",
+                              "--source", "provider.py", "--source", "another.py")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = check.read_json(check.session_report_path(SESSION))
+        self.assertEqual(report["observations"], {})
+        self.assertEqual(report["owner_anchors"], {"REQ-01": ["owner-change"]})
+        self.assertIsNone(report["review"])
+        self.assertEqual(report["history"][-1]["source_paths"], ["provider.py"])
+        # This old run follows the newer owner event but predates the changed
+        # dependency capture. Restoring it cannot accept the amended source.
+        report["expected"] = self.report["expected"]
+        report["observations"] = self.report["observations"]
+        check.write_report(check.session_report_path(SESSION), report)
+        self.assertEqual(self.command("--seal").returncode, 0)
+        self.assertTrue(any("earlier tool" in e for e in self.errors(
+            check.read_json(check.session_report_path(SESSION)))))
+
+    def test_changed_source_amendment_and_reseal_cannot_reuse_old_proof(self):
+        self.scoped()
+        check.write_report(check.session_report_path(SESSION), self.report, create=True)
+        (self.repo / "provider.py").write_text("result = other.execute(request)\n")
+        result = self.command("--seal")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(check.read_json(check.session_report_path(SESSION))["observations"], {})
+        resealed = check.read_json(check.session_report_path(SESSION))
+        resealed["observations"] = self.report["observations"]
+        self.assertTrue(any("earlier tool" in e for e in self.errors(resealed)))
+        self.log.append({"id": "owner-correction", "timestamp": "2026-01-02T10:00:00Z",
+                         "type": "user.message", "data": {"content": "Revise the implementation."}})
+        self.write_log(SESSION, self.log)
+        result = self.command("--amend", "--request", "owner-correction")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        updated = check.read_json(check.session_report_path(SESSION))
+        self.assertEqual(updated["observations"], {})
+
+    def test_pause_is_non_delivery_with_exact_hook_summary_and_explicit_resume(self):
+        import session_guard
+
+        self.scoped()
+        check.write_report(check.session_report_path(SESSION), self.report, create=True)
+        result = self.command("--pause", "blocked", "--reason", "Required target is unavailable.",
+                              "--evidence", str(self.proof))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        paused = check.read_json(check.session_report_path(SESSION))
+        summary = check.terminal_summary(paused)
+        payload = {"sessionId": SESSION, "cwd": str(self.repo), "toolName": "task_complete",
+                   "toolArgs": {"summary": summary}}
+        self.assertEqual(session_guard.pre_tool_use(payload), {})
+        payload["toolArgs"]["summary"] = "Everything delivered."
+        self.assertEqual(session_guard.pre_tool_use(payload)["permissionDecision"], "deny")
+        self.assertTrue(check.check_session(self.repo, SESSION, allow_withdrawal=False))
+        self.assertEqual(self.command("--check").returncode, 2)
+        self.assertEqual(self.command("--seal").returncode, 2)
+        (self.repo / "unrelated.py").write_text("unrelated = 1\n")
+        payload["toolArgs"]["summary"] = summary
+        self.assertEqual(session_guard.pre_tool_use(payload), {})
+        self.assertEqual(self.command("--resume").returncode, 0)
+        self.assertEqual(check.read_json(check.session_report_path(SESSION))["state"], "prepared")
+
+    def test_paused_source_owner_and_evidence_drift_fail_closed(self):
+        import session_guard
+
+        self.scoped()
+        check.write_report(check.session_report_path(SESSION), self.report, create=True)
+        result = self.command("--pause", "handoff", "--reason", "Implementation handed to its owner.",
+                              "--evidence", str(self.proof))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = check.read_json(check.session_report_path(SESSION))
+        payload = {"sessionId": SESSION, "cwd": str(self.repo), "toolName": "task_complete",
+                   "toolArgs": {"summary": check.terminal_summary(report)}}
+        self.log.append({"id": "reminder", "timestamp": "2026-01-03T10:00:00Z", "type": "user.message",
+                         "data": {"content": "You have not yet marked the task as complete"}})
+        self.write_log(SESSION, self.log)
+        self.assertEqual(session_guard.pre_tool_use(payload), {})
+        self.assertNotEqual(self.requirements_command("--delivery-session", SESSION).returncode, 0)
+        before = (self.repo / "provider.py").read_bytes()
+        (self.repo / "provider.py").write_text("result = different.execute(request)\n")
+        self.assertEqual(session_guard.pre_tool_use(payload)["permissionDecision"], "deny")
+        self.assertEqual(self.command("--resume").returncode, 2)
+        (self.repo / "provider.py").write_bytes(before)
+        self.proof.write_text("changed evidence")
+        self.assertEqual(session_guard.pre_tool_use(payload)["permissionDecision"], "deny")
+
     def test_official_local_emulator_and_environment_selection_allowed(self):
         self.assertEqual(self.errors(), [])
 
@@ -356,8 +618,20 @@ class DeliveryChecks(unittest.TestCase):
         subdir = self.repo / "subdir"
         subdir.mkdir()
         self.assertEqual(check.check_session(subdir, SESSION), [])
+        self.assertEqual(self.command("--seal").returncode, 2)
         (self.repo / "provider.py").write_text("result = different.execute(request)\n")
-        self.assertTrue(any("prepare a new" in e for e in check.check_session(subdir, SESSION)))
+        self.assertTrue(check.check_session(subdir, SESSION))
+        self.assertTrue(check.check_session(subdir, SESSION, completion_hook=True))
+        self.assertEqual(check.check_session(
+            subdir, SESSION, completion_hook=True,
+            completion_summary="Read-only follow-up (no new delivery acceptance): Here is the explanation."), [])
+        self.log.append({"type": "tool.execution_start", "timestamp": "2026-01-01T10:03:00Z",
+                         "data": {"toolName": "apply_patch", "arguments":
+                                  f"*** Begin Patch\n*** Update File: {self.repo / 'provider.py'}\n+x\n*** End Patch"}})
+        self.write_log(SESSION, self.log)
+        self.assertTrue(check.check_session(
+            subdir, SESSION, completion_hook=True,
+            completion_summary="Read-only follow-up (no new delivery acceptance): Claimed read-only despite edits."))
 
     def test_amend_cannot_silently_drop_requirement(self):
         expanded = SPEC.replace("| owner | open | |\n", "| owner | open | |\n"

@@ -93,8 +93,13 @@ def pre_tool_use(
 
             if session_report_path(session) != report:
                 return _deny("Architrave delivery checker and hook disagree on the session report path.")
-            checker = check_session
-        errors = checker(root, session)
+            arguments = _field(payload, "toolArgs", "tool_input")
+            if isinstance(arguments, str):
+                arguments = json.loads(arguments)
+            summary = arguments.get("summary") if isinstance(arguments, dict) else None
+            errors = check_session(root, session, completion_hook=True, completion_summary=summary)
+        else:
+            errors = checker(root, session)
         if not isinstance(errors, list) or any(
             not isinstance(error, str) or not error.strip() for error in errors
         ):
