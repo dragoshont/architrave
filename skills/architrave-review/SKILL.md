@@ -3,7 +3,17 @@ name: architrave-review
 description: Explicitly run a read-only Architrave rubric review of a frozen proposal or implementation and return PASS, REVISE, or FAIL with evidence.
 ---
 
-Prefer the host-native reviewer. When the host provides one (GitHub Copilot
+For a session/run performance review, use `docs/session-audit.md`: collect
+explicitly selected real host sessions (optionally one turn) with
+`python "<kit-root>\harness\architrave_cli.py" session-audit collect`, assess
+original goals, quality, tokens and approach using the packet's review prompt,
+then save the source-bound advisory analysis with `session-audit record` for
+the existing scoped board. Resolve kit root from this loaded skill (`../..`).
+Keep private packets in host session files. Internal invocation uses the same
+path at a task boundary; no extra supervisor, automatic every-turn audit,
+instruction changes, permission changes or new completion gate.
+
+Prefer the host-native reviewer for a proposal/implementation review. When the host provides one (GitHub Copilot
 `rubber-duck`, or `code-review` for diffs), run the semantic review through it
 instead of launching `adversarial-judge`, so there's never a double review.
 Pass the frozen review subject, original owner messages and attached reference assets,

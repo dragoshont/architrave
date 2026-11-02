@@ -5,6 +5,25 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## 0.21.31
+
+- Add explicit local Copilot session and individual-turn audit collection,
+  without requiring repository adoption or a canonical Architrave Run.
+- Separate observed token/consumption/context metrics from owner-goal and
+  approach judgments. Report native command exits separately from host
+  tool success so hidden command failures remain inspectable.
+- Use the existing host reviewer for source-bound prompt, instruction,
+  approach and prerequisite improvements, with concrete verification and
+  tradeoffs. Reconstruct audited log prefixes before accepting analysis.
+- Display advisory goal outcomes, findings and retained practices on the
+  existing scoped program board, with missing/stale analysis explicit.
+- Document the `architrave-review` and internal CLI path, its research basis,
+  local privacy boundaries and limits on productivity claims.
+
+No automatic instruction changes, permission expansion, new every-turn hook
+or additional completion gate is introduced. Local installation does not
+reset running sessions or refresh their already-loaded context.
+
 ## 0.21.30
 
 - Bind new delivery declarations to explicit owned sources and relevant

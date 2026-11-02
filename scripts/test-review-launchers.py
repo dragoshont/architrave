@@ -18,6 +18,7 @@ SPEC = importlib.util.spec_from_file_location("architrave_cli", ROOT / "harness"
 assert SPEC and SPEC.loader
 CLI = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(CLI)
+import session_audit
 
 
 class ReviewLauncherTests(unittest.TestCase):
@@ -56,6 +57,29 @@ class ReviewLauncherTests(unittest.TestCase):
         errors = CLI.validate_tournament_result(missing)
         self.assertIn("options must include kind DO_NOTHING", errors)
         self.assertIn("winnerBeatsDoNothing must explain why the winner beats doing nothing", errors)
+
+    def test_audit_numbers_do_not_turn_unknown_or_invalid_usage_into_zero(self) -> None:
+        for value in (None, True, -1, "12", 1.5):
+            self.assertIsNone(session_audit.number(value))
+        self.assertEqual(0, session_audit.number(0))
+        self.assertEqual(12, session_audit.number(12))
+
+    def test_audit_session_paths_reject_traversal_and_sidebar_names(self) -> None:
+        for value in ("..", "coordinator", "../events.jsonl", "x" * 36):
+            with self.assertRaises(ValueError):
+                session_audit.session_path(value)
+
+    def test_audit_excerpts_expose_truncation(self) -> None:
+        self.assertFalse(session_audit.excerpt("short")["truncated"])
+        result = session_audit.excerpt("x" * 2001)
+        self.assertTrue(result["truncated"])
+        self.assertEqual(2000, len(result["text"]))
+
+    def test_audit_does_not_accept_an_empty_or_forged_packet(self) -> None:
+        with self.assertRaises(ValueError):
+            session_audit.validate_packet({})
+        with self.assertRaises(ValueError):
+            session_audit.validate_packet({"schema": session_audit.PACKET, "packet_sha256": "0" * 64})
 
 
 if __name__ == "__main__":

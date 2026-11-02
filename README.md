@@ -62,6 +62,14 @@ owner a permission prompt. Sustained parallel delivery across many children
 See the [full capability set](#full-capability-set) and the plain-language
 guide to [long programs](docs/long-programs.md).
 
+**Session delivery audits.** `architrave-review` can assess explicitly selected
+real Copilot sessions or a turn, including sessions without Architrave. The
+[audit path](docs/session-audit.md) separates original-goal outcomes from token
+consumption and approach, then shows evidence-backed prompt, instruction and
+workflow proposals on the existing scoped board. Collection is local and
+deterministic; semantic assessment uses the host reviewer. Nothing is applied
+automatically and no productivity improvement is claimed from token counts.
+
 Native work selects an explicit Run and exact REQ corrections rather than loading
 all history. Explicit `global` rules remain current; ambiguous legacy targets
 remain visible but cannot grant permissions. Managed cross-run scratch selection

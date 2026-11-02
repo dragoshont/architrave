@@ -1,5 +1,16 @@
 # Roadmap
 
+## v0.21.31 - Session delivery audits (REQ-77..80, #34)
+
+On-demand real-session/turn analysis through the existing review and board:
+original goals and quality first, observed usage separate from semantic focus
+and recovery findings, concrete proposed prompt/instruction/approach changes.
+Local private packets, host-owned review and no automatic instruction mutation
+or extra completion gate. Research-backed rubric does not itself demonstrate
+better delivery; matched real-task outcomes remain necessary.
+REQ-79/80 authorize sanitized public delivery and local installation from the
+verified public source. Running sessions are not reset or restarted.
+
 ## v0.21.30 - Scoped closure (#33, REQ-73..76)
 
 Repair completion amplification in existing delivery commands: explicit

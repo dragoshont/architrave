@@ -103,12 +103,17 @@ def tournament_review(run_dir: Path, execute: bool, result_path: Path | None = N
     return 0
 def main(argv: list[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments[:1] == ["session-audit"]:
+        from session_audit import main as audit_cli
+        return audit_cli(arguments[1:])
     if arguments[:1] == ["runtime"]:
         return runtime_cli(arguments[2:] if arguments[1:2] == ["--"] else arguments[1:])
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
     runtime = subparsers.add_parser("runtime")
     runtime.add_argument("arguments", nargs=argparse.REMAINDER)
+    audit = subparsers.add_parser("session-audit", help="outcome and approach audit of selected real host sessions")
+    audit.add_argument("arguments", nargs=argparse.REMAINDER)
     run_validation = subparsers.add_parser("validate-run")
     run_validation.add_argument("run_dir", nargs="?")
     learning = subparsers.add_parser("validate-learning")
