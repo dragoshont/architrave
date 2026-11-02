@@ -20,6 +20,9 @@ import gate_runner as gate
 
 SCHEMA = "architrave.delivery.v1"
 MAX_JSON = 16 * 1024 * 1024
+IMAGE_REMINDER = ("<system_reminder>\n"
+                  "The user mentioned images and they have been attached to this message in the order they were mentioned.\n"
+                  "</system_reminder>")
 
 
 def session_report_path(session_id: str) -> Path:
@@ -121,18 +124,27 @@ def owner_reference(event_id: str, log: list[dict]) -> dict:
     if (event.get("type") != "user.message" or event.get("agentId")
             or data.get("parentToolCallId") or data.get("source") not in (None, "", "user", "human")
             or not isinstance(content, str) or not content.strip()
-            or any(marker in (content + str(data.get("transformedContent", ""))).lower()
-                   for marker in ("<cross_session_message", "<system_notification", "<system_reminder"))
             or content.startswith("You have not yet marked the task as complete")):
+        raise ValueError("event is not an attributable original owner instruction")
+    transformed = str(data.get("transformedContent", ""))
+    attachments = data.get("attachments") or []
+    if (isinstance(attachments, list)
+            and any(isinstance(item, dict) and item.get("type") == "file"
+                    and isinstance(item.get("mimeType"), str)
+                    and item["mimeType"].startswith("image/") for item in attachments)
+            and transformed.count(IMAGE_REMINDER) == 1):
+        transformed = transformed.replace(IMAGE_REMINDER, "", 1)
+    if any(marker in (content + transformed).lower()
+           for marker in ("<cross_session_message", "<system_notification", "<system_reminder")):
         raise ValueError("event is not an attributable original owner instruction")
     value = {k: event.get(k) for k in ("id", "timestamp", "type")}
     value["data"] = {k: data.get(k) for k in ("content", "source", "attachments")}
-    attachments = []
-    for item in data.get("attachments") or []:
+    identities = []
+    for item in attachments:
         if not isinstance(item, dict) or item.get("type") != "file" or not isinstance(item.get("path"), str):
             raise ValueError("owner attachment cannot be bound to a local file")
-        attachments.append(file_identity(Path(item["path"])))
-    return {"event_id": event_id, "sha256": audit.digest(value), "attachments": attachments}
+        identities.append(file_identity(Path(item["path"])))
+    return {"event_id": event_id, "sha256": audit.digest(value), "attachments": identities}
 
 
 def tool_evidence(call_id: str, log: list[dict], *, success: bool = True) -> tuple[dict, dict]:

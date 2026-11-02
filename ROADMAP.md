@@ -1,5 +1,17 @@
 # Roadmap
 
+## v0.21.29 - Board freshness and owner attribution (REQ-68..72)
+
+Reviewed board repair makes generation time, refresh interval and requirement
+scope visible, identifies static or potentially stale snapshots, and preserves
+the existing output and coordinator history during delegated maintenance.
+Repository-wide ledger evidence diagnostics remain actionable and fully enforced.
+Genuine image-bearing owner requests retain image identity without accepting
+agent, system or forwarded-message provenance.
+REQ-71 covers locally validated public source, archives and remote installation.
+REQ-72 separately verifies adoption in the three owner-referenced sessions;
+installed bytes alone do not prove updated renderer or loaded-session context.
+
 ## v0.21.28 - Context freshness (REQ-66/67, delivered)
 
 Targeted native correction scoping, explicit Run selection and managed-run context

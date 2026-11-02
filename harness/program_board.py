@@ -536,6 +536,9 @@ h1{margin:0;font-size:17px;font-weight:650;letter-spacing:-.02em;overflow-wrap:a
 .primary-stats div{display:block;background:#1b2632;padding:7px 8px;min-width:0;overflow-wrap:anywhere}
 .primary-stats b{display:block;font-size:15px}.primary-stats span{font-size:10px}
 .repo-list{margin:5px 0;color:#b8c6d5;font-size:11px;overflow-wrap:anywhere}
+.freshness{margin:8px 0;color:#b8c6d5;font-size:11px;line-height:1.4;overflow-wrap:anywhere}
+.freshness[data-state=stale]{color:#e8c174}
+.ledger-note{margin:10px 0 0;color:#b8c6d5;font-size:11px;line-height:1.4}
 .print-only{display:none}#detail:empty{display:none}
 .legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:10px;color:#d3dee8;margin:4px 0 8px}.legend i{display:inline-block;width:9px;height:9px;margin-right:4px;vertical-align:-1px}.legend i.warn{box-shadow:inset 0 0 0 2px #d6aa4b}.legend i.sq{width:9px;height:9px}.legend i.unrevkey{border:2px solid #d6aa4b}
 .done{background:#38aa6b;fill:#38aa6b}.active{background:#479bc1;fill:#479bc1}.blocked{background:#e05b6b;fill:#e05b6b}.open{background:#506071;fill:#506071}.gone{background:#33404e;fill:#33404e}
@@ -603,6 +606,14 @@ details,details>*,details::details-content{display:block;content-visibility:visi
               "<span><i class='sq rev open'></i>Reviewed</span><span><i class='unrevkey'></i>Review missing</span></div>")
     script = ("<script>const d=document.getElementById('detail');document.querySelectorAll('button.sq').forEach(b=>b.onclick=()=>{"
               "document.querySelectorAll('.sq.sel').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');d.textContent=b.dataset.d});"
+              "const freshness=document.getElementById('freshness');"
+              "if(freshness.dataset.refresh){const generated=Date.parse(freshness.dataset.generated);"
+              "const deadline=generated+(2*Number(freshness.dataset.refresh)+60)*1000;"
+              "const checkFreshness=()=>{if(Number.isFinite(deadline)&&Date.now()>=deadline){"
+              "freshness.dataset.state='stale';freshness.textContent='Potentially stale: no recent snapshot observed. "
+              "Generated '+freshness.dataset.generated+'; watcher liveness is unknown.'}};"
+              "checkFreshness();setTimeout(checkFreshness,Math.min(Math.max(0,deadline-Date.now()),2147483647));"
+              "document.addEventListener('visibilitychange',checkFreshness)}"
               "const snapshot=document.getElementById('snapshot').dataset.snapshot;"
               "document.getElementById('page-observation').textContent='Page observed at '+new Date().toISOString()+' · snapshot '+snapshot+'. This does not observe later file rewrites.';"
               "addEventListener('beforeprint',()=>{document.getElementById('export-observation').textContent="
@@ -615,10 +626,15 @@ details,details>*,details::details-content{display:block;content-visibility:visi
     mode = ("Stopped watcher; static snapshot" if data.get("stopped") else
             f"Auto-refresh snapshot every {data['refresh']}s (watcher liveness not established by this page)" if data.get("refresh")
             else "Static snapshot; not live")
+    freshness_state = "watch" if data.get("refresh") else "static"
+    finding_evidence = any("without verifiable evidence" in error for error in data["errors"])
     completion = ("not evaluated; run requirements --done with the repository configuration" if data["configured"] else
                   "unavailable here: no repository configuration (plugin-only structural checks only; no adoption required)")
     scope = ("Session requirements: " + ", ".join(data["selected"]) + " · other repository requirements excluded"
              if data["selected"] is not None else "Repository-wide requirements · includes historical work, not this session's scope")
+    scope_summary = (f"Scope: {len(data['selected'])} session requirement{'s' if len(data['selected']) != 1 else ''}"
+                     if data["selected"] is not None
+                     else "Scope: all repository requirements")
     identity_rows = "".join(f"<li class='evidence-record'>{esc(rid)}: {esc(identity['state'])} · {esc(identity['detail'])}</li>"
                             for rid, identity in data["identities"].items() if rid in active_req
                             and (rid in unverified or identity["state"] == "verified"))
@@ -627,6 +643,13 @@ details,details>*,details::details-content{display:block;content-visibility:visi
             f"<header><h1>{esc(data['title'])}</h1>"
             f"<p class='repo-list'>{esc(' · '.join(data['repositories']))}</p>"
             f"<div class='stats primary-stats'>{primary}</div></header>"
+            f"<p class='freshness' id='freshness' role='status' data-state='{freshness_state}' "
+            f"data-generated='{esc(generated)}' data-refresh='{esc(data.get('refresh') or '')}'>"
+            f"{esc(mode)} · generated {esc(generated)} UTC</p><p class='freshness'>{esc(scope_summary)}</p>"
+            + ("<p class='ledger-note'>Ledger issues are repository-wide checks for this snapshot; "
+               "they do not by themselves establish application failure.</p>" if data["errors"] else "")
+            + ("<p class='ledger-note'>A fixed or rejected finding needs a resolving commit or an existing "
+               "E-/D- entry; a review note alone is not a recognized evidence reference.</p>" if finding_evidence else "")
             + ("<ul class='issues'>" + "".join(f"<li>{esc(e)}</li>" for e in data["errors"]) + "</ul>" if data["errors"] else "")
             + ("<ul class='issues'>" + "".join(f"<li>Open serious finding blocks completion: {esc(e)}</li>" for e in data["blockers"]) + "</ul>" if data["blockers"] else "")
             + ("<ul class='note'>" + "".join(f"<li>{esc(e)}</li>" for e in data["notes"]) + "</ul>" if data["notes"] else "")
@@ -735,7 +758,7 @@ def main() -> int:
             try:
                 data = initial_data if initial_data is not None else build(ledger, args.session, args.reqs, args.title)
                 initial_data = None
-                data["refresh"] = args.watch
+                data["refresh"] = max(args.watch, 30) if args.watch else None
                 tmp = out.with_suffix(f".{os.getpid()}.tmp")
                 tmp.write_text(render(data), encoding="utf-8")
                 tmp.replace(out)

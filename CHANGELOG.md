@@ -5,6 +5,20 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## 0.21.29
+
+- Make board snapshot generation time, refresh interval and selected requirement
+  scope visible. Static or stopped watcher snapshots explain their freshness
+  limits; delegated refresh preserves the existing output and coordinator history.
+- Keep repository-wide ledger evidence diagnostics visible and actionable without
+  presenting missing finding evidence as application failure or waiving checks.
+- Accept genuine screenshot-bearing owner requests with their image identity
+  while retaining rejection of agent, system and forwarded-message attribution.
+
+The repair does not resolve underlying ledger findings or prove that existing
+sessions loaded updated instructions. Update the plugin and safely regenerate
+existing boards; loaded-session adoption remains a separate verification.
+
 ## 0.21.28
 
 - Scope native correction context to exact requirements, including explicit

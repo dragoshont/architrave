@@ -281,6 +281,7 @@ class EvidenceAndSnapshots(unittest.TestCase):
         self.source.write_text(self.source.read_text().replace("\n\n## Handoff", "\n" + bad_rows + "\n## Handoff"))
         data = self.pb.build(self.ledger, COORD)
         self.assertEqual(len(data["errors"]), 6)
+        self.assertIn("Ledger issues are repository-wide checks for this snapshot", self.pb.render(data))
         for i in range(6):
             self.assertIn(f"REQ-bad{i} status", self.pb.render(data))
 
@@ -295,9 +296,11 @@ class EvidenceAndSnapshots(unittest.TestCase):
         with log.open("a") as handle:
             handle.write("\n" + json.dumps({"type": "assistant.turn_start", "timestamp": "2026-10-29T08:01:00Z", "data": {}}))
         active = self.pb.build(self.ledger, COORD)
-        self.assertIn("pre-completion projection", self.pb.render(active))
-        self.assertIn("Cumulative session history (not current-task cost)", self.pb.render(active))
-        self.assertNotIn("http-equiv", self.pb.render(active))
+        page = self.pb.render(active)
+        self.assertIn("pre-completion projection", page)
+        self.assertIn("Cumulative session history (not current-task cost)", page)
+        self.assertNotIn("http-equiv", page)
+        self.assertIn("Static snapshot; not live", page.split("<details class='board-details'>")[0])
 
     def test_reported_effort_is_model_bound_and_turns_are_not_usage_calls(self):
         log = self.state / COORD / "events.jsonl"
@@ -427,6 +430,7 @@ class EvidenceAndSnapshots(unittest.TestCase):
         self.assertEqual(scoped.returncode, 0, scoped.stderr)
         page = out.read_text()
         self.assertIn("Session requirements: REQ-1", page)
+        self.assertIn("Scope: 1 session requirement", page.split("<details class='board-details'>")[0])
         self.assertIn("<b>0/1</b><span>REQs accepted", page)
         self.assertNotIn("REQ-old", page)
         self.assertNotIn("Historical work", page)
@@ -463,6 +467,10 @@ class EvidenceAndSnapshots(unittest.TestCase):
         self.addCleanup(lambda: process.kill() if process.poll() is None else None)
         self.assertIn("program-board:", process.stdout.readline())
         self.assertIsNone(process.poll())
+        watched = out.read_text()
+        self.assertIn("Auto-refresh snapshot every 30s", watched.split("<details class='board-details'>")[0])
+        self.assertIn("data-refresh='30'", watched)
+        self.assertIn("Potentially stale: no recent snapshot observed", watched)
         self.source.write_text(self.source.read_text().replace("Initial task", "Final correction"))
         process.terminate()
         process.communicate(timeout=10)

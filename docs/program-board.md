@@ -39,8 +39,9 @@ Replace the example IDs with this session's requirements. Scope is mandatory:
 `--reqs` selects the session view; `--all-reqs` deliberately shows the entire
 repository ledger, including historical work. Neither is inferred from ledger
 status: previously accepted requirements need not belong to this session.
-Unknown IDs fail without replacing the board. The scope is available under
-**Board details** and retained on refresh and in the stopped snapshot. Historical rows
+Unknown IDs fail without replacing the board. The scope summary is visible in
+the primary view; its exact IDs are under **Board details** and retained on
+refresh and in the stopped snapshot. Historical rows
 remain in `SPEC.md`; they are not copied or deleted to create a session view.
 
 Start it once per initiating session in a background (detached) shell; a second start
@@ -73,6 +74,14 @@ board observation via `requirements --delivery-session <uuid>` and the Copilot
 completion hook. After a coordinator rotates, start the board under the
 successor.
 
+When a delegated observer maintains an already displayed board, preserve its
+existing output path and coordinator session ID so the same browser panel and
+history remain in use. Reuse or reconcile the registered watcher under the
+existing owner grant; do not silently start a second board or replace a live
+watcher with a one-shot snapshot. If changing the output is necessary, the
+coordinator must navigate and read the actual new URL. A static handoff does
+not continue refreshing.
+
 ## What it shows
 
 | Section | Source |
@@ -90,12 +99,20 @@ configured component. The title survives refresh and stopped snapshots.
 The previous tile dashboard and full status/evidence/review legend remain
 visible between the title and waterfall. Dashboard tiles use three columns on
 desktop and two on narrow screens. Only the repository list sits below the
-title, without the explanatory snapshot/export block. Labels are short and zero-warning tiles
+title, without the explanatory snapshot/export block. Below the dashboard, a
+compact freshness line identifies static/stopped snapshots or the requested
+watch interval and generation time, and a second line identifies the scope.
+If the displayed generation is older than
+two intervals plus a minute, it says potentially stale; freshness alone never
+proves that a watcher is alive. Labels are short and zero-warning tiles
 are omitted, rather than removing the dashboard. History totals remain
 cumulative, not an estimate for the selected requirements. Technical details
 are collapsed by default and print/export observations appear only in print.
 Actual structural failures, serious findings and unresolved evidence remain
-visible. The metric key is optional.
+visible. Ledger issues are repository-wide, not proof of an application
+failure; findings marked fixed or rejected still need a resolvable commit or an
+existing evidence/decision ID, not only a review note. The metric key is
+optional.
 
 It fits a narrow side panel; there are no tables. Synthetic
 "Requirements"/"Not in a lane" groups are not workers and do not enter the worker

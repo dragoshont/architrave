@@ -37,6 +37,8 @@ original image/design file whose identity must survive the work. File
 attachments on the referenced owner events are also bound automatically.
 The host event must be an attributable original owner message, not an
 agent-originated `user.message`, system notification or continuation reminder.
+The host's standard image-attachment reminder is allowed only with an attached
+image; the original owner message and attached file identities remain bound.
 No private message contents are copied into source control.
 
 One session-owned `files/architrave-delivery.json` holds this task's evidence.
