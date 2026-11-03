@@ -72,6 +72,60 @@ Proposals have no Apply button: take a chosen change through the existing
 owner-approved work or `harness/improvement.py` promotion path. No audit
 finding overrides an existing grant or host permission.
 
+## Owner-approved critical-path recovery
+
+An audit is diagnosis, not a watchdog or an authorization to change a running
+session. After explicit owner approval to apply a chosen finding, the existing
+lead uses **Critical-path recovery** in `knowledge/execution-policy.md`.
+Ordinary reviews and collection remain read-only.
+
+Refresh the selected coordinator's current state and relevant original goals,
+corrections, observed progress and holds. Identify the current integration owner,
+including an explicit successor handoff; do not infer authority from sidebar
+ancestry. Choose a next missing owner-visible outcome, its smallest useful
+authorized action and the exact criterion any blocker affects. Supporting work
+must remove a named acceptance dependency, not replace feature completion.
+Preserve genuine missing domain inputs, identity and operation grants.
+
+Send one bounded correction through the existing host to the current owner;
+quote the actual owner approval separately from the proposed action. Use its
+existing work and owners, not a reset, restart, forced context refresh, child
+coordinator or recurring monitor. A required correction row is recorded once;
+the next deliverable is execution, not another instruction relay.
+
+Inspect the actual receipt and subsequent criterion-related action/result.
+Report separately **sent**, **execution started**, **observed result** and
+**accepted outcome**. Queue admission proves only sent/admitted, not that the
+recipient acted. If evidence is unavailable or the real operation remains
+blocked, say so; do not mark a recommendation effective. Retain private source
+event references locally. A one-time changed action does not establish causal
+productivity gains, lasting focus or completion of the original task.
+
+## Copilot context and compaction
+
+Automatic compaction can work while cached-token totals continue to grow:
+cached input is repeated throughput across model requests, not the active
+context footprint. Inspect actual compaction events, prompt sizes and coverage
+instead of treating a large cache counter as proof of failure or efficiency.
+After SPEC exists, use the selected acceptance/correction/Handoff working set in
+`knowledge/execution-policy.md` and `docs/long-programs.md`, with just-in-time
+source reads. This prevents unnecessary regrowth; it does not evict old context.
+
+GitHub's [context documentation](https://docs.github.com/en/copilot/concepts/prompting-and-context/context-management)
+documents `/context` and `/compact` in the Copilot app. User-facing commands and
+SDK capability do not imply an agent-accessible compact tool or a configurable
+desktop threshold. Reuse supported owning-host actions/checkpoints; no automatic
+reset, user-work commit, new compressor or transcript replay.
+
+New packets retain ordinary model-call metrics and separately report observed
+compaction starts, completions, local pre/post estimates and summarizer usage.
+Summarizer input/output tokens are not the local pre/post context estimates.
+Incomplete, failed or unsupported telemetry is explicit; a pending start is
+not a failed completion. Private summaries and checkpoint paths are not copied
+into compaction metadata. Do not sum cumulative checkpoint snapshots as usage
+or add the two usage groups when request-identity coverage/overlap is unresolved.
+Legacy packets remain readable with their original ordinary-only coverage.
+
 ## Analysis shape
 
 The analysis is a JSON object with exactly these fields:

@@ -423,6 +423,18 @@ class FocusControlTests(unittest.TestCase):
         self.assertEqual("STALLED_PRIMARY_CRITERION", status["escalation"]["code"])
         error = self.cli("task-start", run_id, "pin-package", "--worker-id", "w-pin", expected=1)
         self.assertEqual("STALLED_PRIMARY_CRITERION", error["code"])
+        error = self.cli("task-start", run_id, "login-fix", "--worker-id", "w-login", expected=1)
+        self.assertEqual("FEASIBILITY_REQUIRED", error["code"])
+        self.store.record_feasibility(
+            run_id, "login-fix", trigger="stall", decision="BOUNDED_GO",
+            window={"timeoutSeconds": 120, "maxTurns": 3, "maxOutputBytes": 4096},
+            rationale="Return to the failing sign-in criterion.",
+            next_step="Repair and verify the sign-in flow.",
+            revisit="Stop at the finite recovery boundary.",
+            uncertainty="The product outcome is not observed.",
+            product_delta="No accepted product milestone.",
+            blocker="Prior work did not advance sign-in.",
+        )
         self.cli("task-start", run_id, "login-fix", "--worker-id", "w-login")
         self.commit("auth/LoginHost.swift", "fixed\n")
         status = self.cli("status", run_id)

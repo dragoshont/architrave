@@ -113,6 +113,37 @@ Notes kept only in one worktree are lost or duplicated when work moves
 to another worktree or branch; Anthropic's harness, Spec Kit, Kiro, Codex
 ExecPlans and beads all keep this state in committed files for that reason.
 
+### Context after SPEC exists
+
+Use the existing spec as a retrieval source, not a document to paste into every
+turn. Preserve selected full acceptance rows, dependency criteria and applicable
+correction chains, global rules and unresolved restrictions; keep the existing
+Handoff's Next/Failed approaches/Verify. Native packets already select this
+through `RunStore.requirements_context(task)`. Direct sessions use bounded row
+and source reads rather than another selector, summary ledger or transcript.
+
+Retain original owner intent, current ownership, exact grants and holds,
+pending/uncertain operations, current branch and dirty-source identity, relevant
+failed hypotheses and freshness-bound evidence. Recover verbose old results
+from their sources when needed. Do not reinterpret a summary as permission.
+Delta-only coordination should deliver a changed decision or result, not repeat
+the whole current state to every session.
+
+This same-session working set also guides native compaction continuity. It is
+not a successor/worktree handoff: do not auto-commit user work, reset a session
+or demand the cross-worktree handoff gate just because context is compacted.
+GitHub documents `/context` and `/compact` in the Copilot app; use only the owning
+host's supported action, not an invented agent API or a guessed desktop setting.
+Cached input is cumulative throughput across calls, not current context size.
+Smaller future reads do not remove context already loaded before compaction.
+
+The evidence supports selective retrieval and careful continuity, not guaranteed
+productivity: [GitHub context management](https://docs.github.com/en/copilot/concepts/prompting-and-context/context-management),
+[Anthropic context engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents),
+[Lost in the Middle](https://arxiv.org/abs/2307.03172v3), and
+[LongMemEval](https://arxiv.org/abs/2410.10813v2). The papers evaluate particular
+tasks/models; their effects are not measurements of current Copilot sessions.
+
 ### A small kickoff, grounded in current work
 
 Link the Architrave contract rather than copying its workflow, verification and

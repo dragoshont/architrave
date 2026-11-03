@@ -220,6 +220,32 @@ last observed PASS or objective replacement; commits do not reset it. At the
 threshold (default 3) status reports `PRIMARY_STALLED` with the best attempt and
 caveats, and task-start refuses new work on that criterion.
 
+Milestone-free activity also bounds criterion-related continuation: once the
+existing primary threshold is reached without a verified product milestone,
+`task-start` requires an effective existing criterion-scoped feasibility decision
+for the next product action or demonstrated prerequisite. This is not a new
+approval or another review. The admission check is repeated inside the start
+transaction. Existing in-flight work may finish; it does not exempt new starts.
+The finite recovery window follows the primary criterion across task and lane
+renames; host turns/output/time are shared, unknown spend is not zero, and
+expiry parks that work without granting more permission or clearing failures.
+Other criteria retain their existing admission and safety checks.
+Any supported trigger, including `user`, binds its decision to the selected
+primary criterion. Pre-existing lane decisions are evaluated under that scope;
+stricter applicable allowances, expiry and unknown finished-owner usage are
+retained. Choosing another trigger or lane cannot buy a fresh recovery window.
+
+Redeclaring a primary criterion within the same objective preserves its earliest
+epoch and cannot raise the established threshold; switching away and back also
+retains it. Product progress is credited through existing source-bound milestone
+admission, not path touches, labels or control-test counts. A milestone does not
+revoke an independently recorded feasibility limit or human hold.
+
+These controls apply to canonical Run/native admission. Ordinary direct host
+tools remain outside them. The scoped completion hook is not a general tool
+interceptor, and a serving host's hook timeout may fail open; never claim direct
+coverage without a supported action binding and observed permitted/denied calls.
+
 Current reality/e2e PASS credit from legibility requires an authenticated
 receipt bound to the current Run, objective, task (when present), criteria and
 source commit/hash at admission and consumption. Legacy unbound product

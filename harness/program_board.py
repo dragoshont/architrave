@@ -30,7 +30,7 @@ gate = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gate)
 
 STATE_HOME = Path(os.environ.get("COPILOT_HOME", Path.home() / ".copilot")) / "session-state"
-REQ_TONE = {"accepted": "done", "claimed": "active", "in-progress": "active", "blocked": "blocked", "open": "open"}
+REQ_TONE = {"accepted": "done", "claimed": "open", "in-progress": "active", "blocked": "blocked", "open": "open"}
 LANE_TONE = {"done": "done", "running": "active", "blocked": "blocked", "idle": "open", "ready": "open",
              "superseded": "gone", "stopped": "gone"}
 

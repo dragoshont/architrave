@@ -63,6 +63,14 @@ class ReviewLauncherTests(unittest.TestCase):
             self.assertIsNone(session_audit.number(value))
         self.assertEqual(0, session_audit.number(0))
         self.assertEqual(12, session_audit.number(12))
+        values = session_audit.usage_values({"inputTokens": 12, "cacheReadTokens": 8, "cacheWriteTokens": 2})
+        self.assertEqual(4, values["input"])
+        self.assertEqual(8, values["cached"])
+        self.assertEqual(2, values["cache_writes"])
+        self.assertIsNone(values["output"])
+        self.assertIsNone(session_audit.usage_values({"inputTokens": 2, "cacheReadTokens": 3})["input"])
+        self.assertIsNone(session_audit.usage_values({
+            "inputTokens": 12, "cacheReadTokens": 8, "cacheWriteTokens": 5})["cache_writes"])
 
     def test_audit_session_paths_reject_traversal_and_sidebar_names(self) -> None:
         for value in ("..", "coordinator", "../events.jsonl", "x" * 36):

@@ -13,6 +13,13 @@ Keep private packets in host session files. Internal invocation uses the same
 path at a task boundary; no extra supervisor, automatic every-turn audit,
 instruction changes, permission changes or new completion gate.
 
+The review remains read-only. If the owner explicitly approves applying a
+chosen finding, the existing lead applies critical-path recovery from
+`knowledge/execution-policy.md`, using the current goal, exact hold and next
+observable action. Reuse the owning session and host messaging, not another
+coordinator. Verify subsequent execution separately from sending the correction;
+an audit finding or approval never expands existing operation permissions.
+
 Prefer the host-native reviewer for a proposal/implementation review. When the host provides one (GitHub Copilot
 `rubber-duck`, or `code-review` for diffs), run the semantic review through it
 instead of launching `adversarial-judge`, so there's never a double review.

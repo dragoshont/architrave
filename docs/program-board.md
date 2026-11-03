@@ -49,6 +49,13 @@ the primary view; its exact IDs are under **Board details** and retained on
 refresh and in the stopped snapshot. Historical rows
 remain in `SPEC.md`; they are not copied or deleted to create a session view.
 
+Gray **Open** squares include open and claimed/queued requirements. Claiming
+ownership or including a REQ in the scope is not active implementation; blue
+**In progress** requires that explicit ledger status. Keep statuses truthful
+as work is queued, started or paused rather than marking the whole scope active.
+Delivered-but-unaccepted lane work retains its awaiting-acceptance pattern.
+Missing host activity does not authorize guessing or rewriting ledger status.
+
 Start it once per initiating session in a background (detached) shell; a second start
 exits because a watcher already holds `<output>.pid`. Use the plugin's actual
 install path on other hosts. Reuse a matching live registration, and reconcile

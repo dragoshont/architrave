@@ -5,6 +5,28 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## 0.21.32
+
+- Render claimed/queued requirements with the existing gray Open square;
+  reserve blue for explicit in-progress work, not the entire assigned scope.
+- Ground specifications in original owner outcomes and observable behavior,
+  distinguishing prerequisites and supporting tasks from delivered features.
+  Apply the same contract through lead/adoption guidance and independent review.
+- Bound milestone-free canonical continuation through the existing finite
+  feasibility window, sharing spend across criterion-related task/lane renames
+  and preserving primary epochs across same-objective redeclarations.
+- Keep genuine coordinator successor handoffs valid; do not infer inverted
+  ownership merely from sidebar ancestry. Preserve holds and independent work.
+- Rehydrate selected full requirements/corrections and existing Handoff after
+  Copilot compaction, with just-in-time source retrieval and no second ledger,
+  custom compactor, forced reset or automatic user-work commit.
+- Report observed compaction outcomes and summarizer usage separately from
+  ordinary session calls, retaining legacy packet coverage and explicit
+  missingness/request overlap.
+- Clarify documented Copilot app commands versus exposed agent capability and
+  canonical admission versus unguarded direct-host tools. Do not claim universal
+  enforcement, model-specific causation or measured productivity gains.
+
 ## 0.21.31
 
 - Add explicit local Copilot session and individual-turn audit collection,

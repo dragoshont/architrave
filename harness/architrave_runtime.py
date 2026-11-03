@@ -1827,10 +1827,27 @@ class RunStore:
         def mutate(state: dict[str, Any]) -> dict[str, Any]:
             if state["status"] in {"COMPLETED", "FAILED", "CANCELLED"}:
                 raise RuntimeFailure("RUN_TERMINAL", "cannot declare a primary criterion on a terminal Run")
-            state["focus"]["primaryCriterion"] = normalize_primary_criterion(
+            previous = state["focus"].get("primaryCriterion")
+            declared = normalize_primary_criterion(
                 state, criterion_id, paths, threshold, head,
             )
-            return copy.deepcopy(state["focus"]["primaryCriterion"])
+            history = self._read_events(self.run_dir(run_id))
+            replaced = max((event["sequence"] for event in history
+                            if event["type"] == "objective.replaced"), default=0)
+            candidates = [previous] if previous and previous["id"] == criterion_id else []
+            for event in history:
+                if event["sequence"] <= replaced or event["type"] != "focus.primary_declared":
+                    continue
+                for candidate in (event["payload"], event["payload"].get("previousPrimary")):
+                    if candidate and candidate.get("id") == criterion_id:
+                        candidates.append(candidate)
+            if candidates:
+                first = min(candidates, key=lambda item: item["eventSequence"])
+                for key in ("sinceCommit", "declaredAt", "eventSequence"):
+                    declared[key] = first[key]
+                declared["threshold"] = min(declared["threshold"], *(item["threshold"] for item in candidates))
+            state["focus"]["primaryCriterion"] = declared
+            return {**copy.deepcopy(declared), "previousPrimary": copy.deepcopy(previous)}
 
         return self._transaction(run_id, mutate, event_type="focus.primary_declared", actor=actor)
 
@@ -2337,24 +2354,35 @@ class RunStore:
             if state["status"] in {"COMPLETED", "CANCELLED"} or task["status"] in {"COMPLETED", "CANCELLED", "SKIPPED", "DEFERRED"}:
                 raise RuntimeFailure("FEASIBILITY_TERMINAL", "do not reopen completed or superseded work")
             lane = task["lane"]
-            if any(other["lane"] == lane and (other["status"] == "RUNNING" or other.get("lease"))
-                   for other in state["tasks"]):
-                raise RuntimeFailure("HOST_PAUSE_REQUIRED", "settle the actual host owner before recording this lane reset")
             events = self._read_events(self.run_dir(run_id))
             global_budget = budget_signal(state, events, self.repository)
             primary = primary_criterion_status(state, events, self.repository) if state["focus"].get("primaryCriterion") else None
             if trigger != "user" and not (
-                trigger == "stall" and primary and primary["stalled"]
+                trigger == "stall" and primary and (primary["stalled"] or primary["milestoneReviewNeeded"])
                 or trigger == "repeated-failure" and task.get("loop", {}).get("stopped")
                 or trigger == "budget" and global_budget and global_budget["signal"] in {"BUDGET_80", "BUDGET_100"}
             ):
                 raise RuntimeFailure("FEASIBILITY_TRIGGER_UNPROVEN", "quiet/time alone is not an established reset signal")
+            criterion_id = (primary["id"] if primary
+                            and primary["id"] in task["acceptanceCriteria"] else None)
             prior = lane_feasibility(state, task)
+            scope = copy.deepcopy(prior["snapshot"]) if prior else {}
+            criteria = set(scope.get("primaryCriteria", []))
+            if criterion_id:
+                criteria.add(criterion_id)
+            scope.update(primaryCriterion=criterion_id or scope.get("primaryCriterion"),
+                         primaryCriteria=sorted(criteria))
+            scope = {"snapshot": scope}
+            if any(feasibility_applies(task, other, scope)
+                   and (other["status"] == "RUNNING" or other.get("lease")) for other in state["tasks"]):
+                raise RuntimeFailure("HOST_PAUSE_REQUIRED", "settle the actual host owner before recording this recovery window")
             evidence = feasibility_evidence(state, task, self.repository)
             now = dt.datetime.now(dt.timezone.utc)
             if prior:
                 if feasibility_status(state, task)["expired"]:
                     raise RuntimeFailure("FEASIBILITY_EXPIRED", "window expired; preserve the partial decision, do not reset its clock")
+                if prior.get("hostTurnsUnknown"):
+                    raise RuntimeFailure("FEASIBILITY_BUDGET_UNKNOWN", "prior owner turns are unknown; do not replenish the allowance")
                 if prior["evidenceDigest"] == evidence:
                     raise RuntimeFailure("FEASIBILITY_UNCHANGED", "unchanged evidence cannot renew or reopen a decision")
             ceiling = dict(prior["ceiling"] if prior else task["workPacket"]["budget"])
@@ -2363,6 +2391,8 @@ class RunStore:
                 ceiling[key] = min(ceiling[key], value)
             remaining = feasibility_remaining(state, task, self.repository, events)
             chosen = {key: min(window[key], ceiling[key]) for key in keys}
+            if prior:
+                chosen = {key: min(value, prior["window"][key]) for key, value in chosen.items()}
             for key in ("timeoutSeconds", "maxTurns"):
                 if remaining[key] is not None:
                     chosen[key] = min(chosen[key], remaining[key])
@@ -2387,6 +2417,10 @@ class RunStore:
                 "recordedSequence": state["eventCursor"]["sequence"] + 1,
                 "window": chosen, "ceiling": ceiling, "evidenceDigest": evidence,
                 "snapshot": {
+                    "primaryCriterion": scope["snapshot"].get("primaryCriterion"),
+                    "primaryCriteria": scope["snapshot"].get("primaryCriteria", []),
+                    "lanes": scope["snapshot"].get("lanes", []),
+                    "accountingSequence": state["eventCursor"]["sequence"] + 1,
                     "objective": state["objective"]["description"][:1000],
                     "risk": task["risk"],
                     "failedHypotheses": [redact(item) for item in failed_hypotheses],
@@ -2977,6 +3011,29 @@ class RunStore:
             raise RuntimeFailure("EVIDENCE_RECEIPT", f"{label} receipt must be an object")
         return payload
 
+    def _assert_primary_admission(
+        self, state: dict[str, Any], task: dict[str, Any], events: Sequence[dict[str, Any]],
+    ) -> None:
+        primary = state["focus"].get("primaryCriterion")
+        if not primary:
+            return
+        stall = primary_criterion_status(state, events, self.repository)
+        bound = primary["id"] in task["acceptanceCriteria"]
+        if stall and bound and stall["loopCapped"]:
+            escalation = primary_stalled_escalation(stall)
+            raise RuntimeFailure(escalation["code"], escalation["message"], details=escalation)
+        if stall and not bound and stall["stalled"]:
+            escalation = stalled_primary_escalation(stall)
+            raise RuntimeFailure(escalation["code"], escalation["message"], details=stall)
+        if (stall and bound and stall["criterionStatus"] not in {"PASS", "NOT_APPLICABLE"}
+                and stall["workSinceMilestone"] >= stall["threshold"] and not lane_feasibility(state, task)):
+            raise RuntimeFailure(
+                "FEASIBILITY_REQUIRED",
+                "no verified product milestone within the primary window; record one bounded feasibility decision "
+                "for the next product action or demonstrated prerequisite, not another unchanged continuation",
+                details=stall,
+            )
+
     def start_task(
         self,
         run_id: str,
@@ -3008,16 +3065,7 @@ class RunStore:
         budget = budget_signal(snapshot, events, self.repository)
         if budget and budget["signal"] == "BUDGET_100":
             raise RuntimeFailure("BUDGET_100", "Run budget is exhausted; no new worker dispatches", details=budget)
-        primary = snapshot["focus"].get("primaryCriterion")
-        if primary:
-            stall = primary_criterion_status(snapshot, events, self.repository)
-            bound = primary["id"] in snapshot_task["acceptanceCriteria"]
-            if stall and bound and stall["loopCapped"]:
-                escalation = primary_stalled_escalation(stall)
-                raise RuntimeFailure(escalation["code"], escalation["message"], details=escalation)
-            if stall and not bound and stall["stalled"]:
-                escalation = stalled_primary_escalation(stall)
-                raise RuntimeFailure(escalation["code"], escalation["message"], details=stall)
+        self._assert_primary_admission(snapshot, snapshot_task, events)
         if TARGET_OPERATIONS.intersection(snapshot_task.get("operations") or []):
             identity = snapshot.get("targetIdentity")
             if (
@@ -3082,9 +3130,12 @@ class RunStore:
             task = find_task(state, task_id)
             self._validate_task_requirements(task)
             self._assert_context_scope(state, task)
+            self._assert_primary_admission(state, task, self._read_events(self.run_dir(run_id)))
             reset = feasibility_status(state, task)
             if reset and (reset["expired"] or reset["decision"] not in {"CONTINUE", "BOUNDED_GO"}):
                 raise RuntimeFailure("FEASIBILITY_STOP", "lane reset prevents dispatch", details=reset)
+            if reset:
+                effective_work_budget(state, task)
             loop = task.get("loop")
             if loop and loop.get("stopped"):
                 raise RuntimeFailure("REPEATED_FAILURE", "same failure twice without new evidence; this lane is stopped")
@@ -6540,10 +6591,59 @@ def primary_criterion_status(
     }
 
 
+def feasibility_applies(owner: dict[str, Any], task: dict[str, Any], reset: dict[str, Any]) -> bool:
+    if owner["objectiveVersion"] != task["objectiveVersion"]:
+        return False
+    criteria = set(reset["snapshot"].get("primaryCriteria", []))
+    if reset["snapshot"].get("primaryCriterion"):
+        criteria.add(reset["snapshot"]["primaryCriterion"])
+    lanes = reset["snapshot"].get("lanes", [])
+    return (bool(criteria.intersection(task["acceptanceCriteria"])) or task["lane"] in lanes
+            or not criteria and not lanes and owner["lane"] == task["lane"])
+
+
 def lane_feasibility(state: dict[str, Any], task: dict[str, Any]) -> dict[str, Any] | None:
-    decisions = [item["feasibility"] for item in state["tasks"] if item.get("feasibility")
-                 and item["lane"] == task["lane"] and item["objectiveVersion"] == state["objective"]["version"]]
-    return max(decisions, key=lambda item: item["recordedSequence"]) if decisions else None
+    decisions = []
+    primary = state["focus"].get("primaryCriterion")
+    for owner in state["tasks"]:
+        if not owner.get("feasibility") or owner["objectiveVersion"] != state["objective"]["version"]:
+            continue
+        reset = copy.deepcopy(owner["feasibility"])
+        criteria = set(reset["snapshot"].get("primaryCriteria", []))
+        if reset["snapshot"].get("primaryCriterion"):
+            criteria.add(reset["snapshot"]["primaryCriterion"])
+        lanes = set(reset["snapshot"].get("lanes", []))
+        if not criteria and not lanes:
+            lanes.add(owner["lane"])
+            if primary and primary["id"] in owner["acceptanceCriteria"]:
+                criteria.add(primary["id"])
+        reset["snapshot"].update(primaryCriteria=sorted(criteria), lanes=sorted(lanes))
+        if feasibility_applies(owner, task, reset):
+            turns, output = feasibility_usage(state, owner, reset)
+            decisions.append((reset, turns, output))
+    if not decisions:
+        return None
+    result = copy.deepcopy(max(decisions, key=lambda item: item[0]["recordedSequence"])[0])
+    resets = [item[0] for item in decisions]
+    result["startedAt"] = min(item["startedAt"] for item in resets)
+    result["startSequence"] = min(item["startSequence"] for item in resets)
+    result["expiresAt"] = min(resets, key=lambda item: parse_iso(item["expiresAt"]))["expiresAt"]
+    result["partial"] = any(item["partial"] for item in resets)
+    result["ceiling"] = {key: min(item["ceiling"][key] for item in resets) for key in result["ceiling"]}
+    result["window"] = {
+        "timeoutSeconds": max(0, int((parse_iso(result["expiresAt"]) - dt.datetime.now(dt.timezone.utc)).total_seconds())),
+        "maxTurns": min((max(0, reset["window"]["maxTurns"] - turns) for reset, turns, _ in decisions
+                         if turns is not None), default=result["window"]["maxTurns"]),
+        "maxOutputBytes": min(max(0, reset["window"]["maxOutputBytes"] - output)
+                              for reset, _, output in decisions),
+    }
+    result["hostTurnsUnknown"] = any(turns is None for _, turns, _ in decisions)
+    result["snapshot"].update(
+        primaryCriteria=sorted({cid for item in resets for cid in item["snapshot"]["primaryCriteria"]}),
+        lanes=sorted({lane for item in resets for lane in item["snapshot"]["lanes"]}),
+        accountingSequence=state["eventCursor"]["sequence"],
+    )
+    return result
 
 
 def feasibility_status(state: dict[str, Any], task: dict[str, Any]) -> dict[str, Any] | None:
@@ -6552,7 +6652,8 @@ def feasibility_status(state: dict[str, Any], task: dict[str, Any]) -> dict[str,
         return None
     seconds = max(0, int((parse_iso(reset["expiresAt"]) - dt.datetime.now(dt.timezone.utc)).total_seconds()))
     turns_used, output_used = feasibility_usage(state, task, reset)
-    turns = max(0, reset["window"]["maxTurns"] - turns_used) if turns_used is not None else None
+    turns = (max(0, reset["window"]["maxTurns"] - turns_used)
+             if turns_used is not None and not reset.get("hostTurnsUnknown") else None)
     output = max(0, reset["window"]["maxOutputBytes"] - output_used)
     limits = (repository_config(state["baseline"]["repository"]).get("evaluation") or {}).get("budget") or {}
     if limits.get("maxMinutes"):
@@ -6576,10 +6677,11 @@ def feasibility_usage(state: dict[str, Any], task: dict[str, Any], reset: dict[s
     repository = Path(state["baseline"]["repository"])
     store = RunStore(repository)
     events = store._read_events(store.run_dir(state["runId"]))
-    lane_tasks = {item["id"] for item in state["tasks"] if item["lane"] == task["lane"]
+    lane_tasks = {item["id"] for item in state["tasks"] if feasibility_applies(task, item, reset)
                   and item["objectiveVersion"] == state["objective"]["version"]}
     owners = {event["payload"]["workerId"] for event in events
-              if event["sequence"] > reset["startSequence"] and event["type"] == "task.started"
+              if event["sequence"] > reset["snapshot"].get("accountingSequence", reset["startSequence"])
+              and event["type"] == "task.started"
               and event.get("taskId") in lane_tasks}
     turns, output, reported = 0, 0, set()
     unknown = False
@@ -6656,7 +6758,7 @@ def effective_work_budget(state: dict[str, Any], task: dict[str, Any]) -> dict[s
     budget = dict(task["workPacket"]["budget"])
     reset = feasibility_status(state, task)
     if reset:
-        if any(other["id"] != task["id"] and other["lane"] == task["lane"] and other["status"] == "RUNNING"
+        if any(other["id"] != task["id"] and feasibility_applies(task, other, reset) and other["status"] == "RUNNING"
                for other in state["tasks"]):
             raise RuntimeFailure("FEASIBILITY_LANE_BUSY", "one discriminating owner at a time in the reset lane; retain other lanes' independent work")
         repository = Path(state["baseline"]["repository"])

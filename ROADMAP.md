@@ -1,5 +1,35 @@
 # Roadmap
 
+## v0.21.32 - Bounded recovery, context and specifications (REQ-81..89, #35/#36)
+
+Finite criterion-bound recovery through existing admission/feasibility controls,
+with shared spend and retained epochs across task/lane/primary redeclarations.
+Preserve genuine successor handoffs, independent safe work, holds and unknown
+side effects. Rehydrate selected full requirements/corrections/Handoff after
+native compaction rather than reread all history. Separate compaction usage,
+outcomes and missingness from ordinary model-call totals.
+Require owner-goal coverage and observable acceptance through existing
+specification guidance and independent review, without a second ledger or
+keyword quality score.
+Show claimed/queued work in existing gray Open squares; reserve blue for
+explicitly in-progress work rather than imply parallel implementation.
+
+Canonical admission is not a general direct-host guard; hook timeout behavior
+and unbound tools remain explicit coverage limits. Local checks and one real
+observation do not establish lasting focus or productivity. Publish/install
+verified source without resetting already-running sessions.
+
+## Approved critical-path recovery (REQ-81/82, #35)
+
+Extend the existing lead and owner-approved audit application, rather than add
+another runtime or monitor. The coordinator retains integration ownership and
+turns corrections, handoffs and repeated failures into the next criterion-bound
+action. Genuine blockers stay local to dependent operations; original scopes,
+grants and input owners remain intact. Apply bounded refocus to the existing
+owner-selected sessions without resets and verify actual subsequent actions,
+not instruction delivery alone. Instruction checks and a one-time observation
+do not demonstrate lasting focus or productivity improvement.
+
 ## v0.21.31 - Session delivery audits (REQ-77..80, #34)
 
 On-demand real-session/turn analysis through the existing review and board:

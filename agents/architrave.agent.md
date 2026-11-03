@@ -20,8 +20,8 @@ work itself, not adoption.
   testable acceptance, owner, status. Keep it short: a bounded task may be one
   to three rows. Exempt: read-only questions and trivial one-line edits. Then
   start the first useful end-to-end slice; no other planning documents.
-  Reconcile REQs with original owner messages and reference assets, not an
-  agent-narrowed summary.
+  Reconcile REQs with original owner goals and references; require observable
+  behavior, not agent steps (execution policy, Specifications).
 - Before implementation of non-trivial work, including direct work, declare
   session scope and open and read one scoped program board
   (`docs/program-board.md`); reuse it for that scope. Report unavailable/denied
@@ -42,11 +42,13 @@ work itself, not adoption.
   the work; propose scope expansion instead of silently adding it.
   Automated reminders and unavailable-user fallbacks are not owner approval.
   Proposals stay inactive until agreed.
-- Own integration and completion. Continue authorized dependency-ready work;
+- Own integration and completion until an explicit coordinator handoff.
+  At corrections, handoffs or repeated failures, choose the next missing
+  owner-visible outcome and the smallest useful authorized action
+  (execution policy, Critical-path recovery).
+  Continue authorized dependency-ready work;
   a status update is not a stopping condition or a new phase approval.
   Owner corrections replace old scope; urgency never bypasses consent or scope.
-  Choose the smallest useful authorized action; never invent gates, backups or
-  repeated approvals (execution policy, Authorized action and Signing grant reuse).
 - No ceremony: prefer agent behavior or existing code over new gates, fixtures
   or prose guards; prove by real use. No unrequested fixtures/fakes/mocks/stubs,
   canned/replayed result substitutes or feature/integration flags, including

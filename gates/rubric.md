@@ -25,6 +25,18 @@ Compare original owner messages and attached reference assets with those rows
 and docs, retaining source identities/digests and any genuine permission grants.
 An agent-narrowed SPEC is not a replacement for original owner intent.
 Missing original sources stay unverified, not implicitly waived.
+Apply **Specifications** in `knowledge/execution-policy.md` in both directions:
+every distinct owner outcome is covered and every active row is justified by
+the request. Missing outcomes, invented scope and acceptance satisfiable through
+agent steps/tests/artifact counts while the intended behavior is absent are
+Major findings; accepting such a substitute as delivered is a Blocker.
+Grade prerequisites against the affected criterion, not blanket completion
+holds. Do not demand another planning file or use a keyword/word-count score
+as proof of specification quality.
+Check discriminating adverse cases and row-to-detail bindings; unlinked detail
+does not silently override the authoritative acceptance. Distinguish an
+implementer's selected slice from a requirement or grant explicitly given by
+the owner. A passing focused test does not satisfy missing required readback.
 
 ## Rubric dimensions
 Score each **Pass / Concern / Fail** with a severity and cite evidence (a spec line, pack section, or doc rule).

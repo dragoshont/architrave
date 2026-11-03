@@ -69,6 +69,19 @@ consumption and approach, then shows evidence-backed prompt, instruction and
 workflow proposals on the existing scoped board. Collection is local and
 deterministic; semantic assessment uses the host reviewer. Nothing is applied
 automatically and no productivity improvement is claimed from token counts.
+For an explicitly owner-approved change, the existing lead can apply
+[critical-path recovery](docs/session-audit.md#owner-approved-critical-path-recovery):
+keep integration ownership, execute the next missing outcome, isolate genuine
+blockers and observe subsequent work. This is instruction-driven host steering,
+not an automatic watchdog or permission override.
+Declared canonical Runs now require a shared finite recovery window after
+milestone-free churn; labels, path touches and task/lane renames do not replenish
+it. Direct host tools are not covered by that admission control. Copilot context
+work reuses native compaction and selected SPEC/Handoff retrieval, while audits
+report compaction consumption separately from ordinary calls.
+Specification guidance and independent review require owner-goal coverage,
+discriminating observable acceptance and explicit row-to-detail bindings, not
+an execution diary or a passing-test substitute for the requested behavior.
 
 Native work selects an explicit Run and exact REQ corrections rather than loading
 all history. Explicit `global` rules remain current; ambiguous legacy targets

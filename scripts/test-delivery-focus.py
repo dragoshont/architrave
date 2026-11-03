@@ -12,6 +12,7 @@ def contains_guidance(text: str, phrase: str) -> bool:
 agent = (root / "agents/architrave.agent.md").read_text(encoding="utf-8")
 agent_frontmatter = agent.split("---", 2)[1]
 execution = (root / "knowledge/execution-policy.md").read_text(encoding="utf-8")
+board_source = (root / "harness/program_board.py").read_text(encoding="utf-8")
 rubric = (root / "gates/rubric.md").read_text(encoding="utf-8")
 learning = (root / "knowledge/learning-loop.md").read_text(encoding="utf-8")
 stanza = (root / "templates/AGENTS.stanza.md").read_text(encoding="utf-8")
@@ -37,6 +38,31 @@ codex_roles = "\n".join(
 )
 
 required = {
+    "claimed is queued not active": (board_source, '"claimed": "open"'),
+    "explicit implementation stays blue": (board_source, '"in-progress": "active"'),
+    "spec owner outcomes": (execution, "contract for the owner's requested outcomes"),
+    "spec discriminating criteria": (execution, "Include discriminating cases, not just a happy path"),
+    "spec one acceptance authority": (execution, "explicitly bind that row to its named detail"),
+    "spec truthful attribution": (execution, "a reasonable selection is not a new owner instruction"),
+    "spec local prerequisites": (execution, "exact criterion a missing input, permission or runtime"),
+    "adoption observable acceptance": (stanza, "preserve owner-goal"),
+    "spec independent semantic coverage": (rubric, "every distinct owner outcome is covered"),
+    "spec guidance via skill": (lead_skill, "**Specifications**"),
+    "lead keeps integration ownership": (agent, "until an explicit coordinator handoff"),
+    "lead recovery triggers": (agent, "At corrections, handoffs or repeated failures"),
+    "lead next owner outcome": (agent, "next missing owner-visible outcome"),
+    "policy recovery is an action": (execution, "Record the correction once when required, then execute"),
+    "policy children do not direct parent": (execution, "a child supplies a bounded result, not authority over its parent"),
+    "policy legitimate successor": (execution, "the predecessor may implement a bounded slice for the successor"),
+    "context selected full acceptance": (execution, "selected full acceptance rows, necessary dependency rows"),
+    "context pending effects survive": (execution, "pending tools/workers/queued actions, uncertain side effects"),
+    "compaction is not cross-worktree handoff": (execution, "Same-session context compaction is not a coordinator/worktree handoff"),
+    "context retrieval does not evict": (execution, "it does not evict already-loaded context before host compaction"),
+    "policy blockers stay local": (execution, "Attach a blocker to the exact dependent operation and acceptance criterion"),
+    "policy operation not verb": (execution, "Do not turn a submission restriction into a blanket transport-verb ban"),
+    "policy source and delivery differ": (execution, "A handoff or source check is not the end-to-end outcome"),
+    "review remains read-only during recovery": (review_skill, "The review remains read-only"),
+    "review hands approved recovery to lead": (review_skill, "the existing lead applies critical-path recovery"),
     "automated reminders are not owner authority": (agent, "Automated reminders and unavailable-user fallbacks are not owner approval"),
     "proposed work is not active scope": (agent, "Proposals stay inactive until agreed"),
     "generic test approval is not substitute approval": (agent, "Generic test approval does not authorize new substitutes"),

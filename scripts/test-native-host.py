@@ -61,14 +61,15 @@ class NativeHostTests(unittest.TestCase):
         self.assertIsNotNone(owner_message_lint("evidence " * 400))
         self.assertIsNone(owner_message_lint("Objective: actual product flow. Blocker: unknown mechanism. Next: one parity probe."))
 
-    def product_task(self):
+    def product_task(self, worker_profile="shell", declare_primary=True):
         run = self.store.create(
             run_id="milestone", goal="Actual product progress", outcome="Product flow works",
-            autonomy_scope="approved-program", primary_criterion="FLOW", primary_paths=["README.md"],
+            autonomy_scope="approved-program", primary_criterion="FLOW" if declare_primary else None,
+            primary_paths=["README.md"] if declare_primary else [],
             criteria=[{"id": "FLOW", "description": "Observed product flow", "scope": "product",
                        "risk": "R1", "verificationType": "reality", "surface": "web", "blocking": True}])
         self.store.add_task("milestone", {"id": "flow", "objective": "Verify actual product",
-                                        "acceptanceCriteria": ["FLOW"], "risk": "R1", "workerProfile": "shell"})
+                                        "acceptanceCriteria": ["FLOW"], "risk": "R1", "workerProfile": worker_profile})
         return "milestone", "flow"
 
     def product_gate(self, run, task, suffix):
@@ -118,7 +119,27 @@ class NativeHostTests(unittest.TestCase):
         self.assertEqual("MILESTONE_BINDING", error.exception.code)
 
     def test_path_touch_activity_cannot_reset_product_milestone_and_live_bound_work_is_not_stalled(self):
-        run, task = self.product_task()
+        self.assert_primary_recovery("user")
+
+    def test_stall_recovery_shares_the_same_criterion_budget(self):
+        self.assert_primary_recovery("stall")
+
+    def test_preexisting_lane_decisions_cannot_renew_primary_recovery(self):
+        self.assert_primary_recovery("user", preexisting=True)
+
+    def test_unknown_prior_turns_cannot_be_cleared_by_a_user_recovery(self):
+        self.assert_primary_recovery("user", preexisting=True, unknown=True)
+
+    def assert_primary_recovery(self, trigger, preexisting=False, unknown=False):
+        run, task = self.product_task("native", declare_primary=not preexisting)
+        if preexisting:
+            self.feasibility(run, task, trigger="user",
+                             window={"timeoutSeconds": 120, "maxTurns": 2, "maxOutputBytes": 800})
+            self.store.add_task(run, {"id": "renamed", "objective": "Next scoped action", "lane": "second",
+                                     "acceptanceCriteria": ["FLOW"], "risk": "R1", "workerProfile": "native"})
+            self.feasibility(run, "renamed", trigger="user",
+                             window={"timeoutSeconds": 120, "maxTurns": 4, "maxOutputBytes": 1600})
+            self.store.set_primary_criterion(run, criterion_id="FLOW", paths=["README.md"], threshold=3)
         for number in range(3):
             (self.repo / "README.md").write_text(f"compatibility patch {number}", encoding="utf-8")
             subprocess.run(["git", "add", "README.md"], cwd=self.repo, check=True, capture_output=True)
@@ -133,9 +154,42 @@ class NativeHostTests(unittest.TestCase):
         self.assertEqual(0, primary["verifiedMilestones"])
         self.assertTrue(primary["milestoneReviewNeeded"])
         self.assertFalse(primary["pathTouchIsProductEvidence"])
-        self.store.start_task(run, task, worker_id="exploring-bounded")
+        if not preexisting:
+            with self.assertRaises(RuntimeFailure) as error:
+                self.store.begin_native_worker(run, task, host_owner="host")
+            self.assertEqual("FEASIBILITY_REQUIRED", error.exception.code)
+        first = state["focus"]["primaryCriterion"]
+        self.store.set_primary_criterion(run, criterion_id="FLOW", paths=["README.md"], threshold=100)
+        redeclared = self.store.load(run)["focus"]["primaryCriterion"]
+        for key in ("sinceCommit", "declaredAt", "eventSequence", "threshold"):
+            self.assertEqual(first[key], redeclared[key])
+        if preexisting:
+            with self.assertRaises(RuntimeFailure) as error:
+                self.feasibility(run, task, trigger=trigger)
+            self.assertEqual("FEASIBILITY_UNCHANGED", error.exception.code)
+        else:
+            self.feasibility(run, task, trigger=trigger,
+                             window={"timeoutSeconds": 120, "maxTurns": 2, "maxOutputBytes": 800})
+            self.store.add_task(run, {"id": "renamed", "objective": "Next scoped action", "lane": "second",
+                                     "acceptanceCriteria": ["FLOW"], "risk": "R1", "workerProfile": "native"})
+        ticket = self.store.begin_native_worker(run, task, host_owner="host")
+        self.store.bind_native_owner(ticket, "bounded-owner")
         state = self.store.load(run)
         self.assertFalse(primary_criterion_status(state, self.store.events(run), self.repo)["milestoneReviewNeeded"])
+        with self.assertRaises(RuntimeFailure) as error:
+            self.store.begin_native_worker(run, "renamed", host_owner="host")
+        self.assertEqual("FEASIBILITY_LANE_BUSY", error.exception.code)
+        self.store.accept_native_candidate(ticket, host_task_id="bounded-owner", host_status="completed",
+                                           text="retained candidate", host_observation={} if unknown else {"turnsObserved": 2})
+        state = self.store.load(run)
+        status = feasibility_status(state, state["tasks"][-1])
+        self.assertTrue(status["hostTurnsUnknown"] if unknown else status["expired"])
+        with self.assertRaises(RuntimeFailure) as error:
+            self.store.begin_native_worker(run, "renamed", host_owner="host")
+        self.assertEqual("FEASIBILITY_BUDGET_UNKNOWN" if unknown else "FEASIBILITY_STOP", error.exception.code)
+        with self.assertRaises(RuntimeFailure) as error:
+            self.feasibility(run, "renamed", trigger="user")
+        self.assertEqual("FEASIBILITY_BUDGET_UNKNOWN" if unknown else "FEASIBILITY_EXPIRED", error.exception.code)
 
     def test_owner_path_correction_is_exact_and_preserves_auth_holds_budget_and_source_history(self):
         run, task = self.product_task()
@@ -372,6 +426,52 @@ class NativeHostTests(unittest.TestCase):
             self.assertEqual("Revisit only after new discriminating evidence.", status["revisit"])
             with self.assertRaises(RuntimeFailure):
                 self.store.start_task(run_id, "scoped", worker_id="expired")
+            with self.assertRaises(RuntimeFailure) as error:
+                self.feasibility(run_id, "scoped")
+            self.assertEqual("FEASIBILITY_EXPIRED", error.exception.code)
+
+    def test_unexpired_lane_park_requires_evidence_backed_reevaluation(self):
+        self.assert_park_reevaluation(primary=False)
+
+    def test_unexpired_primary_park_requires_evidence_backed_reevaluation(self):
+        self.assert_park_reevaluation(primary=True)
+
+    def assert_park_reevaluation(self, primary):
+        run_id, _ = self.product_task() if primary else self.task("shell")
+        self.store.add_task(run_id, {"id": "scoped", "objective": "Reevaluate changed scoped evidence",
+                                   "workerProfile": "shell", "acceptanceCriteria": ["FLOW" if primary else "FIX"],
+                                   "risk": "R1", "workPacket": {"contextBundle": ["README.md"]}})
+        first = self.feasibility(run_id, "scoped", decision="PARK")["tasks"][1]["feasibility"]
+        state = self.store.load(run_id)
+        status = feasibility_status(state, state["tasks"][1])
+        self.assertFalse(status["expired"])
+        self.assertEqual("PARK", status["decision"])
+        with self.assertRaises(RuntimeFailure) as error:
+            self.store.start_task(run_id, "scoped", worker_id="parked")
+        self.assertEqual("FEASIBILITY_STOP", error.exception.code)
+        with self.assertRaises(RuntimeFailure) as error:
+            self.feasibility(run_id, "scoped")
+        self.assertEqual("FEASIBILITY_UNCHANGED", error.exception.code)
+        (self.repo / "README.md").write_text("new discriminating source evidence", encoding="utf-8")
+        state = self.feasibility(run_id, "scoped")
+        second = state["tasks"][1]["feasibility"]
+        self.assertEqual("BOUNDED_GO", second["decision"])
+        self.assertEqual(first["startedAt"], second["startedAt"])
+        self.assertEqual(first["startSequence"], second["startSequence"])
+        self.assertLessEqual(second["expiresAt"], first["expiresAt"])
+        for key in ("maxTurns", "maxOutputBytes"):
+            self.assertLessEqual(second["window"][key], first["window"][key])
+        self.assertEqual([], state["workers"])
+        self.assertIn("scoped", [task["id"] for task in self.store.ready_tasks(run_id)])
+        future = dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=10)
+
+        class Clock(dt.datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return future if tz else future.replace(tzinfo=None)
+
+        (self.repo / "README.md").write_text("later evidence cannot renew an expired window", encoding="utf-8")
+        with mock.patch("architrave_runtime.dt.datetime", Clock):
             with self.assertRaises(RuntimeFailure) as error:
                 self.feasibility(run_id, "scoped")
             self.assertEqual("FEASIBILITY_EXPIRED", error.exception.code)
