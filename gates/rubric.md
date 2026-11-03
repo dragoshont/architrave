@@ -38,6 +38,28 @@ does not silently override the authoritative acceptance. Distinguish an
 implementer's selected slice from a requirement or grant explicitly given by
 the owner. A passing focused test does not satisfy missing required readback.
 
+Reconcile source rules, derived contract/code and the exact current authoritative
+acceptance in both directions, including original state transitions, external
+ownership and conditional branches. Apply the Specifications policy and, for
+relevant backend boundaries, its replay/identity/lifecycle guidance:
+- Require concrete discriminating scenarios with starting state, action, expected
+  transition/result and cited source rule. Contrast availability with selection
+  and ongoing validity, due with expiry, retained duplicate with changed-content
+  conflict, and saved approval/completion with current applicability.
+- Inspect the normal composed producer/consumer path, not only helper existence:
+  actual caller/wiring, serialization/hash preimage, consuming validation and
+  resulting state. Check that corrections reach current acceptance and handoff;
+  a later note cannot leave contradictory delivery claims authoritative.
+- Label source-only inspection separately from observed execution and installed
+  delivery. Schema validity, unit counts and source-string assertions cannot
+  close end-to-end claims. Unobserved required scenarios remain unverified;
+  do not invent provider results or new test substitutes to obtain a PASS.
+
+Lost distinctions, dropped branches, invented obligations or contradictory
+current acceptance are Major; accepting them as delivered or using them to
+bypass permission is a Blocker. These are semantic judgments requiring cited
+evidence, not new keyword gates or proof of automatic prevention.
+
 ## Rubric dimensions
 Score each **Pass / Concern / Fail** with a severity and cite evidence (a spec line, pack section, or doc rule).
 

@@ -33,6 +33,40 @@ explicitly bind that row to its named detail and retrieve it for the task/review
 Do not maintain a compressed row and unlinked detailed criteria as competing
 authorities or accept the row while its bound real-readback criterion is open.
 
+Preserve source semantics across derived requirements, contracts, implementation
+and checks, not just names or field shapes. Keep availability, selection for new
+work and validity for ongoing use distinct when the source distinguishes them.
+Trace the relevant original state transitions, actors, external ownership and
+conditional branches in both directions: no lost responsibility or condition,
+and no optional/external branch silently made mandatory local work. For each
+material boundary, identify a concrete case that would distinguish the source
+rule from the proposed simplification; unresolved source contradictions stay
+unverified for that criterion. Use existing rows and bound detail, not a new
+matrix or universal checklist.
+
+Saved approval or completion is historical evidence, not current permission
+or applicability. Check the existing grant's target, operation, limits,
+expiry/revocation and the present state; reuse a still-matching scoped grant
+without asking again. Neither history nor a changed projection may bypass
+current host permissions or erase a valid grant. Time fields have only their
+source-defined meaning; a due date is not automatically a validity deadline.
+
+For an end-to-end criterion, trace the normal composed producer/consumer path,
+including actual entry point, wiring, persisted/serialized output, consuming
+validation and resulting state transition. A callable helper or independently
+valid schema is not proof that this path is reachable or its output consumable.
+Bind evidence to the exact current acceptance and source; distinguish source
+inspection, executed local composition and observed installed/runtime delivery.
+Missing required execution leaves that criterion open, not satisfied by unit
+counts or source-string assertions.
+
+When a correction changes meaning, update or explicitly supersede affected
+authoritative acceptance, derived contract and current Handoff/Verify claims,
+using the existing correction mechanism. Retain historical provenance, but
+reopen affected acceptance and invalidate only evidence that no longer proves
+it; an appended note cannot leave contradictory claims authoritative. Preserve
+unaffected evidence, scoped grants and unrelated historical rows.
+
 Separate the requested result from an implementation hypothesis and from
 prerequisites. Name the exact criterion a missing input, permission or runtime
 target blocks; continue independent authorized criteria. Ask only for a choice

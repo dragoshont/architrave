@@ -12,6 +12,7 @@ def contains_guidance(text: str, phrase: str) -> bool:
 agent = (root / "agents/architrave.agent.md").read_text(encoding="utf-8")
 agent_frontmatter = agent.split("---", 2)[1]
 execution = (root / "knowledge/execution-policy.md").read_text(encoding="utf-8")
+backend = (root / "knowledge/backend.md").read_text(encoding="utf-8")
 board_source = (root / "harness/program_board.py").read_text(encoding="utf-8")
 rubric = (root / "gates/rubric.md").read_text(encoding="utf-8")
 learning = (root / "knowledge/learning-loop.md").read_text(encoding="utf-8")
@@ -44,6 +45,19 @@ required = {
     "spec discriminating criteria": (execution, "Include discriminating cases, not just a happy path"),
     "spec one acceptance authority": (execution, "explicitly bind that row to its named detail"),
     "spec truthful attribution": (execution, "a reasonable selection is not a new owner instruction"),
+    # These assert guidance presence, not semantic correctness or installed behavior.
+    "spec distinct lifecycle predicates": (execution, "availability, selection for new work and validity for ongoing use"),
+    "spec conditional ownership": (execution, "external ownership and conditional branches"),
+    "spec correction reaches acceptance": (execution, "update or explicitly supersede affected authoritative acceptance"),
+    "spec current permission": (execution, "Saved approval or completion is historical evidence, not current permission"),
+    "spec composed delivery": (execution, "normal composed producer/consumer path"),
+    "backend non-circular identity": (backend, "exclude the resulting hash from its own preimage"),
+    "backend replay before projection": (backend, "resolve a retained replay before comparing mutable projections"),
+    "backend due is not expiry": (backend, "A due timestamp is not expiration"),
+    "review exact current acceptance": (rubric, "exact current authoritative acceptance"),
+    "review boundary scenarios": (rubric, "starting state, action, expected transition/result"),
+    "review source-only distinction": (rubric, "Label source-only inspection separately from observed execution"),
+    "review schema is not delivery": (rubric, "Schema validity, unit counts and source-string assertions cannot close end-to-end claims"),
     "spec local prerequisites": (execution, "exact criterion a missing input, permission or runtime"),
     "adoption observable acceptance": (stanza, "preserve owner-goal"),
     "spec independent semantic coverage": (rubric, "every distinct owner outcome is covered"),
