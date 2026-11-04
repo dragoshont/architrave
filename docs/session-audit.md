@@ -126,6 +126,96 @@ into compaction metadata. Do not sum cumulative checkpoint snapshots as usage
 or add the two usage groups when request-identity coverage/overlap is unresolved.
 Legacy packets remain readable with their original ordinary-only coverage.
 
+New v3 packets also retain observed native permission, child lifecycle,
+turn-end, resume, idle, abort, shutdown and error events. These are observations,
+not new admission or completion hooks. Permission request IDs, tool-call IDs
+and reported result kinds are retained outside truncated excerpts; an assistant
+asking for permission is still only conversation. An `approved` result does not
+establish interactive human approval, revoke other holds or authorize a different
+action. Missing result kinds remain unknown; absence of permission events does
+not prove an operation was permitted.
+
+`host_context` binds the latest recorded session start at or before a selected
+turn (or the latest start for a whole-session audit), including host version,
+producer, requested model when reported, host-selected model/effort and recorded
+cwd/Git root/branch/commit. Missing fields are null. Selection is not proof of
+effective execution: ordinary usage `metrics.models` remains separate. Child
+events retain requested and reported models separately and their tool-call
+identity, without inferring an actual child session/worktree from a display
+name or the parent's cwd. Verify those identities through the admitted native
+ticket or a read-only child preflight. Historical session-start context is not
+a live repository-state check. Turn audits do not import later host changes.
+v1/v2 packets reconstruct under their original observation rules.
+
+### Issue #37 boundary validation
+
+Reviewed baseline: `23f16aed7534cf8f5224ffe9ed68672b9ebc42ce`
+(Architrave 0.21.32). Source map, not a claim that every host uses these seams:
+
+| Control / source | Enforced boundary and limit |
+|---|---|
+| `hooks.json`; `gates/session_guard.py:pre_tool_use` | Session start supplies instructions; only received `task_complete` calls with a declaration invoke the delivery checker. Silent returns, disconnected hosts and direct tool calls are not universally intercepted. No Stop loop or every-turn guard |
+| `harness/native_host.py:requirements_kickoff`; `harness/architrave_runtime.py:begin_native_worker`, `start_task`, `bind_native_owner` | Canonical admission checks selected requirements, context, ownership, worktree/base, grants and finite budgets before native dispatch; binds the actual host handle. Direct host tools do not automatically enter this path |
+| `harness/architrave_runtime.py:accept_native_candidate`, `complete_task`, `resume` | Observed completed/idle/failed/cancelled returns are candidates, not accepted delivery; ticket, objective, source and owned diff checks reject stale/replayed results. Resume rechecks canonical state. A text progress update is not a terminal host receipt |
+| `harness/architrave_runtime.py:_assert_primary_admission`, `record_feasibility`, `advance_milestone`, `feasibility_usage` | Existing criterion-wide feasibility/milestone accounting bounds recovery across renamed tasks and successor lanes. Unknown turns do not become zero; source touches and renamed observations cannot renew progress. This is not a direct-host watchdog |
+| `gates/delivery_check.py:check_session`; `docs/delivery-authenticity.md` | Current selected scope, owner anchors/corrections, shared dependency inventory, observed proof and independent digest-bound review govern acceptance. Unchanged outcomes can retain proof; changed inputs need fresh proof. Empty diff is not failure if the original outcome is already independently verified |
+| `knowledge/execution-policy.md`, Specifications / Context / Critical-path recovery | Choosing the correct next action, retaining one integration owner, rehydrating selected authority and continuing independent work are instructions. They do not prove execution. Stale summaries, audit findings and automated reminders grant no scope or permission |
+| `harness/session_audit.py:collect_session`; `harness/native_host.py:routing_observation` | Local audit retains observed lifecycle/permission events and native command exit telemetry; native bridge separates requested/effective routing. Missing model, command exit, child identity or host telemetry stays unknown. This cloud assignment has no joined app tasks/canvas API or Copilot CLI for a fresh matched replay |
+
+**Demonstrated gap and narrow fix.** On one fixed prefix of this authorized
+cloud assignment's real local log, the baseline collector retained zero of
+118 `permission.requested` and 118 `permission.completed` events. v3 retains
+all of them, including the reported `approved` kinds, and host identity.
+No private transcript, request ID, session ID or path is published. This is
+same-source collector before/after evidence, not a replay of model behavior.
+Host version was 1.0.80; host-selected model was `gpt-6.1-sol`, selected effort
+`medium`. Requested model and effective usage-reported model were unavailable.
+At that cutoff, log elapsed time was 270.602 seconds; model duration, tokens
+and nano-AIU were unavailable, not zero. No native compaction was observed.
+These are collection coverage measurements, not task completion or efficiency.
+
+Local regression coverage uses existing suites. Protocol-level test inputs
+exercise event parsing only; they are not live provider/session evidence:
+
+| Required scenario | Existing checks / observed coverage |
+|---|---|
+| Acknowledged correction, zero action; retained goal, wrong blocker | `test-delivery-focus.py` checks next-action guidance; `test-native-host.py` checks finite shared recovery and unknown turns. Actual corrected-model next-action behavior is **unverified** |
+| One lane blocked, another runnable | Native-host sibling lifecycle and human/global-hold regressions; delivery scoped-done checks. Real independent-lane progression is **unverified** |
+| Green test, unrelated functionality inside allowed paths | Delivery-audit substitute scanning, delivery-check unclassified/missing observation and digest-bound review checks. Path containment or green tests alone cannot establish semantic relevance; a live adversarial change is **unverified** |
+| Conversational permission versus native approval, denial, unknown | Review-launcher parsing regression separates assistant text from native events and preserves unknowns. Native approval events observed locally; actual human interaction and live denial/unknown scenarios are **unverified** |
+| Stale/duplicate return; legitimate successor after resume | Native-host stale ticket/replay, same-run recovery, retained-owner and criterion-wide renamed-task budget tests; delivery-check amendment/proof freshness tests. Live successor replay is **unverified** |
+| Scoped successful closeout with unrelated checkout activity | Delivery-check scoped inventory, retained unchanged outcomes, scoped-done and completed-scope freshness regressions. Real declared closeout in this host is **unverified** |
+
+**Matched model pilot: not run; REQ-91 remains open.** No Sol/Terra routing
+recommendation follows from this assignment or from Codex anecdotes. A fresh
+paired pilot needs an authorized real C# target plus a longer assignment with
+a correction/handoff; do not invent a C# application in this Python kit to
+satisfy the workload. Use isolated worktrees from the same exact starting
+commit, the same host/version, Architrave build, acceptance, source/dependency
+scope, grants and verification. Ask the owning host for each explicitly
+requested model without changing user pins; record host-reported selection,
+effective usage model and reasoning controls separately, including differences
+and unknowns. Do not infer native compaction from cache usage.
+
+For each attempt, audit selected local logs through the existing collector and
+have an independent reviewer assess original outcomes, actual selected diff and
+verification. Record verified in-scope completion, time to first *relevant*
+action, human interventions, unrelated edits, repeated blockers, conversational
+asks and native approval/denial interruptions. Relevance and blocker identity
+need event-backed semantic review, not exact-call counts. Report log elapsed
+time separately from model duration and each usage category, with missingness
+and all attempts retained. If the patch affects a scenario, rerun it with the
+same model before/after where feasible; separate that comparison from model
+routing. Keep private packets local and publish only reviewed sanitized
+aggregates/public source references. A small pilot supports only those tasks.
+
+If a delegated turn cannot prompt the owner, escalate the exact blocked action
+through the supported parent/owner-visible host path, retaining target, scope,
+native denial/request and uncertainty. An owner grant does not bypass host
+policy. Continue independent authorized criteria. Uncertain side effects need
+live reconciliation before retry; unresolved work uses existing Handoff/CTO
+paths and retains partial edits and the original finite recovery budget.
+
 ## Analysis shape
 
 The analysis is a JSON object with exactly these fields:
