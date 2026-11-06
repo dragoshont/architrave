@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch as mock_patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "gates"))
@@ -446,14 +447,38 @@ class DeliveryChecks(unittest.TestCase):
         paused = check.read_json(check.session_report_path(SESSION))
         completed_at = datetime.fromisoformat(paused["terminal"]["recorded_at"]) + timedelta(seconds=1)
         payload = {"sessionId": SESSION, "cwd": str(caller), "toolName": "task_complete",
-                   "toolArgs": {"summary": "Unrelated follow-up (prior scope remains NOT DELIVERED): Explanation."}}
+                   "toolArgs": {"summary": "The improvement plan has five areas."}}
         terminal = {"type": "session.task_complete", "timestamp": completed_at.isoformat(),
                     "data": {"summary": "Unrelated task completion"}}
         self.write_log(SESSION, [*self.log, terminal])
         self.assertEqual(session_guard.pre_tool_use(payload)["permissionDecision"], "deny")
+        first_plain = self.root / "first-plain"
+        first_plain.mkdir()
+        self.assertEqual(check.check_session(first_plain, SESSION, completion_hook=True,
+                                             completion_summary=check.terminal_summary(paused)), [])
+        self.assertTrue(check.check_session(first_plain, SESSION, completion_hook=True,
+                                            completion_summary="The improvement plan has five areas."))
         terminal["data"]["summary"] = check.terminal_summary(paused)
         self.write_log(SESSION, [*self.log, terminal])
         self.assertEqual(session_guard.pre_tool_use(payload), {})
+        plain = self.root / "plain-folder"
+        plain.mkdir()
+        payload["cwd"] = str(plain)
+        self.assertEqual(session_guard.pre_tool_use(payload), {})
+        payload["cwd"] = str(caller)
+        for root in (self.repo, caller):
+            payload["cwd"] = str(root)
+            for summary in (
+                "The improvement plan has five areas.",
+                "Unrelated follow-up (prior scope remains NOT DELIVERED): Explanation.",
+            ):
+                payload["toolArgs"]["summary"] = summary
+                result = subprocess.run(
+                    [sys.executable, "-B", str(ROOT / "gates" / "session_guard.py"), "pre-tool-use"],
+                    input=json.dumps(payload), cwd=root, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(result.stdout), {})
+        payload["cwd"] = str(caller)
         path = check.session_report_path(SESSION)
         before = path.read_bytes()
         recovered = self.command("--completion-summary")
@@ -482,9 +507,12 @@ class DeliveryChecks(unittest.TestCase):
         self.assertEqual(recovered.returncode, 0, recovered.stderr)
         self.assertTrue(recovered.stdout.startswith(
             "Unrelated follow-up (prior scope remains NOT DELIVERED): "), recovered.stdout)
-        payload["toolArgs"]["summary"] = "Delivered the old requirements."
-        self.assertEqual(session_guard.pre_tool_use(payload)["permissionDecision"], "deny")
-        payload["toolArgs"]["summary"] = "Unrelated follow-up (prior scope remains NOT DELIVERED): Explanation."
+        payload["toolArgs"]["summary"] = "The improvement plan has five areas."
+        self.assertEqual(session_guard.pre_tool_use(payload), {})
+        for summary in (None, "", "   "):
+            payload["toolArgs"]["summary"] = summary
+            self.assertEqual(session_guard.pre_tool_use(payload)["permissionDecision"], "deny")
+        payload["toolArgs"]["summary"] = "The improvement plan has five areas."
         for target in (self.repo / "provider.py", caller / "SPEC.md"):
             edit = {"type": "tool.execution_start",
                     "timestamp": (completed_at + timedelta(seconds=1)).isoformat(),
@@ -836,8 +864,76 @@ class DeliveryChecks(unittest.TestCase):
         self.assertEqual(check.check_session(
             caller, SESSION, completion_hook=True, completion_summary=summary), [])
         self.assertEqual(check.check_session(caller, SESSION), ["delivery repository identity differs"])
+        for root in (self.repo, subdir, caller):
+            for ordinary in (
+                "The improvement plan has five areas.",
+                "Read-only follow-up (no new delivery acceptance): Here is the explanation.",
+            ):
+                payload = {"session_id": SESSION, "cwd": str(root), "tool_name": "task_complete",
+                           "tool_input": json.dumps({"summary": ordinary})}
+                result = subprocess.run(
+                    [sys.executable, "-B", str(ROOT / "gates" / "session_guard.py"), "pre-tool-use"],
+                    input=json.dumps(payload), cwd=root, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(result.stdout), {})
         self.assertTrue(check.check_session(
-            caller, SESSION, completion_hook=True, completion_summary="Delivered the prior scope again."))
+            subdir, SESSION, completion_hook=True, allow_withdrawal=False, completion_summary=summary))
+        plain = self.root / "plain-folder"
+        plain.mkdir()
+        self.assertEqual(check.check_session(
+            plain, SESSION, completion_hook=True, completion_summary="The improvement plan has five areas."), [])
+        self.assertEqual(check.check_session(plain, SESSION, completion_hook=True,
+                                             allow_withdrawal=False, completion_summary=summary),
+                         ["delivery repository identity differs"])
+        absolute_edit = {
+            "type": "tool.execution_start", "timestamp": "2026-01-01T10:03:00Z",
+            "data": {"toolName": "apply_patch", "arguments":
+                     f"*** Begin Patch\n*** Update File: {caller / 'SPEC.md'}\n+x\n*** End Patch"},
+        }
+        for log in (self.log, [*self.log, absolute_edit]):
+            self.write_log(SESSION, log)
+            with mock_patch.dict(os.environ, {"GIT_DIR": str(self.root / "missing-gitdir")}):
+                errors = check.check_session(
+                    caller, SESSION, completion_hook=True, completion_summary=summary)
+                self.assertEqual(len(errors), 1, errors)
+                self.assertTrue(errors[0].startswith("delivery inspection blocked:"), errors)
+        broken = self.root / "broken-caller"
+        broken.mkdir()
+        marker = broken / ".git"
+        marker.write_text(f"gitdir: {self.root / 'missing-gitdir'}\n")
+        for log in (self.log, [*self.log, {
+            **absolute_edit,
+            "data": {"toolName": "apply_patch", "arguments":
+                     f"*** Begin Patch\n*** Update File: {broken / 'SPEC.md'}\n+x\n*** End Patch"},
+        }]):
+            self.write_log(SESSION, log)
+            errors = check.check_session(
+                broken, SESSION, completion_hook=True, completion_summary=summary)
+            self.assertEqual(len(errors), 1, errors)
+            self.assertTrue(errors[0].startswith("delivery inspection blocked:"), errors)
+        marker.unlink()
+        marker.mkdir()
+        errors = check.check_session(
+            broken, SESSION, completion_hook=True, completion_summary=summary)
+        self.assertEqual(len(errors), 1, errors)
+        self.assertTrue(errors[0].startswith("delivery inspection blocked:"), errors)
+        self.write_log(SESSION, self.log)
+        outside = self.root / "outside.py"
+        for patch in (f"*** Update File: {outside}\n*** Move to: {self.repo / 'moved.py'}",
+                      "*** Update File: ..\\README.md", "*** Add File: notes.py"):
+            moved = {"type": "tool.execution_start", "timestamp": "2026-01-01T10:03:00Z",
+                     "data": {"toolName": "apply_patch",
+                              "arguments": f"*** Begin Patch\n{patch}\n+x\n*** End Patch"}}
+            self.write_log(SESSION, [*self.log, moved])
+            for root in (caller, plain):
+                self.assertEqual(check.check_session(
+                    root, SESSION, completion_hook=True, completion_summary=summary),
+                    ["new source edits after host completion require a new owner-bound scope"])
+        self.write_log(SESSION, self.log)
+        for invalid in (None, "", "   "):
+            self.assertTrue(check.check_session(
+                caller, SESSION, completion_hook=True, completion_summary=invalid))
+        self.assertEqual(path.read_bytes(), before)
         caller_edit = {"type": "tool.execution_start", "timestamp": "2026-01-01T10:03:00Z",
                        "data": {"toolName": "apply_patch", "arguments":
                                 f"*** Begin Patch\n*** Update File: {caller / 'SPEC.md'}\n+x\n*** End Patch"}}

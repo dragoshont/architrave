@@ -136,17 +136,22 @@ and never accept a pause. Do not retry an unchanged denial, delete the report,
 or resume stopped work in response to an automated completion reminder.
 
 After an actual host completion event with that exact non-delivery summary,
-unrelated follow-ups may use the prefix
-`Unrelated follow-up (prior scope remains NOT DELIVERED): `.
-At this point `--completion-summary` returns a summary with that prefix, not
+ordinary nonempty read-only follow-up summaries are permitted. No magic
+prefix is required. This closes the later turn, not the prior requirements:
+the paused scope remains NOT DELIVERED.
+Unrelated follow-ups may optionally use the legacy label
+`Unrelated follow-up (prior scope remains NOT DELIVERED): `, and
+`--completion-summary` returns a summary with that label, not
 the consumed one-time termination summary. For a reviewed delivered scope
 with actual host completion, it instead returns the eligible
 `Read-only follow-up (no new delivery acceptance): ` summary.
-Both follow-up outputs are checked against the unchanged completion-hook policy,
+These legacy labels remain available for compatibility, but are optional after
+retirement. Both command outputs are checked against the completion-hook policy,
 including recorded edits in the command's current and declared repositories.
 The command does not print an admissible summary when those checks fail.
 This hook-only retirement checks recorded edits in both the current and declared
-repositories and rejects new repository edits or prior-scope acceptance claims.
+repositories and rejects new repository edits. Follow-up summary text is not
+delivery acceptance and cannot change the prior requirement status.
 It does not revalidate mutable historical source merely to end an unrelated
 turn, grant permissions for that turn, or resume the paused work. New repository
 work requires a newer original owner event and `--prepare`; the prior report is
@@ -156,9 +161,9 @@ repository, nonempty requirement/owner scope and terminal evidence identities;
 it does not rehash mutable historical files. As with delivered read-only follow-ups, shell mutations and
 the meaning of arbitrary prose cannot be inferred by this hook.
 
-Previously reviewed delivered scopes likewise permit their existing
-`Read-only follow-up (no new delivery acceptance): ` summary after a real host
-completion, even if the caller repository changes. Retirement is checked before
+Previously reviewed delivered scopes likewise permit ordinary nonempty
+follow-up summaries after a real host completion, even if the caller repository
+changes. Retirement is checked before
 caller-repository equality; active delivery and explicit delivery checks still
 require that equality. Recorded post-completion edits in either repository
 require a new owner-bound scope.
@@ -275,19 +280,24 @@ failed declared check denies that completion request. Report genuine blockers
 without calling incomplete work accepted. Read-only/undeclared sessions are
 untouched.
 
-After verified host completion, the hook permits a read-only follow-up with the
-summary prefix `Read-only follow-up (no new delivery acceptance): ` and no
-recorded repository edits after the original completion. It does not demand
+After verified host completion, the hook permits an ordinary nonempty read-only
+follow-up summary with no recorded repository edits after the original
+completion. Legacy follow-up labels remain valid but are not required.
+It does not demand
 repair of historical evidence merely because another writer changed the checkout.
 This hook-only retirement is not delivery revalidation: explicit `--check` and
 `requirements --done --delivery-session` still check current evidence. New work
 needs a newer owner-bound declaration. Source-neutral undeclared
 work cannot be classified reliably by this mechanism; default-session guidance
 still owns that intake decision. Recorded edit detection is limited to explicit
-edit/create/apply_patch events, not arbitrary shell mutations; a read-only prefix
-is a bounded claim, not a sandbox or proof of inactivity.
+edit/create/apply_patch events, not arbitrary shell mutations. Patch move
+destinations count, and relative patch targets fail closed because tool events
+do not record the originating cwd. Summary wording
+is neither a sandbox nor proof of inactivity or delivery.
 Subdirectory hook working directories resolve
-to the actual Git root rather than falsely becoming another repository.
+to the actual Git root rather than falsely becoming another repository. A
+confirmed non-Git hook cwd can still close a retired or first paused scope
+against its declared repository; active declarations still require that repository.
 
 ## Limits
 

@@ -61,9 +61,9 @@ digest-bound reviewer PASS and a later actual `session.task_complete` event.
 A new non-trivial declaration archives that completed report; active declarations
 cannot be overwritten. An earlier unrelated completion or an author-written
 inactive flag cannot retire prepared/unreviewed work.
-For later read-only follow-ups the hook accepts only the summary prefix
-`Read-only follow-up (no new delivery acceptance): ` and rejects recorded edits
-after original completion. It does not rerun historical acceptance merely due to
+For later read-only follow-ups the hook accepts ordinary nonempty summaries;
+legacy follow-up labels are optional, not another completion prerequisite.
+It still rejects recorded edits after original completion. It does not rerun historical acceptance merely due to
 unrelated checkout churn. Explicit delivery checks still revalidate all bound
 evidence; the hook-only exception grants no new delivery acceptance or authority.
 

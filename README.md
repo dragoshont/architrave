@@ -38,6 +38,9 @@ The read-only `delivery-audit --completion-summary` recovery command follows
 the current lifecycle: an initial non-delivery termination is distinct from
 an eligible follow-up after real host completion. It does not resume or
 accept stopped work.
+After verified completion, ordinary nonempty read-only replies need no special
+summary prefix. Recorded repository edits still require a newer owner-bound scope;
+active work and the exact first non-delivery termination keep their strict checks.
 
 **What is demonstrated and what is not.** In a live run on a multi-repository
 program, a coordinator committed the lane table, reused existing sessions, and

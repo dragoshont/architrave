@@ -1,5 +1,14 @@
 # Roadmap
 
+## v0.21.35 - Retire completed scopes, not ordinary replies (REQ-94)
+
+Remove mandatory follow-up labels after verified delivered or non-delivery host
+completion. Ordinary read-only replies must not inherit a completed task's
+summary-format contract. Preserve active-delivery validation, the exact first
+non-delivery termination, immutable history, recorded-edit guards and strict
+explicit acceptance checks. Legacy summary-command labels remain compatible,
+not required. Publish before refreshing the existing global plugin.
+
 ## v0.21.34 - Lifecycle-aware completion recovery (REQ-93)
 
 Make the supported read-only summary command agree with the completion hook

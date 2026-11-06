@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 from urllib.parse import unquote, urlparse
 
@@ -144,6 +145,31 @@ def repository_root(path: Path) -> Path:
     return Path(audit.git(path.resolve(), "rev-parse", "--show-toplevel").decode().strip()).resolve()
 
 
+def caller_repository(path: Path) -> Path | None:
+    """Return the caller's Git root, or None only for a confirmed non-repository folder."""
+    path = path.resolve()
+    process = subprocess.run(
+        ["git", "--no-optional-locks", "-C", str(path), "rev-parse", "--show-toplevel"],
+        capture_output=True, env={**os.environ, "LC_ALL": "C", "LANG": "C"},
+    )
+    if process.returncode == 0:
+        return Path(process.stdout.decode().strip()).resolve()
+    error = process.stderr.decode("utf-8", errors="replace").strip()
+    if (process.returncode == 128 and path.is_dir()
+            and error == "fatal: not a git repository (or any of the parent directories): .git"
+            and not any(key in os.environ for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR"))):
+        # A corrupt .git directory can produce the same diagnostic as no repository.
+        for parent in (path, *path.parents):
+            try:
+                (parent / ".git").lstat()
+            except FileNotFoundError:
+                continue
+            break
+        else:
+            return None
+    raise ValueError("git rev-parse failed: " + error)
+
+
 def owner_reference(event_id: str, log: list[dict]) -> dict:
     matches = [e for e in log if e.get("id") == event_id]
     if len(matches) != 1:
@@ -229,13 +255,17 @@ def first_source_edit(root: Path, log: list[dict], after: datetime, *, include_l
         paths = []
         if data["toolName"] == "apply_patch":
             raw = args if isinstance(args, str) else (args or {}).get("patch", "")
-            paths = re.findall(r"(?m)^\*\*\* (?:Add|Update|Delete) File: (.+)$", raw)
+            paths = re.findall(r"(?m)^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+)$", raw)
         elif isinstance(args, dict) and isinstance(args.get("path"), str):
             paths = [args["path"]]
         for value in paths:
+            value = value.strip()
             path = (root / value).resolve()
-            if (include_ledger or path != ledger) and path.is_relative_to(root):
-                edits.append(when)
+            if include_ledger or path != ledger:
+                # Tool events do not record the originating cwd, so a relative
+                # target cannot be placed outside this repository; fail closed.
+                if path.is_relative_to(root) or not Path(value).is_absolute():
+                    edits.append(when)
     return min(edits) if edits else None
 
 def observation_errors(expected: dict, observed: object) -> list[str]:
@@ -581,10 +611,9 @@ def check_session(root: Path, session_id: str, *, allow_withdrawal: bool = True,
         report = read_json(session_report_path(session_id))
         if report.get("session_id") != session_id.lower():
             return ["delivery session identity differs"]
-        root = repository_root(root)
+        root = caller_repository(root) if completion_hook else repository_root(root)
         declared = Path(report["repo"]).resolve()
         completed = None
-        prefix = READ_ONLY_FOLLOWUP
         if completion_hook and allow_withdrawal and report.get("state") == "paused":
             log = events(session_id)
             completed = paused_completion_time(report, log)
@@ -598,10 +627,9 @@ def check_session(root: Path, session_id: str, *, allow_withdrawal: bool = True,
                     errors.append("paused completion must use the exact non-delivery summary printed by --pause "
                                   "or --completion-summary")
                 return errors
-            prefix = UNRELATED_FOLLOWUP
         # Retirement is tied to reviewed evidence and a real host completion,
         # not to the repository from which a later read-only turn is closed.
-        elif completion_hook and host_completed(report, events(session_id)):
+        elif completion_hook and allow_withdrawal and host_completed(report, events(session_id)):
             log = events(session_id)
             completed = min(timestamp(e.get("timestamp")) for e in log
                             if e.get("type") == "session.task_complete"
@@ -618,11 +646,11 @@ def check_session(root: Path, session_id: str, *, allow_withdrawal: bool = True,
             return errors
         if completed is not None:
             if any(first_source_edit(target, log, completed, include_ledger=True) is not None
-                   for target in {root, declared}):
+                   for target in {root, declared} - {None}):
                 return ["new source edits after host completion require a new owner-bound scope"]
-            if not isinstance(completion_summary, str) or not completion_summary.startswith(prefix):
-                return [f"retired delivery permits only a '{prefix}' summary; "
-                        "new repository work requires a new owner-bound scope"]
+            if not isinstance(completion_summary, str) or not completion_summary.strip():
+                return ["retired follow-up completion requires a nonempty summary; "
+                        "no new delivery acceptance is claimed"]
             return []
         return check_report(root, report)
     except (ValueError, OSError, KeyError, TypeError) as exc:
