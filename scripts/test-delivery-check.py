@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from datetime import datetime, timedelta
 import hashlib
 import json
 import os
@@ -382,6 +383,180 @@ class DeliveryChecks(unittest.TestCase):
         self.proof.write_text("changed evidence")
         self.assertEqual(session_guard.pre_tool_use(payload)["permissionDecision"], "deny")
 
+    def test_cross_repository_handoff_allows_only_validated_non_delivery(self):
+        import session_guard
+
+        caller = self.root / "caller"
+        caller.mkdir()
+        subprocess.check_call(["git", "-C", str(caller), "init", "--quiet"])
+        self.scoped()
+        check.write_report(check.session_report_path(SESSION), self.report, create=True)
+        result = self.command("--pause", "handoff", "--reason", "Implementation handed to its owner.",
+                              "--evidence", str(self.proof))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        paused = check.read_json(check.session_report_path(SESSION))
+        payload = {"sessionId": SESSION, "cwd": str(caller), "toolName": "task_complete",
+                   "toolArgs": {"summary": check.terminal_summary(paused)}}
+        before = check.session_report_path(SESSION).read_bytes()
+        self.assertEqual(session_guard.pre_tool_use(payload), {})
+        self.assertEqual(check.session_report_path(SESSION).read_bytes(), before)
+        self.assertTrue(check.check_session(caller, SESSION))
+        self.assertTrue(check.check_session(self.repo, SESSION, allow_withdrawal=False))
+        self.assertTrue(check.check_session(
+            caller, SESSION, completion_hook=True, allow_withdrawal=False,
+            completion_summary=check.terminal_summary(paused)))
+        for field, value in (("schema", "invalid"), ("session_id", REVIEWER)):
+            malformed = copy.deepcopy(paused)
+            malformed[field] = value
+            check.write_report(check.session_report_path(SESSION), malformed)
+            self.assertEqual(session_guard.pre_tool_use(payload)["permissionDecision"], "deny")
+        check.write_report(check.session_report_path(SESSION), paused)
+        payload["toolArgs"]["summary"] = "Everything delivered."
+        self.assertEqual(session_guard.pre_tool_use(payload)["permissionDecision"], "deny")
+        payload["toolArgs"]["summary"] = check.terminal_summary(paused)
+        (self.repo / "provider.py").write_text("result = different.execute(request)\n")
+        self.assertEqual(session_guard.pre_tool_use(payload)["permissionDecision"], "deny")
+
+    def test_foreign_active_declaration_cannot_use_non_delivery_or_followup_to_escape(self):
+        caller = self.root / "caller"
+        caller.mkdir()
+        subprocess.check_call(["git", "-C", str(caller), "init", "--quiet"])
+        for state in ("prepared", "sealed"):
+            self.report["state"] = state
+            check.write_report(check.session_report_path(SESSION), self.report)
+            for summary in (
+                "Architrave handoff: NOT DELIVERED; no requirements accepted by this termination.",
+                "Read-only follow-up (no new delivery acceptance): unrelated question",
+            ):
+                self.assertEqual(check.check_session(
+                    caller, SESSION, completion_hook=True, completion_summary=summary),
+                    ["delivery repository identity differs"])
+
+    def test_completed_handoff_retires_only_after_exact_host_event_and_blocks_new_edits(self):
+        import session_guard
+
+        caller = self.root / "caller"
+        caller.mkdir()
+        subprocess.check_call(["git", "-C", str(caller), "init", "--quiet"])
+        self.scoped()
+        check.write_report(check.session_report_path(SESSION), self.report, create=True)
+        result = self.command("--pause", "handoff", "--reason", "Implementation handed to its owner.",
+                              "--evidence", str(self.proof))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        paused = check.read_json(check.session_report_path(SESSION))
+        completed_at = datetime.fromisoformat(paused["terminal"]["recorded_at"]) + timedelta(seconds=1)
+        payload = {"sessionId": SESSION, "cwd": str(caller), "toolName": "task_complete",
+                   "toolArgs": {"summary": "Unrelated follow-up (prior scope remains NOT DELIVERED): Explanation."}}
+        terminal = {"type": "session.task_complete", "timestamp": completed_at.isoformat(),
+                    "data": {"summary": "Unrelated task completion"}}
+        self.write_log(SESSION, [*self.log, terminal])
+        self.assertEqual(session_guard.pre_tool_use(payload)["permissionDecision"], "deny")
+        terminal["data"]["summary"] = check.terminal_summary(paused)
+        self.write_log(SESSION, [*self.log, terminal])
+        self.assertEqual(session_guard.pre_tool_use(payload), {})
+        malformed_reports = []
+        for field, value in (("owner_requests", []), ("reqs", []), ("repo", str(self.repo / "subdir"))):
+            malformed = copy.deepcopy(paused)
+            malformed[field] = value
+            malformed_reports.append(malformed)
+        missing_owners = copy.deepcopy(paused)
+        missing_owners.pop("owner_requests")
+        malformed_reports.append(missing_owners)
+        for malformed in malformed_reports:
+            check.write_report(check.session_report_path(SESSION), malformed)
+            self.assertEqual(session_guard.pre_tool_use(payload)["permissionDecision"], "deny")
+        check.write_report(check.session_report_path(SESSION), paused)
+        (self.repo / "provider.py").write_text("changed_by_another_writer()\n")
+        self.assertEqual(session_guard.pre_tool_use(payload), {})
+        payload["toolArgs"]["summary"] = "Delivered the old requirements."
+        self.assertEqual(session_guard.pre_tool_use(payload)["permissionDecision"], "deny")
+        payload["toolArgs"]["summary"] = "Unrelated follow-up (prior scope remains NOT DELIVERED): Explanation."
+        for target in (self.repo / "provider.py", caller / "SPEC.md"):
+            edit = {"type": "tool.execution_start",
+                    "timestamp": (completed_at + timedelta(seconds=1)).isoformat(),
+                    "data": {"toolName": "apply_patch", "arguments":
+                             f"*** Begin Patch\n*** Update File: {target}\n+x\n*** End Patch"}}
+            self.write_log(SESSION, [*self.log, terminal, edit])
+            self.assertEqual(session_guard.pre_tool_use(payload)["permissionDecision"], "deny")
+        self.assertTrue(check.check_session(self.repo, SESSION, allow_withdrawal=False))
+        self.assertEqual(self.command("--check").returncode, 2)
+
+    def test_completion_summary_command_is_read_only_and_validates_paused_evidence(self):
+        self.scoped()
+        check.write_report(check.session_report_path(SESSION), self.report, create=True)
+        self.assertEqual(self.command("--completion-summary").returncode, 2)
+        paused = self.command("--pause", "handoff", "--reason", "Implementation handed to its owner.",
+                              "--evidence", str(self.proof))
+        self.assertEqual(paused.returncode, 0, paused.stderr)
+        path = check.session_report_path(SESSION)
+        before = path.read_bytes()
+        summary = self.command("--completion-summary")
+        self.assertEqual(summary.returncode, 0, summary.stderr)
+        self.assertEqual(summary.stdout, paused.stdout)
+        self.assertEqual(path.read_bytes(), before)
+        foreign = self.command("--completion-summary", "--repo", str(ROOT))
+        self.assertEqual(foreign.returncode, 2)
+        self.assertEqual(path.read_bytes(), before)
+        self.proof.write_text("changed evidence")
+        invalid = self.command("--completion-summary")
+        self.assertEqual(invalid.returncode, 2)
+        self.assertNotIn("Architrave handoff: NOT DELIVERED", invalid.stdout)
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_completed_cross_repository_handoff_can_prepare_new_owner_scope_without_resuming(self):
+        caller = self.root / "caller"
+        caller.mkdir()
+        subprocess.check_call(["git", "-C", str(caller), "init", "--quiet"])
+        (caller / "SPEC.md").write_text(SPEC)
+        (caller / "provider.py").write_text("result = client.execute(request)\n")
+        subprocess.check_call(["git", "-C", str(caller), "add", "."])
+        subprocess.check_call([
+            "git", "-C", str(caller), "-c", "user.name=Acceptance Test",
+            "-c", "user.email=check@example.invalid", "-c", "commit.gpgsign=false",
+            "commit", "--quiet", "-m", "New independent scope",
+        ])
+        self.scoped()
+        check.write_report(check.session_report_path(SESSION), self.report, create=True)
+        result = self.command("--pause", "handoff", "--reason", "Implementation handed to its owner.",
+                              "--evidence", str(self.proof))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        path = check.session_report_path(SESSION)
+        paused_bytes = path.read_bytes()
+        paused = check.read_json(path)
+        completed_at = datetime.fromisoformat(paused["terminal"]["recorded_at"]) + timedelta(seconds=1)
+        self.log.extend([
+            {"type": "session.task_complete", "timestamp": completed_at.isoformat(),
+             "data": {"summary": check.terminal_summary(paused)}},
+            {"id": "new-owner", "type": "user.message",
+             "timestamp": (completed_at + timedelta(seconds=1)).isoformat(),
+             "data": {"content": "Implement the next independent repository task."}},
+        ])
+        self.write_log(SESSION, self.log)
+        (self.repo / "provider.py").write_text("changed_by_another_writer()\n")
+        malformed = copy.deepcopy(paused)
+        malformed.pop("owner_requests")
+        check.write_report(path, malformed)
+        malformed_bytes = path.read_bytes()
+        self.assertEqual(self.command("--prepare", "--repo", str(caller), "--reqs", "REQ-01",
+                                      "--source", "provider.py", "--request", "new-owner").returncode, 2)
+        self.assertEqual(path.read_bytes(), malformed_bytes)
+        check.write_report(path, paused)
+        denied = self.command("--prepare", "--repo", str(caller), "--reqs", "REQ-01",
+                              "--source", "provider.py", "--request", "owner-event")
+        self.assertEqual(denied.returncode, 2)
+        self.assertEqual(path.read_bytes(), paused_bytes)
+        prepared = self.command("--prepare", "--repo", str(caller), "--reqs", "REQ-01",
+                                "--source", "provider.py", "--request", "new-owner")
+        self.assertEqual(prepared.returncode, 0, prepared.stderr)
+        self.assertEqual(path.with_name(
+            f"architrave-delivery-{check.report_digest(paused)}.json").read_bytes(), paused_bytes)
+        current = check.read_json(path)
+        self.assertEqual(current["state"], "prepared")
+        self.assertEqual(current["repo"], str(caller))
+        self.assertEqual(current["owner_requests"][0]["event_id"], "new-owner")
+        self.assertNotIn("terminal", current)
+        self.assertTrue(check.check_session(caller, SESSION))
+
     def test_official_local_emulator_and_environment_selection_allowed(self):
         self.assertEqual(self.errors(), [])
 
@@ -625,6 +800,22 @@ class DeliveryChecks(unittest.TestCase):
         self.assertEqual(check.check_session(
             subdir, SESSION, completion_hook=True,
             completion_summary="Read-only follow-up (no new delivery acceptance): Here is the explanation."), [])
+        caller = self.root / "caller"
+        caller.mkdir()
+        subprocess.check_call(["git", "-C", str(caller), "init", "--quiet"])
+        summary = "Read-only follow-up (no new delivery acceptance): Here is the explanation."
+        self.assertEqual(check.check_session(
+            caller, SESSION, completion_hook=True, completion_summary=summary), [])
+        self.assertEqual(check.check_session(caller, SESSION), ["delivery repository identity differs"])
+        self.assertTrue(check.check_session(
+            caller, SESSION, completion_hook=True, completion_summary="Delivered the prior scope again."))
+        caller_edit = {"type": "tool.execution_start", "timestamp": "2026-01-01T10:03:00Z",
+                       "data": {"toolName": "apply_patch", "arguments":
+                                f"*** Begin Patch\n*** Update File: {caller / 'SPEC.md'}\n+x\n*** End Patch"}}
+        self.write_log(SESSION, [*self.log, caller_edit])
+        self.assertTrue(check.check_session(
+            caller, SESSION, completion_hook=True, completion_summary=summary))
+        self.write_log(SESSION, self.log)
         self.log.append({"type": "tool.execution_start", "timestamp": "2026-01-01T10:03:00Z",
                          "data": {"toolName": "apply_patch", "arguments":
                                   f"*** Begin Patch\n*** Update File: {self.repo / 'provider.py'}\n+x\n*** End Patch"}})
@@ -632,6 +823,8 @@ class DeliveryChecks(unittest.TestCase):
         self.assertTrue(check.check_session(
             subdir, SESSION, completion_hook=True,
             completion_summary="Read-only follow-up (no new delivery acceptance): Claimed read-only despite edits."))
+        self.assertTrue(check.check_session(
+            caller, SESSION, completion_hook=True, completion_summary=summary))
 
     def test_amend_cannot_silently_drop_requirement(self):
         expanded = SPEC.replace("| owner | open | |\n", "| owner | open | |\n"

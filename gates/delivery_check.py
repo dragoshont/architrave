@@ -519,6 +519,60 @@ def terminal_errors(root: Path, report: dict) -> list[str]:
     return []
 
 
+def paused_completion_time(report: dict, log: list[dict]) -> datetime | None:
+    if report.get("schema") != SCHEMA or report.get("state") != "paused":
+        return None
+    declared = Path(report["repo"])
+    if not declared.is_absolute() or repository_root(declared) != declared.resolve():
+        raise ValueError("paused declaration repository identity differs")
+    reqs = report["reqs"]
+    if (not isinstance(reqs, list) or not reqs
+            or any(not isinstance(rid, str) or not re.fullmatch(r"REQ-[A-Za-z0-9_.-]+", rid) for rid in reqs)
+            or len(set(reqs)) != len(reqs)
+            or set(report["original_requirements"]["requirements"]) != set(reqs)):
+        raise ValueError("paused declaration requirement scope is malformed")
+    owners = report["owner_requests"]
+    if not isinstance(owners, list) or not owners:
+        raise ValueError("paused declaration original owner bindings are missing")
+    owner_ids = set()
+    evidence = []
+    for owner in owners:
+        if (not isinstance(owner, dict) or not isinstance(owner.get("event_id"), str)
+                or not owner["event_id"].strip() or owner["event_id"] in owner_ids
+                or not isinstance(owner.get("sha256"), str)
+                or not re.fullmatch(r"[a-f0-9]{64}", owner["sha256"])
+                or not isinstance(owner.get("attachments"), list)):
+            raise ValueError("paused declaration original owner binding is malformed")
+        owner_ids.add(owner["event_id"])
+        evidence.extend(owner["attachments"])
+    terminal = report["terminal"]
+    if terminal["kind"] not in {"blocked", "waiting", "handoff"}:
+        raise ValueError("unknown non-delivery terminal state")
+    if (not isinstance(terminal["reason"], str) or not terminal["reason"].strip()
+            or "\n" in terminal["reason"] or "\r" in terminal["reason"]
+            or any(not isinstance(terminal.get(key), str)
+                   or not re.fullmatch(r"[a-f0-9]{64}", terminal[key])
+                   for key in ("source_sha256", "prior_digest"))
+            or not isinstance(terminal["evidence"], list) or not terminal["evidence"]):
+        raise ValueError("paused declaration terminal binding is malformed")
+    evidence.extend(terminal["evidence"])
+    # Validate immutable identities without rehashing mutable historical files.
+    for item in evidence:
+        if (not isinstance(item, dict) or not isinstance(item.get("path"), str)
+                or not Path(item["path"]).is_absolute() or not isinstance(item.get("sha256"), str)
+                or not re.fullmatch(r"[a-f0-9]{64}", item["sha256"])):
+            raise ValueError("paused declaration evidence identity is malformed")
+    recorded = timestamp(terminal["recorded_at"])
+    summary = terminal_summary(report)
+    completed = [
+        timestamp(event.get("timestamp")) for event in log
+        if event.get("type") == "session.task_complete"
+        and event["data"].get("summary") == summary
+        and timestamp(event.get("timestamp")) > recorded
+    ]
+    return min(completed) if completed else None
+
+
 def check_session(root: Path, session_id: str, *, allow_withdrawal: bool = True,
                   completion_hook: bool = False, completion_summary: str | None = None) -> list[str]:
     try:
@@ -526,31 +580,47 @@ def check_session(root: Path, session_id: str, *, allow_withdrawal: bool = True,
         if report.get("session_id") != session_id.lower():
             return ["delivery session identity differs"]
         root = repository_root(root)
-        if Path(report["repo"]).resolve() != root:
-            return ["delivery repository identity differs"]
-        if report.get("state") == "withdrawn":
-            errors = withdrawal_errors(root, report)
-            return errors if allow_withdrawal or errors else ["scope was withdrawn; no delivery acceptance is claimed"]
-        if report.get("state") == "paused":
-            errors = terminal_errors(root, report)
-            if not allow_withdrawal:
-                errors.append("scope is paused; no delivery acceptance is claimed")
-            if completion_hook and completion_summary != terminal_summary(report):
-                errors.append("paused completion must use the exact non-delivery summary printed by --pause")
-            return errors
-        # A later real host completion retires this declaration. The next
-        # non-trivial task must prepare a new one; no author-written active=false.
-        if completion_hook and host_completed(report, events(session_id)):
+        declared = Path(report["repo"]).resolve()
+        completed = None
+        prefix = "Read-only follow-up (no new delivery acceptance): "
+        if completion_hook and allow_withdrawal and report.get("state") == "paused":
+            log = events(session_id)
+            completed = paused_completion_time(report, log)
+            if completed is None:
+                # The host cwd can be the coordinator's repo, while the
+                # explicitly declared work and handoff belong to another repo.
+                if repository_root(declared) != declared:
+                    return ["delivery repository identity differs"]
+                errors = terminal_errors(declared, report)
+                if completion_summary != terminal_summary(report):
+                    errors.append("paused completion must use the exact non-delivery summary printed by --pause "
+                                  "or --completion-summary")
+                return errors
+            prefix = "Unrelated follow-up (prior scope remains NOT DELIVERED): "
+        # Retirement is tied to reviewed evidence and a real host completion,
+        # not to the repository from which a later read-only turn is closed.
+        elif completion_hook and host_completed(report, events(session_id)):
             log = events(session_id)
             completed = min(timestamp(e.get("timestamp")) for e in log
                             if e.get("type") == "session.task_complete"
                             and timestamp(e.get("timestamp")) > timestamp(report["sealed_at"]))
-            if first_source_edit(root, log, completed, include_ledger=True) is not None:
+        elif declared != root:
+            return ["delivery repository identity differs"]
+        elif report.get("state") == "withdrawn":
+            errors = withdrawal_errors(root, report)
+            return errors if allow_withdrawal or errors else ["scope was withdrawn; no delivery acceptance is claimed"]
+        elif report.get("state") == "paused":
+            errors = terminal_errors(root, report)
+            if not allow_withdrawal:
+                errors.append("scope is paused; no delivery acceptance is claimed")
+            return errors
+        if completed is not None:
+            if any(first_source_edit(target, log, completed, include_ledger=True) is not None
+                   for target in {root, declared}):
                 return ["new source edits after host completion require a new owner-bound scope"]
-            if (not isinstance(completion_summary, str)
-                    or not completion_summary.startswith("Read-only follow-up (no new delivery acceptance): ")):
-                return ["retired delivery permits only a 'Read-only follow-up (no new delivery acceptance): ' summary; "
-                        "new work requires a new owner-bound scope"]
+            if not isinstance(completion_summary, str) or not completion_summary.startswith(prefix):
+                return [f"retired delivery permits only a '{prefix}' summary; "
+                        "new repository work requires a new owner-bound scope"]
             return []
         return check_report(root, report)
     except (ValueError, OSError, KeyError, TypeError) as exc:
@@ -625,9 +695,15 @@ def session_command(args) -> int:
             log = events(sid)
             if path.exists():
                 prior = read_json(path)
-                retired = (not withdrawal_errors(root, prior, fresh=False) if prior.get("state") == "withdrawn"
-                           else not terminal_errors(root, prior) if prior.get("state") == "paused"
-                           else host_completed(prior, log))
+                if prior.get("session_id") != sid:
+                    raise ValueError("delivery session identity differs")
+                if prior.get("state") == "withdrawn":
+                    retired = not withdrawal_errors(root, prior, fresh=False)
+                elif prior.get("state") == "paused":
+                    retired = (paused_completion_time(prior, log) is not None
+                               or not terminal_errors(Path(prior["repo"]).resolve(), prior))
+                else:
+                    retired = host_completed(prior, log)
                 if not retired:
                     raise ValueError("active declaration exists; use --amend or --withdraw with a newer owner instruction")
                 newer_requests(prior, args.request, log)
@@ -659,6 +735,12 @@ def session_command(args) -> int:
         if (report.get("schema") != SCHEMA or Path(report["repo"]).resolve() != root
                 or report["session_id"] != sid):
             raise ValueError("declared delivery belongs to another repository/session")
+        if args.completion_summary:
+            errors = terminal_errors(root, report)
+            if errors:
+                raise ValueError("; ".join(errors))
+            print(terminal_summary(report))
+            return 0
         if (args.seal or args.pause) and host_completed(report, events(sid)):
             raise ValueError("host-completed work needs a new owner-bound --prepare or --amend")
         if args.pause:

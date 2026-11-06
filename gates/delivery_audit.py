@@ -281,6 +281,8 @@ def main(argv: list[str] | None = None) -> int:
     action.add_argument("--pause", choices=("blocked", "waiting", "handoff"),
                         help="record an honest non-delivery terminal outcome")
     action.add_argument("--resume", action="store_true", help="deliberately resume unchanged paused scope")
+    action.add_argument("--completion-summary", action="store_true",
+                        help="validate and print an existing paused non-delivery summary without changing it")
     action.add_argument("--seal", action="store_true", help="freeze current source inventory for review")
     action.add_argument("--check", action="store_true", help="verify the session's declared delivery")
     parser.add_argument("--session", help="host session UUID; defaults to COPILOT_AGENT_SESSION_ID")
@@ -301,7 +303,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--source requires --prepare or owner-bound --amend")
     if args.evidence and not args.pause:
         parser.error("--evidence requires --pause")
-    if args.prepare or args.amend or args.withdraw or args.pause or args.resume or args.seal or args.check:
+    if (args.prepare or args.amend or args.withdraw or args.pause or args.resume
+            or args.completion_summary or args.seal or args.check):
         from delivery_check import session_command
 
         return session_command(args)

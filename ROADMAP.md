@@ -1,5 +1,17 @@
 # Roadmap
 
+## v0.21.33 - Cross-repository completion recovery (REQ-91/92)
+
+Validate exact paused/handoff non-delivery summaries against the declared
+repository, not an unrelated coordinator cwd. Permit explicitly labeled
+follow-ups after actual paused or reviewed-delivery host completion even when
+the caller repository changes, while retaining active-delivery identity and
+post-completion edit checks. Retrieve an existing pause summary read-only and
+archive stopped scopes when newer owner instructions start independent work.
+Publish the repair before refreshing the existing global plugin; preserve
+hook enablement and host permissions. Restart GHC after the installed version
+is verified to reload the plugin's command and skill surfaces.
+
 ## v0.21.32 - Bounded recovery, context and specifications (REQ-81..89, #35/#36)
 
 Finite criterion-bound recovery through existing admission/feasibility controls,

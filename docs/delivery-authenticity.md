@@ -117,6 +117,44 @@ requires newer-owner `--amend` (or a new `--prepare` when the prior terminal
 identity remains valid); source drift while paused fails closed rather than
 silently resuming. `--seal` cannot resume paused/withdrawn work.
 
+For an already-recorded pause, retrieve its exact summary without re-pausing,
+resuming or editing the report:
+
+```text
+python <kit>/gates/gate_runner.py delivery-audit --completion-summary --repo <declared-repository> --session <host-session-uuid>
+```
+
+The command is read-only and validates the existing pause before printing.
+Use its complete output as the `task_complete` summary once. A coordinator's
+host cwd can differ from the explicitly declared repository: for this exact
+non-delivery termination only, the hook validates the declared repository and
+its source/owner/evidence bindings rather than comparing it to the caller cwd.
+Active declarations, wrong-session records, stale pauses and success summaries
+remain blocked; explicit delivery checks still require the matching repository
+and never accept a pause. Do not retry an unchanged denial, delete the report,
+or resume stopped work in response to an automated completion reminder.
+
+After an actual host completion event with that exact non-delivery summary,
+unrelated follow-ups may use the prefix
+`Unrelated follow-up (prior scope remains NOT DELIVERED): `.
+This hook-only retirement checks recorded edits in both the current and declared
+repositories and rejects new repository edits or prior-scope acceptance claims.
+It does not revalidate mutable historical source merely to end an unrelated
+turn, grant permissions for that turn, or resume the paused work. New repository
+work requires a newer original owner event and `--prepare`; the prior report is
+archived unchanged, not accepted or silently overwritten. No matching host event
+means no retirement. Retirement still validates the immutable declaration's
+repository, nonempty requirement/owner scope and terminal evidence identities;
+it does not rehash mutable historical files. As with delivered read-only follow-ups, shell mutations and
+the meaning of arbitrary prose cannot be inferred by this hook.
+
+Previously reviewed delivered scopes likewise permit their existing
+`Read-only follow-up (no new delivery acceptance): ` summary after a real host
+completion, even if the caller repository changes. Retirement is checked before
+caller-repository equality; active delivery and explicit delivery checks still
+require that equality. Recorded post-completion edits in either repository
+require a new owner-bound scope.
+
 Set each `expected` entry to its actual outcome kind before implementation:
 
 - `source`: a source/tooling behavior proved by the named check, not an installed
