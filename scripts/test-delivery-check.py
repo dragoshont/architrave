@@ -454,6 +454,15 @@ class DeliveryChecks(unittest.TestCase):
         terminal["data"]["summary"] = check.terminal_summary(paused)
         self.write_log(SESSION, [*self.log, terminal])
         self.assertEqual(session_guard.pre_tool_use(payload), {})
+        path = check.session_report_path(SESSION)
+        before = path.read_bytes()
+        recovered = self.command("--completion-summary")
+        self.assertEqual(recovered.returncode, 0, recovered.stderr)
+        self.assertTrue(recovered.stdout.startswith(
+            "Unrelated follow-up (prior scope remains NOT DELIVERED): "), recovered.stdout)
+        payload["toolArgs"]["summary"] = recovered.stdout.strip()
+        self.assertEqual(session_guard.pre_tool_use(payload), {})
+        self.assertEqual(path.read_bytes(), before)
         malformed_reports = []
         for field, value in (("owner_requests", []), ("reqs", []), ("repo", str(self.repo / "subdir"))):
             malformed = copy.deepcopy(paused)
@@ -465,9 +474,14 @@ class DeliveryChecks(unittest.TestCase):
         for malformed in malformed_reports:
             check.write_report(check.session_report_path(SESSION), malformed)
             self.assertEqual(session_guard.pre_tool_use(payload)["permissionDecision"], "deny")
+            self.assertEqual(self.command("--completion-summary").returncode, 2)
         check.write_report(check.session_report_path(SESSION), paused)
         (self.repo / "provider.py").write_text("changed_by_another_writer()\n")
         self.assertEqual(session_guard.pre_tool_use(payload), {})
+        recovered = self.command("--completion-summary")
+        self.assertEqual(recovered.returncode, 0, recovered.stderr)
+        self.assertTrue(recovered.stdout.startswith(
+            "Unrelated follow-up (prior scope remains NOT DELIVERED): "), recovered.stdout)
         payload["toolArgs"]["summary"] = "Delivered the old requirements."
         self.assertEqual(session_guard.pre_tool_use(payload)["permissionDecision"], "deny")
         payload["toolArgs"]["summary"] = "Unrelated follow-up (prior scope remains NOT DELIVERED): Explanation."
@@ -478,6 +492,11 @@ class DeliveryChecks(unittest.TestCase):
                              f"*** Begin Patch\n*** Update File: {target}\n+x\n*** End Patch"}}
             self.write_log(SESSION, [*self.log, terminal, edit])
             self.assertEqual(session_guard.pre_tool_use(payload)["permissionDecision"], "deny")
+            recovered = subprocess.run(
+                [sys.executable, "-B", str(ROOT / "gates" / "gate_runner.py"),
+                 "delivery-audit", "--completion-summary", "--repo", str(self.repo), "--session", SESSION],
+                cwd=caller, capture_output=True, text=True)
+            self.assertEqual(recovered.returncode, 2, recovered.stdout)
         self.assertTrue(check.check_session(self.repo, SESSION, allow_withdrawal=False))
         self.assertEqual(self.command("--check").returncode, 2)
 
@@ -794,12 +813,22 @@ class DeliveryChecks(unittest.TestCase):
         subdir.mkdir()
         self.assertEqual(check.check_session(subdir, SESSION), [])
         self.assertEqual(self.command("--seal").returncode, 2)
+        path = check.session_report_path(SESSION)
+        before = path.read_bytes()
+        recovered = self.command("--completion-summary")
+        self.assertEqual(recovered.returncode, 0, recovered.stderr)
+        self.assertTrue(recovered.stdout.startswith(
+            "Read-only follow-up (no new delivery acceptance): "), recovered.stdout)
+        self.assertEqual(check.check_session(
+            subdir, SESSION, completion_hook=True, completion_summary=recovered.stdout.strip()), [])
+        self.assertEqual(path.read_bytes(), before)
         (self.repo / "provider.py").write_text("result = different.execute(request)\n")
         self.assertTrue(check.check_session(subdir, SESSION))
         self.assertTrue(check.check_session(subdir, SESSION, completion_hook=True))
         self.assertEqual(check.check_session(
             subdir, SESSION, completion_hook=True,
             completion_summary="Read-only follow-up (no new delivery acceptance): Here is the explanation."), [])
+        self.assertEqual(self.command("--completion-summary").returncode, 0)
         caller = self.root / "caller"
         caller.mkdir()
         subprocess.check_call(["git", "-C", str(caller), "init", "--quiet"])
@@ -815,6 +844,11 @@ class DeliveryChecks(unittest.TestCase):
         self.write_log(SESSION, [*self.log, caller_edit])
         self.assertTrue(check.check_session(
             caller, SESSION, completion_hook=True, completion_summary=summary))
+        recovered = subprocess.run(
+            [sys.executable, "-B", str(ROOT / "gates" / "gate_runner.py"),
+             "delivery-audit", "--completion-summary", "--repo", str(self.repo), "--session", SESSION],
+            cwd=caller, capture_output=True, text=True)
+        self.assertEqual(recovered.returncode, 2, recovered.stdout)
         self.write_log(SESSION, self.log)
         self.log.append({"type": "tool.execution_start", "timestamp": "2026-01-01T10:03:00Z",
                          "data": {"toolName": "apply_patch", "arguments":
@@ -825,6 +859,7 @@ class DeliveryChecks(unittest.TestCase):
             completion_summary="Read-only follow-up (no new delivery acceptance): Claimed read-only despite edits."))
         self.assertTrue(check.check_session(
             caller, SESSION, completion_hook=True, completion_summary=summary))
+        self.assertEqual(self.command("--completion-summary").returncode, 2)
 
     def test_amend_cannot_silently_drop_requirement(self):
         expanded = SPEC.replace("| owner | open | |\n", "| owner | open | |\n"

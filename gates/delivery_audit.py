@@ -282,7 +282,7 @@ def main(argv: list[str] | None = None) -> int:
                         help="record an honest non-delivery terminal outcome")
     action.add_argument("--resume", action="store_true", help="deliberately resume unchanged paused scope")
     action.add_argument("--completion-summary", action="store_true",
-                        help="validate and print an existing paused non-delivery summary without changing it")
+                        help="validate and print the current pause or eligible follow-up summary without changing state")
     action.add_argument("--seal", action="store_true", help="freeze current source inventory for review")
     action.add_argument("--check", action="store_true", help="verify the session's declared delivery")
     parser.add_argument("--session", help="host session UUID; defaults to COPILOT_AGENT_SESSION_ID")

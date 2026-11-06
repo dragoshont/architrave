@@ -117,15 +117,16 @@ requires newer-owner `--amend` (or a new `--prepare` when the prior terminal
 identity remains valid); source drift while paused fails closed rather than
 silently resuming. `--seal` cannot resume paused/withdrawn work.
 
-For an already-recorded pause, retrieve its exact summary without re-pausing,
+Retrieve the currently eligible completion summary without re-pausing,
 resuming or editing the report:
 
 ```text
 python <kit>/gates/gate_runner.py delivery-audit --completion-summary --repo <declared-repository> --session <host-session-uuid>
 ```
 
-The command is read-only and validates the existing pause before printing.
-Use its complete output as the `task_complete` summary once. A coordinator's
+Before the first host completion, the command validates the existing pause and
+prints its exact non-delivery summary. Use its complete output as the
+`task_complete` summary once. A coordinator's
 host cwd can differ from the explicitly declared repository: for this exact
 non-delivery termination only, the hook validates the declared repository and
 its source/owner/evidence bindings rather than comparing it to the caller cwd.
@@ -137,6 +138,13 @@ or resume stopped work in response to an automated completion reminder.
 After an actual host completion event with that exact non-delivery summary,
 unrelated follow-ups may use the prefix
 `Unrelated follow-up (prior scope remains NOT DELIVERED): `.
+At this point `--completion-summary` returns a summary with that prefix, not
+the consumed one-time termination summary. For a reviewed delivered scope
+with actual host completion, it instead returns the eligible
+`Read-only follow-up (no new delivery acceptance): ` summary.
+Both follow-up outputs are checked against the unchanged completion-hook policy,
+including recorded edits in the command's current and declared repositories.
+The command does not print an admissible summary when those checks fail.
 This hook-only retirement checks recorded edits in both the current and declared
 repositories and rejects new repository edits or prior-scope acceptance claims.
 It does not revalidate mutable historical source merely to end an unrelated

@@ -20,6 +20,8 @@ import gate_runner as gate
 
 SCHEMA = "architrave.delivery.v1"
 MAX_JSON = 16 * 1024 * 1024
+READ_ONLY_FOLLOWUP = "Read-only follow-up (no new delivery acceptance): "
+UNRELATED_FOLLOWUP = "Unrelated follow-up (prior scope remains NOT DELIVERED): "
 IMAGE_REMINDER = ("<system_reminder>\n"
                   "The user mentioned images and they have been attached to this message in the order they were mentioned.\n"
                   "</system_reminder>")
@@ -582,7 +584,7 @@ def check_session(root: Path, session_id: str, *, allow_withdrawal: bool = True,
         root = repository_root(root)
         declared = Path(report["repo"]).resolve()
         completed = None
-        prefix = "Read-only follow-up (no new delivery acceptance): "
+        prefix = READ_ONLY_FOLLOWUP
         if completion_hook and allow_withdrawal and report.get("state") == "paused":
             log = events(session_id)
             completed = paused_completion_time(report, log)
@@ -596,7 +598,7 @@ def check_session(root: Path, session_id: str, *, allow_withdrawal: bool = True,
                     errors.append("paused completion must use the exact non-delivery summary printed by --pause "
                                   "or --completion-summary")
                 return errors
-            prefix = "Unrelated follow-up (prior scope remains NOT DELIVERED): "
+            prefix = UNRELATED_FOLLOWUP
         # Retirement is tied to reviewed evidence and a real host completion,
         # not to the repository from which a later read-only turn is closed.
         elif completion_hook and host_completed(report, events(session_id)):
@@ -736,10 +738,18 @@ def session_command(args) -> int:
                 or report["session_id"] != sid):
             raise ValueError("declared delivery belongs to another repository/session")
         if args.completion_summary:
-            errors = terminal_errors(root, report)
+            log = events(sid)
+            summary = None
+            if report.get("state") == "paused" and paused_completion_time(report, log) is not None:
+                summary = (UNRELATED_FOLLOWUP
+                           + "The prior scope remains NOT DELIVERED; this follow-up accepts no requirements.")
+            elif host_completed(report, log):
+                summary = READ_ONLY_FOLLOWUP + "No new delivery acceptance is claimed by this follow-up."
+            errors = (check_session(Path.cwd(), sid, completion_hook=True, completion_summary=summary)
+                      if summary is not None else terminal_errors(root, report))
             if errors:
                 raise ValueError("; ".join(errors))
-            print(terminal_summary(report))
+            print(summary if summary is not None else terminal_summary(report))
             return 0
         if (args.seal or args.pause) and host_completed(report, events(sid)):
             raise ValueError("host-completed work needs a new owner-bound --prepare or --amend")

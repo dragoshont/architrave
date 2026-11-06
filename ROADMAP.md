@@ -1,5 +1,16 @@
 # Roadmap
 
+## v0.21.34 - Lifecycle-aware completion recovery (REQ-93)
+
+Make the supported read-only summary command agree with the completion hook
+after a genuine host completion. Return an unrelated, explicitly non-delivery
+follow-up after a completed pause and a read-only follow-up after reviewed
+delivery, rather than replay the consumed termination summary. Preserve the
+initial exact pause summary, declaration identity, recorded-edit guards and
+strict explicit delivery checks. Publish verified source before refreshing
+the existing global plugin; do not rewrite historical session evidence or
+claim that a later process check repairs a missed earlier prerequisite.
+
 ## v0.21.33 - Cross-repository completion recovery (REQ-91/92)
 
 Validate exact paused/handoff non-delivery summaries against the declared

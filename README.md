@@ -34,6 +34,10 @@ blocked, waiting or handoff outcome ends that attempt without accepting its
 delivery. See [delivery authenticity](docs/delivery-authenticity.md). Automated
 continuation is not new owner approval, and proposed work stays proposed until
 the owner agrees.
+The read-only `delivery-audit --completion-summary` recovery command follows
+the current lifecycle: an initial non-delivery termination is distinct from
+an eligible follow-up after real host completion. It does not resume or
+accept stopped work.
 
 **What is demonstrated and what is not.** In a live run on a multi-repository
 program, a coordinator committed the lane table, reused existing sessions, and
