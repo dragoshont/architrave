@@ -74,6 +74,38 @@ An `approved-program` Run crosses internal phase/task boundaries automatically.
 It still stops for policy denial, failure, exhausted retry, unavailable worker or
 resource, cancellation, and typed external checkpoints.
 
+If you omit `--autonomy`, `--allow`, or `--confirmation-required`, the Run takes
+that field from the repository config, as the API does. An explicit flag
+replaces only its own field. `migrate-v1` is the exception: it always creates
+an `advisory-only` Run, and it takes only the mutation allow and confirmation
+lists from config.
+
+`status` also reports `execution`, `holds`, and one `nextAction`.
+
+- `execution` shows lease records. Host execution is always `UNKNOWN`. READY
+  tasks that `task-start` would refuse now are listed with its refusal code,
+  checked in its order, including `STALE_REPOSITORY` and feasibility-lane
+  codes. Admissible tasks beyond `workers.maxParallel`, or that overlap a
+  selected task, are listed under `sequenced`. They are not refused. The mirror
+  is a lock-free, best-effort subset of `task-start`.
+- `holds` lists owner-required items: `BUDGET_100`,
+  `EXTERNAL_CHECKPOINT_PENDING`, and `MUTATION_DENIED`. A hold code equals the
+  `task-start` refusal code only for a READY task; a task waiting on a
+  checkpoint is refused with `TASK_NOT_READY`.
+- `nextAction` names one action and its command, for example `reconcile`,
+  `recover-workers`, `reconcile-side-effect`, `integrate-candidate`,
+  `repair-failed-gate`, `run-gate`, `produce-artifacts`, `complete-task`,
+  `dispatch-ready`, `resume-run`, `verify`, `wait-for-worker`, or `owner-hold`.
+  `reconcile-side-effect` also covers tasks kept from a superseded objective.
+  While a peer holds a live lease, `integrate-candidate` and `resume-run` yield
+  to `wait-for-worker`. So does `reconcile` under baseline drift, because
+  `resume --accept-commit` abandons RUNNING tasks; drift refuses `worker-finish`,
+  so `reconcile` is named once the live lease expires.
+
+`nextAction` is a reading, not an executor. `task-start` stays authoritative. An
+owner hold never hides other authorized work. See
+`knowledge/runtime-v2.md`.
+
 ## Native workers and observed gates
 
 Install the explicit user-scope Copilot integration from the kit:

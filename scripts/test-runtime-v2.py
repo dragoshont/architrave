@@ -62,9 +62,11 @@ class RuntimeV2Tests(unittest.TestCase):
             text=True,
         ).stdout.strip()
 
-    def runtime_cli(self, *args: str, expected: int = 0) -> dict[str, object]:
+    def runtime_cli(self, *args: str, expected: int = 0, wrapper: bool = False) -> dict[str, object]:
+        entry = ([str(ROOT / "harness" / "architrave_cli.py"), "runtime"] if wrapper
+                 else [str(ROOT / "harness" / "architrave_runtime.py")])
         completed = subprocess.run(
-            [sys.executable, str(ROOT / "harness" / "architrave_runtime.py"), "--repo", str(self.repo), *args],
+            [sys.executable, *entry, "--repo", str(self.repo), *args],
             cwd=self.repo,
             capture_output=True,
             text=True,
@@ -574,6 +576,15 @@ class RuntimeV2Tests(unittest.TestCase):
         self.assertEqual("COMPLETED", next(task for task in state["tasks"] if task["id"] == "first")["status"])
         self.assertEqual("READY", next(task for task in state["tasks"] if task["id"] == "second")["status"])
         self.assertEqual("RUNNING", state["status"])
+        # Run status RUNNING here has no lease-backed record; status says so and names the READY task.
+        status = self.runtime_cli("status", run_id)["result"]
+        self.assertEqual({"live": [], "expired": [], "count": 0}, status["execution"]["leaseRecords"])
+        self.assertEqual("UNKNOWN", status["execution"]["hostExecution"])
+        self.assertEqual(["second"], status["execution"]["readyWithoutLease"])
+        self.assertEqual("dispatch-ready", status["nextAction"]["kind"])
+        self.assertEqual(["second"], status["nextAction"]["taskIds"])
+        self.assertFalse(status["nextAction"]["ownerRequired"])
+        self.runtime_cli("task-start", run_id, "second", "--worker-id", "worker-second")
 
     def test_current_task_pauses_at_dependency_boundary(self) -> None:
         state = self.create(autonomy="current-task")
@@ -2513,6 +2524,587 @@ class RuntimeV2Tests(unittest.TestCase):
         self.assertEqual("advisory-only", state["autonomy"]["scope"])
         self.assertEqual([{"scope": "repository", "operations": ["edit"]}], state["policy"]["allow"])
         self.assertEqual(["deploy"], state["policy"]["confirmationRequired"])
+
+    def test_cli_create_paths_apply_configured_autonomy_policy_like_api(self) -> None:
+        configured_allow = [{"scope": "repository", "operations": ["edit"]}]
+        (self.repo / "architrave.config.json").write_text(json.dumps({"autonomy": {
+            "scope": "approved-program",
+            "mutationPolicy": {"allow": configured_allow, "confirmationRequired": ["deploy"]},
+        }}), encoding="utf-8")
+        api = self.store.create(goal="API parity.", outcome="Configured policy applies.", criteria=[self.criterion()])
+        self.assertEqual(("approved-program", configured_allow, ["deploy"]),
+                         (api["autonomy"]["scope"], api["policy"]["allow"], api["policy"]["confirmationRequired"]))
+        cases = (
+            ("run-omitted", False, "run", (), "approved-program", configured_allow, ["deploy"]),
+            ("create-alias-omitted", False, "create", (), "approved-program", configured_allow, ["deploy"]),
+            ("wrapper-omitted", True, "run", (), "approved-program", configured_allow, ["deploy"]),
+            ("explicit-allow-replaces-keeps-confirmations", False, "run",
+             ("--allow", "homelab:fixture:deploy", "--allow", "repository:test"), "approved-program",
+             [{"scope": "homelab:fixture", "operations": ["deploy"]},
+              {"scope": "repository", "operations": ["test"]}], ["deploy"]),
+            ("explicit-autonomy-keeps-policy", True, "create", ("--autonomy", "advisory-only"),
+             "advisory-only", configured_allow, ["deploy"]),
+            ("explicit-confirmations-replace-keep-allow", False, "run",
+             ("--confirmation-required", "edit", "--confirmation-required", "merge"),
+             "approved-program", configured_allow, ["edit", "merge"]),
+        )
+        for label, wrapper, command, extra, scope, allow, confirmations in cases:
+            with self.subTest(label):
+                result = self.runtime_cli(command, "--run-id", label, "--goal", "CLI parity.",
+                                          "--outcome", "Configured policy applies.", *extra, wrapper=wrapper)
+                self.assertEqual(label, result["result"]["runId"])
+                state = self.store.load(label)
+                self.assertEqual(scope, state["autonomy"]["scope"])
+                self.assertEqual(allow, state["policy"]["allow"])
+                self.assertEqual(confirmations, state["policy"]["confirmationRequired"])
+
+        legacy = self.repo / "legacy-summary.json"
+        legacy.write_text(json.dumps({"schema": "architrave.run.v1", "runId": "legacy", "status": "in-progress",
+                                      "artifacts": {}, "phases": []}), encoding="utf-8")
+        self.runtime_cli("migrate-v1", str(legacy), "--run-id", "legacy-cli")
+        migrated = self.store.load("legacy-cli")
+        self.assertEqual(("advisory-only", configured_allow, ["deploy"]),
+                         (migrated["autonomy"]["scope"], migrated["policy"]["allow"],
+                          migrated["policy"]["confirmationRequired"]))
+
+        (self.repo / "architrave.config.json").write_text(json.dumps({"autonomy": {"mutationPolicy": {
+            "allow": [{"scope": "*", "operations": ["edit"]}], "confirmationRequired": []}}}), encoding="utf-8")
+        for wrapper in (False, True):
+            rejected = self.runtime_cli("run", "--goal", "Reject.", "--outcome", "Configured wildcard rejected.",
+                                        expected=1, wrapper=wrapper)
+            self.assertEqual("INVALID_POLICY", rejected["error"]["code"])
+        (self.repo / "architrave.config.json").unlink()
+        default = self.runtime_cli("run", "--run-id", "no-config", "--goal", "Default.", "--outcome", "Built-in default.")
+        state = self.store.load(str(default["result"]["runId"]))
+        self.assertEqual(("current-task", [], []), (state["autonomy"]["scope"], state["policy"]["allow"],
+                                                    state["policy"]["confirmationRequired"]))
+
+    def next_action(self, run_id: str) -> dict[str, object]:
+        return self.runtime_cli("status", run_id)["result"]["nextAction"]
+
+    def test_status_next_action_follows_cli_lifecycle(self) -> None:
+        run_id = str(self.create(autonomy="current-task")["runId"])
+        self.assertEqual("plan-tasks", self.next_action(run_id)["kind"])
+        self.add_task(run_id, "a")
+        self.add_task(run_id, "b", dependencies=["a"])
+        action = self.next_action(run_id)
+        self.assertEqual(("dispatch-ready", ["a"], False), (action["kind"], action["taskIds"], action["ownerRequired"]))
+        self.assertIn(f"task-start {run_id} a", action["command"])
+        self.runtime_cli("task-start", run_id, "a", "--worker-id", "w-a")
+        status = self.runtime_cli("status", run_id)["result"]
+        self.assertEqual(["a"], status["execution"]["leaseRecords"]["live"])
+        self.assertEqual("UNKNOWN", status["execution"]["hostExecution"])
+        self.assertEqual(("wait-for-worker", ["a"]), (status["nextAction"]["kind"], status["nextAction"]["taskIds"]))
+        self.runtime_cli("worker-finish", run_id, "a", "--worker-id", "w-a", "--status", "FINISHED")
+        status = self.runtime_cli("status", run_id)["result"]
+        self.assertEqual(("run-gate", ["a"]), (status["nextAction"]["kind"], status["nextAction"]["taskIds"]))
+        self.assertIn("not acceptance", status["nextAction"]["reason"])
+        self.assertEqual("run-gate", status["execution"]["finishedCandidates"][0]["disposition"])
+        evidence = self.evidence(run_id, "evidence-a", task_id="a")
+        self.store.record_gate(run_id, gate_id="gate-a", task_id="a", gate_type="deterministic", status="PASS",
+                               evidence_refs=[evidence])
+        action = self.next_action(run_id)
+        self.assertEqual(("complete-task", ["a"]), (action["kind"], action["taskIds"]))
+        self.assertTrue(action["command"].endswith(f"task-complete {run_id} a --evidence gate:gate-a"))
+        self.runtime_cli("task-complete", run_id, "a", "--evidence", "gate:gate-a")
+        action = self.next_action(run_id)
+        self.assertEqual(("resume-run", f"resume {run_id}"), (action["kind"], action["command"].split("--repo . ")[1]))
+        self.assertEqual("RUN_PAUSED", self.runtime_cli("task-start", run_id, "b", "--worker-id", "w-b",
+                                                        expected=1)["error"]["code"])
+        self.runtime_cli("resume", run_id)
+        self.assertEqual(("dispatch-ready", ["b"]), tuple(self.next_action(run_id)[key] for key in ("kind", "taskIds")))
+        (self.repo / "README.md").write_text("# Moved\n", encoding="utf-8")
+        self.git("commit", "-qam", "baseline moved")
+        action = self.next_action(run_id)
+        self.assertEqual("reconcile", action["kind"])
+        self.assertTrue(action["command"].endswith(f"resume {run_id} --accept-commit"))
+        self.assertEqual("STALE_REPOSITORY", self.runtime_cli("task-start", run_id, "b", "--worker-id", "w-b0",
+                                                              expected=1)["error"]["code"])
+        self.runtime_cli("resume", run_id, "--accept-commit")
+        self.assertEqual(("dispatch-ready", ["b"]), tuple(self.next_action(run_id)[key] for key in ("kind", "taskIds")))
+        # Dirty source after accepting the commit is never baseline drift.
+        (self.repo / "README.md").write_text("# Dirty\n", encoding="utf-8")
+        self.assertEqual("dispatch-ready", self.next_action(run_id)["kind"])
+        self.git("checkout", "--", "README.md")
+        self.runtime_cli("task-start", run_id, "b", "--worker-id", "w-b", "--lease-seconds", "1")
+        time.sleep(1.2)
+        status = self.runtime_cli("status", run_id)["result"]
+        self.assertEqual(["b"], status["execution"]["leaseRecords"]["expired"])
+        self.assertEqual(("recover-workers", ["b"]), (status["nextAction"]["kind"], status["nextAction"]["taskIds"]))
+        self.runtime_cli("worker-recover", run_id)
+        # Recovering an expired lease without a side effect fails the task, so the Run becomes terminal FAILED.
+        self.assertEqual("FAILED", self.store.load(run_id)["status"])
+        action = self.next_action(run_id)
+        self.assertEqual(("none", None), (action["kind"], action["command"]))
+        self.assertEqual("RUN_TERMINAL", self.runtime_cli("task-start", run_id, "b", "--worker-id", "w-b3",
+                                                          expected=1)["error"]["code"])
+
+    def test_status_owner_holds_never_suppress_authorized_ready_work(self) -> None:
+        run_id = str(self.create()["runId"])
+        self.add_task(run_id, "mut", mutable=True)
+        self.add_task(run_id, "ext")
+        self.add_task(run_id, "plain")
+        self.runtime_cli("external-wait", run_id, "--id", "owner-call", "--task-id", "ext", "--type",
+                         "HUMAN_JUDGMENT_REQUIRED", "--principal", "owner", "--provider", "fixture", "--reason", "decide")
+        status = self.runtime_cli("status", run_id)["result"]
+        self.assertEqual(("dispatch-ready", ["plain"], False),
+                         (status["nextAction"]["kind"], status["nextAction"]["taskIds"], status["nextAction"]["ownerRequired"]))
+        holds = {item["code"]: item["taskIds"] for item in status["holds"]}
+        self.assertEqual({"MUTATION_DENIED": ["mut"], "EXTERNAL_CHECKPOINT_PENDING": ["ext"]}, holds)
+        self.assertEqual("MUTATION_DENIED", self.runtime_cli("task-start", run_id, "mut", "--worker-id", "w-mut",
+                                                             expected=1)["error"]["code"])
+        # The external hold sits on a WAITING_EXTERNAL task, which task-start refuses before its checkpoint check.
+        self.assertEqual("TASK_NOT_READY", self.runtime_cli("task-start", run_id, "ext", "--worker-id", "w-ext",
+                                                            expected=1)["error"]["code"])
+        self.runtime_cli("task-start", run_id, "plain", "--worker-id", "w-plain")
+        self.assertEqual("wait-for-worker", self.next_action(run_id)["kind"])
+        self.runtime_cli("worker-finish", run_id, "plain", "--worker-id", "w-plain", "--status", "FINISHED")
+        self.store.record_gate(run_id, gate_id="gate-plain", task_id="plain", gate_type="deterministic", status="PASS",
+                               evidence_refs=[self.evidence(run_id, "evidence-plain", task_id="plain")])
+        self.runtime_cli("task-complete", run_id, "plain", "--evidence", "gate:gate-plain")
+        status = self.runtime_cli("status", run_id)["result"]
+        action = status["nextAction"]
+        self.assertEqual(("owner-hold", True), (action["kind"], action["ownerRequired"]))
+        self.assertEqual({"mut", "ext"}, set(action["taskIds"]))
+        self.assertIsNone(action["command"])
+
+    def test_status_names_integration_for_isolated_candidate_and_holds_denied_integration(self) -> None:
+        workspaces = str(ROOT / "harness" / "workspaces.py")
+
+        def workspace_cli(*args: str, expected: int = 0) -> subprocess.CompletedProcess[str]:
+            result = subprocess.run([sys.executable, workspaces, "--repo", str(self.repo), *args], cwd=self.repo,
+                                    capture_output=True, text=True)
+            self.assertEqual(expected, result.returncode, result.stderr)
+            return result
+
+        for allowed in (True, False):
+            with self.subTest(allowed=allowed):
+                # Denied case: edit is allowed only with owner confirmation; the worker start was confirmed,
+                # but an unconfirmed integration is not, so the candidate becomes an owner hold.
+                run_id = str(self.create(allow=[{"scope": "repository", "operations": ["edit"]}],
+                                         confirmation=[] if allowed else ["edit"])["runId"])
+                self.add_task(run_id, "iso", mutable=True)
+                workspace_cli("create", run_id, "iso")
+                workspace = Path(self.store.load(run_id)["tasks"][0]["workspace"])
+                self.runtime_cli("task-start", run_id, "iso", "--worker-id", f"w-{allowed}",
+                                 *([] if allowed else ["--confirmed"]))
+                (workspace / "README.md").write_text(f"# Candidate {allowed}\n", encoding="utf-8")
+                self.runtime_cli("worker-finish", run_id, "iso", "--worker-id", f"w-{allowed}", "--status", "FINISHED")
+                status = self.runtime_cli("status", run_id)["result"]
+                if not allowed:
+                    self.assertEqual(("owner-hold", True), (status["nextAction"]["kind"], status["nextAction"]["ownerRequired"]))
+                    self.assertEqual([{"code": "MUTATION_DENIED", "taskIds": ["iso"],
+                                       "reason": status["holds"][0]["reason"]}], status["holds"])
+                    refused = workspace_cli("integrate", run_id, "iso", expected=1)
+                    self.assertEqual("MUTATION_DENIED", json.loads(refused.stderr)["error"]["code"])
+                    workspace_cli("cleanup", run_id, "iso", "--force")
+                    continue
+                action = status["nextAction"]
+                self.assertEqual(("integrate-candidate", ["iso"]), (action["kind"], action["taskIds"]))
+                self.assertTrue(action["command"].endswith(f"workspaces.py --repo . integrate {run_id} iso"))
+                workspace_cli("integrate", run_id, "iso")
+                self.assertEqual(f"# Candidate {allowed}\n", (self.repo / "README.md").read_text(encoding="utf-8"))
+                action = self.next_action(run_id)
+                # Dirty source from the legitimate integration is not drift; the candidate now needs its gate.
+                self.assertEqual(("run-gate", ["iso"]), (action["kind"], action["taskIds"]))
+                workspace_cli("cleanup", run_id, "iso", "--force")
+                self.git("checkout", "--", "README.md")
+
+    def test_status_dispatch_mirror_matches_task_start_codes(self) -> None:
+        # Every READY-task refusal the status mirror reports (notDispatchable or hold) must be the code real
+        # task-start returns, and every task status names dispatch-ready must be accepted by real task-start.
+        # Not reachable for a READY task through the public CLI, so not exercised here: PUSHBACK_NOT_KEPT
+        # (DEFER/CUT verdicts never leave a task READY), LANE_DEFERRED (task-add always targets an active lane),
+        # RETRY_EXHAUSTED (an exhausted task becomes FAILED) and RETRY_BACKOFF (no CLI backoff flag).
+        # The remaining-budget FEASIBILITY_STOP inside effective_work_budget is mirrored but not driven here.
+        edit = [{"scope": "repository", "operations": ["edit"]}]
+        config = self.repo / "architrave.config.json"
+
+        def add(run_id: str, task_id: str, *extra: str, pushback: bool = True) -> None:
+            self.runtime_cli("task-add", run_id, "--id", task_id, "--title", task_id, "--objective", "Deliver fixture",
+                             "--criteria", "OUTCOME-001", "--worker", "shell",
+                             *(["--pushback", "KEEP:parity"] if pushback else []), *extra)
+
+        def workspace(name: str) -> str:
+            path = Path(self.temp.name) / name
+            path.mkdir()
+            return str(path)
+
+        def start(run_id: str, task_id: str, *extra: str, expected: int = 0) -> dict[str, object]:
+            return self.runtime_cli("task-start", run_id, task_id, "--worker-id", f"w-{run_id[-6:]}-{task_id}",
+                                    *extra, expected=expected)
+
+        def pushback_missing() -> tuple[str, str]:
+            run_id = str(self.create()["runId"])
+            add(run_id, "unvetted", pushback=False)
+            add(run_id, "ready")
+            return run_id, "unvetted"
+
+        def retry_reason() -> tuple[str, str]:
+            run_id = str(self.create()["runId"])
+            add(run_id, "retry", "--max-attempts", "2")
+            start(run_id, "retry")
+            self.runtime_cli("worker-finish", run_id, "retry", "--worker-id", f"w-{run_id[-6:]}-retry",
+                             "--status", "FAILED")
+            return run_id, "retry"
+
+        def parallelism() -> tuple[str, str]:
+            config.write_text(json.dumps({"workers": {"maxParallel": 1}}), encoding="utf-8")
+            run_id = str(self.create()["runId"])
+            add(run_id, "first")
+            add(run_id, "second")
+            start(run_id, "first")
+            return run_id, "second"
+
+        def isolation() -> tuple[str, str]:
+            run_id = str(self.create(allow=edit)["runId"])
+            add(run_id, "m1", "--mutable-path", "iso/a.txt")
+            add(run_id, "m2", "--mutable-path", "iso/b.txt")
+            start(run_id, "m1")
+            return run_id, "m2"
+
+        def in_run_conflict() -> tuple[str, str]:
+            run_id = str(self.create(allow=edit)["runId"])
+            add(run_id, "m1", "--mutable-path", "conflict/a.txt")
+            add(run_id, "m2", "--mutable-path", "conflict/a.txt", "--workspace", workspace("ws-conflict"))
+            start(run_id, "m1")
+            return run_id, "m2"
+
+        def collision() -> tuple[str, str]:
+            shared = workspace("ws-shared")
+            run_id = str(self.create(allow=edit)["runId"])
+            add(run_id, "m1", "--mutable-path", "collide/a.txt", "--workspace", shared)
+            add(run_id, "m2", "--mutable-path", "collide/b.txt", "--workspace", shared)
+            start(run_id, "m1")
+            return run_id, "m2"
+
+        def cross_run_conflict() -> tuple[str, str]:
+            other = str(self.create(allow=edit)["runId"])
+            add(other, "holder", "--mutable-path", "cross/a.txt")
+            start(other, "holder")
+            run_id = str(self.create(allow=edit)["runId"])
+            add(run_id, "contender", "--mutable-path", "cross/a.txt")
+            add(run_id, "ready")
+            return run_id, "contender"
+
+        def mutation_denied() -> tuple[str, str]:
+            run_id = str(self.create()["runId"])
+            add(run_id, "denied", "--mutable-path", "denied/a.txt")
+            add(run_id, "ready")
+            return run_id, "denied"
+
+        def budget() -> tuple[str, str]:
+            run_id = str(self.create()["runId"])
+            add(run_id, "spent")
+            config.write_text(json.dumps({"evaluation": {"budget": {"maxTurns": 1}}}), encoding="utf-8")
+            return run_id, "spent"
+
+        def reset_lane(run_id: str, owner: str) -> None:
+            self.runtime_cli("feasibility-record", run_id, owner, "--trigger", "user", "--decision", "CONTINUE",
+                             "--rationale", "parity", "--next-step", "start", "--revisit", "after", "--uncertainty",
+                             "low", "--product-delta", "none", "--blocker", "none", "--seconds", "600", "--turns", "5",
+                             "--output-bytes", "10000")
+
+        def lane_busy() -> tuple[str, str]:
+            run_id = str(self.create()["runId"])
+            add(run_id, "owner")
+            add(run_id, "sibling")
+            reset_lane(run_id, "owner")
+            start(run_id, "owner")
+            return run_id, "sibling"
+
+        def lane_turns_unknown() -> tuple[str, str]:
+            run_id = str(self.create()["runId"])
+            add(run_id, "owner")
+            add(run_id, "sibling")
+            reset_lane(run_id, "owner")
+            start(run_id, "owner")
+            self.runtime_cli("worker-finish", run_id, "owner", "--worker-id", f"w-{run_id[-6:]}-owner",
+                             "--status", "FINISHED")
+            return run_id, "sibling"
+
+        def stopped_lane_and_budget() -> tuple[str, str]:
+            # Double fault: real task-start refuses FEASIBILITY_STOP before BUDGET_100, so no owner hold is shown.
+            run_id = str(self.create()["runId"])
+            add(run_id, "owner")
+            add(run_id, "sibling")
+            reset_lane(run_id, "owner")
+            config.write_text(json.dumps({"evaluation": {"budget": {"maxTurns": 1}}}), encoding="utf-8")
+            return run_id, "sibling"
+
+        def unreadable_other_run() -> tuple[str, str]:
+            broken = str(self.create()["runId"])
+            (self.store.runs_root / broken / "run.json").write_text("{not json", encoding="utf-8")
+            run_id = str(self.create(allow=edit)["runId"])
+            add(run_id, "blind", "--mutable-path", "blind/a.txt")
+            return run_id, "blind"
+
+        cases = [
+            ("PUSHBACK_MISSING", pushback_missing),
+            ("RETRY_REASON_REQUIRED", retry_reason),
+            ("PARALLELISM_EXCEEDED", parallelism),
+            ("WORKSPACE_ISOLATION_REQUIRED", isolation),
+            ("RESOURCE_CONFLICT", in_run_conflict),
+            ("WORKSPACE_COLLISION", collision),
+            ("RESOURCE_CONFLICT", cross_run_conflict),
+            ("MUTATION_DENIED", mutation_denied),
+            ("BUDGET_100", budget),
+            ("FEASIBILITY_LANE_BUSY", lane_busy),
+            ("FEASIBILITY_BUDGET_UNKNOWN", lane_turns_unknown),
+            ("FEASIBILITY_STOP", stopped_lane_and_budget),
+            ("RESOURCE_STATE_UNREADABLE", unreadable_other_run),  # last: it leaves an unreadable Run behind
+        ]
+        for code, build in cases:
+            with self.subTest(case=build.__name__):
+                try:
+                    run_id, task_id = build()
+                    status = self.runtime_cli("status", run_id)["result"]
+                    mirrored = {item["taskId"]: item["code"] for item in status["execution"]["notDispatchable"]}
+                    mirrored.update({held: item["code"] for item in status["holds"] for held in item["taskIds"]})
+                    refused = start(run_id, task_id, expected=1)["error"]["code"]
+                    self.assertEqual((code, code), (mirrored.get(task_id), refused))
+                    action = status["nextAction"]
+                    self.assertFalse(action["kind"] == "dispatch-ready" and task_id in action["taskIds"])
+                    for ready in action["taskIds"] if action["kind"] == "dispatch-ready" else []:
+                        start(run_id, ready)
+                finally:
+                    config.unlink(missing_ok=True)
+
+    def test_status_names_side_effect_verify_gate_repair_artifacts_and_budget_hold(self) -> None:
+        with self.subTest(kind="reconcile-side-effect"):
+            run_id = str(self.create(allow=[{"scope": "homelab:fixture", "operations": ["deploy"]}])["runId"])
+            self.add_task(run_id, "deploy", side_effect={"operation": "deploy", "target": "homelab:fixture"})
+            self.store.start_task(run_id, "deploy", worker_id="w-deploy")
+            self.runtime_cli("resume", run_id)
+            self.assertEqual("UNCERTAIN", self.store.load(run_id)["tasks"][0]["sideEffect"]["state"])
+            action = self.next_action(run_id)
+            self.assertEqual(("reconcile-side-effect", ["deploy"], False),
+                             (action["kind"], action["taskIds"], action["ownerRequired"]))
+            self.assertIn(f"reconcile-side-effect {run_id} deploy", action["command"])
+
+        with self.subTest(kind="verify"):
+            run_id = str(self.create(risk="R3", verification="reality")["runId"])
+            self.add_task(run_id, "product", risk="R3")
+            self.finish_task(run_id, "product", "w-product")
+            self.assertEqual("VERIFYING", self.store.verify(run_id)[0]["status"])
+            action = self.next_action(run_id)
+            self.assertEqual("verify", action["kind"])
+            self.assertTrue(action["command"].endswith(f"verify {run_id}"))
+
+        (self.repo / "architrave.config.json").write_text(json.dumps({"test": "git diff --check"}), encoding="utf-8")
+        self.git("add", "architrave.config.json")
+        self.git("commit", "-qm", "configured deterministic test gate")
+        for kind in ("repair-failed-gate", "produce-artifacts"):
+            with self.subTest(kind=kind):
+                run_id = str(self.create()["runId"])
+                self.add_task(run_id, "cand")
+                self.runtime_cli("task-start", run_id, "cand", "--worker-id", f"w-{kind}")
+                self.runtime_cli("worker-finish", run_id, "cand", "--worker-id", f"w-{kind}", "--status", "FINISHED")
+                # A real source-bound deterministic PASS; it is not the required artifact evidence-cand.
+                observed = self.runtime_cli("gate-execute", run_id, "cand")["result"]
+                if kind == "repair-failed-gate":
+                    # A deterministic FAIL fails the Run; a source-bound semantic FAIL leaves a repairable candidate.
+                    self.store.record_gate(run_id, gate_id=f"gate-{kind}", task_id="cand", gate_type="semantic",
+                                           family="judge-a", status="FAIL", evidence_refs=[observed["artifactRef"]])
+                status = self.runtime_cli("status", run_id)["result"]
+                action = status["nextAction"]
+                self.assertEqual((kind, ["cand"], None), (action["kind"], action["taskIds"], action["command"]))
+                self.assertIn("not acceptance", action["reason"])
+                candidate = status["execution"]["finishedCandidates"][0]
+                self.assertEqual([observed["gateRef"].split(":", 1)[1]], candidate["passGates"])
+                if kind == "produce-artifacts":
+                    self.assertEqual(["evidence-cand"], candidate["missingArtifacts"])
+                else:
+                    self.assertEqual([f"gate-{kind}"], candidate["failedGates"])
+
+        with self.subTest(kind="owner-hold BUDGET_100"):
+            run_id = str(self.create()["runId"])
+            self.add_task(run_id, "spent")
+            config = self.repo / "architrave.config.json"
+            config.write_text(json.dumps({"evaluation": {"budget": {"maxTurns": 1}}}), encoding="utf-8")
+            try:
+                status = self.runtime_cli("status", run_id)["result"]
+                self.assertEqual(["BUDGET_100"], [item["code"] for item in status["holds"]])
+                action = status["nextAction"]
+                self.assertEqual(("owner-hold", ["spent"], True, None),
+                                 (action["kind"], action["taskIds"], action["ownerRequired"], action["command"]))
+                self.assertEqual("BUDGET_100", self.runtime_cli("task-start", run_id, "spent", "--worker-id", "w-spent",
+                                                                expected=1)["error"]["code"])
+            finally:
+                config.unlink(missing_ok=True)
+
+    def test_status_reconciles_superseded_objective_side_effect(self) -> None:
+        # replace_objective keeps an in-flight side effect as WAITING_RESOURCE/UNCERTAIN on the old objective;
+        # reconcile-side-effect accepts it, so status must name it rather than an owner hold.
+        run_id = str(self.create(allow=[{"scope": "homelab:fixture", "operations": ["deploy"]}])["runId"])
+        self.add_task(run_id, "deploy", side_effect={"operation": "deploy", "target": "homelab:fixture"})
+        self.runtime_cli("task-start", run_id, "deploy", "--worker-id", "w-deploy")
+        self.add_task(run_id, "correction")
+        challenge = self.runtime_cli("external-wait", run_id, "--id", "objective-correction", "--task-id",
+                                     "correction", "--type", "HUMAN_JUDGMENT_REQUIRED", "--principal",
+                                     "authorized-user", "--provider", "user-direction", "--reason",
+                                     "Replace the objective.")["result"]["resolutionChallenge"]
+        self.runtime_cli("objective-replace", run_id, "--outcome", "The replacement objective is current.",
+                         "--criterion", "OUTCOME-002|Replacement outcome.|fixture|R1|deterministic",
+                         "--correction", "Objective correction.", "--next-test", "Verify the replacement.",
+                         "--checkpoint-id", "objective-correction", "--challenge", str(challenge),
+                         "--actor", "human:authorized-user")
+        task = self.store.load(run_id)["tasks"][0]
+        self.assertEqual(("deploy", "WAITING_RESOURCE", "UNCERTAIN"),
+                         (task["id"], task["status"], task["sideEffect"]["state"]))
+        action = self.next_action(run_id)
+        self.assertEqual(("reconcile-side-effect", ["deploy"], False),
+                         (action["kind"], action["taskIds"], action["ownerRequired"]))
+        receipt = self.evidence(run_id, "deployment-reconciliation", task_id="deploy", producer="mutation")
+        self.runtime_cli("reconcile-side-effect", run_id, "deploy", "--result", "applied", "--evidence", receipt)
+        deploy = next(task for task in self.store.load(run_id)["tasks"] if task["id"] == "deploy")
+        self.assertEqual("CONFIRMED", deploy["sideEffect"]["state"])
+
+    def test_status_waits_for_live_peer_before_suggesting_resume(self) -> None:
+        # resume abandons every RUNNING task, so a PAUSED Run with a live peer lease must wait, not resume.
+        run_id = str(self.create(autonomy="current-task")["runId"])
+        self.add_task(run_id, "a")
+        self.add_task(run_id, "peer")
+        self.add_task(run_id, "c", dependencies=["a"])
+        self.runtime_cli("task-start", run_id, "a", "--worker-id", "w-a")
+        self.runtime_cli("task-start", run_id, "peer", "--worker-id", "w-peer")
+        self.runtime_cli("worker-finish", run_id, "a", "--worker-id", "w-a", "--status", "FINISHED")
+        self.store.record_gate(run_id, gate_id="gate-a", task_id="a", gate_type="deterministic", status="PASS",
+                               evidence_refs=[self.evidence(run_id, "evidence-a", task_id="a")])
+        self.runtime_cli("task-complete", run_id, "a", "--evidence", "gate:gate-a")
+        self.assertEqual("PAUSED", self.store.load(run_id)["status"])
+        action = self.next_action(run_id)
+        self.assertEqual(("wait-for-worker", ["peer"]), (action["kind"], action["taskIds"]))
+        peer = next(task for task in self.store.load(run_id)["tasks"] if task["id"] == "peer")
+        self.assertEqual(("RUNNING", "w-peer"), (peer["status"], peer["lease"]["owner"]))
+        # The peer's own terminal transitions re-derive the Run status, so the pause ends without a destructive resume.
+        self.runtime_cli("worker-finish", run_id, "peer", "--worker-id", "w-peer", "--status", "FINISHED")
+        self.assertEqual("RUNNING", self.store.load(run_id)["status"])
+        self.assertEqual(("run-gate", ["peer"]), tuple(self.next_action(run_id)[key] for key in ("kind", "taskIds")))
+        self.store.record_gate(run_id, gate_id="gate-peer", task_id="peer", gate_type="deterministic", status="PASS",
+                               evidence_refs=[self.evidence(run_id, "evidence-peer", task_id="peer")])
+        self.runtime_cli("task-complete", run_id, "peer", "--evidence", "gate:gate-peer")
+        self.assertEqual(("dispatch-ready", ["c"]), tuple(self.next_action(run_id)[key] for key in ("kind", "taskIds")))
+        self.runtime_cli("task-start", run_id, "c", "--worker-id", "w-c")
+
+    def test_status_defers_candidate_integration_while_wave_peer_is_live(self) -> None:
+        workspaces = str(ROOT / "harness" / "workspaces.py")
+
+        def workspace_cli(*args: str) -> None:
+            result = subprocess.run([sys.executable, workspaces, "--repo", str(self.repo), *args], cwd=self.repo,
+                                    capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, result.stderr)
+
+        run_id = str(self.create(allow=[{"scope": "repository", "operations": ["edit"]}])["runId"])
+        self.add_task(run_id, "iso", mutable=True)
+        self.add_task(run_id, "peer")
+        workspace_cli("create", run_id, "iso")
+        try:
+            workspace = Path(self.store.load(run_id)["tasks"][0]["workspace"])
+            self.runtime_cli("task-start", run_id, "iso", "--worker-id", "w-iso")
+            self.runtime_cli("task-start", run_id, "peer", "--worker-id", "w-peer")
+            (workspace / "README.md").write_text("# Candidate\n", encoding="utf-8")
+            self.runtime_cli("worker-finish", run_id, "iso", "--worker-id", "w-iso", "--status", "FINISHED")
+            status = self.runtime_cli("status", run_id)["result"]
+            self.assertEqual("integrate-candidate", status["execution"]["finishedCandidates"][0]["disposition"])
+            self.assertEqual(("wait-for-worker", ["peer"]), (status["nextAction"]["kind"], status["nextAction"]["taskIds"]))
+            self.runtime_cli("worker-finish", run_id, "peer", "--worker-id", "w-peer", "--status", "FINISHED")
+            action = self.next_action(run_id)
+            self.assertEqual(("integrate-candidate", ["iso"]), (action["kind"], action["taskIds"]))
+        finally:
+            workspace_cli("cleanup", run_id, "iso", "--force")
+
+    def test_status_sequences_admissible_ready_work_beyond_parallelism(self) -> None:
+        config = self.repo / "architrave.config.json"
+        config.write_text(json.dumps({"workers": {"maxParallel": 1}}), encoding="utf-8")
+        try:
+            run_id = str(self.create()["runId"])
+            self.add_task(run_id, "first")
+            self.add_task(run_id, "second")
+            status = self.runtime_cli("status", run_id)["result"]
+            self.assertEqual(("dispatch-ready", ["first"]), (status["nextAction"]["kind"], status["nextAction"]["taskIds"]))
+            self.assertEqual(["second"], [item["taskId"] for item in status["execution"]["sequenced"]])
+            self.assertEqual("first", status["execution"]["sequenced"][0]["after"])
+            self.assertEqual([], status["execution"]["notDispatchable"])
+            self.assertEqual([], status["holds"])
+            self.runtime_cli("task-start", run_id, "first", "--worker-id", "w-first")
+            status = self.runtime_cli("status", run_id)["result"]
+            self.assertEqual([{"taskId": "second", "code": "PARALLELISM_EXCEEDED"}], status["execution"]["notDispatchable"])
+            self.assertEqual([], status["execution"]["sequenced"])
+            self.assertEqual("PARALLELISM_EXCEEDED", self.runtime_cli("task-start", run_id, "second", "--worker-id",
+                                                                      "w-second", expected=1)["error"]["code"])
+        finally:
+            config.unlink(missing_ok=True)
+
+    def test_status_reports_baseline_drift_before_mutation_hold(self) -> None:
+        run_id = str(self.create()["runId"])
+        self.add_task(run_id, "denied", mutable=True)
+        (self.repo / "README.md").write_text("# Moved\n", encoding="utf-8")
+        self.git("commit", "-qam", "baseline moved")
+        status = self.runtime_cli("status", run_id)["result"]
+        self.assertEqual([{"taskId": "denied", "code": "STALE_REPOSITORY"}], status["execution"]["notDispatchable"])
+        self.assertEqual([], status["holds"])
+        self.assertEqual("reconcile", status["nextAction"]["kind"])
+        self.assertEqual("STALE_REPOSITORY", self.runtime_cli("task-start", run_id, "denied", "--worker-id", "w-denied",
+                                                              expected=1)["error"]["code"])
+
+    def test_status_defers_drift_reconcile_while_peer_lease_is_live(self) -> None:
+        # resume --accept-commit abandons every RUNNING task, so drift beside a live lease must wait.
+        run_id = str(self.create()["runId"])
+        self.add_task(run_id, "peer")
+        self.runtime_cli("task-start", run_id, "peer", "--worker-id", "w-peer", "--lease-seconds", "8")
+        (self.repo / "README.md").write_text("# Moved\n", encoding="utf-8")
+        self.git("commit", "-qam", "baseline moved")
+        status = self.runtime_cli("status", run_id)["result"]
+        action = status["nextAction"]
+        self.assertEqual(("wait-for-worker", ["peer"], None), (action["kind"], action["taskIds"], action["command"]))
+        self.assertIn("resume --accept-commit", action["reason"])
+        self.assertEqual(["peer"], status["execution"]["leaseRecords"]["live"])
+        # A drifted baseline refuses the worker's own report, so the peer ends only by lease expiry.
+        self.assertEqual("STALE_REPOSITORY", self.runtime_cli(
+            "worker-finish", run_id, "peer", "--worker-id", "w-peer", "--status", "FINISHED", expected=1)["error"]["code"])
+        # Wait for the recorded lease expiry, not a wall-clock offset from before task-start.
+        expires = parse_iso(next(task for task in self.store.load(run_id)["tasks"] if task["id"] == "peer")["lease"]["expiresAt"])
+        time.sleep(max(0.0, (expires - dt.datetime.now(dt.timezone.utc)).total_seconds()) + 0.5)
+        action = self.next_action(run_id)
+        self.assertEqual("reconcile", action["kind"])
+        self.assertTrue(action["command"].endswith(f"resume {run_id} --accept-commit"))
+
+    def test_status_reconciles_drift_when_only_expired_leases_remain(self) -> None:
+        run_id = str(self.create()["runId"])
+        self.add_task(run_id, "gone")
+        self.runtime_cli("task-start", run_id, "gone", "--worker-id", "w-gone", "--lease-seconds", "1")
+        (self.repo / "README.md").write_text("# Moved\n", encoding="utf-8")
+        self.git("commit", "-qam", "baseline moved")
+        time.sleep(1.2)
+        status = self.runtime_cli("status", run_id)["result"]
+        self.assertEqual([], status["execution"]["leaseRecords"]["live"])
+        self.assertEqual(["gone"], status["execution"]["leaseRecords"]["expired"])
+        action = status["nextAction"]
+        self.assertEqual("reconcile", action["kind"])
+        self.assertTrue(action["command"].endswith(f"resume {run_id} --accept-commit"))
+        self.runtime_cli("resume", run_id, "--accept-commit")
+        status = self.runtime_cli("status", run_id)["result"]
+        self.assertNotEqual("reconcile", status["nextAction"]["kind"])
+        refused = {item["taskId"]: item["code"] for item in status["execution"]["notDispatchable"]}
+        self.assertEqual(refused["gone"], self.runtime_cli("task-start", run_id, "gone", "--worker-id", "w-gone2",
+                                                           expected=1)["error"]["code"])
+
+    def test_status_recovers_expired_before_waiting_on_live_peer_under_drift(self) -> None:
+        run_id = str(self.create()["runId"])
+        self.add_task(run_id, "gone")
+        self.add_task(run_id, "peer")
+        self.runtime_cli("task-start", run_id, "gone", "--worker-id", "w-gone", "--lease-seconds", "1")
+        self.runtime_cli("task-start", run_id, "peer", "--worker-id", "w-peer")
+        (self.repo / "README.md").write_text("# Moved\n", encoding="utf-8")
+        self.git("commit", "-qam", "baseline moved")
+        time.sleep(1.2)
+        action = self.next_action(run_id)
+        self.assertEqual(("recover-workers", ["gone"]), (action["kind"], action["taskIds"]))
+        self.assertTrue(action["command"].endswith(f"worker-recover {run_id}"))
+        self.runtime_cli("worker-recover", run_id)
+        action = self.next_action(run_id)
+        self.assertEqual(("wait-for-worker", ["peer"], None), (action["kind"], action["taskIds"], action["command"]))
 
     def test_config_driven_worker_profile_and_risk_defaults_apply_when_omitted(self) -> None:
         (self.repo / "architrave.config.json").write_text(

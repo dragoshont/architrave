@@ -99,6 +99,16 @@ deliverable, with exclusive mutable ownership, and integrate and verify the
 results in the parent. This makes useful parallel work visible instead of
 silently serializing it or hiding it in an ephemeral subagent.
 
+Name the active transport (visible sidebar sessions or the native bridge) when
+the program or lane table starts, and keep one authoritative owner and result
+mapping for it. A child returns a candidate against a frozen base and the lead
+integrates candidates in a deliberate wave: integrate only after every peer in
+the wave is terminal or reconciled, including a rejected dispatch, because
+integration mutates the base. A completion notification never permits mutating
+the frozen base early; for native candidates the existing worker-change check
+remains the enforcement. These rules add no schema, role, ledger, mandatory
+form or recursion.
+
 Work directly for one continuous trace, a shared patch, or when coordination
 costs more than the parallelism saves. Independent reviews are visible sidebar
 sessions too (for example kickoff `agent: "architrave:adversarial-judge"`), so
@@ -136,8 +146,12 @@ exact host blocker. These are launch checks, not new receipts or report files.
 
 A short native child assignment needs only an objective, owned scope, relevant
 context and expected result. For consequential handoffs, make these usable:
-include resolvable inputs and applicable decisions, acceptance, a stop condition
-and an evidence-return route (for example a reply to the assigning session).
+the verbatim owner quote and REQ ids, resolvable inputs, applicable decisions,
+preserved constraints and unanswered questions, one observable outcome with
+exclusive ownership, the acceptance observation, a stop condition that includes
+an honest-conflict exit (report the conflict rather than silently reinterpret
+the ask) and a bounded evidence-return route (for example a reply to the
+assigning session).
 Verify needed files, guidance, capabilities and permissions rather than assuming
 the child's cwd or inherited context. Use host limits; do not invent per-child budget,
 receipt or planning fields for a brief lookup. Return the answer or change,
@@ -775,6 +789,13 @@ periodic monitor or planning artifact.
   handoff, the predecessor may implement a bounded slice for the successor;
   do not infer broken ownership from sidebar ancestry alone or create competing
   coordinators. A handoff or source check is not the end-to-end outcome.
+- After every child return, session resume and integration, read `nextAction`
+  in the `status` of an existing canonical Run (otherwise reconcile the lane
+  table and supported host state), then take that authorized action or state
+  the exact hold. `nextAction` is derived from canonical state; it is neither an
+  executor nor a stopping condition, and host execution stays unobserved. A
+  duplicate return or resume is reconciled against the current owner and result
+  mapping, never re-dispatched or re-integrated.
 - Choose the next missing owner-visible outcome and execute the smallest
   authorized action that advances its acceptance. Use current source and
   observations, not a stale status summary. Supporting readiness, environment

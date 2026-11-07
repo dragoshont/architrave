@@ -16,12 +16,14 @@ FIELDS = (
     ('.claude-plugin/marketplace.json', ('plugins', 0, 'version')),
     ('.codex-plugin/plugin.json', ('version',)),
 )
+PRERELEASE_ID = r'(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
+VERSION = re.compile(rf'[0-9]+\.[0-9]+\.[0-9]+(?:-{PRERELEASE_ID}(?:\.{PRERELEASE_ID})*)?')
 
 
 def main(argv=None):
     args = sys.argv[1:] if argv is None else argv
-    if len(args) != 1 or not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', args[0]):
-        print('usage: scripts/bump_version.py <X.Y.Z>   (semver, no leading \'v\')', file=sys.stderr)
+    if len(args) != 1 or not VERSION.fullmatch(args[0]):
+        print('usage: scripts/bump_version.py <X.Y.Z[-prerelease]>   (semver, no leading \'v\')', file=sys.stderr)
         return 1
     version = args[0]
     documents = {}

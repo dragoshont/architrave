@@ -321,6 +321,18 @@ required = {
     "lead multi-repo lanes": (execution, "Native batch is single-repository"),
     "lead child capability": (execution, "confirm the child can run its commands and read its ledger"),
     "lead shared resources": (execution, "heavy builds and disk floors are shared resources"),
+    "lead continues from canonical state": (agent, "read `nextAction` when a Run exists (else reconcile the lane table)"),
+    "lead never re-dispatches duplicates": (agent, "never re-dispatch duplicates"),
+    "lead integrates after every peer": (agent, "Integrate only once every peer is terminal or reconciled"),
+    "lead goal-preserving handoff": (agent, "Handoffs carry the verbatim owner quote, REQ ids and an honest-conflict exit"),
+    "policy names transport": (execution, "Name the active transport (visible sidebar sessions or the native bridge)"),
+    "policy deliberate integration wave": (execution, "integrate only after every peer in the wave is terminal or reconciled, including a rejected dispatch"),
+    "policy frozen base and worker check": (execution, "A completion notification never permits mutating the frozen base early"),
+    "policy post-return next action": (execution, "After every child return, session resume and integration, read `nextAction`"),
+    "policy duplicate return reconciled": (execution, "never re-dispatched or re-integrated"),
+    "policy goal-preserving handoff": (execution, "the verbatim owner quote and REQ ids"),
+    "policy honest-conflict exit": (execution, "an honest-conflict exit (report the conflict rather than silently reinterpret the ask)"),
+    "policy continuation adds no ceremony": (execution, "These rules add no schema, role, ledger, mandatory form or recursion"),
 }
 
 missing = [name for name, (text, phrase) in required.items() if not contains_guidance(text, phrase)]

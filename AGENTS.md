@@ -45,13 +45,25 @@ defaults to deny; explicit Run policy may authorize a bounded target and operati
 - Keep the README + ROADMAP in sync when structure changes.
 
 ## Build / verify
-- Validate JSON manifests: `jq empty plugin.json .github/plugin/marketplace.json kit/architrave.config.schema.json`.
-- Validate harness schemas: `jq empty harness/schemas/*.json`.
-- Validate agent YAML frontmatter with `ruby -ryaml` (PyYAML is not installed on the dev Mac).
-- Validate Codex skills/roles and all adapter fixtures through `scripts/check-manifests.sh`; use `python3 scripts/test-codex-runtime.py --live` only for provider-backed release evidence.
-- Run focused runtime suites with `python3 scripts/test-runtime-v2.py`,
-  `test-worker-adapters.py`, `test-invariant-engine.py`, `test-legibility.py`,
-  `test-workspaces.py`, and `test-longbuild-runtime.py`.
-- Smoke-test the gates against a config with `python3 gates/gate_runner.py checks --quick`.
-- Test repository profiles with `scripts/test-config-profiles.sh` and installers with `python3 scripts/test_install_update.py`.
+Interpreter: `python3` on macOS/Linux, `python` on native Windows, where `python3` is
+usually the Microsoft Store stub and exits 49. Examples use `python`; every entrypoint is a
+Python or Node CLI.
+- Full manifest suite (manifests, seven-field version sync, Codex roles, installer, profile
+  and runtime fixtures): `python scripts/check_manifests.py`. It is long-running, must run
+  inside a git checkout, needs `npx` for its AJV schema checks, and skips agent/skill YAML
+  frontmatter when `ruby` is not on PATH.
+- `python scripts/check_manifests.py --scan-only` runs only the repository scans and the
+  Python-only entrypoint check. It skips JSON well-formedness, version sync, YAML and
+  fixture coverage, so report it as scan-only, never as the full suite.
+- Optional JSON spot check where `jq` is installed:
+  `jq empty plugin.json .github/plugin/marketplace.json kit/architrave.config.schema.json harness/schemas/*.json`.
+- Provider-backed Codex evidence, for releases only: `python scripts/test-codex-runtime.py --live`.
+- Focused runtime suites: `python scripts/test-runtime-v2.py`, `test-worker-adapters.py`,
+  `test-invariant-engine.py`, `test-legibility.py`, `test-workspaces.py` and
+  `test-longbuild-runtime.py`, plus `node --experimental-vm-modules scripts/test-native-review.mjs`.
+- Gates: `python gates/gate_runner.py checks --quick` is the smoke test. `python gates/gate_runner.py checks`
+  runs the configured build and test recipes through the host shell (Git Bash when present,
+  else `cmd`); on native Windows cite that run, not WSL or a direct test invocation.
+- Repository profiles: `python scripts/test-config-profiles.py` (needs `npx`). Installers:
+  `python scripts/test_install_update.py`.
 - Test plugin load: `copilot plugin install "$PWD"` → `copilot plugin list` → `copilot plugin uninstall architrave`.

@@ -51,6 +51,26 @@ Two lanes could not run: a turn started by another session cannot show the
 owner a permission prompt. Sustained parallel delivery across many children
 (REQ-30/36) is **not yet proven**. Validation is local; hosted CI is off.
 
+**1.0.0-beta.1 is work in progress: not released, not 1.0 final.** It is on
+`main` but not built, published or installed (the version fields still read
+0.21.35), and every requirement it covers (REQ-95 to REQ-100) is still
+`in-progress`. Native Windows and macOS are the 1.0 targets; WSL2 is not. The
+work makes CLI-created Runs honor the configured autonomy and mutation-policy
+defaults, reports each Run's execution, holds and one next action from
+canonical state (a conservative, best-effort mirror of `task-start`, which stays
+authoritative), adds a first pass at bounding native dispatch stages, and adds
+continuation and handoff guidance. The native pass has open defects: recovery
+adopts by prompt text and treats an empty listing as proof of no owner, an
+already-aborted invocation is not honored, preflight can take two 30 s windows,
+and unresolved admissions are not counted toward the child cap (#40 to #44).
+It does not demonstrate a live multi-wave qualification or sustained parallel
+delivery, macOS runs, a live native-bridge hang (fixture-tested only), host
+loading of a prerelease version, loaded-context refresh after an update, or an
+owner and ACL check of the durable Run key on Windows. Every unaddressed item is
+a GitHub issue (#40 to #87, including audit findings F6, F8, F9 and F10); the
+handover for continuing on another machine is #39. See the
+[changelog](CHANGELOG.md).
+
 ## Spec-driven workflow
 
 1. **Specify.** The request becomes REQ rows in `SPEC.md`: id, requirement,
@@ -561,6 +581,8 @@ Everything Architrave ships, grouped by area. Paths point at the source of truth
 
 ### Durable Runs and recovery
 - Run v2 state machine with API-owned state, authenticated event log, checkpoints and a rolling recovery snapshot; phase and status views are projections — `harness/architrave_runtime.py`, `knowledge/runtime-v2.md`.
+- Runs created from the CLI (`run`, the `create` alias and the `architrave_cli.py runtime` wrapper) apply the same configured autonomy and mutation-policy defaults as `RunStore.create`. An explicit flag overrides only its own field, an explicit list replaces the configured one, and repeated flags accumulate. `migrate-v1` is the exception for scope: it always creates an advisory-only Run, so a legacy summary cannot gain authority, while it still takes the configured allow and confirmation lists — `harness/architrave_runtime.py`.
+- `status` reports `execution` (lease-backed records, kept separate from host execution, which stays `UNKNOWN`), owner-required `holds`, and exactly one `nextAction` derived from canonical state. It is a reading, not an executor: `task-start` stays authoritative, and there is no daemon, polling or forced continuation — `harness/architrave_runtime.py`, `knowledge/runtime-v2.md`.
 - Task graph with dependencies, WorkPackets, worker completion recorded separately from task PASS, objective versioning, primary criterion and milestones — `harness/architrave_runtime.py` (`task-add`, `primary-set`, `criterion-set`, `milestone-advance`, `objective-replace`).
 - `WAITING_EXTERNAL` checkpoints for human sign-in, approvals and external systems, resolved only by trusted actors — `knowledge/runtime-v2.md`.
 - Default-deny mutation: infrastructure and runtime changes need scoped grants, target attestation, receipts, reconciliation of uncertain side effects and live verification — `harness/architrave_runtime.py` (`policy-check`, `reconcile-side-effect`, `target-attest`).
@@ -570,8 +592,8 @@ Everything Architrave ships, grouped by area. Paths point at the source of truth
 - Long-build runtime guidance — `docs/longbuild.md`.
 
 ### Native host bridge (Copilot)
-- `architrave_native_dispatch` and `_batch` (2–8 pre-decomposed packets) dispatch bounded WorkPackets through the joined host with owner binding, child limits, source binding and REQ acceptance in the kickoff — `extensions/architrave-native/bridge.mjs`.
-- `architrave_native_status`, `_cancel` (through the real owner, never a fabricated result) and `_recover` (closes orphaned records without replaying side effects).
+- `architrave_native_dispatch` and `_batch` (2–8 pre-decomposed packets) dispatch bounded WorkPackets through the joined host with owner binding, child limits, source binding and REQ acceptance in the kickoff. A first pass bounds each stage — a fixed 30 s preflight bound, then the lease expiry with a reserved cleanup budget — and a timeout returns a stage-labelled failure. `hostCancellationConfirmed` is `true` only when the host confirmed the cancel; it does not mean the task was removed, which `cleanup.confirmed` reports separately. Batch packets fail independently. Known defects: preflight can take two 30 s windows (#41), an already-aborted invocation is not honored (#42), and unresolved admissions are not counted toward the child cap (#43) — `extensions/architrave-native/bridge.mjs`.
+- `architrave_native_status`, `_cancel` (through the real owner, never a fabricated result) and `_recover` (closes orphaned records without replaying side effects). While admission or cleanup is unresolved the bridge keeps the WorkPacket's recovery identity and rejects a retry with `NATIVE_RECOVERY_PENDING`; `_cancel` then adopts and stops a late, persisted or exact-prompt-matched owner, or releases the identity after a confirmed-empty host listing, and stays blocked while the listing hangs. Known defects: adopting by exact prompt text can match a duplicate or a historical task, and an empty listing is not proof that no owner will appear later (#40). The identity lives in the bridge process (#46), and the evidence is fixture-only, not live host qualification; the fixture suite is timing-sensitive under load (#44).
 - `architrave_native_gate` runs stored commands or observes configured workflows bound to the source, task and objective; `architrave_native_review` runs one fresh source-bound semantic review and admits only observed results — `docs/native-semantic-review.md`.
 
 ### Verification and review

@@ -1088,13 +1088,17 @@ class RunStore:
             "deployment": None,
         }
 
-    def _assert_repository_baseline(self, state: dict[str, Any]) -> None:
+    def repository_baseline_drift(self, state: dict[str, Any]) -> dict[str, Any]:
+        """Admission drift predicate: repository/commit/branch only; dirty source is never drift."""
         identity = self.repository_identity()
-        drift = {
+        return {
             key: {"expected": state["baseline"].get(key), "actual": identity.get(key)}
             for key in ("repository", "commit", "branch")
             if state["baseline"].get(key) != identity.get(key)
         }
+
+    def _assert_repository_baseline(self, state: dict[str, Any]) -> None:
+        drift = self.repository_baseline_drift(state)
         if drift:
             raise RuntimeFailure("STALE_REPOSITORY", "repository baseline drift requires resume reconciliation", details=drift)
 
@@ -6866,6 +6870,301 @@ def runtime_identity() -> dict[str, Any]:
             "adoptedKitVersion": stamp.read_text(encoding="utf-8").strip() if stamp.is_file() else None}
 
 
+PROJECTION_ID_CAP = 20
+OWNER_HOLD_CODES = {"BUDGET_100", "EXTERNAL_CHECKPOINT_PENDING", "MUTATION_DENIED"}
+
+
+def execution_projection(state: dict[str, Any], store: "RunStore", events: list[dict[str, Any]],
+                         budget: dict[str, Any] | None, now: dt.datetime) -> tuple[dict, list, dict]:
+    """Read-only status projection: lease records, owner holds and the first agent-authorized action.
+
+    It mirrors cheap task-start/task-complete admission checks; the commands stay authoritative.
+    Host execution is never observable here and is reported as UNKNOWN.
+    """
+    run_id = state["runId"]
+    version = state["objective"]["version"]
+    prefix = "python harness/architrave_runtime.py --repo . "
+    truncated = False
+
+    def cap(ids: list[str]) -> list[str]:
+        nonlocal truncated
+        truncated = truncated or len(ids) > PROJECTION_ID_CAP
+        return ids[:PROJECTION_ID_CAP]
+
+    def action(kind: str, task_ids: list[str], reason: str, command: str | None, owner: bool = False) -> dict:
+        return {"kind": kind, "taskIds": cap(task_ids), "reason": reason, "ownerRequired": owner,
+                "command": None if not command else command if command.startswith("python ") else prefix + command}
+
+    current = [task for task in state["tasks"]
+               if task.get("objectiveVersion", version) == version and task["status"] not in TERMINAL_TASK_STATUSES]
+    leased = [task for task in state["tasks"] if task["status"] == "RUNNING" and task.get("lease")]
+    live = [task["id"] for task in leased if parse_iso(task["lease"]["expiresAt"]) > now]
+    expired = [task["id"] for task in leased if task["id"] not in live]
+    live_owners = {task["lease"]["owner"] for task in leased if task["id"] in live}
+    stale_workers = [worker["id"] for worker in state["workers"]
+                     if worker["status"] == "RUNNING" and worker["id"] not in live_owners]
+
+    holds: dict[str, dict[str, Any]] = {}
+
+    def hold(code: str, task_id: str, reason: str) -> None:
+        ids = holds.setdefault(code, {"code": code, "taskIds": [], "reason": reason})["taskIds"]
+        if task_id not in ids:
+            ids.append(task_id)
+
+    for checkpoint in state["externalCheckpoints"]:
+        if checkpoint["status"] != "PENDING":
+            continue
+        for held_task in sorted({checkpoint.get("taskId"), checkpoint.get("resumeTask")} - {None}):
+            hold("EXTERNAL_CHECKPOINT_PENDING", held_task,
+                 "owner or external principal must resolve the pending external checkpoint")
+
+    # Uncertain side effects span every objective version (objective-replace keeps them); reconcile accepts any.
+    uncertain = [task["id"] for task in state["tasks"] if task["status"] == "WAITING_RESOURCE"
+                 and (task.get("sideEffect") or {}).get("state") == "UNCERTAIN"]
+    # Finished candidates: WAITING_RESOURCE current-objective tasks; disposition from current evidence only.
+    candidates: list[dict[str, Any]] = []
+    for task in current:
+        if task["status"] != "WAITING_RESOURCE":
+            continue
+        side_effect = task.get("sideEffect")
+        if side_effect is not None and side_effect["state"] != "CONFIRMED":
+            continue
+        finished_at = max((event["sequence"] for event in events
+                           if event["type"] == "worker.finished" and event.get("taskId") == task["id"]), default=0)
+        integrated = any(event["type"] == "workspace.integrated" and event.get("taskId") == task["id"]
+                         and event["sequence"] > finished_at for event in events)
+        isolated = bool(task.get("workspace")) and Path(task["workspace"]).resolve() != store.repository.resolve()
+        gates = [gate for gate in state["gateResults"]
+                 if gate["taskId"] == task["id"] and gate["objectiveVersion"] == version]
+
+        def failed_current(gate: dict[str, Any]) -> bool:
+            try:
+                return store.failure_source_status(state, gate) is None
+            except RuntimeFailure:
+                return False
+
+        def pass_current(gate: dict[str, Any]) -> bool:
+            try:
+                store.assert_gate_sources_current(state, [f"gate:{gate['id']}"])
+            except RuntimeFailure:
+                return False
+            return True
+
+        failed = [gate["id"] for gate in gates if gate["status"] == "FAIL" and failed_current(gate)]
+        passed = [gate["id"] for gate in gates if gate["status"] == "PASS"
+                  and set(task["acceptanceCriteria"]).intersection(gate["criteria"]) and pass_current(gate)]
+        missing = [requirement for requirement in task["requiredArtifacts"]
+                   if not any((artifact["id"] == requirement or artifact["kind"] == requirement)
+                              and f"task:{task['id']}" in artifact["evidenceRefs"] for artifact in state["artifacts"])]
+        if isolated and task["mutablePaths"] and not integrated:
+            if mutation_decision(state, "repository", "edit", confirmed=False)["status"] != "allowed":
+                hold("MUTATION_DENIED", task["id"], "mutation is denied or needs owner confirmation under the Run policy")
+                continue
+            disposition = ("integrate-candidate", f"python harness/workspaces.py --repo . integrate {run_id} {task['id']}")
+        elif failed:
+            disposition = ("repair-failed-gate", None)
+        elif not passed:
+            disposition = ("run-gate", f"gate-execute {run_id} {task['id']}")
+        elif missing:
+            disposition = ("produce-artifacts", None)
+        else:
+            disposition = ("complete-task", f"task-complete {run_id} {task['id']} --evidence gate:{passed[-1]}")
+        candidates.append({"taskId": task["id"], "disposition": disposition[0], "command": disposition[1],
+                           "failedGates": failed, "passGates": passed, "missingArtifacts": missing})
+
+    try:
+        drift = store.repository_baseline_drift(state)
+    except RuntimeFailure as exc:
+        drift = {"error": exc.code}
+    # Pass (a): each READY task's actual refusal against current state only (running tasks, never this
+    # reading's selections), in task-start order; owner-required refusals become holds.
+    max_parallel = (repository_config(str(store.repository)).get("workers") or {}).get("maxParallel", 3)
+    max_parallel = (min(20, max_parallel) if isinstance(max_parallel, int)
+                    and not isinstance(max_parallel, bool) and max_parallel > 0 else 3)
+    running = [task for task in state["tasks"] if task["status"] == "RUNNING"]
+    admissible: list[dict[str, Any]] = []
+    not_dispatchable: list[dict[str, str]] = []
+    active_lanes = {item["id"] for item in state["lanes"]["active"]}
+    for task in current:
+        if task["status"] != "READY":
+            continue
+
+        def refusal() -> str | None:
+            try:
+                store._assert_context_scope(state, task)
+                store._validate_task_requirements(task)
+            except RuntimeFailure as exc:
+                return exc.code
+            pushback = task.get("pushback")
+            if pushback is None and state["focus"].get("pushbackRequired"):
+                return "PUSHBACK_MISSING"
+            if pushback is not None and pushback["verdict"] != "KEEP":
+                return "PUSHBACK_NOT_KEPT"
+            reset = feasibility_status(state, task)
+            if reset and (reset["expired"] or reset["decision"] not in {"CONTINUE", "BOUNDED_GO"}):
+                return "FEASIBILITY_STOP"
+            if budget and budget["signal"] == "BUDGET_100":
+                return "BUDGET_100"
+            try:
+                store._assert_primary_admission(state, task, events)
+            except RuntimeFailure as exc:
+                return exc.code
+            if TARGET_OPERATIONS.intersection(task.get("operations") or []):
+                return "TARGET_IDENTITY_REQUIRED"
+            if drift:
+                return drift.get("error") or "STALE_REPOSITORY"
+            if state["status"] in {"COMPLETED", "FAILED", "CANCELLED"}:
+                return "RUN_TERMINAL"
+            if state["status"] == "PAUSED":
+                return "RUN_PAUSED"
+            if reset:
+                try:
+                    effective_work_budget(state, task)
+                except RuntimeFailure as exc:
+                    return exc.code
+            if (task.get("loop") or {}).get("stopped"):
+                return "REPEATED_FAILURE"
+            if task["attempts"]:
+                loop = task.get("loop")
+                if loop:
+                    changed = loop["evidence"] != retry_evidence_digest(state, task, store.repository)
+                else:
+                    last_start = max((event["sequence"] for event in events if event["type"] == "task.started"
+                                      and event.get("taskId") == task["id"]), default=0)
+                    changed = any(event["sequence"] > last_start and (
+                        event["type"] == "external.wait_resolved" and event["payload"].get("resumeTask") == task["id"]
+                        or event["type"] == "mutation.reconciled" and event.get("taskId") == task["id"]
+                        and event["payload"].get("result") == "not-applied") for event in events)
+                if not changed:
+                    return "RETRY_REASON_REQUIRED"
+            if task.get("lane", "product") not in active_lanes:
+                return "LANE_DEFERRED"
+            if task_has_pending_checkpoint(state, task["id"]):
+                return "EXTERNAL_CHECKPOINT_PENDING"
+            if task["attempts"] >= task["retryPolicy"]["maxAttempts"]:
+                return "RETRY_EXHAUSTED"
+            if task.get("retryNotBefore") and parse_iso(task["retryNotBefore"]) > now:
+                return "RETRY_BACKOFF"
+            if len(running) >= max_parallel:
+                return "PARALLELISM_EXCEEDED"
+            if task["mutablePaths"]:
+                mutating = [other for other in running if other["mutablePaths"]]
+                if mutating and not task.get("workspace"):
+                    return "WORKSPACE_ISOLATION_REQUIRED"
+                if any(mutable_scopes_overlap(task["mutablePaths"], other["mutablePaths"]) for other in mutating):
+                    return "RESOURCE_CONFLICT"
+                try:
+                    if store._cross_run_mutation_conflicts(run_id, task["mutablePaths"]):
+                        return "RESOURCE_CONFLICT"
+                except RuntimeFailure as exc:
+                    return exc.code
+                if task.get("workspace") and any(
+                        other.get("workspace")
+                        and Path(other["workspace"]).resolve() == Path(task["workspace"]).resolve()
+                        for other in mutating):
+                    return "WORKSPACE_COLLISION"
+            scopes = ([("repository", "edit")] if task["mutablePaths"] else []) + (
+                [(task["sideEffect"]["target"], task["sideEffect"]["operation"])] if task["sideEffect"] else [])
+            if any(mutation_decision(state, scope, op, confirmed=False)["status"] != "allowed" for scope, op in scopes):
+                return "MUTATION_DENIED"
+            return None
+
+        code = refusal()
+        if code is None:
+            admissible.append(task)
+        elif code in OWNER_HOLD_CODES:
+            hold(code, task["id"], {
+                "BUDGET_100": "Run budget is exhausted; only the owner can extend it",
+                "MUTATION_DENIED": "mutation is denied or needs owner confirmation under the Run policy",
+                "EXTERNAL_CHECKPOINT_PENDING": "owner or external principal must resolve the pending external checkpoint",
+            }[code])
+        else:
+            not_dispatchable.append({"taskId": task["id"], "code": code})
+
+    # Pass (b): select admissible tasks that could start together; the rest are sequenced, never refused.
+    dispatch: list[str] = []
+    sequenced: list[dict[str, str]] = []
+    for task in admissible:
+        chosen = [find_task(state, task_id) for task_id in dispatch]
+        mutating = [other for other in chosen if other["mutablePaths"]]
+        blocker = None
+        if len(running) + len(chosen) >= max_parallel:
+            blocker = (chosen[-1]["id"], "workers.maxParallel is reached once earlier selections start")
+        elif task["mutablePaths"] and mutating:
+            same = next((other for other in mutating if not task.get("workspace")
+                         or mutable_scopes_overlap(task["mutablePaths"], other["mutablePaths"])
+                         or other.get("workspace")
+                         and Path(other["workspace"]).resolve() == Path(task["workspace"]).resolve()), None)
+            if same:
+                blocker = (same["id"], "mutable paths or workspace overlap an earlier selection")
+        if blocker:
+            sequenced.append({"taskId": task["id"], "after": blocker[0], "reason": blocker[1]})
+        else:
+            dispatch.append(task["id"])
+
+    terminal = state["status"] in {"COMPLETED", "FAILED", "CANCELLED"}
+    # Integration mutates the frozen base and resume abandons RUNNING tasks: both yield to live peers.
+    first = next((item for item in candidates
+                  if not live or item["disposition"] != "integrate-candidate"), None)
+    review = "semantic and E2E review needs remain separate; disposition is not acceptance"
+    if terminal:
+        next_action = action("none", [], f"Run is {state['status']}", None)
+    elif drift and not live:
+        next_action = action("reconcile", [], f"baseline drift on {', '.join(sorted(drift))}",
+                             f"resume {run_id} --accept-commit")
+    elif expired or stale_workers:
+        next_action = action("recover-workers", expired, "expired leases or stale workers need recovery",
+                             f"worker-recover {run_id}")
+    elif drift:
+        next_action = action("wait-for-worker", live, f"baseline drift on {', '.join(sorted(drift))} is pending; "
+                             "resume --accept-commit abandons RUNNING tasks and is deferred until live peers are "
+                             "terminal (drift refuses worker-finish, so a live peer ends by lease expiry)",
+                             None)
+    elif uncertain:
+        next_action = action("reconcile-side-effect", uncertain[:1], "side effect is UNCERTAIN",
+                             f"reconcile-side-effect {run_id} {uncertain[0]} --result <applied|not-applied> --evidence <ref>")
+    elif first:
+        reason = {"integrate-candidate": "isolated candidate is not integrated since its finish",
+                  "repair-failed-gate": "a current task-bound gate FAILED; repair or retry with a new hypothesis",
+                  "run-gate": "no current task-bound PASS gate",
+                  "produce-artifacts": "required artifacts are missing: " + ", ".join(first["missingArtifacts"]),
+                  "complete-task": "current task-bound PASS gate present"}[first["disposition"]]
+        next_action = action(first["disposition"], [first["taskId"]], f"{reason}; {review}", first["command"])
+    elif dispatch:
+        next_action = action("dispatch-ready", dispatch, "READY tasks pass mirrored task-start admission",
+                             f"task-start {run_id} {dispatch[0]} --worker-id <worker-id>")
+    elif state["status"] == "PAUSED" and current and not live:
+        next_action = action("resume-run", [], "Run is PAUSED with open tasks", f"resume {run_id}")
+    elif state["status"] == "VERIFYING":
+        next_action = action("verify", [], "Run is VERIFYING", f"verify {run_id}")
+    elif live:
+        deferred = [item["disposition"] for item in candidates if item["disposition"] == "integrate-candidate"]
+        deferred += ["resume-run"] if state["status"] == "PAUSED" and current else []
+        next_action = action("wait-for-worker", live, "live lease-backed task records; host execution is UNKNOWN"
+                             + (f"; deferred until peers are terminal: {', '.join(sorted(set(deferred)))}"
+                                if deferred else ""), None)
+    elif holds:
+        held = [task_id for item in holds.values() for task_id in item["taskIds"]]
+        next_action = action("owner-hold", held, "; ".join(item["code"] for item in holds.values()), None, owner=True)
+    elif not current:
+        next_action = action("plan-tasks", [], "no open current-objective tasks", None)
+    else:
+        next_action = action("blocked", [item["taskId"] for item in not_dispatchable] or [task["id"] for task in current],
+                             "; ".join(sorted({item["code"] for item in not_dispatchable})) or "no admissible action", None)
+    hold_list = [{**item, "taskIds": cap(item["taskIds"])} for item in holds.values()]
+    execution = {
+        "leaseRecords": {"live": cap(live), "expired": cap(expired), "count": len(leased)},
+        "hostExecution": "UNKNOWN",
+        "readyWithoutLease": cap([task["id"] for task in current if task["status"] == "READY"]),
+        "notDispatchable": not_dispatchable[:PROJECTION_ID_CAP],
+        "sequenced": sequenced[:PROJECTION_ID_CAP],
+        "finishedCandidates": [{key: value for key, value in item.items() if key != "command"}
+                               for item in candidates[:PROJECTION_ID_CAP]],
+    }
+    execution["truncated"] = truncated or max(len(not_dispatchable), len(sequenced), len(candidates)) > PROJECTION_ID_CAP
+    return execution, hold_list, next_action
+
+
 def state_summary(state: dict[str, Any]) -> dict[str, Any]:
     from worker_adapters import git_status, workspace_fingerprint
 
@@ -6964,6 +7263,8 @@ def state_summary(state: dict[str, Any]) -> dict[str, Any]:
         elif stall and stall["milestoneReviewNeeded"]:
             summary["feasibilityAdvice"] = {"reason": "Activity without a verified product milestone",
                                           "action": "on-demand CTO bounded discriminating check; not a product FAIL or a time-based halt"}
+    summary["execution"], summary["holds"], summary["nextAction"] = execution_projection(
+        state, store, events, budget, now)
     lint = owner_message_lint(" ".join(
         str(text) for text in (summary["objective"], summary["nextCheapestTest"],
                                (summary.get("escalation") or {}).get("message")) if text))
@@ -6993,9 +7294,12 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--goal", required=True)
     create.add_argument("--outcome", required=True)
     create.add_argument("--criterion", action="append", default=[])
-    create.add_argument("--autonomy", choices=["current-task", "approved-program", "advisory-only"], default="current-task")
-    create.add_argument("--allow", action="append", default=[])
-    create.add_argument("--confirmation-required", action="append", default=[])
+    create.add_argument("--autonomy", choices=["current-task", "approved-program", "advisory-only"], default=None,
+                        help="default: repository config autonomy.scope, else current-task")
+    create.add_argument("--allow", action="append", default=None,
+                        help="repeatable; replaces configured mutationPolicy.allow when given")
+    create.add_argument("--confirmation-required", action="append", default=None,
+                        help="repeatable; replaces configured mutationPolicy.confirmationRequired when given")
     create.add_argument("--run-id")
     create.add_argument("--primary-criterion", help="failing user-visible criterion watched by the stall detector")
     create.add_argument("--primary-path", action="append", default=[], help="repository path/glob of its code path")
@@ -7248,7 +7552,7 @@ def cli(argv: Sequence[str] | None = None) -> int:
                 outcome=args.outcome,
                 criteria=[parse_criterion(item) for item in args.criterion],
                 autonomy_scope=args.autonomy,
-                policy_allow=[parse_policy_allow(item) for item in args.allow],
+                policy_allow=None if args.allow is None else [parse_policy_allow(item) for item in args.allow],
                 confirmation_required=args.confirmation_required,
                 run_id=args.run_id,
                 primary_criterion=args.primary_criterion,

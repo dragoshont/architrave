@@ -434,6 +434,111 @@ not amendable through this transition.
 Operations in `confirmationRequired` still require a trusted resolution. Every
 non-trivial mutation produces target/before/after/result/verification evidence.
 
+Run creation applies the same configured policy through the CLI (`run`,
+`create`, and the `architrave_cli.py runtime` wrapper) as through the API. An
+omitted `--autonomy`, `--allow`, or `--confirmation-required` uses the
+repository config (`autonomy.scope`, `mutationPolicy.allow`,
+`mutationPolicy.confirmationRequired`). An explicit flag replaces only its own
+field. Repeated flags accumulate, and an explicit list never merges with the
+configured one. Without config the defaults stay `current-task` and empty lists.
+Wildcard scopes are still rejected.
+
+`migrate-v1` is the deliberate exception. It always creates an `advisory-only`
+Run, so a legacy summary cannot gain execution authority. It takes
+`mutationPolicy.allow` and `mutationPolicy.confirmationRequired` from config,
+but it never takes `autonomy.scope`.
+
+### Status reading: execution, holds, nextAction
+
+`status` adds three derived fields. They are a reading of canonical state, not
+an executor. Nothing dispatches from them, and `task-start` stays authoritative.
+
+- `execution` separates the following:
+  - `leaseRecords` lists live and expired task leases.
+  - `hostExecution` is always `UNKNOWN`. A lease is a record, not proof that a
+    process is running.
+  - `readyWithoutLease` lists current-objective READY tasks that hold no lease.
+  - `notDispatchable` lists READY tasks with the refusal code `task-start`
+    would return against the current state. Only tasks that are actually
+    RUNNING count, never tasks merely selected in the same reading. The mirror
+    covers `PUSHBACK_MISSING`, `PUSHBACK_NOT_KEPT`, `LANE_DEFERRED`, retry
+    reason, exhaustion and backoff, parallelism, workspace isolation, in-run
+    and cross-run `RESOURCE_CONFLICT`, `WORKSPACE_COLLISION`, and baseline
+    drift (`STALE_REPOSITORY`). In a feasibility-reset lane it also covers
+    `FEASIBILITY_STOP`, `FEASIBILITY_LANE_BUSY`, and
+    `FEASIBILITY_BUDGET_UNKNOWN`. If the cross-run or baseline read fails, its
+    error code (for example `RESOURCE_STATE_UNREADABLE`) is listed instead of
+    failing `status`. The checks follow the order in `task-start`, so drift
+    outranks the run-state and mutation checks, and a task with two faults
+    shows the code `task-start` returns first. A parity test drives each
+    reachable code through the real CLI and checks that `task-start` returns
+    the same one. Not CLI-driven: `PUSHBACK_NOT_KEPT`, `LANE_DEFERRED`,
+    `RETRY_EXHAUSTED` and `RETRY_BACKOFF` (no public path leaves such a task
+    READY), and a remaining-budget `FEASIBILITY_STOP` raised inside an active
+    reset lane. A retry task shows `RETRY_REASON_REQUIRED`, which masks backoff
+    and under-reports when a new hypothesis or evidence would admit the retry.
+  - `sequenced` lists `{taskId, after, reason}` for admissible READY tasks that
+    are not named for dispatch in this reading. Either `workers.maxParallel`
+    is reached once earlier selections start, or the task's paths or workspace
+    overlap a selected task. These tasks are not refused: `task-start` accepts
+    one now, and it may refuse it once `after` has started.
+
+    The mirror is a lock-free, best-effort subset of `task-start`. It is not
+    an equivalent check. A concurrent change, or a check the mirror does not
+    model, can still make `task-start` refuse, and its answer wins.
+  - `finishedCandidates` lists finished worker candidates and their disposition.
+
+  Id lists are capped at 20 entries, and `truncated` marks any capped list,
+  because native status lines are limited to 64 KiB.
+- `holds` lists owner-required items as `{code, taskIds, reason}`: `BUDGET_100`,
+  `EXTERNAL_CHECKPOINT_PENDING`, and `MUTATION_DENIED`, which also covers
+  confirmation-required operations. A checkpoint hold names both its `taskId`
+  and its `resumeTask`. A hold code equals the `task-start` refusal code only
+  for a READY task. A task waiting on an external checkpoint is not READY, so
+  `task-start` refuses it with `TASK_NOT_READY`. A hold never suppresses other
+  authorized work.
+- `nextAction` is exactly one `{kind, taskIds, reason, ownerRequired, command}`,
+  chosen by this priority:
+
+  1. `none`: the Run is terminal.
+  2. `reconcile`: the repository, commit, or branch has drifted, using the same
+     predicate as admission. Dirty files are never drift. Use
+     `resume --accept-commit`. Drift beside a live lease yields
+     `wait-for-worker` with a null command instead, because
+     `resume --accept-commit` abandons every RUNNING task. Drift refuses
+     `worker-finish` (STALE_REPOSITORY), so the live peer ends by lease expiry,
+     after which `reconcile` is named.
+  3. `recover-workers`: a lease has expired or a worker is stale.
+  4. `reconcile-side-effect`: a side effect is UNCERTAIN. This includes tasks
+     kept from a superseded objective, which `reconcile-side-effect` accepts.
+     Every other classification uses current-objective tasks only.
+  5. The disposition of a finished candidate:
+     - `integrate-candidate`: `workspaces.py integrate`.
+     - `repair-failed-gate`: a non-terminal FAIL gate is bound to the current
+       observed source. A deterministic, E2E, reality, policy, or security FAIL
+       fails the Run instead, so `nextAction` is `none`.
+     - `run-gate`: `gate-execute`.
+     - `produce-artifacts`: a required artifact is missing.
+     - `complete-task`: with a PASS gate. Any remaining semantic or E2E review
+       is named in the reason, never claimed as acceptance.
+  6. `dispatch-ready`: these tasks pass the mirrored admission checks and fit
+     the selection.
+  7. `resume-run`.
+  8. `verify`.
+  9. `wait-for-worker`. While any peer holds a live lease, `integrate-candidate`
+     and `resume-run` yield to this action. Integration changes the frozen
+     base, and `resume` abandons every RUNNING task. The reason names the
+     deferred kinds. Non-destructive candidate kinds and `dispatch-ready` can
+     still be chosen while peers run. Only the recommendation changes. The
+     `resume` and `integrate` commands keep their own checks.
+  10. `owner-hold`: `ownerRequired` is true. This is chosen only when nothing
+      else is actionable.
+  11. `plan-tasks`.
+  12. `blocked`.
+
+`status` values and Run states are unchanged. `RUNNING` can still mean a
+lease-backed record with no proven executor.
+
 ## External checkpoints
 
 Use typed checkpoints for `AUTH_REQUIRED`, `MFA_REQUIRED`, `CONSENT_REQUIRED`,

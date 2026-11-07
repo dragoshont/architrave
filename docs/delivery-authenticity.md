@@ -111,6 +111,18 @@ missing summaries or stale evidence fail closed. Automated continuation does not
 resume the declaration or create new owner authority. `--check` and
 `requirements --done --delivery-session` still reject paused delivery.
 
+Pause evidence binds each file's SHA256 when it is recorded, so pass an immutable saved
+copy (for example under the session's `files/`), never a live kit or repository file that
+later work may change. If any bound evidence file changes before the first host completion,
+the exact summary is denied (`non-delivery inspection blocked: evidence identity changed`).
+`--completion-summary`,
+`--resume` and a second `--pause` cannot clear it, because `--pause` accepts only active
+work and `--resume` needs the identities unchanged. The supported recovery is a newer
+distinct owner message that addresses the paused scope, then `--amend --request <that
+owner event id>`, a fresh `--pause` with a saved evidence copy, and the newly printed
+summary. Do not edit the managed report, restore old bytes or withdraw from another
+repository.
+
 `--resume` explicitly resumes an unchanged paused scope as `prepared`, preserving
 the terminal history. It is not new authorization or acceptance. Changed scope
 requires newer-owner `--amend` (or a new `--prepare` when the prior terminal

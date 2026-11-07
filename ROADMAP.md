@@ -1,5 +1,40 @@
 # Roadmap
 
+## v1.0.0-beta.1 - Reliable completion path (REQ-95..100), in progress
+
+Work in progress, not released: nothing is built, published or installed, the
+version fields still read 0.21.35, and every requirement here is `in-progress`.
+Make the path from an owner outcome to verified delivery more reliable on
+native Windows and macOS (WSL2 is not a target). CLI-created Runs apply the
+configured autonomy and mutation-policy defaults like the API (REQ-95). Run
+status reports lease-backed execution, owner holds and one `nextAction` from
+canonical state as a conservative, best-effort mirror of `task-start`, with no
+daemon, polling or forced continuation (REQ-96). A first pass at native dispatch
+bounds each stage (a fixed 30 s preflight bound, then the lease expiry with a
+reserved cleanup budget) and recovers late owners, with the open defects below
+(REQ-97). Lead and handoff guidance covers continuation after each child return,
+deliberate integration waves and goal-preserving sub-session handoffs (REQ-98).
+Repository verification guidance and the native Windows `checks` recipe name
+only commands that exist and run (REQ-99). Version tooling accepts a prerelease;
+the release workflow is unchanged and no prerelease has been published
+(REQ-100).
+
+Open defects in the native first pass (fixture-only evidence): recovery adopts
+by exact prompt text and treats an empty listing as proof of no owner (#40);
+preflight can take two 30 s windows (#41); an already-aborted invocation is not
+honored (#42); unresolved unknown-owner admissions are not counted toward the
+child cap (#43); the native suite is timing-sensitive under load (#44). The split
+deadline (C-97) and the status mirror's conservative wording (C-96) await owner
+acknowledgement (#70, #69).
+
+Not demonstrated: a live multi-wave qualification or sustained parallel
+delivery, macOS runs, the live native-bridge hang (fixture-tested only), host
+loading of a prerelease version, loaded-context refresh after an update, and an
+owner and ACL check of the durable Run key on Windows. Audit findings are
+tracked as issues: F6 #77, F8 #75, F9 #61 and F10 #76. Every unaddressed item
+is an issue (#40 to #87); the handover for continuing on another machine is
+#39. Nothing here claims 1.0 final.
+
 ## v0.21.35 - Retire completed scopes, not ordinary replies (REQ-94)
 
 Remove mandatory follow-up labels after verified delivered or non-delivery host
