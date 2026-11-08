@@ -1,0 +1,147 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://architrave/benchmarks/results.schema.json",
+  "title": "Architrave benchmark result row",
+  "type": "object",
+  "required": ["run_id", "scenario", "lane", "arm", "repeat", "repo", "base_ref", "started_at", "finished_at", "passed"],
+  "additionalProperties": true,
+  "properties": {
+    "run_id": { "type": "string" },
+    "scenario": { "type": "string" },
+    "category": { "type": "string" },
+    "lane": { "type": "string" },
+    "arm": { "type": "string" },
+    "repeat": { "type": "integer", "minimum": 0 },
+    "repo": { "type": "string" },
+    "base_ref": { "type": "string" },
+    "base_commit": { "type": "string" },
+    "cell_dir": { "type": "string" },
+    "worktree": { "type": "string" },
+    "prompt_file": { "type": "string" },
+    "started_at": { "type": "string" },
+    "finished_at": { "type": "string" },
+    "passed": { "type": "boolean" },
+    "producer_prompt_version": { "type": "integer", "minimum": 1 },
+    "execution": {
+      "type": "object",
+      "required": ["requested", "controlStatus"],
+      "additionalProperties": false,
+      "properties": {
+        "requested": {
+          "type": "object",
+          "required": ["runner", "agent", "model", "reasoningEffort", "contextTier"],
+          "additionalProperties": false,
+          "properties": {
+            "runner": { "type": "string" },
+            "agent": { "type": ["string", "null"] },
+            "model": { "type": ["string", "null"] },
+            "reasoningEffort": { "type": ["string", "null"] },
+            "contextTier": { "type": ["string", "null"] }
+          }
+        },
+        "controlStatus": {
+          "type": "object",
+          "required": ["model", "reasoningEffort", "contextTier", "controlsHonored"],
+          "additionalProperties": false,
+          "properties": {
+            "model": { "type": "string", "enum": ["not-requested", "honored", "mismatch", "unobserved"] },
+            "reasoningEffort": { "type": "string", "enum": ["not-requested", "honored", "mismatch", "unobserved"] },
+            "contextTier": { "type": "string", "enum": ["not-requested", "honored", "mismatch", "unobserved"] },
+            "controlsHonored": { "type": ["boolean", "null"] }
+          }
+        }
+      }
+    },
+    "failure_mode": {
+      "type": ["string", "null"],
+      "enum": [null, "timeout", "agent_error", "setup_error", "validation_timeout", "validation_failed", "artifact_missing", "control_unhonored", "run_budget_exhausted", "unknown"]
+    },
+    "run_budget_seconds": { "type": "integer", "minimum": 1 },
+    "budget_remaining_at_start_ms": { "type": "integer", "minimum": 0 },
+    "budget_exhausted": { "type": "boolean" },
+    "error": { "type": "string" },
+    "agent": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "returncode": { "type": "integer" },
+        "timed_out": { "type": "boolean" },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "models": { "type": "array", "items": { "type": "string" } },
+        "model_reasoning": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["model", "vendor", "reasoningEffort"],
+            "additionalProperties": false,
+            "properties": {
+              "model": { "type": "string" },
+              "vendor": { "type": ["string", "null"] },
+              "reasoningEffort": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "output_tokens": { "type": ["integer", "null"], "minimum": 0 },
+        "tool_requests": { "type": "integer", "minimum": 0 },
+        "result_usage": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "diff": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "changed_files": { "type": "integer", "minimum": 0 },
+        "additions": { "type": "integer", "minimum": 0 },
+        "deletions": { "type": "integer", "minimum": 0 },
+        "net_loc": { "type": "integer" },
+        "dependency_or_project_files": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "diff_artifacts": { "type": "object", "additionalProperties": { "type": "string" } },
+    "validation": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["command", "returncode", "timed_out", "duration_ms"],
+        "additionalProperties": true,
+        "properties": {
+          "command": { "type": "string" },
+          "returncode": { "type": "integer" },
+          "timed_out": { "type": "boolean" },
+          "duration_ms": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "exists"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string" },
+          "exists": { "type": "boolean" }
+        }
+      }
+    },
+    "durable_run": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "schema": { "type": "string" },
+        "status": { "type": "string" },
+        "outcome_pass": { "type": "boolean" },
+        "acceptance_required": { "type": "integer", "minimum": 0 },
+        "acceptance_passed": { "type": "integer", "minimum": 0 },
+        "false_pass": { "type": "boolean" },
+        "human_interventions": { "type": "integer", "minimum": 0 },
+        "false_external_blockers": { "type": "integer", "minimum": 0 },
+        "repeated_work_after_resume": { "type": "integer", "minimum": 0 },
+        "peak_parallel_workers": { "type": "integer", "minimum": 0 },
+        "deployment_verified": { "type": "boolean" },
+        "product_e2e_failures": { "type": "integer", "minimum": 0 },
+        "time_to_verified_outcome_per_intervention_ms": { "type": ["number", "null"], "minimum": 0 }
+      }
+    }
+  }
+}

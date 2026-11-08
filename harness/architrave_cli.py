@@ -1,0 +1,187 @@
+#!/usr/bin/env python3
+"""Canonical cross-platform Architrave harness entrypoint."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+import sys
+
+from architrave_runtime import cli as runtime_cli, validate_tournament_result
+import learning_tools
+from validate_learning import validate as validate_learning
+from validate_run_v2 import validate as validate_run_v2
+
+
+def latest_run(root: Path) -> Path | None:
+    runs = root / ".architrave" / "runs"
+    candidates = [path for path in runs.iterdir() if path.is_dir()] if runs.is_dir() else []
+    return max(candidates, key=lambda path: path.stat().st_mtime) if candidates else None
+
+
+def validate_run(path: Path | None) -> int:
+    path = path or latest_run(Path.cwd())
+    if path is None or not path.is_dir():
+        print("validate-run: run dir not found", file=sys.stderr)
+        return 2
+    if (path / "run.json").is_file():
+        print(json.dumps({"status": "pass", "result": validate_run_v2(path)}, indent=2))
+        print("ARCHITRAVE-RUN-V2: PASS")
+        return 0
+    try:
+        summary = json.loads((path / "summary.json").read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"validate-run: invalid legacy summary ({exc})")
+        return 1
+    if (
+        summary.get("schema") != "architrave.run.v1"
+        or not summary.get("runId")
+        or summary.get("status") not in {"in-progress", "blocked", "passed", "revised", "failed"}
+    ):
+        print("ARCHITRAVE-RUN: FAIL")
+        return 1
+    print("ARCHITRAVE-RUN: PASS")
+    return 0
+
+
+def semantic_review(run_dir: Path, provider: str, execute: bool) -> int:
+    if not run_dir.is_dir():
+        print("semantic-review: run dir not found", file=sys.stderr)
+        return 2
+    if execute:
+        print("NATIVE_HOST_REQUIRED: invoke the adversarial judge through the current host; agent CLI launchers are prohibited.",
+              file=sys.stderr)
+        return 2
+    print(json.dumps({
+        "status": "advisory", "agent": "architrave:adversarial-judge", "run": str(run_dir),
+        "prompt": "Review canonical state and referenced evidence against gates/rubric.md. "
+                  "Return evidence-grounded PASS, REVISE or FAIL through host-native structured invocation.",
+        "execution": "host-owned; this helper cannot execute or attest a reviewer",
+    }, indent=2))
+    return 0
+
+
+def tournament_review(run_dir: Path, execute: bool, result_path: Path | None = None,
+                      bind: dict[str, str] | None = None, allowance: Path | None = None) -> int:
+    if allowance is not None:
+        print("NATIVE_HOST_REQUIRED: --allowance cannot establish task lineage or authority; "
+              "retain the existing task budget in the owning host, not a second ledger.", file=sys.stderr)
+        return 2
+    if result_path is not None:
+        try:
+            raw = result_path.read_bytes()
+            errors = validate_tournament_result(json.loads(raw), bind)
+        except (OSError, json.JSONDecodeError) as exc:
+            errors = [f"unreadable tournament result ({exc})"]
+        for error in errors:
+            print(f"FAIL  {error}")
+        print("TOURNAMENT-RESULT: FAIL" if errors else "TOURNAMENT-RESULT: PASS")
+        if not errors:
+            print("Advisory shape/binding check only; not authenticated review, authority or budget admission.")
+        return 1 if errors else 0
+    if not run_dir.is_dir():
+        print("tournament-review: run dir not found", file=sys.stderr)
+        return 2
+    if execute:
+        print("NATIVE_HOST_REQUIRED: invoke Tournament Analyst through the current host; agent CLI launchers are prohibited.",
+              file=sys.stderr)
+        return 2
+    print(json.dumps({
+        "status": "advisory", "agent": "architrave:tournament-analyst", "run": str(run_dir),
+        "prompt": "Compare viable options against canonical state and governing repository sources; do not edit or authorize mutations. "
+                  "Options must include kinds DO_NOTHING and SMALLEST_VIABLE; return winner and winnerBeatsDoNothing.",
+        "execution": "host-owned; this helper cannot execute or attest a reviewer",
+    }, indent=2))
+    return 0
+def main(argv: list[str] | None = None) -> int:
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments[:1] == ["session-audit"]:
+        from session_audit import main as audit_cli
+        return audit_cli(arguments[1:])
+    if arguments[:1] == ["runtime"]:
+        return runtime_cli(arguments[2:] if arguments[1:2] == ["--"] else arguments[1:])
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    runtime = subparsers.add_parser("runtime")
+    runtime.add_argument("arguments", nargs=argparse.REMAINDER)
+    audit = subparsers.add_parser("session-audit", help="outcome and approach audit of selected real host sessions")
+    audit.add_argument("arguments", nargs=argparse.REMAINDER)
+    run_validation = subparsers.add_parser("validate-run")
+    run_validation.add_argument("run_dir", nargs="?")
+    learning = subparsers.add_parser("validate-learning")
+    learning.add_argument("root", nargs="?", default=".")
+    semantic = subparsers.add_parser("semantic-review")
+    semantic.add_argument("--provider", choices=["copilot", "claude", "both"], default="both", help=argparse.SUPPRESS)
+    semantic.add_argument("--run", dest="run_dir")
+    semantic.add_argument("--execute", action="store_true",
+                        help="retired: exits 2 with NATIVE_HOST_REQUIRED; run the role in the current host")
+    tournament = subparsers.add_parser("tournament-review")
+    tournament.add_argument("--run", dest="run_dir")
+    tournament.add_argument("--execute", action="store_true",
+                        help="retired: exits 2 with NATIVE_HOST_REQUIRED; run the role in the current host")
+    tournament.add_argument("--result", help="validate a returned tournament result JSON")
+    tournament.add_argument("--task", help="require the result's task to match (original decision task id)")
+    tournament.add_argument("--source", help="require the result's source revision to match")
+    tournament.add_argument("--allowance", help="retired: exits 2; budgets stay with the owning task/host")
+    init = subparsers.add_parser("init-run", help="legacy compact Run v1 record")
+    init.add_argument("run_id", nargs="?")
+    stale = subparsers.add_parser("mark-stale-learning")
+    stale.add_argument("--apply", action="store_true")
+    stale.add_argument("--repo", default=".")
+    review = subparsers.add_parser("semantic-learning-review")
+    review.add_argument("--provider", choices=["copilot", "claude", "both"], default="both",
+                        help="deprecated and ignored; review runs in the current host")
+    review.add_argument("--execute", action="store_true",
+                        help="retired: exits 2 with NATIVE_HOST_REQUIRED; run the role in the current host")
+    review.add_argument("--repo", default=".")
+    review.add_argument("--prompt")
+    review.add_argument("--output")
+    findings = subparsers.add_parser("apply-semantic-learning-findings")
+    findings.add_argument("--apply", action="store_true")
+    findings.add_argument("--repo", default=".")
+    findings.add_argument("--findings", default=".architrave/learning/semantic-stale-facts.jsonl")
+    args = parser.parse_args(argv)
+    if args.command == "init-run":
+        return learning_tools.init_run(args.run_id)
+    if args.command == "mark-stale-learning":
+        return learning_tools.mark_stale_learning(Path(args.repo).resolve(), args.apply)
+    if args.command == "semantic-learning-review":
+        return learning_tools.semantic_learning_review(Path(args.repo).resolve(), args.provider,
+                                                       args.execute, args.prompt, args.output)
+    if args.command == "apply-semantic-learning-findings":
+        return learning_tools.apply_semantic_learning_findings(Path(args.repo).resolve(),
+                                                               args.findings, args.apply)
+    if args.command == "runtime":
+        return runtime_cli(args.arguments)
+    if args.command == "validate-run":
+        return validate_run(Path(args.run_dir).resolve() if args.run_dir else None)
+    if args.command == "validate-learning":
+        passed, errors = validate_learning(Path(args.root))
+        for item in passed:
+            print(f"ok    {item}")
+        if errors:
+            for error in errors:
+                print(f"FAIL  {error}")
+            print("ARCHITRAVE-LEARNING: FAIL")
+            return 1
+        print("ARCHITRAVE-LEARNING: PASS")
+        return 0
+    if args.command == "semantic-review":
+        run_dir = Path(args.run_dir).resolve() if args.run_dir else latest_run(Path.cwd())
+        if run_dir is None:
+            print("semantic-review: run dir not found", file=sys.stderr)
+            return 2
+        return semantic_review(run_dir, args.provider, args.execute)
+    if args.command == "tournament-review":
+        if not args.result and not args.run_dir:
+            parser.error("tournament-review needs --run or --result")
+        bind = {key: value for key, value in (("task", args.task), ("source", args.source)) if value}
+        return tournament_review(Path(args.run_dir or ".").resolve(), args.execute,
+                                 Path(args.result) if args.result else None, bind,
+                                 Path(args.allowance) if args.allowance else None)
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

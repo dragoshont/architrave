@@ -1,0 +1,46 @@
+{
+  "platform": "apple-macos",
+  "stack": "swiftui",
+  "designSource": { "type": "storybook", "path": "ui-lab", "url": "http://localhost:6007" },
+  "designMap": "docs/design/phonodeck-ui-map.json",
+  "knowledgePack": "apple",
+  "applyTo": [
+    "Sources/PhonoDeck/Features/**",
+    "Sources/PhonoDeck/Views/**",
+    "Sources/PhonoDeck/Design/**"
+  ],
+  "backend": {
+    "stack": "swift-services",
+    "solution": "project.yml",
+    "architectureDocs": [
+      "docs/architecture/overview.md",
+      "docs/architecture/adrs",
+      "docs/research/platform-analysis.md"
+    ],
+    "applyTo": [
+      "Sources/PhonoDeck/App/**",
+      "Sources/PhonoDeck/Devices/**",
+      "Sources/PhonoDeck/Integrations/**",
+      "Sources/PhonoDeck/Library/**",
+      "Sources/PhonoDeck/Media/**",
+      "Sources/PhonoDeck/Models/**",
+      "Sources/PhonoDeck/Playback/**",
+      "Sources/PhonoDeck/Services/**",
+      "Sources/PhonoDeck/Support/**",
+      "Tests/**"
+    ],
+    "build": "make build",
+    "test": "make test"
+  },
+  "learning": {
+    "runArtifactsPath": ".architrave/runs",
+    "repoProfilePath": ".architrave/learning/repo-profile.md",
+    "lessonsPath": ".architrave/learning/repo-lessons.md",
+    "capture": ["run-artifacts", "gate-results", "judge-verdicts", "runtime-evidence", "repo-profile", "lessons"],
+    "redactionPolicy": "no-secrets"
+  },
+  "generate": "make generate",
+  "build": "make build",
+  "test": "make test",
+  "screenshot": "scripts/screenshot.sh"
+}

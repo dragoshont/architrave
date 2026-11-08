@@ -1,0 +1,413 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://architrave/architrave.config.schema.json",
+  "title": "Architrave per-repo config",
+  "description": "Declares how Architrave retargets its agents, gates, and knowledge for one repo. Lives at the repo root as architrave.config.json. Application repositories keep the legacy UI-shaped contract. Knowledge repositories opt in with kind=knowledge and do not declare UI, backend, infrastructure, or runtime lanes.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "type": "string",
+      "description": "Optional repository profile discriminator. Omit for the legacy application/UI contract. Use knowledge for Markdown, skills, and automation repositories with no product UI or service lane.",
+      "enum": ["knowledge"]
+    },
+    "platform": {
+      "type": "string",
+      "description": "Selects the knowledge pack the Platform Design agent loads.",
+      "enum": ["apple-macos", "apple-ios", "windows", "web"]
+    },
+    "stack": {
+      "type": "string",
+      "description": "UI framework used to implement the design natively.",
+      "enum": ["swiftui", "appkit", "winui", "wpf", "maui", "fluent-react", "react", "other"]
+    },
+    "designSource": {
+      "type": "object",
+      "description": "Where the canonical design lives (the thing to reproduce, never reinvent).",
+      "required": ["type", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "enum": ["storybook", "swift-ui-lab", "design-doc"] },
+        "path": { "type": "string", "description": "Repo-relative path to the design workbench (e.g. src/Admin/.storybook, ui-lab)." },
+        "url": { "type": "string", "description": "Optional running/published Storybook URL (e.g. http://localhost:6007 or a gh-pages demo)." },
+        "spec": { "type": "string", "description": "Optional repo-relative path to a written design spec (e.g. docs/ui/*-design-spec.md)." },
+        "mcp": { "type": "string", "description": "Optional Storybook MCP endpoint from @storybook/addon-mcp (e.g. http://localhost:6006/mcp). Intended for React/web Storybook 10.3+ workbenches; omit for native-only previews unless a compatible MCP endpoint exists. When set, agents ground via list-all-documentation/get-documentation, write stories via get-storybook-story-instructions, and preview for sign-off via preview-stories." }
+      }
+    },
+    "designMap": {
+      "type": "string",
+      "description": "Optional repo-relative path to the component glossary / ui-map (e.g. docs/design/phonodeck-ui-map.json). Strongly recommended for UI lanes; maps product/component names to Storybook stories, code paths, states, tokens, and capability claims."
+    },
+    "tokens": {
+      "type": "string",
+      "description": "Optional repo-relative path to design token file(s), commonly *.tokens.json. When set with tokenBuild, reconcile can mechanically validate design<->code drift; when omitted, Storybook/specs remain the design source and reconcile skips token regeneration."
+    },
+    "tokenBuild": {
+      "type": "string",
+      "description": "Optional command that regenerates platform code from tokens (e.g. Style Dictionary / Terrazzo). Used by the reconcile gate."
+    },
+    "knowledgePack": {
+      "type": "string",
+      "description": "Override which knowledge pack to load. Defaults to the one implied by platform.",
+      "enum": ["apple", "microsoft", "web"]
+    },
+    "applyTo": {
+      "type": "array",
+      "description": "Globs where the UI lane lives. Scopes UI instructions/agents inside a mixed repo so backend/infra lanes can stay separately governed.",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "build": { "type": "string", "description": "Build command (e.g. 'make build', 'npm run build', 'dotnet build')." },
+    "test": { "type": "string", "description": "Test command (e.g. 'make test', 'npx playwright test', 'dotnet test')." },
+    "generate": { "type": "string", "description": "Optional pre-build generation step (e.g. 'xcodegen generate')." },
+    "screenshot": { "type": "string", "description": "Optional command/recipe that captures a screenshot to compare against the Storybook reference." },
+    "backend": {
+      "type": "object",
+      "description": "Optional service/backend tier. When set, the Architrave harness extends to the backend lane (Service Architect / Backend Planner / Backend Implementer) gated by the same Adversarial Judge. Omit for repos without a service tier.",
+      "additionalProperties": false,
+      "properties": {
+        "stack": { "type": "string", "description": "Backend stack.", "enum": ["dotnet", "node", "python", "go", "swift-services", "other"] },
+        "solution": { "type": "string", "description": "Repo-relative path to the solution/workspace root the implementer grounds in (e.g. 'src', 'Tessera.slnx')." },
+        "architectureDocs": { "type": "array", "description": "Repo-relative paths to the architecture truth the backend agents ground in (ADRs, architecture.md) - the backend's 'designSource'. Reproduce these patterns; never invent parallel abstractions.", "items": { "type": "string" } },
+        "contracts": { "type": "string", "description": "Optional repo-relative path to the API/data contracts (OpenAPI, proto, DTOs) - the cross-tier handshake UI and backend both honor." },
+        "applyTo": { "type": "array", "description": "Globs where the backend lives (scopes the backend lane).", "items": { "type": "string" } },
+        "build": { "type": "string", "description": "Backend build command (e.g. 'dotnet build')." },
+        "test": { "type": "string", "description": "Backend test command (e.g. 'dotnet test')." }
+      }
+    },
+    "iac": {
+      "type": "object",
+      "description": "Optional infrastructure-as-code lane. Plan-only is the default. A durable Run may apply only when its machine-readable policy contains explicit bounded authorization for the target and operation.",
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "description": "IaC technology.", "enum": ["kubernetes", "bicep", "terraform", "pulumi", "compose", "mixed"] },
+        "path": { "type": "string", "description": "Repo-relative path to the IaC (e.g. 'deploy')." },
+        "plan": { "type": "string", "description": "Plan/preview command - NEVER apply (e.g. 'kubectl diff -k deploy/k8s', 'az deployment group what-if', 'terraform plan')." },
+        "policy": { "type": "string", "description": "Optional policy/lint command (e.g. 'kubeconform', 'tfsec', 'checkov', 'bicep lint')." },
+        "applyTo": { "type": "array", "description": "Globs where the IaC lives.", "items": { "type": "string" } }
+      }
+    },
+    "autonomy": {
+      "type": "object",
+      "description": "Optional default autonomy and mutation policy for durable Runs. A controlling user mandate may narrow or explicitly extend these grants for one Run; policy always defaults to deny.",
+      "required": ["scope", "mutationPolicy"],
+      "additionalProperties": false,
+      "properties": {
+        "scope": {
+          "type": "string",
+          "enum": ["current-task", "approved-program", "advisory-only"]
+        },
+        "mutationPolicy": {
+          "type": "object",
+          "required": ["default", "allow", "confirmationRequired"],
+          "additionalProperties": false,
+          "properties": {
+            "default": { "const": "deny" },
+            "allow": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["scope", "operations"],
+                "additionalProperties": false,
+                "properties": {
+                  "scope": { "type": "string", "minLength": 1, "not": { "const": "*" } },
+                  "operations": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1, "not": { "const": "*" } },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  }
+                }
+              }
+            },
+            "confirmationRequired": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1, "not": { "const": "*" } },
+              "uniqueItems": true
+            }
+          }
+        }
+      }
+    },
+    "requirements": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Repository-relative path to the program requirements file (stable REQ ids, acceptance criteria, owner, status). The components gate requires it when two or more components are mapped. Owner corrections are appended here, not only to chat; every child and hand-off kickoff names it."
+    },
+    "components": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Optional component map for work that spans repositories, usually declared in one coordination repository. Each entry names the only repository a child may change for that component. `python gates/gate_runner.py components` checks local checkouts; `--test` runs service tests before UI tests.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "repo"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$", "description": "Short unique component name." },
+          "repo": { "type": "string", "pattern": "^(?!\\.+/)[A-Za-z0-9._-]+/(?!\\.+$)[A-Za-z0-9._-]+$", "description": "GitHub owner/name of the repository changes are pushed to. Every push URL of the checkout's effective push remote must match." },
+          "path": { "type": "string", "minLength": 1, "description": "Local checkout path: absolute, ~-relative, or relative to this repository. Must not be inside agent session scratch." },
+          "upstream": { "type": "string", "pattern": "^(?!\\.+/)[A-Za-z0-9._-]+/(?!\\.+$)[A-Za-z0-9._-]+$", "description": "Read-only upstream owner/name. Branches must never push to it." },
+          "consumes": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Components whose locally built output this component uses instead of a published or installed copy." },
+          "service": { "type": "string", "minLength": 1, "description": "Service, CLI or contract test command, run in the checkout before ui." },
+          "ui": { "type": "string", "minLength": 1, "description": "UI or end-to-end test command; runs only after service passes." }
+        }
+      }
+    },
+    "workers": {
+      "type": "object",
+      "description": "Optional worker routing and isolated workspace defaults. The runtime remains usable with built-in defaults when omitted.",
+      "additionalProperties": false,
+      "properties": {
+        "defaultAdapter": {
+          "type": "string", "enum": ["native", "shell", "copilot", "claude", "codex"],
+          "description": "Use native or deterministic shell. Old agent names are compatibility aliases for host-native transport, never CLI launchers or model/provider selection."
+        },
+        "maxParallel": { "type": "integer", "minimum": 1, "maximum": 20, "description": "Active child cap for canonical task starts, native dispatch and running GHC lanes. Default 3; owner-approved values up to 20. Lower host limits win." },
+        "worktreeRoot": { "type": "string", "minLength": 1 },
+        "cleanupCompletedWorktrees": { "type": "boolean", "description": "Deprecated and ignored compatibility key; remove it." },
+        "enabledAdapters": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["native", "shell", "copilot", "claude", "codex"] },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "description": "Optional product and deployment legibility commands. Commands wrap existing repo tooling; Architrave does not replace the app or deployment platform.",
+      "additionalProperties": false,
+      "properties": {
+        "boot": { "type": "string", "description": "Deprecated and ignored compatibility key; remove it." },
+        "health": { "type": "string" },
+        "stop": { "type": "string", "description": "Deprecated and ignored compatibility key; remove it." },
+        "reset": { "type": "string", "description": "Deprecated and ignored compatibility key; remove it." },
+        "logs": { "type": "string", "description": "Deprecated and ignored compatibility key; remove it." },
+        "web": {
+          "type": "object",
+          "required": ["url", "e2e"],
+          "additionalProperties": false,
+          "properties": {
+            "url": { "type": "string", "minLength": 1 },
+            "e2e": { "type": "string" },
+            "dom": { "type": "string" },
+            "accessibility": { "type": "string" },
+            "screenshot": { "type": "string" },
+            "console": { "type": "string" },
+            "network": { "type": "string" }
+          }
+        },
+        "electron": {
+          "type": "object",
+          "required": ["launch", "health", "screenshot"],
+          "additionalProperties": false,
+          "properties": {
+            "launch": { "type": "string" },
+            "health": { "type": "string" },
+            "logs": { "type": "string" },
+            "screenshot": { "type": "string" }
+          }
+        },
+        "ios": {
+          "type": "object",
+          "required": ["build", "install", "launch", "screenshot", "screenshotPath", "bundleId"],
+          "additionalProperties": false,
+          "properties": {
+            "build": { "type": "string" },
+            "install": { "type": "string" },
+            "launch": { "type": "string" },
+            "terminate": { "type": "string" },
+            "logs": { "type": "string" },
+            "screenshot": { "type": "string" },
+            "screenshotPath": { "type": "string" },
+            "bundleId": { "type": "string", "minLength": 1 },
+            "blankScreenCheck": { "type": "string" }
+          }
+        },
+        "deployment": {
+          "type": "object",
+          "required": ["target", "current", "health", "version", "digest"],
+          "additionalProperties": false,
+          "properties": {
+            "target": { "type": "string", "minLength": 1 },
+            "current": { "type": "string" },
+            "diff": { "type": "string" },
+            "apply": { "type": "string" },
+            "health": { "type": "string" },
+            "rollback": { "type": "string" },
+            "version": { "type": "string" },
+            "digest": { "type": "string" }
+          }
+        }
+      }
+    },
+    "invariants": {
+      "type": "object",
+      "description": "Optional simple mechanical architecture invariants. This is intentionally a bounded declaration, not a workflow DSL.",
+      "additionalProperties": false,
+      "properties": {
+        "requiredFiles": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "forbiddenPatterns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["pattern", "paths"],
+            "additionalProperties": false,
+            "properties": {
+              "pattern": { "type": "string", "minLength": 1 },
+              "paths": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 },
+                "minItems": 1
+              }
+            }
+          }
+        },
+        "forbiddenDependencies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["from", "to"],
+            "additionalProperties": false,
+            "properties": {
+              "from": { "type": "string", "minLength": 1 },
+              "to": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "requiredBoundaries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "allowedImports"],
+            "additionalProperties": false,
+            "properties": {
+              "path": { "type": "string", "minLength": 1 },
+              "allowedImports": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 },
+                "uniqueItems": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "evaluation": {
+      "type": "object",
+      "description": "Optional risk-based evaluation defaults. Deterministic failures always override semantic verdicts.",
+      "additionalProperties": false,
+      "properties": {
+        "defaultRisk": { "type": "string", "enum": ["R0", "R1", "R2", "R3", "R4"] },
+        "realityGate": { "type": "boolean" },
+        "controlAudit": { "type": "boolean" },
+        "budget": {
+          "type": "object",
+          "description": "Optional Run budget from real signals. Status reports BUDGET_80 at 80% and BUDGET_100 at 100% of any limit. Turns are Run transitions.",
+          "additionalProperties": false,
+          "properties": {
+            "maxTurns": { "type": "integer", "minimum": 1 },
+            "maxCommits": { "type": "integer", "minimum": 1 },
+            "maxDispatches": { "type": "integer", "minimum": 1 },
+            "maxMinutes": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "riskPolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "patternProperties": {
+            "^R[0-4]$": {
+              "type": "array",
+              "items": { "type": "string", "enum": ["deterministic", "e2e", "semantic-any", "semantic-independent-2", "reality", "security", "policy"] },
+              "uniqueItems": true
+            }
+          }
+        }
+      }
+    },
+    "ops": {
+      "type": "object",
+      "description": "Optional runtime/operations observation lane. Used by Runtime Observer for read-only deployment/runtime evidence (for example Homelab MCP, Kubernetes health, logs, ingress, Flux state). Runtime mutations require explicit human approval.",
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "description": "Runtime/ops provider type.", "enum": ["homelab-mcp", "kubernetes", "custom", "other"] },
+        "mode": { "type": "string", "description": "Default access mode. Scoped-mutation is effective only when the Run policy independently authorizes the target and operation.", "enum": ["read-only", "approval-required", "scoped-mutation"] },
+        "mcpServer": { "type": "string", "description": "Optional MCP server name, e.g. homelab. Agents use it only if available in the client." },
+        "purpose": { "type": "array", "description": "Allowed observation purposes such as runtime-health, logs, deployment-verification, version-drift.", "items": { "type": "string" } },
+        "requiresApprovalFor": { "type": "array", "description": "Operations that require explicit human approval, e.g. mutations, reconcile, restart, secret-access, network-change.", "items": { "type": "string" } }
+      }
+    },
+    "review": {
+      "type": "object",
+      "description": "Optional review policy. crossFamily (default false) requires two independent reviewers of different families for R3/R4; otherwise one independent review suffices and the host picks the model.",
+      "additionalProperties": false,
+      "properties": {
+        "crossFamily": { "type": "boolean" }
+      }
+    },
+    "productCopy": {
+      "type": "object",
+      "description": "Optional product-copy lint run by gates/checks and the explicit quality gate. Scans shipping UI string files for internal evidence/spec/status/certification language.",
+      "additionalProperties": false,
+      "required": ["paths"],
+      "properties": {
+        "paths": { "type": "array", "minItems": 1, "description": "Repository-relative globs of user-facing string files, e.g. Resources/**/*.xcstrings or src/i18n/*.json.", "items": { "type": "string", "minLength": 1 } },
+        "forbidden": { "type": "array", "description": "Optional case-insensitive regexes replacing the default internal-vocabulary list.", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "learning": {
+      "type": "object",
+      "description": "Optional learning-loop settings. Durable run artifacts, repo profile, and repeated repo lessons live outside the config; stable lessons are promoted into config/docs only after review.",
+      "additionalProperties": false,
+      "properties": {
+        "runArtifactsPath": { "type": "string", "description": "Repo-relative directory for per-run audit artifacts, e.g. .architrave/runs." },
+        "repoProfilePath": { "type": "string", "description": "Repo-relative markdown file for the concise validated repo description, e.g. .architrave/learning/repo-profile.md." },
+        "lessonsPath": { "type": "string", "description": "Repo-relative markdown file for durable repeated lessons, e.g. .architrave/learning/repo-lessons.md." },
+        "capture": { "type": "array", "description": "Artifact categories Architrave should keep for non-trivial runs.", "items": { "type": "string", "enum": ["run-artifacts", "gate-results", "judge-verdicts", "runtime-evidence", "repo-profile", "lessons"] } },
+        "redactionPolicy": { "type": "string", "description": "How learning artifacts handle sensitive data. Use no-secrets unless the repo has a stricter custom policy.", "enum": ["no-secrets", "custom"] },
+        "staleFactPolicy": { "type": "string", "description": "Deprecated and ignored compatibility key; remove it.", "enum": ["validate-before-use", "manual-review"] },
+        "promotionPolicy": { "type": "string", "description": "Deprecated and ignored compatibility key; remove it. Promotion always needs a digest-bound owner approval.", "enum": ["propose", "approval-required", "manual"] },
+        "promoteAfterOccurrences": { "type": "integer", "description": "Deprecated and ignored compatibility key; remove it.", "minimum": 1 },
+        "promoteTargets": { "type": "array", "description": "Deprecated and ignored compatibility key; remove it. Protected instruction/policy files are always refused.", "items": { "type": "string", "enum": ["architrave.config.json", "AGENTS.md", ".github/instructions", "docs"] } }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": ["kind"],
+        "properties": {
+          "kind": { "const": "knowledge" }
+        }
+      },
+      "then": {
+        "required": ["kind", "build", "test"],
+        "not": {
+          "anyOf": [
+            { "required": ["platform"] },
+            { "required": ["stack"] },
+            { "required": ["designSource"] },
+            { "required": ["designMap"] },
+            { "required": ["tokens"] },
+            { "required": ["tokenBuild"] },
+            { "required": ["knowledgePack"] },
+            { "required": ["applyTo"] },
+            { "required": ["generate"] },
+            { "required": ["screenshot"] },
+            { "required": ["backend"] },
+            { "required": ["iac"] },
+            { "required": ["ops"] },
+            { "required": ["runtime"] }
+          ]
+        }
+      },
+      "else": {
+        "required": ["platform", "stack", "designSource", "applyTo", "build", "test"]
+      }
+    }
+  ]
+}

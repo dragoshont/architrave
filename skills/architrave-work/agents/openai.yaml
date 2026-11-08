@@ -1,0 +1,6 @@
+interface:
+  display_name: "Architrave Work"
+  short_description: "Complete a bounded development, research or writing task"
+  default_prompt: "Complete the assigned Architrave work packet in its relevant mode."
+policy:
+  allow_implicit_invocation: false

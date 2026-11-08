@@ -1,0 +1,35 @@
+{
+  "schema": "architrave.designMap.v1",
+  "description": "Starter component glossary. Copy into docs/design/<app>-ui-map.json and replace with real Storybook/component names.",
+  "sourceOfTruth": {
+    "storybook": "src/.storybook",
+    "spec": "docs/ui/design-spec.md"
+  },
+  "components": [
+    {
+      "name": "SystemStatusBadge",
+      "kind": "status",
+      "storybookStories": [
+        "SystemStatusBadge/Healthy",
+        "SystemStatusBadge/Degraded",
+        "SystemStatusBadge/Blocked"
+      ],
+      "codePaths": [
+        "src/components/SystemStatusBadge.tsx"
+      ],
+      "tokens": [
+        "comp.statusBadge.background",
+        "comp.statusBadge.label"
+      ],
+      "states": [
+        "healthy",
+        "degraded",
+        "blocked",
+        "unknown"
+      ],
+      "capabilityClaims": [
+        "Shows only states present in backend contract"
+      ]
+    }
+  ]
+}

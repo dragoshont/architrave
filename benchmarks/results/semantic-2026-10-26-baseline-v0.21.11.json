@@ -1,0 +1,10 @@
+[{"case":"C1","verdict":"REVISE","responsibilities":{"R1":"preserved","R2":"lost","R3":"lost"}},
+{"case":"C2","verdict":"REVISE","responsibilities":{"R1":"preserved","R2":"lost","R3":"preserved"}},
+{"case":"C3","verdict":"PASS","responsibilities":{"R1":"preserved","R2":"preserved","R3":"preserved"}},
+{"case":"C4","verdict":"REVISE","responsibilities":{"R1":"lost","R2":"lost"}},
+{"case":"C5","verdict":"PASS","responsibilities":{"R1":"preserved","R2":"preserved","R3":"preserved"}},
+{"case":"C6","verdict":"NEEDS-VALIDATION","responsibilities":{"R1":"unverified"}},
+{"case":"C7","verdict":"REVISE","responsibilities":{"R1":"lost"}},
+{"case":"C8","verdict":"NEEDS-VALIDATION","responsibilities":{"R1":"unverified"}},
+{"case":"C9","verdict":"REVISE","responsibilities":{"R1":"lost"}},
+{"case":"C10","verdict":"REVISE","responsibilities":{"R1":"preserved","R2":"lost"}}]

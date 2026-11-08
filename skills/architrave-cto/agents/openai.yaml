@@ -1,0 +1,6 @@
+interface:
+  display_name: "Architrave CTO"
+  short_description: "Keep a Run outcome-driven and lean"
+  default_prompt: "Use the Architrave CTO checklist on this Run and give one correction."
+policy:
+  allow_implicit_invocation: false

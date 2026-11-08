@@ -1,9 +1,20 @@
+# OS / editor cruft
 .DS_Store
 Thumbs.db
 *.log
 *.code-workspace
+
+# Node — only present if you install Playwright locally to regenerate assets/
 node_modules/
 package-lock.json
+
+# Python / benchmark scratch
 __pycache__/
 *.pyc
-.architrave/
+.architrave/learning/
+.architrave/runs/
+.architrave/worktrees/
+.architrave/runtime.key
+.architrave/resources.lock
+.architrave/bench/
+.architrave/test-fixtures/

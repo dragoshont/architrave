@@ -1,0 +1,139 @@
+# Learning loop pack
+
+The cited rule base for Architrave's durable learning loop: how an agent keeps useful repo knowledge across context loss without turning config into a transcript, stale-memory cache, or unsafe source of truth.
+
+Grounded in current practice:
+- **Anthropic — Building effective agents:** start simple, add agentic complexity only when it improves outcomes, show planning steps, use ground truth from the environment, pause for human checkpoints, define stopping conditions, and test tool interfaces.
+- **Anthropic — Multi-agent research system:** save plans to memory before context loss, use filesystem artifacts instead of relaying everything through the lead agent, evaluate end state at checkpoints, start with small eval sets, add observability/tracing, and scale effort to task complexity.
+- **Claude Code memory:** separate project instructions from auto memory; add durable instructions when the same correction repeats; keep always-loaded instructions concise and specific; use scoped rules for path-specific guidance; hooks enforce behavior while instructions only guide it.
+- **GitHub Copilot instructions and Memory:** repo facts should include build commands, architecture, conventions, and validation steps; instructions should be short and broadly applicable; stored repo facts need citations and validation against the current branch to avoid stale behavior.
+- **LangGraph memory model:** distinguish short-term thread memory from long-term memory; separate semantic facts, episodic experiences, and procedural instructions; prefer smaller scoped memory documents when a single profile becomes hard to update; evaluate memory behavior.
+- **OpenAI / Promptfoo eval guidance:** describe desired behavior, run representative test inputs, analyze results, and iterate; treat prompt and agent changes as test-driven, not trial-and-error.
+- **MCP tool spec:** model-controlled tools need user-visible invocation, human approval for sensitive operations, structured schemas, result validation, audit logs, and no trust in untrusted tool annotations.
+
+## Memory taxonomy for Architrave
+
+Architrave uses four different stores because each has a different job:
+
+1. **Run artifacts (episodic memory):** when adopted work needs resumability or external operations, `.architrave/runs/<run-id>/` retains canonical state and evidence for that work. Record decisions and observations actually used, not a required set of intake/tournament/plan files. It can support recovery, but is not automatically future instruction.
+2. **Repo profile (semantic memory):** `.architrave/learning/repo-profile.md` is the concise, validated description of the repository: purpose, surfaces, architecture lanes, source-of-truth paths, build/test commands, recurring gotchas, and last-reviewed evidence.
+3. **Candidate lessons (semantic/episodic bridge):** `.architrave/learning/repo-lessons.md` tracks repeated observations with evidence and occurrence counts. It is a review queue, not a command file.
+4. **Promoted rules (procedural memory):** stable lessons move into `architrave.config.json`, `AGENTS.md`, `.github/instructions/*.instructions.md`, docs, or contracts after review. These are the places future agents are allowed to treat as standing guidance.
+
+Artifacts are audit support, not delivery currency. Retain them only where they
+decide safety, release or recovery truth, or capture a useful repeated lesson.
+Ordinary source edits need no learning file or separate receipt. Existing Run
+API event recording remains intact; artifact/event counts never measure progress.
+
+## Promotion rules
+
+- Do not write one-off discoveries directly into `architrave.config.json`. Config is for stable pointers, policy knobs, source-of-truth paths, and verified commands.
+- Add a candidate lesson when a fact would save a future agent time or prevent a repeated mistake. Include evidence: run id, file/command, current branch/source, and whether it was validated.
+- Repeated observations can justify proposing a lesson; occurrence counts never authorize its application. The old promotion-threshold config keys are deprecated and ignored.
+- Before promotion, validate against the current branch. Stale facts from closed/unmerged branches must not affect behavior unless the codebase still substantiates them.
+- For prose claims that cannot be proven by local link existence alone, run the semantic learning review helper; it writes the prompt only, and the current host runs the adversarial judge (`--execute` refuses with `NATIVE_HOST_REQUIRED`). The review emits JSONL findings for unsupported claims; the deterministic apply helper only marks exact matching learning lines as `UNVALIDATED:` so stale review output cannot mutate changed text.
+- Executable first: record an `Executable Check` (gate/test/lint/acceptance command) or an explicit `prose-justification` column in the candidate lesson row. `harness/improvement.py promote-lesson --lesson <id-or-exact-text> --target docs/guide.md` and `harness/improvement.py promote-lesson-picker --index 1 --target docs/guide.md` refuse prose proposals without one. Dry runs preserve the complete candidate provenance and print an exact `ARCHITRAVE-LEARNING-APPROVAL v1` statement binding operation, proposal, source bytes, target path/current bytes and resulting bytes. `--apply` requires `--session-id` and `--owner-event` resolving to an original owner message containing that exact statement. Broad approval, actor names and self-supplied `--approve`/`--by` cannot authorize a write. Application records the source row, owner event, hashes and exact inverse in the existing improvements register. `--rollback` requires a separate exact owner approval and unchanged applied bytes; it does not overwrite intervening edits. Missing approval leaves a proposal. Traversal, symlink components and protected policy/evidence/permission targets are refused. Failed approaches stay in the requirements `## Handoff`.
+- Propose controls with `python3 harness/improvement.py propose --source-lesson L1 --kind test --target tests/regression.py --summary "Prevent recurrence" --before-command "python3 tests/regression.py" --after-command "python3 tests/regression.py"`. Run `check <id> --phase before`, make the proposed change, then `check <id> --phase after`; only `approve <id> --by <human>` admits a failing or baseline before plus a passing after. Instruction proposals targeting `AGENTS.md`, `agents/*.agent.md`, or `.github/copilot-instructions.md` also require `--owner-approved`. Approval records consent; it does not edit guidance or merge code. Keep the skill library small.
+- Keep always-loaded instruction files short and scoped. Use path-specific `.github/instructions/*.instructions.md` or docs for local rules instead of stuffing every detail into `AGENTS.md`.
+- Redact secrets. Learning artifacts may say a secret reference exists or a config file is required; they must not contain secret values, tokens, private keys, cookies, or credentials.
+- Keep adaptive evidence concise: semantic intent and selection reason, requested binding, observed model/vendor/effort, fallback/escalation evidence, judge provenance, and available duration/token/tool metrics. Never store hidden reasoning or treat a producer's self-report as host observation.
+
+## Improvement and pruning registers
+
+`harness/improvement.py` records one JSON
+object per line in `.architrave/learning/improvements.jsonl`. Rows retain the id,
+source lesson ids or `--failure-fingerprint`, kind (`gate|test|lint|skill|instruction|retire`),
+repo-relative target, summary, before/after commands, observed exit codes and short
+redacted output tails, status (`proposed|approved|merged|rejected`), and approver.
+`list` prints the ledger. Each command accepts `--repo DIR` after its subcommand.
+Checks execute the recorded shell command in that repo (60-second default timeout,
+`--timeout` up to 3600); run only trusted commands within the caller's authorization.
+A failed check returns 1 but still records evidence; usage or approval errors return 2.
+Rerunning before discards after evidence; changing the target after a passing check
+requires another after check before approval. `--by` is a human-consent attestation,
+not authentication: agents propose, the human reviews the diff/evaluation and approves,
+and the normal human-controlled merge records merged/rejected disposition in the ledger.
+These improvement approval commands do not edit the target or delete a rule.
+The separate, explicitly owner-bound lesson application/rollback path above
+records its provenance in this same register; it is not autonomous learning.
+
+Keep `.architrave/learning/harness-assumptions.md` as a small table:
+
+```markdown
+| Rule | Model Limitation | Last Reviewed Model | Target |
+|---|---|---|---|
+| Repeated-failure stop | Retries the same failed approach | model-v1 | docs/controls.md |
+```
+
+`python3 harness/improvement.py prune-review --model model-v2` lists entries last
+reviewed for another model and records an idempotent `retire` proposal stub per entry.
+Fill its checks with `check <id> --phase before --command "<baseline eval>"` and
+`check <id> --phase after --command "<candidate eval>"`; pruning still requires passing
+after evidence and human approval. Update `Last Reviewed Model` only after actual
+review; never remove controls just because the model name changed.
+
+`harness/architrave_cli.py validate-learning` validates both registers when present, including the
+existing no-secrets scan. Missing optional registers are not an error.
+
+## Repo profile shape
+
+The repo profile should be compact enough to load/read quickly:
+
+```markdown
+# Architrave Repo Profile
+
+## Purpose
+
+## Surfaces And Lanes
+
+## Source Of Truth
+
+## Build And Test
+
+## Architecture Map
+
+## Recurring Gotchas
+
+## Validated Facts
+
+## Last Reviewed
+```
+
+Each durable fact should either cite a file/command/run artifact or be marked as unvalidated. When a fact becomes a standing instruction, move it to the appropriate promoted target and leave a short pointer in the profile.
+
+Use `learning.repoProfilePath` when already configured, or the existing default
+profile; concise source-cited facts can instead live in repository instructions.
+Record current accepted authority and retired surfaces, not just recent issue
+titles. For example, an accepted `docs/ADR-0020.md` may retire an engine and
+supersede/delete ADR-0016 and ADR-0018 while a newer issue still references them.
+The project map should cite ADR-0020 as current and label those issue references
+unresolved; an issue timestamp does not revive the engine. A still-present
+superseded ADR also needs semantic review, not merely a successful link check.
+Do not silently edit or infer a new owner decision from the conflict.
+
+`python3 harness/architrave_cli.py mark-stale-learning` reports missing local
+links in the default learning files (`--apply` marks the exact lines
+`UNVALIDATED:` without deleting them). Semantic learning review and
+`apply-semantic-learning-findings` handle reviewed contradictions, with exact-text
+checks against stale findings. These are explicit tools, not automatic native
+dispatch preloading or a general ADR/supersession detector; custom profile paths
+must be inspected explicitly. The retained synthetic project-map case in
+`scripts/test-learning-tools.py` distinguishes missing references from semantic
+supersession and keeps the accepted authority visible.
+
+## What the judge checks
+
+Missing optional learning artifacts are not a finding. Missing required safety
+or release evidence, skipped consent, false runtime claims, stale lesson
+promotion and secret leakage remain findings under the applicable risk floor.
+
+## Citations
+
+- Anthropic — *Building effective agents* (simplicity, transparency, ground truth, evaluator-optimizer, tool design, human checkpoints, stopping conditions).
+- Anthropic — *How we built our multi-agent research system* (plans saved to memory, artifacts over telephone, context management, end-state evaluation, tracing, small evals, human evaluation, token/coordination costs).
+- Anthropic — *How Claude remembers your project* (CLAUDE.md vs auto memory, concise instructions, repeated-correction promotion, scoped rules, compaction survival, hooks for enforcement).
+- GitHub — *About customizing GitHub Copilot responses* and *About GitHub Copilot Memory* (repo instructions, precedence, short self-contained instructions, repo facts with citations, validation against current branch, retention/staleness).
+- LangChain/LangGraph — *Memory overview* (short-term vs long-term memory; semantic, episodic, procedural memory; profile vs collection tradeoffs; hot-path vs background memory writes).
+- OpenAI — *Working with evals* (task description, test data, testing criteria, analyze/iterate; BDD-like behavior specification).
+- Promptfoo — *Workflow and philosophy* (test-driven prompt engineering, representative failure modes, feedback loop).
+- Model Context Protocol — *Tools* (human-in-the-loop for sensitive operations, structured schemas, result validation, tool usage audit, untrusted annotations).

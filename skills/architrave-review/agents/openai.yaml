@@ -1,0 +1,6 @@
+interface:
+  display_name: "Architrave Review"
+  short_description: "Run an advisory read-only rubric review"
+  default_prompt: "Review this Architrave proposal or implementation against the rubric."
+policy:
+  allow_implicit_invocation: false
