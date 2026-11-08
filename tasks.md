@@ -1,11 +1,13 @@
 # Tasks
 
-Task status is blank, **In progress**, or **Code ready**.
-Code ready means the implementation is written, not that checking succeeded.
-Feature ready is set only when every ask below is completed.
-
-Feature ready: yes
+Worker status is **In progress** or **Code ready**. Review follows all implementation.
+Set **Feature ready** when the requested outcome is established.
 
 | Task | Status |
 | --- | --- |
-| Remove the executable harness, hooks, tests, manifests, checksum and status machinery; replace the old requirements document with this file; reduce source by at least 99%; review the causes of management overhead. | Code ready |
+| Remove the executable harness and reduce Architrave to instructions (previous work). | Code ready |
+| Record #90's failures and specify the instruction changes. | Code ready |
+| Preserve decisions, stops, and permission boundaries. Keep setup actions distinct. | Code ready |
+| Limit worker chatter and statuses. Resolve uncertainty locally and apply relevant craft. | Code ready |
+| Review the combined result after implementation and distinguish source checks from observed outcomes. | Code ready |
+| Classify the open issue backlog by relevance to the instructions-only release. | Code ready |

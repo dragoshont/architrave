@@ -1,28 +1,13 @@
-# Architrave
+# Architrave v1.0
 
-A small set of instructions for an AI coding assistant. The host runs the
-assistant; Architrave does not run or manage it.
+Architrave is an instruction set for focused implementation. Use [AGENTS.md](AGENTS.md)
+with your coding host. Copilot can use the [optional agent](.github/agents/architrave.agent.md).
+The host controls tools, approvals, loaded instructions, and session lifecycle.
 
-## Use
+Use [tasks.md](tasks.md) for the existing work list. Workers use **In progress**
+and **Code ready**. Integrated review follows implementation. **Feature ready**
+describes the verified feature outcome.
 
-Use [AGENTS.md](AGENTS.md) as the repository instructions. An optional Copilot
-agent is in [.github/agents/architrave.agent.md](.github/agents/architrave.agent.md).
-For another host, use the instructions directly. There is no installer.
-
-Keep the user's asks in [tasks.md](tasks.md). Task status is blank,
-**In progress** or **Code ready**. **Feature ready** applies to the whole list
-and is set only when every ask is completed. Written implementation and
-checking results are separate.
-
-## Removed
-
-The previous executable control plane is retired, not repaired. This checkout
-has no hooks, test suites, gates, status service, manifests, checksum machinery,
-installer, or automated scheduling and recovery. It makes no unattended
-execution guarantee. Older published releases still contain the retired system.
-
-Git history and local research have been preserved.
-
-## License
-
-[MIT](LICENSE).
+The [specification](SPEC.md) records the owner-reported failure and the behavior
+expected from the rewrite. The live Copilot pilot was stopped. The v1.0 package
+contains the repository instructions and documentation under the [MIT license](LICENSE).
