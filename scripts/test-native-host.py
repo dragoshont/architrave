@@ -1332,7 +1332,8 @@ let options, callback, reads=0, unsubscribed=false;
 let tasks=[{id:"test",type:"agent",status:"running"}];
 const host={sessionId:"root",on(fn){callback=fn;return ()=>{unsubscribed=true;}},
   rpc:{tasks:{startAgent(){throw Error("fixture must not launch a worker");},
-    list:async()=>{reads++;return {tasks};},cancel:async()=>({cancelled:true})}}};
+    list:async()=>{reads++;return {tasks};},cancel:async()=>({cancelled:true}),
+    remove:async()=>({removed:true})}}};
 globalThis.joinSession=async value=>{options=value;return host;};
 const module=await import(pathToFileURL(process.argv[1]));
 assert.equal(Object.hasOwn(options,"hooks"),false);
@@ -1371,12 +1372,12 @@ dispatch.handler=async args=>{packets.push(args);return {textResultForLlm:"{}",r
 await batch.handler({repo:"repo",run_id:"r",task_ids:["a","b"],reqs:{a:["REQ-1"],b:["REQ-2"]}},{sessionId:"root"});
 assert.deepEqual(packets.map(packet=>packet.reqs),[["REQ-1"],["REQ-2"]]);
 dispatch.handler=realDispatch;
-for(let i=0;i<20;i++) void dispatch.handler({repo:"unused",run_id:"r",task_id:String(i)},{sessionId:"root"});
+for(let i=0;i<20;i++) void dispatch.handler({repo:process.argv[2],run_id:"r",task_id:String(i)},{sessionId:"root"});
 assert.equal(Object.hasOwn(options,"hooks"),false);
 await assert.rejects(dispatch.handler({},{sessionId:"root"}),/CHILD_LIMIT/);
 console.log("SDK event/hookless/admission fixture: PASS (not native evidence)");
 '''
-        result = subprocess.run(["node", "--input-type=module", "-e", script, str(entry)],
+        result = subprocess.run(["node", "--input-type=module", "-e", script, str(entry), str(self.repo)],
                                 capture_output=True, text=True, timeout=10)
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
 

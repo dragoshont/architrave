@@ -23,6 +23,8 @@ Releases at or before **v0.8.12** are on the
   collecting fresh delivery observations; legacy reports without an intake
   snapshot also require fresh observations.
 - Reject leading-zero core version components in the release tool.
+- Decode Windows regression fixtures as UTF-8, satisfy the SDK's preflight
+  contract, and distinguish absent CI workflows from failed configured checks.
 - Retain the full plugin, including Python and hooks. Source archives and
   synthetic regressions do not establish live-host or cross-platform qualification.
 

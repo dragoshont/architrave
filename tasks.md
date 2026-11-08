@@ -12,4 +12,4 @@ Feature ready:
 | Commit and push the release source and create the public 1.0.1 release. | Code ready |
 | Build locally and install the full plugin on this Windows machine. | Code ready |
 | Adversarially review the full plugin and fix the confirmed issues, including the native Windows failures. | Code ready |
-| Commit the reviewed fixes and build the full 1.0.2 plugin. | In progress |
+| Commit the reviewed fixes and build the full 1.0.2 plugin. | Code ready |
