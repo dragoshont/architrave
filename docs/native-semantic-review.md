@@ -76,6 +76,14 @@ unclosed owned jobs retain a recovery handle for the existing native cancel
 surface. Cleanup failure is never reinterpreted as a missing source verdict.
 Exceptional execution responses also include settled cleanup confirmation and
 the actual owned recovery handle when removal fails.
+Review preflight is bounded to 30 seconds; admission, binding and observation
+use the canonical review expiry. Cleanup and persistence have a separate,
+finite recovery window rather than borrowing an exhausted execution budget.
+An aborted or lost admission retains its exact attempt marker until a matching
+host owner is cancelled and removed; an empty listing is not proof of absence.
+Live dispatch and review identities include the canonical repository path as
+well as the Run and task, so identically named work in another repository is
+not mistaken for the current owner.
 Semantic execution requires `tasks.startAgent`, `list`, `cancel` and `remove`
 before opening its producer pipe or admitting a reviewer. Partial hosts fail
 before AI rather than entering an unrecoverable cleanup hold.

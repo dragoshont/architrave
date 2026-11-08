@@ -211,7 +211,10 @@ mutations and undisclosed work are not inferred.
 python <kit>/gates/gate_runner.py delivery-audit --seal --repo <repo> --session <host-session-uuid>
 ```
 
-Sealing freezes the current source inventory. It does not declare completion.
+Preparation captures the intake source identity. After implementation changes,
+seal the final source before invoking the fresh checks/provider observations
+that will support delivery. Sealing freezes the current source inventory; it
+does not declare completion.
 The original resolved base commit and declared source-file hashes bind
 the evidence, including unchanged dependencies. Unrelated shared-checkout work
 does not invalidate a scoped declaration. Requirement status/evidence is
@@ -263,10 +266,13 @@ Put the reviewer's session ID and the report digest in `review`; that reviewer's
 actual PASS report must contain `Delivery digest: <sha256>` on its own line.
 The digest covers every report field except `review`. Changed observations,
 requirements or source require renewed review, not copying a prior PASS.
-Re-sealing changed source clears old observations and records a `proof_after`
+Sealing changed source, including the first seal after intake, clears old observations and records a `proof_after`
 cutoff: copying a proof produced before that capture cannot accept the new
 source. Re-observe the outcomes after capture. This deliberately favors a fresh
 run over guessing which prior integration result covered changed implementation.
+For legacy declarations without an intake snapshot, the first seal establishes
+that binding and also clears earlier observations. A later unchanged seal does
+not manufacture a new proof identity or renew stale observations.
 
 ## Completion
 

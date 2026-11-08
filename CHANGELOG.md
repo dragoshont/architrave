@@ -5,6 +5,27 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## 1.0.2
+
+- Preserve native execution budgets through Python bookkeeping, retain
+  unresolved host ownership across failure and cancellation paths, and bound
+  bridge preparation, observation, recovery and semantic-review admission.
+- Scope native dispatch identities to the canonical repository, Run and task;
+  reject malformed parallelism and missing cleanup capabilities before dispatch.
+- Keep retry artifacts immutable and conservatively reject overlapping mutable
+  glob scopes.
+- Require task-bound policy grants and exact-target preflight for iOS install
+  and launch recipes. Installation remains uncertain until independent
+  reconciliation proves the installed identity.
+- Revalidate managed installer and recovery paths, preserve owner content around
+  malformed managed stanzas, and adopt the canonical supporting documents.
+- Bind delivery preparation to its intake source. Seal changed source before
+  collecting fresh delivery observations; legacy reports without an intake
+  snapshot also require fresh observations.
+- Reject leading-zero core version components in the release tool.
+- Retain the full plugin, including Python and hooks. Source archives and
+  synthetic regressions do not establish live-host or cross-platform qualification.
+
 ## 1.0.1
 
 - Restore the full Copilot plugin from v1.0.0 after the instructions-only

@@ -81,7 +81,8 @@ s.add_task('review',{'id':'source','objective':'Read source','acceptanceCriteria
                         const report = { verdict: "PASS", criteria: subject.criteria,
                             sourceCommit: subject.source.commit, sourceSha256: subject.source.sha256,
                             challenge: subject.challenge, summary: "SDK fixture, not live evidence.", findings: [] };
-                        current = { id, type: "agent", status: "running", prompt: args.prompt };
+                        current = { id, type: "agent", status: "running", prompt: args.prompt,
+                            description: args.description };
                         tasks.set(id, current);
                         ok(!Object.hasOwn(options, "hooks"));
                         const inventory = JSON.parse(args.prompt.split(
@@ -145,6 +146,11 @@ s.add_task('review',{'id':'source','objective':'Read source','acceptanceCriteria
     taskRpc.remove = remove;
     await assert.rejects(() => definition.handler({ ...args, firstDispatchedModel: "caller-claimed" }, invocation)); assertions++;
     ok(count === 0);
+    const alreadyAborted = new AbortController();
+    alreadyAborted.abort();
+    const neverStarted = JSON.parse((await definition.handler(args,
+        { ...invocation, signal: alreadyAborted.signal })).textResultForLlm);
+    ok(neverStarted.error?.code === "NATIVE_ABORTED" && count === 0 && tasks.size === 0);
     const first = JSON.parse((await definition.handler(args, invocation)).textResultForLlm);
     ok(first.status === "ok" && first.result.verdict === "PASS" && first.result.family === "anthropic");
     ok(first.cleanup.confirmed === false && first.recoveryOwner === "agent-1");
@@ -182,6 +188,15 @@ RunStore(r).resume('review',accept_commit=True)
     const exceptionRecovery = JSON.parse((await cancelDefinition.handler(args, invocation)).textResultForLlm);
     ok(exceptionRecovery.cancelled === true && tasks.size === 0);
     conflictCompletion = false;
+    const startReviewer = taskRpc.startAgent;
+    taskRpc.startAgent = async input => {
+        await startReviewer(input);
+        throw new Error("fixture: reviewer admission reply was lost");
+    };
+    const lostReviewer = JSON.parse((await definition.handler(args,
+        { ...invocation, toolCallId: "lost-reviewer-admission" })).textResultForLlm);
+    ok(lostReviewer.status === "failed" && lostReviewer.cleanup.confirmed === true && tasks.size === 0);
+    taskRpc.startAgent = startReviewer;
     await mkdir(join(repo, "public", ".architrave"));
     await writeFile(join(repo, "public", ".architrave", "advertised-source.md"), "Synthetic unsupported public source fixture");
     const advertise = spawnSync(python, ["-c", `
@@ -198,7 +213,7 @@ RunStore(r).resume('review',accept_commit=True)
         { ...invocation, toolCallId: "unsupported-inventory" })).textResultForLlm);
     assert.ok(unsupported.status === "failed" && unsupported.error?.message.includes("SEMANTIC_SOURCE_UNSUPPORTED"),
         JSON.stringify(unsupported)); assertions++;
-    ok(count === 3);
+    ok(count === 4);
 
     // REQ-97 bounded native dispatch. Fixture evidence only: the fake task RPC
     // simulates delayed, hung and lost host stages; this is not a live host.
@@ -209,8 +224,8 @@ sys.path.insert(0, str(Path(sys.argv[1])/'harness'))
 from architrave_runtime import RunStore
 s=RunStore(Path(sys.argv[2]))
 s.create(run_id='dispatch',goal='Bounded dispatch',outcome='Bounded',criteria=[{'id':'FIX','description':'d','scope':'fixture','risk':'R0','verificationType':'deterministic','blocking':True}])
-for t in ['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13','t14']:
-    s.add_task('dispatch',{'id':t,'objective':'Read README','acceptanceCriteria':['FIX'],'workerProfile':'native','risk':'R0','pushback':'KEEP:fixture','maxAttempts':2,'workPacket':{'budget':{'timeoutSeconds':3,'maxOutputBytes':800,'maxTurns':4}}})
+for t in ['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13','t14','t15']:
+    s.add_task('dispatch',{'id':t,'objective':'Read README','acceptanceCriteria':['FIX'],'workerProfile':'native','risk':'R0','pushback':'KEEP:fixture','maxAttempts':2,'workPacket':{'budget':{'timeoutSeconds':120 if t=='t15' else 3,'maxOutputBytes':800,'maxTurns':4}}})
 `, ROOT, repo], { encoding: "utf8" });
     assert.equal(dispatchRun.status, 0, dispatchRun.stderr);
     const dispatchTool = options.tools.find(tool => tool.name === "architrave_native_dispatch");
@@ -218,7 +233,10 @@ for t in ['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13','
     const original = { ...taskRpc };
     const hang = () => new Promise(() => {});
     const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-    const call = async (tool, args, label, limit = 20000, signal) => {
+    // Preparation has its own 30 s bound; the 3 s worker lease does not include
+    // checkout creation or the separate 5 s cancellation/persistence window.
+    const dispatchBound = 30000 + 3000 + 5000;
+    const call = async (tool, args, label, limit = dispatchBound + 2000, signal) => {
         const started = Date.now();
         let timer;
         const reply = await Promise.race([tool.handler(args, { sessionId: "owner-one", toolCallId: label, signal }),
@@ -260,7 +278,7 @@ for t in ['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13','
         try { await body(); } catch (error) { failures.push(`${name}: ${error.stack || error.message}`); }
         finally { Object.assign(taskRpc, original); }
     };
-    const within = value => value.elapsed < 8000;
+    const within = value => value.elapsed < dispatchBound + 1000;
 
     await scenario("fixture: hung startAgent is bounded at admission and retains recovery", async () => {
         let releaseStart;
@@ -273,6 +291,12 @@ for t in ['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13','
         ok(first.status === "failed" && first.error?.stage === "admission" && within(first));
         ok(first.hostCancellationConfirmed === false);
         ok(blocked(await dispatch("t1", "t1-retry")));
+        await assert.rejects(() => dispatchTool.handler(
+            { repo, run_id: "dispatch", task_id: "t1" },
+            { sessionId: "another-owner", toolCallId: "wrong-owner" }), /owner mismatch/); assertions++;
+        await assert.rejects(() => dispatchTool.handler(
+            { repo: join(root, "missing-repository"), run_id: "dispatch", task_id: "t1" },
+            { sessionId: "owner-one", toolCallId: "wrong-repository" }), /ENOENT/); assertions++;
         const configPath = join(repo, "architrave.config.json");
         const config = JSON.parse(await readFile(configPath, "utf8"));
         config.workers.maxParallel = 1;
@@ -289,7 +313,7 @@ for t in ['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13','
             if (!blocked(retried)) break;
             await sleep(20);
         }
-        ok(retried && !blocked(retried) && retried.hostTaskId);
+        ok(retried && !blocked(retried) && retried.hostTaskId, JSON.stringify(retried));
         ok(!tasks.has("late-t1"));
         config.workers.maxParallel = 20;
         await writeFile(configPath, JSON.stringify(config));
@@ -300,17 +324,22 @@ for t in ['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13','
         let cancelCalls = 0;
         let removeCalls = 0;
         let releaseCancel;
+        let admissionStarted;
         const late = new Promise(resolve => { lateAdmitted = resolve; });
         const cancelGate = new Promise(resolve => { releaseCancel = resolve; });
-        taskRpc.startAgent = args => new Promise(resolve => setTimeout(() => {
+        taskRpc.startAgent = args => {
+            admissionStarted = Date.now();
+            return new Promise(resolve => setTimeout(() => {
             attemptMarker = args.description;
             tasks.set("late-1", { id: "late-1", type: "agent", status: "running",
                 prompt: args.prompt, description: args.description });
             resolve({ agentId: "late-1" });
             lateAdmitted();
-        }, 5000));
+            }, 5000));
+        };
         const first = await dispatch("t2");
-        ok(first.status === "failed" && first.error?.stage === "admission" && first.elapsed < 4900);
+        ok(first.status === "failed" && first.error?.stage === "admission" &&
+            Date.now() - admissionStarted < 4900, JSON.stringify(first));
         ok(!tasks.has("late-1") && first.hostCancellationConfirmed === false);
         ok(blocked(await dispatch("t2", "t2-retry")));
         taskRpc.cancel = async ({ id }) => {
@@ -412,7 +441,7 @@ for t in ['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13','
         ok(released.hostCancellationConfirmed === true && released.cleanup?.confirmed === true && !tasks.has(orphan));
         taskRpc.startAgent = completing;
         const again = await dispatch("t3", "t3-again", retry);
-        ok(!blocked(again) && again.hostTaskId && within(again));
+        ok(!blocked(again) && again.hostTaskId && within(again), JSON.stringify(again));
     });
     await scenario("fixture: identical historical prompt is not adopted over attempt identity", async () => {
         let currentAttempt;
@@ -491,7 +520,7 @@ for t in ['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13','
         ok(first.hostCancellationConfirmed === true && first.cleanup?.confirmed === true && within(first));
         taskRpc.startAgent = completing;
         const again = await dispatch("t14", "t14-again", retry);
-        ok(!blocked(again) && again.hostTaskId && within(again));
+        ok(!blocked(again) && again.hostTaskId && within(again), JSON.stringify(again));
     });
     await scenario("fixture: hung preflight listing returns a preflight failure without retained identity", async () => {
         taskRpc.list = hang;
@@ -507,7 +536,7 @@ for t in ['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13','
         taskRpc.startAgent = running;
         taskRpc.cancel = hang;
         const first = await dispatch("t4");
-        ok(first.status === "failed" && first.error?.stage === "cleanup" && within(first));
+        ok(first.status === "failed" && first.error?.stage === "cleanup" && within(first), JSON.stringify(first));
         ok(first.hostCancellationConfirmed === false && first.recoveryOwner?.startsWith("dispatch-agent-"));
         ok(blocked(await dispatch("t4", "t4-retry")));
         taskRpc.cancel = original.cancel;
@@ -529,7 +558,7 @@ for t in ['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13','
         taskRpc.startAgent = completing;
         taskRpc.remove = hang;
         const first = await dispatch("t6");
-        ok(first.status === "failed" && first.error?.stage === "cleanup" && within(first));
+        ok(first.status === "failed" && first.error?.stage === "cleanup" && within(first), JSON.stringify(first));
         ok(!first.candidate && first.cleanup?.confirmed === false && first.recoveryOwner === first.hostTaskId);
         ok(first.hostCancellationConfirmed === true && first.hostRemovalConfirmed === false && tasks.has(first.hostTaskId));
         ok(blocked(await dispatch("t6", "t6-retry")));
@@ -547,7 +576,8 @@ for t in ['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13','
         taskRpc.cancel = async args => { cancels++; return original.cancel(args); };
         taskRpc.remove = hang;
         const first = await dispatch("t7");
-        ok(first.status === "failed" && first.error?.stage === "cleanup" && !first.candidate && within(first));
+        ok(first.status === "failed" && first.error?.stage === "cleanup" && !first.candidate && within(first),
+            JSON.stringify(first));
         ok(blocked(await dispatch("t7", "t7-retry")) && starts === 1 && cancels === 1);
         taskRpc.remove = async args => { removals++; return original.remove(args); };
         const adopted = await cancelPacket("t7");
@@ -561,11 +591,9 @@ for t in ['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13','
         taskRpc.startAgent = args => args.name.includes("t8") ?
             (attemptMarker = args.description, new Promise(resolve => { releaseHung = resolve; })) : completing(args);
         const batch = await call(batchTool, { repo, run_id: "dispatch", task_ids: ["t8", "t9"] }, "batch");
-        // Python per-packet preparation (worktree creation) runs one packet after the other in this fixture,
-        // about 10 s for two packets with or without the hang, so the bound is one `within` window per packet.
-        ok(batch.elapsed < 2 * 8000 && batch.items.length === 2);
-        ok(batch.items[0].status === "failed" && batch.items[0].error?.stage === "admission");
-        ok(batch.items[1].hostTaskId && batch.items[1].error?.stage !== "admission");
+        ok(within(batch) && batch.items.length === 2, JSON.stringify(batch));
+        ok(batch.items[0].status === "failed" && batch.items[0].error?.stage === "admission", JSON.stringify(batch));
+        ok(batch.items[1].hostTaskId && batch.items[1].error?.stage !== "admission", JSON.stringify(batch));
         tasks.set("late-t8", { id: "late-t8", type: "agent", status: "running", description: attemptMarker });
         releaseHung({ agentId: "late-t8" });
         taskRpc.startAgent = completing;
@@ -575,8 +603,22 @@ for t in ['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13','
             if (!blocked(retried)) break;
             await sleep(20);
         }
-        ok(retried && !blocked(retried) && retried.hostTaskId);
+        ok(retried && !blocked(retried) && retried.hostTaskId, JSON.stringify(retried));
         ok(!tasks.has("late-t8"));
+    });
+    await scenario("fixture: hung cleanup cannot borrow an unused long execution budget", async () => {
+        let cleanupStarted;
+        taskRpc.startAgent = completing;
+        taskRpc.cancel = () => { cleanupStarted = Date.now(); return hang(); };
+        const first = await dispatch("t15");
+        ok(first.status === "failed" && first.error?.stage === "cleanup" &&
+            cleanupStarted && Date.now() - cleanupStarted < 6500, JSON.stringify(first));
+        ok(first.cleanup?.confirmed === false && first.hostCancellationConfirmed === false);
+        taskRpc.cancel = original.cancel;
+        const adopted = await cancelPacket("t15");
+        ok(adopted.adopted === true && adopted.candidate?.result?.status === "candidate" &&
+            adopted.candidate.result.observedHostStatus === "idle" &&
+            adopted.cleanup?.confirmed === true && !tasks.has(first.hostTaskId), JSON.stringify(adopted));
     });
     for (const mode of ["abort", "deferred-abort", "timeout"]) {
         const deferred = mode === "deferred-abort";
@@ -606,8 +648,13 @@ s.accept_native_candidate(ticket,host_task_id=owner,host_status='cancelled',text
                 ok(id === owner);
                 tasks.get(id).status = "running";
                 tasks.get(id).prompt = message;
-                if (mode !== "timeout") setTimeout(() => controller.abort(), 150);
                 return { sent: true };
+            };
+            taskRpc.list = async () => {
+                const listing = await original.list();
+                if (mode !== "timeout" && listing.tasks.some(task => task.id === owner && task.status === "running"))
+                    queueMicrotask(() => controller.abort());
+                return listing;
             };
             taskRpc.cancel = async args => {
                 cancels++;
@@ -615,7 +662,7 @@ s.accept_native_candidate(ticket,host_task_id=owner,host_status='cancelled',text
             };
             taskRpc.remove = async args => { removals++; return original.remove(args); };
             const packet = { repo, run_id: run, task_id: "retained", owner_handle: owner, ...retry };
-            const stopped = await call(dispatchTool, packet, run, 20000, controller.signal);
+            const stopped = await call(dispatchTool, packet, run, dispatchBound + 2000, controller.signal);
             if (mode === "timeout") {
                 ok(stopped.status === "failed" && stopped.timedOut === true && within(stopped), JSON.stringify(stopped));
                 ok(stopped.result?.hostObservation.budgetStop === "time");
@@ -661,6 +708,9 @@ assert len(s['workers'])==2 and all(w['status']!='RUNNING' for w in s['workers']
         process.exit(1);
     }
     console.log(`PASS native semantic SDK fixtures: ${assertions} assertions; not live host qualification`);
+} catch (error) {
+    console.error(error);
+    throw error;
 } finally {
-    await rm(root, { recursive: true });
+    await rm(root, { recursive: true, maxRetries: 20, retryDelay: 100 });
 }

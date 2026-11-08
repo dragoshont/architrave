@@ -68,6 +68,18 @@ def main():
         assert result.returncode == 2, 'invalid argument must exit 2'
         print('ok    unknown flag rejected')
 
+        bump_spec = importlib.util.spec_from_file_location('bump_version', ROOT / 'scripts/bump_version.py')
+        bump = importlib.util.module_from_spec(bump_spec)
+        bump_spec.loader.exec_module(bump)
+        for version in ('0.0.0', '1.0.2', '12.30.400', '1.0.2-alpha.1', '1.0.2-0'):
+            assert bump.VERSION.fullmatch(version), version
+        before = (ROOT / 'plugin.json').read_bytes()
+        for version in ('01.0.2', '1.00.2', '1.0.02', '1.0.2-01', 'v1.0.2'):
+            with contextlib.redirect_stderr(io.StringIO()):
+                assert bump.main([version]) == 1, version
+        assert (ROOT / 'plugin.json').read_bytes() == before
+        print('ok    non-SemVer versions rejected without changing release manifests')
+
         spec = importlib.util.spec_from_file_location('manifest_scanner_fixture', scanner)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)

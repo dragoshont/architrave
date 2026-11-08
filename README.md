@@ -52,6 +52,16 @@ owner a permission prompt. Sustained parallel delivery across many children
 (REQ-30/36) is **not yet proven**. Validation for this delivery runs locally;
 releases are cut manually without enabling CI.
 
+**1.0.2 source build.** The adversarial fixes cover native ownership and timing,
+immutable retry results, overlapping mutable scopes, installer path safety,
+delivery-source freshness, and task-authorized iOS installation. See the
+[changelog](CHANGELOG.md) for the behavior changes. This local version does not
+replace the published 1.0.1 release or change the pinned installation command.
+Synthetic regression coverage is not live-host qualification.
+The repository quality gate still blocks on historical REQ-60/REQ-63 review
+notes that claim PASS where the cited local reviewer last reported REVISE.
+This build does not rewrite that review history or claim the gate passed.
+
 **1.0.1 packaging.** This release restores the full v1.0.0 plugin, including
 its Python code and Copilot hooks, after the instructions-only reduction.
 The host's plugin manager installs the complete package. There is no separate

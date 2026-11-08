@@ -17,7 +17,8 @@ FIELDS = (
     ('.codex-plugin/plugin.json', ('version',)),
 )
 PRERELEASE_ID = r'(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
-VERSION = re.compile(rf'[0-9]+\.[0-9]+\.[0-9]+(?:-{PRERELEASE_ID}(?:\.{PRERELEASE_ID})*)?')
+CORE_ID = r'(?:0|[1-9][0-9]*)'
+VERSION = re.compile(rf'{CORE_ID}\.{CORE_ID}\.{CORE_ID}(?:-{PRERELEASE_ID}(?:\.{PRERELEASE_ID})*)?')
 
 
 def main(argv=None):
