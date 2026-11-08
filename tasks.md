@@ -4,7 +4,7 @@ Task status is blank, **In progress**, or **Code ready**.
 Code ready means the implementation is written, not that checking succeeded.
 Feature ready is set only when every ask below is completed.
 
-Feature ready:
+Feature ready: Yes
 
 | Task | Status |
 | --- | --- |
