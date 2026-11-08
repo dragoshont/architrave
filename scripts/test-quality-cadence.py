@@ -18,6 +18,14 @@ spec.loader.exec_module(gate)
 
 
 class QualityCadenceTests(unittest.TestCase):
+    def configured_workflows(self):
+        workflows = [ROOT / name for name in
+                     (".github/workflows/validate.yml", ".github/workflows/release.yml")]
+        configured = [path for path in workflows if path.exists()]
+        if not configured:
+            self.skipTest("No validate/release workflows configured; releases use local validation.")
+        return configured
+
     def setUp(self):
         scratch = ROOT / ".architrave/test-fixtures"
         scratch.mkdir(parents=True, exist_ok=True)
@@ -39,6 +47,21 @@ class QualityCadenceTests(unittest.TestCase):
 
     def write_config(self):
         (self.repo / "architrave.config.json").write_text(json.dumps(self.config))
+
+    def test_workflow_coverage_skips_only_when_neither_workflow_is_configured(self):
+        workflows = self.repo / ".github" / "workflows"
+        workflows.mkdir(parents=True)
+        with mock.patch(f"{__name__}.ROOT", self.repo):
+            with self.assertRaises(unittest.SkipTest):
+                self.configured_workflows()
+            validate = workflows / "validate.yml"
+            validate.write_text("", encoding="utf-8")
+            self.assertEqual([validate], self.configured_workflows())
+            release = workflows / "release.yml"
+            release.write_text("", encoding="utf-8")
+            self.assertEqual([validate, release], self.configured_workflows())
+            validate.unlink()
+            self.assertEqual([release], self.configured_workflows())
 
     def quiet_quality(self, hook=False):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
@@ -72,8 +95,8 @@ class QualityCadenceTests(unittest.TestCase):
         self.assertEqual(2, self.quiet_quality())
 
     def test_all_windows_fixture_processes_propagate_failure_immediately(self):
-        for name in (".github/workflows/validate.yml", ".github/workflows/release.yml"):
-            text = (ROOT / name).read_text()
+        for path in self.configured_workflows():
+            text = path.read_text(encoding="utf-8")
             windows_job = text.split("  windows-python:\n", 1)[1].split("\n  release:", 1)[0]
             self.assertIn("runs-on: windows-2025", windows_job)
             self.assertNotIn("shell:", windows_job)
@@ -90,16 +113,17 @@ class QualityCadenceTests(unittest.TestCase):
                 self.assertNotIn(".sh", command)
 
     def test_actual_browser_contract_is_required_in_validate_and_release(self):
-        for name in (".github/workflows/validate.yml", ".github/workflows/release.yml"):
-            text = (ROOT / name).read_text()
+        for path in self.configured_workflows():
+            text = path.read_text(encoding="utf-8")
             browser_job = text.split("  session-browser:\n", 1)[1].split("\n  windows-python:", 1)[0]
             self.assertIn("playwright==1.56.0", browser_job)
             self.assertIn("playwright install --with-deps chromium", browser_job)
             self.assertIn("COMPANION_VISUAL_OUTPUT:", browser_job)
             self.assertIn("scripts/test-session-companion.mjs", browser_job)
             self.assertIn("actions/upload-artifact@v4", browser_job)
-        self.assertIn("needs: [validate, windows-python, session-browser]",
-                      (ROOT / ".github/workflows/release.yml").read_text())
+            if path.name == "release.yml":
+                self.assertIn("needs: [validate, windows-python, session-browser]", text)
+
     def test_public_hook_json_compatibility_remains(self):
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
@@ -121,7 +145,7 @@ class QualityCadenceTests(unittest.TestCase):
         self.assertIn("not complete enforcement", docs)
         self.assertIn("not Claude compatibility", docs.replace("\n", " "))
 
-    def test_agent_skill_cadence_and_ci_coverage_are_explicit(self):
+    def test_agent_skill_cadence_and_local_coverage_are_explicit(self):
         text = " ".join((ROOT / "agents/architrave.agent.md").read_text().split())
         self.assertIn("python gates/gate_runner.py quality-gate", text)
         self.assertIn("final integration", text)
@@ -132,8 +156,11 @@ class QualityCadenceTests(unittest.TestCase):
         self.assertIn(".github/agents/architrave.agent.md", stanza)
         self.assertIn("canonical lead contract", skill)
         self.assertIn("delegation, verification and stop rules", stanza)
-        self.assertIn("test-quality-cadence.py", (ROOT / ".github/workflows/validate.yml").read_text())
         self.assertIn("test-quality-cadence.py", (ROOT / "scripts/check_manifests.py").read_text())
+
+    def test_configured_ci_workflows_run_quality_cadence_checks(self):
+        for path in self.configured_workflows():
+            self.assertIn("test-quality-cadence.py", path.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

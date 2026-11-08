@@ -20,7 +20,7 @@ RUNNER = ROOT / "gates" / "gate_runner.py"
 EXAMPLE = ROOT / "kit" / "examples" / "requirements.md"
 
 def legacy_example():
-    return (EXAMPLE.read_text().replace("| Started |", "| in-progress |")
+    return (EXAMPLE.read_text(encoding="utf-8").replace("| Started |", "| in-progress |")
             .replace("| Not started |", "| open |").replace("| Code ready |", "| accepted |")
             .replace("Implementation in commit abc1234; final review deferred until all feature code is ready.",
                      "commit abc1234, test log ci/123"))
@@ -91,7 +91,7 @@ class ComponentGate(unittest.TestCase):
         if requirements:
             config["requirements"] = requirements
             if requirements == "SPEC.md":
-                (self.hub / "SPEC.md").write_text(EXAMPLE.read_text())
+                (self.hub / "SPEC.md").write_text(EXAMPLE.read_text(encoding="utf-8"), encoding="utf-8")
         (self.hub / "architrave.config.json").write_text(json.dumps(config))
         process = subprocess.run(
             [sys.executable, str(RUNNER), "components", "--repo", str(self.hub), *flags],
@@ -139,7 +139,7 @@ class ComponentGate(unittest.TestCase):
         self.assertIn("ok    requirements: SPEC.md", out)
 
     def requirements(self, text, *flags):
-        (self.hub / "SPEC.md").write_text(text)
+        (self.hub / "SPEC.md").write_text(text, encoding="utf-8")
         (self.hub / "architrave.config.json").write_text(json.dumps(
             {"kind": "knowledge", "build": "true", "test": "true", "requirements": "SPEC.md"}))
         home = getattr(self, "copilot_home", self.base / "no-copilot")
@@ -151,6 +151,7 @@ class ComponentGate(unittest.TestCase):
 
     def test_requirements_file_needs_table_acceptance_evidence_corrections_and_handoff(self):
         example = legacy_example()
+        self.assertIn("| C-01 | supersede | REQ-03 → REQ-04 |", example)
         code, out = self.requirements(example)
         self.assertEqual(code, 0, out)
         self.assertIn("ARCHITRAVE-REQUIREMENTS: PASS", out)
@@ -164,6 +165,7 @@ class ComponentGate(unittest.TestCase):
                   .replace("| C-01 | supersede | REQ-03 → REQ-04 |", "| C-01 | tweak | REQ-09 |")
                   .replace("Failed approaches: forcing a refresh on appear re-triggered the loop (reverted in def5678).",
                            "Failed approaches:"))
+        self.assertIn("| C-01 | tweak | REQ-09 |", broken)
         code, out = self.requirements(broken)
         self.assertEqual(code, 1)
         for text in ("REQ-01 has no testable acceptance", "REQ-02 is accepted without evidence",
@@ -172,7 +174,7 @@ class ComponentGate(unittest.TestCase):
             self.assertIn(text, out)
 
     def test_requirements_claim_refuses_duplicate_or_closed_lanes_and_done_needs_acceptance(self):
-        example = EXAMPLE.read_text()
+        example = EXAMPLE.read_text(encoding="utf-8")
         code, out = self.requirements(example, "--claim", "REQ-01", "--owner", "ui-lane")
         self.assertEqual(code, 0, out)
         self.assertIn("acceptance: `make test-library`", out)
@@ -197,7 +199,7 @@ class ComponentGate(unittest.TestCase):
         self.assertNotIn("lack owner acknowledgement", out)
 
     def test_code_ready_progress_defers_evidence_and_review_until_final_completion(self):
-        ready = EXAMPLE.read_text().replace("| Started |", "| Code ready |").replace("| Not started |", "| Code ready |")
+        ready = EXAMPLE.read_text(encoding="utf-8").replace("| Started |", "| Code ready |").replace("| Not started |", "| Code ready |")
         code, out = self.requirements(ready)
         self.assertEqual(code, 0, out)
         code, out = self.requirements(ready, "--done")
@@ -214,7 +216,7 @@ class ComponentGate(unittest.TestCase):
             return (f"| {name} | me/app | p1 | b | private | {reqs} | {dep} | 6b5186b6-ee1d-49cf-9807-3f23139b3444 | a | {state} | {paths} | "
                     f"{heavy} | ok | - | no | {decisions} | {sup} |\n")
 
-        example = EXAMPLE.read_text()
+        example = EXAMPLE.read_text(encoding="utf-8")
         good = example + header + lane("L1", "running", "REQ-01", "src/ui", "yes") + lane("L2", "stopped", "REQ-01", "src/ui")
         code, out = self.requirements(good)
         self.assertEqual(code, 0, out)
@@ -262,7 +264,7 @@ Verify: `make e2e`
 """
 
         def run(text, *flags):
-            (self.hub / "SPEC.md").write_text(text)
+            (self.hub / "SPEC.md").write_text(text, encoding="utf-8")
             process = subprocess.run([sys.executable, str(RUNNER), "requirements", "--repo", str(self.hub), *flags],
                                      capture_output=True, text=True, check=False)
             return process.returncode, process.stdout + process.stderr
@@ -428,7 +430,7 @@ Verify: `make e2e`
         code, out = gate("requirements")
         self.assertEqual(code, 0, out)
         self.assertIn("no SPEC.md - skipping", out)
-        (self.hub / "SPEC.md").write_text(EXAMPLE.read_text())
+        (self.hub / "SPEC.md").write_text(EXAMPLE.read_text(encoding="utf-8"), encoding="utf-8")
         code, out = gate("requirements")
         self.assertEqual(code, 0, out)
         self.assertIn("ARCHITRAVE-REQUIREMENTS: PASS", out)
@@ -442,35 +444,35 @@ Verify: `make e2e`
         self.assertEqual(code, 2, out)
 
     def test_claim_records_ownership_and_second_lane_cannot_claim(self):
-        example = EXAMPLE.read_text()
+        example = EXAMPLE.read_text(encoding="utf-8")
         code, out = self.requirements(example, "--claim", "REQ-04", "--owner", "first")
         self.assertEqual(code, 0, out)
         spec = self.hub / "SPEC.md"
-        claimed = spec.read_text()
+        claimed = spec.read_text(encoding="utf-8")
         self.assertIn("| first | Not started |", claimed)
         self.assertIn("commit before dispatch", out)
         code, out = self.requirements(claimed, "--claim", "REQ-04", "--owner", "second")
         self.assertEqual(code, 1, out)
         self.assertIn("already owned by first", out)
-        self.assertEqual(spec.read_text(), claimed)
+        self.assertEqual(spec.read_text(encoding="utf-8"), claimed)
         for flags in (("--claim", "REQ-04,REQ-77", "--owner", "first"),
                       ("--claim", "REQ-04"), ("--claim", "", "--owner", "first"),
                       ("--claim", "REQ-04", "--owner", "bad|owner"),
                       ("--claim", "REQ-04", "--owner", "bad\nowner")):
             code, out = self.requirements(example, *flags)
             self.assertNotEqual(code, 0, out)
-            self.assertEqual(spec.read_text(), example)
+            self.assertEqual(spec.read_text(encoding="utf-8"), example)
 
     def test_handoff_expected_commit_rejects_stale_successor(self):
         commit = ("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qm")
         git(self.hub, "init", "-q", "-b", "main")
-        self.requirements(EXAMPLE.read_text())
+        self.requirements(EXAMPLE.read_text(encoding="utf-8"))
         git(self.hub, "add", ".")
         git(self.hub, *commit, "initial")
         sibling = self.base / "successor"
         git(self.hub, "worktree", "add", "-qb", "successor", str(sibling))
         spec = self.hub / "SPEC.md"
-        spec.write_text(spec.read_text() + "\nPredecessor handoff\n")
+        spec.write_text(spec.read_text(encoding="utf-8") + "\nPredecessor handoff\n", encoding="utf-8")
         git(self.hub, "add", "SPEC.md")
         git(self.hub, *commit, "handoff")
         expected = subprocess.check_output(["git", "-C", str(self.hub), "rev-parse", "HEAD"],
@@ -516,7 +518,7 @@ Verify: `make e2e`
         config.write_text("{}")
         for text in (None, "# Prose only\n"):
             if text is not None:
-                (self.hub / "SPEC.md").write_text(text)
+                (self.hub / "SPEC.md").write_text(text, encoding="utf-8")
             for flags in (("--claim", "REQ-63", "--owner", "X"), ("--done",), ("--handoff",),
                           ("--claim", "", "--owner", "X")):
                 with self.subTest(text=text, flags=flags):
@@ -534,7 +536,7 @@ Verify: `make e2e`
     def test_handoff_needs_committed_requirements_and_no_stranded_worktree_ledger(self):
         commit = ("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m")
         git(self.hub, "init", "-q", "-b", "main")
-        code, out = self.requirements(EXAMPLE.read_text(), "--handoff")
+        code, out = self.requirements(EXAMPLE.read_text(encoding="utf-8"), "--handoff")
         self.assertEqual(code, 1, out)
         self.assertIn("never been committed", out)
         git(self.hub, "add", "SPEC.md", "architrave.config.json")
@@ -558,7 +560,7 @@ Verify: `make e2e`
 
         self.assertEqual(handoff()[0], 0)
         spec = self.hub / "SPEC.md"
-        spec.write_text(spec.read_text() + "\n")
+        spec.write_text(spec.read_text(encoding="utf-8") + "\n", encoding="utf-8")
         code, out = handoff()
         self.assertEqual(code, 1, out)
         self.assertIn("SPEC.md has uncommitted changes", out)
@@ -573,7 +575,7 @@ Verify: `make e2e`
         self.assertEqual(code, 1, out)
         self.assertIn("holds progress not in committed SPEC.md@", out)
         self.assertIn("ARCHITRAVE-REQUIREMENTS: FAIL", out)
-        self.assertEqual(self.requirements(spec.read_text())[0], 0, "plain check stays unaffected")
+        self.assertEqual(self.requirements(spec.read_text(encoding="utf-8"))[0], 0, "plain check stays unaffected")
 
         git(self.hub, "add", "-f", str(stale))
         git(self.hub, *commit, "track ledger")
@@ -599,7 +601,7 @@ Verify: `make e2e`
         self.assertIn("holds progress not in committed", out)
 
         # Each worktree is judged by its own branch's requirements commit, not the caller's newer one.
-        spec.write_text(spec.read_text() + "\n")
+        spec.write_text(spec.read_text(encoding="utf-8") + "\n", encoding="utf-8")
         git(self.hub, "add", "SPEC.md")
         later = stamp + 3600
         subprocess.run(["git", "-C", str(self.hub), *commit, "fold later"], check=True, capture_output=True,
@@ -612,7 +614,7 @@ Verify: `make e2e`
         # Amend/rebase rewrite committer time; author time keeps an unfolded ledger visible.
         os.utime(stale, (later - 60, later - 60))
         git(self.hub, "rm", "-q", "--cached", str(stale))
-        spec.write_text(spec.read_text() + "\n")
+        spec.write_text(spec.read_text(encoding="utf-8") + "\n", encoding="utf-8")
         git(self.hub, "add", "SPEC.md")
         subprocess.run(["git", "-C", str(self.hub), *commit, "rebased"], check=True, capture_output=True,
                        env={**os.environ, "GIT_AUTHOR_DATE": f"@{stamp} +0000",
@@ -622,7 +624,7 @@ Verify: `make e2e`
         self.assertIn("delete the folded scratch", out)
         os.utime(stale, (stamp - 60, stamp - 60))
         future = int(time.time()) + 86400
-        spec.write_text(spec.read_text() + "\n")
+        spec.write_text(spec.read_text(encoding="utf-8") + "\n", encoding="utf-8")
         git(self.hub, "add", "SPEC.md")
         subprocess.run(["git", "-C", str(self.hub), *commit, "skewed"], check=True, capture_output=True,
                        env={**os.environ, "GIT_AUTHOR_DATE": f"@{future} +0000"})
@@ -637,7 +639,7 @@ Verify: `make e2e`
         child = self.hub / "project"
         child.mkdir()
         ledger = child / "SPEC.md"
-        ledger.write_text(EXAMPLE.read_text())
+        ledger.write_text(EXAMPLE.read_text(encoding="utf-8"), encoding="utf-8")
         before = ledger.read_bytes()
         for flags in (("--claim", "REQ-01", "--owner", "X"), ("--done",), ()):
             with self.subTest(flags=flags):

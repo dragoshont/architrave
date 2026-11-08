@@ -71,7 +71,7 @@ class ProgramBoard(unittest.TestCase):
             proc = subprocess.run([sys.executable, str(ROOT / "harness/program_board.py"), "--ledger", str(ledger),
                                    "--output", str(out), "--all-reqs", "--title", "Current work"], capture_output=True, text=True, env=env)
             self.assertEqual(proc.returncode, 0, proc.stderr)
-            page = out.read_text()
+            page = out.read_text(encoding="utf-8")
             self.assertIn("<b>2/5</b>", page)
             self.assertIn("Not in a lane", page)
             self.assertIn("1/1 code ready", page)
@@ -119,9 +119,9 @@ class ProgramBoard(unittest.TestCase):
                                   "--session", "../escape", "--output", str(out), "--all-reqs"], capture_output=True, text=True, env=env, timeout=30)
             self.assertEqual(bad.returncode, 2)
             self.assertIn("not a host session UUID", bad.stderr)
-            self.assertNotIn("http-equiv='refresh'", out.read_text())
-            self.assertIn("Stopped watcher; static snapshot", out.read_text())
-            self.assertIn("<h1>Current work</h1>", out.read_text())
+            self.assertNotIn("http-equiv='refresh'", out.read_text(encoding="utf-8"))
+            self.assertIn("Stopped watcher; static snapshot", out.read_text(encoding="utf-8"))
+            self.assertIn("<h1>Current work</h1>", out.read_text(encoding="utf-8"))
             out.with_suffix(".pid").write_text(str(os.getpid()))
             dup = subprocess.run([sys.executable, str(ROOT / "harness/program_board.py"), "--ledger", str(ledger),
                                   "--output", str(out), "--watch", "120", "--all-reqs"], capture_output=True, text=True, env=env, timeout=30)
@@ -431,7 +431,7 @@ class EvidenceAndSnapshots(unittest.TestCase):
         out = self.base / "scoped.html"
         scoped = subprocess.run(command + ["--reqs", "req-1,REQ-1"], capture_output=True, text=True)
         self.assertEqual(scoped.returncode, 0, scoped.stderr)
-        page = out.read_text()
+        page = out.read_text(encoding="utf-8")
         self.assertIn("Session requirements: REQ-1", page)
         self.assertIn("Scope: 1 session requirement", page.split("<details class='board-details'>")[0])
         self.assertIn("<b>0/1</b><span>Code ready", page)
@@ -443,13 +443,13 @@ class EvidenceAndSnapshots(unittest.TestCase):
                                      capture_output=True, text=True, timeout=3)
             self.assertNotEqual(unknown.returncode, 0)
             self.assertIn("unknown session REQ IDs", unknown.stderr)
-            self.assertEqual(out.read_text(), page)
+            self.assertEqual(out.read_text(encoding="utf-8"), page)
             self.assertFalse(out.with_suffix(".pid").exists())
             self.assertFalse((self.state / COORD / "files/program-board.watch").exists())
         all_reqs = subprocess.run(command + ["--all-reqs"], capture_output=True, text=True)
         self.assertEqual(all_reqs.returncode, 0, all_reqs.stderr)
-        self.assertIn("Repository-wide requirements", out.read_text())
-        self.assertIn("REQ-old", out.read_text())
+        self.assertIn("Repository-wide requirements", out.read_text(encoding="utf-8"))
+        self.assertIn("REQ-old", out.read_text(encoding="utf-8"))
         # A mixed lane is projected to selected IDs; unrelated lanes are not workers in this view.
         self.source.write_text(self.source.read_text() + LANE
             + f"| Mixed | app | p | b | origin | REQ-old, REQ-1 | - | {CHILD} | - | ready | src | no | ok | - | no | [] | - |\n"
@@ -470,7 +470,7 @@ class EvidenceAndSnapshots(unittest.TestCase):
         self.addCleanup(lambda: process.kill() if process.poll() is None else None)
         self.assertIn("program-board:", process.stdout.readline())
         self.assertIsNone(process.poll())
-        watched = out.read_text()
+        watched = out.read_text(encoding="utf-8")
         self.assertIn("Auto-refresh snapshot every 30s", watched.split("<details class='board-details'>")[0])
         self.assertIn("data-refresh='30'", watched)
         self.assertIn("Potentially stale: no recent snapshot observed", watched)
@@ -479,18 +479,18 @@ class EvidenceAndSnapshots(unittest.TestCase):
         process.communicate(timeout=10)
         if os.name == "nt":
             # Windows terminate is a hard kill, not delivery of Python SIGTERM.
-            self.assertIn("Auto-refresh snapshot", out.read_text())
+            self.assertIn("Auto-refresh snapshot", out.read_text(encoding="utf-8"))
             refreshed = subprocess.run(
                 [sys.executable, str(ROOT / "harness/program_board.py"), "--ledger", str(self.ledger),
                  "--output", str(out), "--reqs", "REQ-1"], env=env, capture_output=True, text=True)
             self.assertEqual(refreshed.returncode, 0, refreshed.stderr)
-            self.assertIn("Static snapshot; not live", out.read_text())
-            self.assertNotIn("http-equiv='refresh'", out.read_text())
+            self.assertIn("Static snapshot; not live", out.read_text(encoding="utf-8"))
+            self.assertNotIn("http-equiv='refresh'", out.read_text(encoding="utf-8"))
         else:
-            self.assertIn("Stopped watcher; static snapshot", out.read_text())
-        self.assertIn("Final correction", out.read_text())
-        self.assertIn("Session requirements: REQ-1", out.read_text())
-        self.assertIn(hashlib.sha256(self.source.read_bytes()).hexdigest(), out.read_text())
+            self.assertIn("Stopped watcher; static snapshot", out.read_text(encoding="utf-8"))
+        self.assertIn("Final correction", out.read_text(encoding="utf-8"))
+        self.assertIn("Session requirements: REQ-1", out.read_text(encoding="utf-8"))
+        self.assertIn(hashlib.sha256(self.source.read_bytes()).hexdigest(), out.read_text(encoding="utf-8"))
         if os.name != "nt":
             self.assertFalse(out.with_suffix(".pid").exists())
             self.assertFalse((self.state / COORD / "files/program-board.watch").exists())
