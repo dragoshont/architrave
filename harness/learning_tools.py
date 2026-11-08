@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import json
 import re
-import shlex
-import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -124,6 +122,10 @@ def semantic_learning_review(repo: Path, provider: str, execute: bool,
     if not repo.is_dir():
         print(f"semantic-learning-review: repo dir not found: {repo}", file=sys.stderr)
         return 2
+    if execute:
+        print("NATIVE_HOST_REQUIRED: invoke the adversarial judge through the current host; agent CLI launchers are prohibited.",
+              file=sys.stderr)
+        return 2
     for name in LEARNING_FILES:
         path = repo / name
         if not path.is_file() or path.stat().st_size == 0:
@@ -135,25 +137,8 @@ def semantic_learning_review(repo: Path, provider: str, execute: bool,
     prompt_path.write_text(SEMANTIC_PROMPT, encoding="utf-8")
     print(f"semantic-learning-review prompt: {prompt_path}")
     print(f"semantic-learning-review findings target: {output_path}")
-    commands = {
-        "copilot": ["copilot", "-C", str(repo), "--agent", "Adversarial Judge",
-                    "--allow-tool", "read", "--allow-tool", "search", "-p", SEMANTIC_PROMPT],
-        "claude": ["claude", "--agent", "Adversarial Judge", "--allowedTools", "Read,Grep,Glob",
-                   "-p", SEMANTIC_PROMPT],
-    }
-    selected = ["copilot", "claude"] if provider == "both" else [provider]
-    if not execute:
-        print("suggested command(s) (review before running):")
-        for name in selected:
-            print(f"  {shlex.join(commands[name])} > {shlex.quote(f'{output_path}.{name}')}")
-        return 0
-    for name in selected:
-        result = subprocess.run(commands[name], cwd=repo, capture_output=True, text=True)
-        sys.stdout.write(result.stdout)
-        Path(f"{output_path}.{name}").write_text(result.stdout, encoding="utf-8")
-        if result.returncode != 0:
-            sys.stderr.write(result.stderr)
-            return result.returncode
+    print("host-owned: run architrave:adversarial-judge in the current host with this prompt, "
+          f"then save its JSON Lines to {output_path} and run apply-semantic-learning-findings.")
     return 0
 
 

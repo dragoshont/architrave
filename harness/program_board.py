@@ -330,7 +330,7 @@ def build(ledger: Path, coordinator: str, selected: list[str] | None = None, tit
                         if isinstance(c, dict) and isinstance(c.get("path"), str)]
     repos = [r for r in repos if gate.git(r, "rev-parse", "--git-dir") is not None]
     reviewed = {rid for rid, r in reqs.items() if gate.review_passed(r["evidence"])}
-    verified = {rid for rid, r in reqs.items() if gate.review_passed(r["evidence"], strict=True)}
+    verified = {rid for rid, r in reqs.items() if gate.review_passed(r["evidence"], strict=True, subject=rid)}
     strict = gate.strict_reviews()
     review_cfg = config.get("review") if isinstance(config.get("review"), dict) else {}
     cross = bool(review_cfg.get("crossFamily"))

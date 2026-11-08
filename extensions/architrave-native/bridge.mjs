@@ -192,22 +192,32 @@ const PREFLIGHT_MS = 30000;
 const RECOVERY_MS = 5000;
 function staged(stage, error) {
   return Object.assign(new Error(String(error?.message ?? error)),
-    { stage: error?.stage || stage, timedOut: Boolean(error?.timedOut) });
+    { stage: error?.stage || stage, timedOut: Boolean(error?.timedOut), aborted: Boolean(error?.aborted) });
 }
-function bounded(work, stage, until) {
+function bounded(work, stage, until, { signal, clock = Date.now } = {}) {
   let timer;
   const pending = Promise.resolve().then(() => work);
   pending.catch(() => {});
-  return Promise.race([pending, new Promise((_, reject) => {
+  let abort;
+  const races = [pending, new Promise((_, reject) => {
     timer = setTimeout(() => reject(Object.assign(
       new Error(`NATIVE_STAGE_TIMEOUT: ${stage} did not settle within the dispatch deadline`), { stage, timedOut: true })),
-    Math.max(0, until - Date.now()));
-    timer.unref?.(); // A bound never keeps the host process alive by itself.
-  })]).catch(error => { throw staged(stage, error); }).finally(() => clearTimeout(timer));
+    Math.max(0, until - clock()));
+    timer.unref?.();
+  })];
+  if (signal) races.push(new Promise((_, reject) => {
+    abort = () => reject(Object.assign(new Error(`NATIVE_ABORTED: ${stage} was aborted`), { stage, aborted: true }));
+    if (signal.aborted) abort();
+    else signal.addEventListener("abort", abort, { once: true });
+  }));
+  return Promise.race(races).catch(error => { throw staged(stage, error); }).finally(() => {
+    clearTimeout(timer);
+    if (abort) signal.removeEventListener("abort", abort);
+  });
 }
 
 // Cancel/remove the dispatch host owner. Confirmation is only what the host returned within the bound.
-async function settleDispatch(entry, until, { stop, remove }) {
+async function settleDispatch(entry, until, { stop, remove, closeBridge = true }) {
   const errors = [];
   if (!entry.hostTaskId) {
     if (entry.admissionPending) errors.push("admission: host start is unresolved; owner unknown, host-side admission may still complete");
@@ -225,7 +235,7 @@ async function settleDispatch(entry, until, { stop, remove }) {
       }
     } catch (error) { errors.push(`host cleanup: ${error.message}`); }
   }
-  if (!entry.bridgeClosed) {
+  if (closeBridge && !entry.bridgeClosed) {
     try {
       await bounded(entry.connection.close(), "cleanup", Math.max(until, Date.now() + 1000));
       entry.bridgeClosed = true;
@@ -237,36 +247,116 @@ async function settleDispatch(entry, until, { stop, remove }) {
   return errors;
 }
 
-async function reconcileDispatch(entry) {
+async function finishLateAdmission(entry, hostTaskId) {
+  if (entry.lateCleanup) return entry.lateCleanup;
+  entry.lateCleanup = (async () => {
+    try {
+      entry.hostTaskId = hostTaskId;
+      entry.unknownOwner = false;
+      entry.connection.send({ status: "admitted", hostTaskId });
+      const bound = await bounded(entry.connection.next(), "binding", Date.now() + RECOVERY_MS);
+      if (bound.status !== "bound") throw new Error(bound.error?.message || "Run did not bind the late host owner");
+      entry.nativeBound = true;
+      const errors = await settleDispatch(entry, Date.now() + RECOVERY_MS,
+        { stop: true, remove: !entry.ownerHandle, closeBridge: false });
+      if (errors.length || !entry.cancelled) throw new Error(errors.join("; ") || "late owner cancellation was not confirmed");
+      entry.connection.send({ hostTaskId, hostStatus: "cancelled", text: "Admission resolved after abort",
+        cancellationConfirmed: true, removalConfirmed: Boolean(entry.hostRemoved), reusedOwner: Boolean(entry.ownerHandle) });
+      entry.candidate = await bounded(entry.connection.next(), "persistence", Date.now() + RECOVERY_MS);
+      await bounded(entry.connection.close(), "cleanup", Date.now() + RECOVERY_MS);
+      entry.bridgeClosed = true;
+      active.delete(entry.key);
+    } catch (error) {
+      entry.recoveryPending = true;
+      entry.recoveryError = String(error.message ?? error);
+    }
+  })();
+  return entry.lateCleanup;
+}
+
+function reconcileDispatch(entry) {
+  if (!entry.reconciliation) {
+    entry.reconciliation = reconcileDispatchOnce(entry).finally(() => {
+      entry.reconciliation = undefined;
+    });
+  }
+  return entry.reconciliation;
+}
+
+async function reconcileDispatchOnce(entry) {
+  if (entry.lateCleanup) {
+    const cleanup = entry.lateCleanup;
+    await cleanup;
+    if (entry.lateCleanup === cleanup) entry.lateCleanup = undefined;
+    if (entry.recoveryError) return { status: "failed", cancelled: false,
+      hostCancellationConfirmed: Boolean(entry.cancelled), hostRemovalConfirmed: Boolean(entry.hostRemoved),
+      hostTaskId: entry.hostTaskId, recoveryOwner: entry.hostTaskId,
+      error: { code: "NATIVE_RECOVERY_PENDING", stage: entry.stage || "cleanup", message: entry.recoveryError },
+      cleanup: { confirmed: false, errors: [entry.recoveryError] } };
+    return { status: "ok", cancelled: Boolean(entry.cancelled),
+      hostCancellationConfirmed: Boolean(entry.cancelled), hostRemovalConfirmed: Boolean(entry.hostRemoved),
+      hostTaskId: entry.hostTaskId, recoveryOwner: entry.hostTaskId,
+      cleanup: { confirmed: true, errors: [] },
+      ...(entry.candidate ? { adopted: true, candidate: entry.candidate } : {}) };
+  }
   const until = Date.now() + RECOVERY_MS;
   const errors = [];
   let ownerListing;
-  // A failed start may still have created a child: find it by its exact WorkPacket prompt, else confirm none exists.
+  // The host listing is not authoritative absence. Adopt only by the attempt marker sent with startAgent.
   if (entry.unknownOwner && !entry.hostTaskId && !entry.admissionPending) {
     try {
       const tasks = await bounded(hostTasks(), "cleanup", until);
       const others = new Set([...active.values()].filter(other => other !== entry).map(other => other.hostTaskId));
-      const orphan = tasks.find(task => task.type === "agent" && entry.prompt && task.prompt === entry.prompt &&
-        !others.has(task.id));
-      if (orphan) {
-        entry.hostTaskId = orphan.id;
-        if (orphan.status !== "running") entry.stopped = true;
+      const matches = tasks.filter(task => task.type === "agent" && entry.attemptMarker &&
+        task.status === "running" && !entry.preflightHostTaskIds?.has(task.id) &&
+        task.description === entry.attemptMarker && !others.has(task.id));
+      if (matches.length === 1) {
+        entry.hostTaskId = matches[0].id;
+        entry.unknownOwner = false;
         ownerListing = "adopted";
-      } else ownerListing = "empty";
-      entry.unknownOwner = false;
+      } else {
+        ownerListing = matches.length ? "ambiguous" : "unresolved";
+        errors.push(matches.length ?
+          "host cleanup listing: multiple tasks carry this attempt identity" :
+          `host cleanup listing: no task carries attempt ${entry.attemptId}; absence is unconfirmed`);
+      }
     } catch (error) { errors.push(`host cleanup listing: ${error.message}`); }
   }
-  errors.push(...await settleDispatch(entry, until, { stop: true, remove: !entry.ownerHandle }));
+  errors.push(...await settleDispatch(entry, until, { stop: true, remove: !entry.ownerHandle,
+    closeBridge: !(entry.unknownOwner || ownerListing === "adopted" && !entry.nativeBound) }));
   if (entry.unknownOwner && !entry.hostTaskId && !errors.length) {
     errors.push("admission: host start failed; any created owner is unknown");
   }
   if (errors.length) return { status: "failed", cancelled: false, hostCancellationConfirmed: Boolean(entry.cancelled),
+    hostRemovalConfirmed: Boolean(entry.hostRemoved),
     error: { code: "NATIVE_RECOVERY_PENDING", stage: entry.hostTaskId || entry.unknownOwner ? "cleanup" : "admission",
       message: errors.join("; ") },
     ...(entry.hostTaskId ? { hostTaskId: entry.hostTaskId, recoveryOwner: entry.hostTaskId } : {}),
     cleanup: { confirmed: false, errors } };
+  if (ownerListing === "adopted" && !entry.nativeBound) {
+    try {
+    entry.connection.send({ status: "admitted", hostTaskId: entry.hostTaskId });
+    const bound = await bounded(entry.connection.next(), "binding", until);
+    if (bound.status !== "bound") throw new Error(bound.error?.message || "Run did not bind the reconciled host owner");
+    entry.nativeBound = true;
+    entry.connection.send({ hostTaskId: entry.hostTaskId, hostStatus: "cancelled", text: "Reconciled native owner",
+      cancellationConfirmed: true, removalConfirmed: Boolean(entry.hostRemoved),
+      reusedOwner: Boolean(entry.ownerHandle) });
+    entry.candidate = await bounded(entry.connection.next(), "persistence", until);
+    } catch (error) {
+    return { status: "failed", cancelled: false, hostCancellationConfirmed: Boolean(entry.cancelled),
+      hostRemovalConfirmed: Boolean(entry.hostRemoved), recoveryOwner: entry.hostTaskId,
+      error: { code: "NATIVE_RECOVERY_PENDING", stage: error.stage || "persistence", message: String(error.message ?? error) },
+      cleanup: { confirmed: false, errors: [String(error.message ?? error)] } };
+    }
+  }
+  if (!entry.bridgeClosed) {
+    try { await bounded(entry.connection.close(), "cleanup", Date.now() + RECOVERY_MS); entry.bridgeClosed = true; }
+    catch { entry.connection.child.kill(); }
+  }
   active.delete(entry.key);
   return { status: "ok", cancelled: Boolean(entry.cancelled), hostCancellationConfirmed: Boolean(entry.cancelled),
+    hostRemovalConfirmed: Boolean(entry.hostRemoved),
     hostTaskId: entry.hostTaskId, recoveryOwner: entry.hostTaskId, cleanup: { confirmed: true, errors: [] },
     ...(ownerListing ? { ownerListing } : {}),
     ...(entry.candidate ? { adopted: true, candidate: entry.candidate } : {}) };
@@ -307,20 +397,28 @@ const tools = [
       model: { type: "string", description: "Optional explicit USER-requested host model pin; omit to inherit host settings" },
       retry_hypothesis: { type: "string", description: "New bounded hypothesis required for an intentional retry without new observed evidence" },
     }, required: ["repo", "run_id", "task_id"], additionalProperties: false },
-    handler: async (args, invocation) => withAdmission(async () => {
+    handler: async (args, invocation) => {
+      if (invocation.signal?.aborted) return result({ status: "failed",
+        error: { code: "NATIVE_ABORTED", stage: "preflight", message: "Dispatch was aborted before preflight" },
+        hostCancellationConfirmed: false, hostRemovalConfirmed: false });
+      return withAdmission(async () => {
       const key = `${args.run_id}:${args.task_id}`;
       const retained = active.get(key);
       if (retained?.dispatch) return result({ status: "failed", hostCancellationConfirmed: Boolean(retained.cancelled),
+        hostRemovalConfirmed: Boolean(retained.hostRemoved),
         error: retained.recoveryPending ? { code: "NATIVE_RECOVERY_PENDING", stage: retained.stage,
           message: "An earlier dispatch of this WorkPacket has unresolved admission or cleanup; reconcile it with architrave_native_cancel instead of redispatching" } :
           { code: "NATIVE_DISPATCH_ACTIVE", stage: retained.stage, message: "This WorkPacket is already being dispatched by this bridge" },
         ...(retained.hostTaskId ? { hostTaskId: retained.hostTaskId, recoveryOwner: retained.hostTaskId } : {}) });
+      const preflightUntil = performance.now() + PREFLIGHT_MS;
       let tasks;
-      try { tasks = await bounded(hostTasks(), "preflight", Date.now() + PREFLIGHT_MS); }
+      try { tasks = await bounded(hostTasks(), "preflight", preflightUntil,
+        { signal: invocation.signal, clock: () => performance.now() }); }
       catch (error) {
         if (!error.timedOut && String(error.message).startsWith("NATIVE_HOST_REQUIRED")) throw error;
         return result({ status: "failed", hostCancellationConfirmed: false,
-          error: { code: "NATIVE_HOST_FAILED", stage: "preflight", message: String(error.message) } });
+          error: { code: error.aborted ? "NATIVE_ABORTED" : "NATIVE_HOST_FAILED",
+            stage: "preflight", message: String(error.message) } });
       }
       if (semanticScope) throw new Error("SEMANTIC_REVIEW_BUSY: frozen review owns this joined session");
       const owned = new Set([...active.values()].map(entry => entry.hostTaskId));
@@ -330,8 +428,10 @@ const tools = [
         .map(entry => entry.hostTaskId));
       const unresolved = tasks.filter(task => task.type === "agent" && task.status === "running" &&
         retainedOwners.has(task.id)).length;
+      const unknownReservations = [...active.values()].filter(entry => entry.dispatch &&
+        entry.recoveryPending && entry.unknownOwner && !entry.hostTaskId).length;
       const cap = typeof args.repo === "string" && isAbsolute(args.repo) ? childCap(args.repo) : 3;
-      if (outside + unresolved + pendingDispatches > cap) {
+      if (outside + unresolved + unknownReservations + pendingDispatches > cap) {
         throw new Error(`CHILD_LIMIT: ${cap} active host children already exist, including child-originated work (workers.maxParallel)`);
       }
       if (args.owner_handle && !tasks.some(task => task.id === args.owner_handle && task.type === "agent" && task.status === "idle")) {
@@ -342,14 +442,16 @@ const tools = [
       // REQ-97: the entry (recovery identity) is registered before preflight and kept until reconciled
       // whenever admission was attempted, so a late or lost host result is adopted rather than redispatched.
       const entry = { key, dispatch: true, connection, repo: args.repo, ownerHandle: args.owner_handle,
-        stage: "preflight", cancelled: false };
+        stage: "preflight", cancelled: false,
+        preflightHostTaskIds: new Set(tasks.filter(task => task.type === "agent" && typeof task.id === "string")
+          .map(task => task.id)) };
       active.set(key, entry);
       let timeout;
       let cleanupUntil;
       let observer;
-      const dispatchedAt = Date.now();
       try {
-        const prepared = await bounded(connection.next(), "preflight", dispatchedAt + PREFLIGHT_MS);
+        const prepared = await bounded(connection.next(), "preflight", preflightUntil,
+          { signal: invocation.signal, clock: () => performance.now() });
         if (prepared.status !== "prepared") {
           active.delete(key);
           await bounded(connection.close(), "cleanup", Date.now() + RECOVERY_MS).catch(() => connection.child.kill());
@@ -359,6 +461,12 @@ const tools = [
         // The lease expiry bounds every stage after preflight (which has its own fixed bound); the main
         // stages stop early to reserve a cleanup budget.
         entry.prompt = prepared.prompt;
+        entry.attemptId = prepared.binding?.workerId;
+        if (typeof entry.attemptId !== "string" || !entry.attemptId) {
+          throw staged("preflight", "Run did not provide a persisted native attempt identity");
+        }
+        entry.attemptMarker = `Architrave native attempt:${entry.attemptId}`;
+        const dispatchedAt = Date.now();
         const deadline = Date.parse(prepared.expiresAt);
         const reserve = Math.min(5000, Math.max(1000, 0.2 * (deadline - Date.now())));
         const mainUntil = deadline - reserve;
@@ -366,7 +474,9 @@ const tools = [
         observer = observeTask(prepared.maxTurns);
         entry.stage = "admission";
         entry.admissionStarted = entry.admissionPending = true;
+        if (!args.owner_handle) entry.unknownOwner = true;
         if (args.owner_handle) entry.hostTaskId = args.owner_handle;
+        connection.send({ status: "starting", attemptId: entry.attemptId });
         const start = (async () => {
           if (args.owner_handle) {
             const sent = await session.rpc.tasks.sendMessage({ id: args.owner_handle, message: prepared.prompt });
@@ -375,31 +485,34 @@ const tools = [
           }
           const admitted = await session.rpc.tasks.startAgent({
             agentType: prepared.agentType, prompt: prepared.prompt,
-            name: `Architrave ${args.task_id}`, description: "Bounded native WorkPacket candidate",
+            name: `Architrave ${args.task_id} ${entry.attemptId}`,
+            description: entry.attemptMarker,
             ...(args.model ? { model: args.model } : {}),
           });
           return admitted.agentId;
         })();
         start.then(id => {
           entry.hostTaskId = id;
+          entry.unknownOwner = false;
           entry.admissionPending = false;
-          // Late admission after the local admission bound: stop and remove the orphan, keep the identity.
-          if (entry.abandoned) settleDispatch(entry, Date.now() + RECOVERY_MS, { stop: true, remove: !entry.ownerHandle })
-            .catch(() => {});
+          if (entry.abandoned) void finishLateAdmission(entry, id);
         }, () => {
           entry.admissionPending = false;
           if (!args.owner_handle) entry.unknownOwner = true; // The start may have created a host child anyway.
         });
-        const hostTaskId = await bounded(start, "admission", mainUntil);
+        const hostTaskId = await bounded(start, "admission", mainUntil, { signal: invocation.signal });
         const observation = observer.wait(hostTaskId, mainUntil, task => !args.owner_handle ||
           task.prompt === prepared.prompt && Date.parse(task.idleSince || task.completedAt || "") >= dispatchedAt);
         observation.catch(() => {}); // Binding can fail before the observation is awaited.
         connection.send({ status: "admitted", hostTaskId });
         entry.stage = "binding";
-        const bound = await bounded(connection.next(), "binding", mainUntil);
+        const bindingReply = connection.next();
+        entry.bindingPromise = bindingReply;
+        const bound = await bounded(bindingReply, "binding", mainUntil, { signal: invocation.signal });
         if (bound.status !== "bound") throw staged("binding", bound.error?.message || "Run rejected host admission");
+        entry.nativeBound = true;
         entry.stage = "observation";
-        let observed = await bounded(observation, "observation", deadline);
+        let observed = await bounded(observation, "observation", deadline, { signal: invocation.signal });
         if (!observed || !["completed", "idle", "failed", "cancelled"].includes(observed.status)) {
           timeout = true;
           entry.stage = "cleanup";
@@ -430,26 +543,54 @@ const tools = [
             cleanup: { confirmed: false, errors } });
         }
         active.delete(key);
-        return result({ ...candidate, hostTaskId, timedOut: Boolean(timeout), effort: prepared.effort });
+        return result({ ...candidate, hostTaskId, hostCancellationConfirmed: Boolean(entry.cancelled),
+          hostRemovalConfirmed: Boolean(entry.hostRemoved), timedOut: Boolean(timeout), effort: prepared.effort });
       } catch (error) {
         const stage = error.stage || entry.stage;
         entry.abandoned = entry.recoveryPending = true;
         entry.stage = stage;
-        try { connection.child.stdin.end(); } catch {}
-        const errors = await settleDispatch(entry, cleanupUntil ?? Date.now() + RECOVERY_MS,
-          { stop: true, remove: !args.owner_handle });
+        if (error.aborted && stage === "admission" && entry.hostTaskId && !entry.nativeBound) {
+          await finishLateAdmission(entry, entry.hostTaskId);
+        }
+        if (error.aborted && stage === "binding" && entry.bindingPromise) {
+          try {
+            const bound = await bounded(entry.bindingPromise, "binding", Date.now() + RECOVERY_MS);
+            entry.nativeBound = bound.status === "bound";
+          } catch {}
+        }
+        const errors = entry.lateCleanup ? (entry.recoveryError ? [entry.recoveryError] : []) :
+          await settleDispatch(entry, cleanupUntil ?? Date.now() + RECOVERY_MS,
+            { stop: true, remove: !args.owner_handle,
+              closeBridge: false });
         if (entry.unknownOwner && !entry.hostTaskId) errors.push("admission: host start failed; any created owner is unknown");
+        if (entry.hostTaskId && entry.nativeBound && entry.cancelled &&
+            (entry.hostRemoved || entry.ownerHandle)) {
+          try {
+            connection.send({ hostTaskId: entry.hostTaskId, hostStatus: "cancelled",
+              text: error.aborted ? "Dispatch aborted" : "Dispatch stopped after host failure",
+              cancellationConfirmed: true, removalConfirmed: Boolean(entry.hostRemoved),
+              reusedOwner: Boolean(entry.ownerHandle) });
+            await bounded(connection.next(), "persistence", Date.now() + RECOVERY_MS);
+          } catch (reportError) { errors.push(`Run cancellation receipt: ${String(reportError.message ?? reportError)}`); }
+        }
+        if (!entry.admissionPending && !entry.lateCleanup && !entry.unknownOwner && !errors.length) {
+          try { await bounded(connection.close(), "cleanup", Date.now() + RECOVERY_MS); entry.bridgeClosed = true; }
+          catch { connection.child.kill(); }
+        }
         // Retain the identity only while something is unresolved; a confirmed-clean failure lets the Run retry.
         if (!errors.length && !entry.admissionPending && !entry.unknownOwner) active.delete(key);
-        return result({ status: "failed", error: { code: "NATIVE_HOST_FAILED", stage, message: String(error.message ?? error) },
+        return result({ status: "failed", error: { code: error.aborted ? "NATIVE_ABORTED" : "NATIVE_HOST_FAILED",
+          stage, message: String(error.message ?? error) },
           hostTaskId: entry.hostTaskId, hostCancellationConfirmed: Boolean(entry.cancelled),
+          hostRemovalConfirmed: Boolean(entry.hostRemoved),
           ...(entry.hostTaskId ? { recoveryOwner: entry.hostTaskId } : {}),
           ...(entry.candidate ? { candidate: entry.candidate } : {}),
           cleanup: { confirmed: !errors.length && !entry.admissionPending && !entry.unknownOwner, errors } });
       } finally {
         observer?.close();
       }
-    }),
+    });
+    },
   },
   {
     name: "architrave_native_cancel",
@@ -478,9 +619,12 @@ const tools = [
       try { outcome = await bounded(session.rpc.tasks.cancel({ id: entry.hostTaskId }), "cleanup", Date.now() + RECOVERY_MS); }
       catch (error) { outcome = { error: error.message }; }
       if (!outcome?.cancelled) return result({ status: "failed", cancelled: false, hostCancellationConfirmed: false,
+        hostRemovalConfirmed: Boolean(entry.hostRemoved),
         hostTaskId: entry.hostTaskId, recoveryOwner: entry.hostTaskId,
         error: { code: "NATIVE_HOST_FAILED", stage: "cleanup", message: outcome?.error || "Host cancellation was not confirmed" } });
-      return result({ status: "ok", cancelled: true, hostTaskId: entry.hostTaskId });
+      entry.cancelled = true;
+      return result({ status: "ok", cancelled: true, hostCancellationConfirmed: true,
+        hostRemovalConfirmed: Boolean(entry.hostRemoved), hostTaskId: entry.hostTaskId });
     },
   },
   ...["status", "gate", "recover"].map(action => ({

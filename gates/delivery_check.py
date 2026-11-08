@@ -388,7 +388,7 @@ def review_errors(report: dict) -> list[str]:
     sha = report_digest(report)
     if review.get("sha256") != sha:
         return ["review binds different delivery bytes"]
-    verified, reason = gate.review_session(review["session_id"], "PASS")
+    verified, reason = gate.review_session(review["session_id"], "PASS", subject=sha)
     if verified != "verified":
         return [f"review is not verified: {reason or verified}"]
     try:

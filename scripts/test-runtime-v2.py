@@ -1248,6 +1248,59 @@ class RuntimeV2Tests(unittest.TestCase):
         self.assertEqual("COMPLETED", task_after["status"])
         self.assertEqual(task_before["attempts"], task_after["attempts"])
 
+    def test_resume_preserves_native_lease_without_host_reconciliation(self) -> None:
+        state = self.create()
+        run_id = str(state["runId"])
+        self.store.add_task(run_id, {
+            "id": "native-live", "title": "native-live", "objective": "Keep native ownership.",
+            "dependencies": [], "workerProfile": "native", "mutablePaths": [],
+            "tools": ["fixture"], "risk": "R1", "acceptanceCriteria": ["OUTCOME-001"],
+            "requiredArtifacts": ["evidence-native-live"], "gate": "fixture gate", "maxAttempts": 2,
+            "sideEffect": None,
+        })
+        self.store.start_task(run_id, "native-live", worker_id="native-attempt-live")
+        before = self.store.load(run_id)
+        with self.assertRaises(RuntimeFailure) as error:
+            self.store.resume(run_id)
+        self.assertEqual("NATIVE_RECOVERY_PENDING", error.exception.code)
+        self.assertEqual("native-attempt-live", error.exception.details["attemptId"])
+        after = self.store.load(run_id)
+        self.assertEqual(before["revision"], after["revision"])
+        task = next(item for item in after["tasks"] if item["id"] == "native-live")
+        worker = next(item for item in after["workers"] if item["id"] == "native-attempt-live")
+        self.assertEqual("RUNNING", task["status"])
+        self.assertEqual("native-attempt-live", task["lease"]["owner"])
+        self.assertEqual("RUNNING", worker["status"])
+
+    def test_worker_recover_holds_expired_native_lease_through_api_and_cli(self) -> None:
+        state = self.create()
+        run_id = str(state["runId"])
+        self.store.add_task(run_id, {
+            "id": "native-expired", "title": "native-expired", "objective": "Keep native ownership.",
+            "dependencies": [], "workerProfile": "native", "mutablePaths": [],
+            "tools": ["fixture"], "risk": "R1", "acceptanceCriteria": ["OUTCOME-001"],
+            "requiredArtifacts": ["evidence-native-expired"], "gate": "fixture gate", "maxAttempts": 2,
+            "sideEffect": None,
+        })
+        self.store.start_task(run_id, "native-expired", worker_id="native-attempt-expired", lease_seconds=1)
+        time.sleep(1.1)
+        before = self.store.load(run_id)
+        with self.assertRaises(RuntimeFailure) as error:
+            self.store.recover_workers(run_id)
+        self.assertEqual("NATIVE_RECOVERY_PENDING", error.exception.code)
+        self.assertEqual("native-attempt-expired", error.exception.details["attemptId"])
+        after_api = self.store.load(run_id)
+        self.assertEqual(before["revision"], after_api["revision"])
+        command = self.runtime_cli("worker-recover", run_id, expected=1)
+        self.assertEqual("NATIVE_RECOVERY_PENDING", command["error"]["code"])
+        after_cli = self.store.load(run_id)
+        self.assertEqual(before["revision"], after_cli["revision"])
+        task = next(item for item in after_cli["tasks"] if item["id"] == "native-expired")
+        worker = next(item for item in after_cli["workers"] if item["id"] == "native-attempt-expired")
+        self.assertEqual("RUNNING", task["status"])
+        self.assertEqual("native-attempt-expired", task["lease"]["owner"])
+        self.assertEqual("RUNNING", worker["status"])
+
     def test_resume_requires_reconciliation_for_unknown_side_effect(self) -> None:
         state = self.create(allow=[{"scope": "homelab:fixture", "operations": ["deploy"]}])
         run_id = str(state["runId"])

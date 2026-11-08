@@ -5,10 +5,9 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
-## Unreleased (targeting 1.0.0-beta.1)
+## 1.0.0-beta.1
 
-Work in progress toward a prerelease; nothing is built, published or installed,
-and the version fields still read 0.21.35. Make the path from an owner outcome
+Prerelease preparation for the completion-path repairs. Make the path from an owner outcome
 to verified delivery more reliable on native Windows and macOS (WSL2 is not a
 target). Releases 0.21.33 to 0.21.35 (completion-hook repairs, REQ-91 to
 REQ-94) are recorded in the [roadmap](ROADMAP.md) and on GitHub Releases.
@@ -23,16 +22,18 @@ REQ-94) are recorded in the [roadmap](ROADMAP.md) and on GitHub Releases.
   stays authoritative. Lease-backed task records are reported apart from host
   execution, which the Run cannot observe, and owner holds never suppress other
   authorized work (REQ-96).
-- Add a first pass at bounding each native dispatch stage: a fixed 30 s preflight
+- Bound native dispatch stages: one shared fixed 30 s preflight
   bound, then the lease expiry with a reserved cleanup budget. Failures are
   stage-labelled; `hostCancellationConfirmed` is true only when the host
   confirmed the cancel (removal is reported separately in `cleanup.confirmed`);
   an unresolved owner keeps its recovery identity and blocks retries; and
   `architrave_native_cancel` adopts a late or persisted candidate instead of
-  redispatching. REQ-97 stays in progress with known defects: adoption by exact
-  prompt text and release on an empty listing (#40), two 30 s windows in
-  preflight (#41), no pre-abort handling (#42), unknown-owner admissions not
-  counted toward the child cap (#43) and a timing-sensitive suite (#44).
+  redispatching. Real abort signals are honored, uncertain admissions keep
+  capacity, and an empty listing cannot release ownership. Run resume and native
+  recovery refuse unconfirmed host ownership. Concurrent cancellation requests
+  join one reconciliation instead of racing over the owner and bridge pipe.
+  Restart-safe automatic recovery, genuine persistence-hang/lost-reply coverage
+  and real-host hang qualification remain unproven (REQ-97, REQ-104).
 - Guide the lead to name the transport, integrate children in deliberate waves,
   read `nextAction` or reconcile the lane table after every child return, and
   carry the verbatim owner quote, REQ ids and an honest-conflict exit in each
@@ -40,12 +41,40 @@ REQ-94) are recorded in the [roadmap](ROADMAP.md) and on GitHub Releases.
 - Repair repository verification guidance and the native Windows
   `gate_runner.py checks` recipe, and state in the delivery-authenticity guide
   that pause evidence must be an immutable saved copy (REQ-99).
-- Accept a semver prerelease in `scripts/bump_version.py` (REQ-100). The release
-  workflow is unchanged and no prerelease was built or published; the workflow
-  prerelease flag is tracked in #55 and the build in #57.
+- Accept and synchronize the semver prerelease in `scripts/bump_version.py`
+  (REQ-100). The automatic release workflow remains disabled.
+- Add a self-contained, accessible use-case map (`assets/use-cases.svg`) to the
+  README (REQ-101).
+- Remove proven overhead: drop the unused `write_redacted` helper and the
+  unconsumed `harness/schemas/improvement.schema.json`; stop writing unread
+  learning-promotion keys in the installer template and examples; mark
+  `workers.cleanupCompletedWorktrees`, `runtime.boot/stop/reset/logs` and the
+  `learning` promotion/stale keys deprecated and ignored, and have `checks`
+  warn when a config still sets them (non-failing). Fix nonexistent
+  `check-manifests.sh` and `promote-lesson*.{sh,ps1}` references, the stale
+  2–8 batch range (2–20 within `workers.maxParallel`) and the README CI claim
+  (REQ-102).
+- Bind independent review to the reviewed task, scope and report instead of
+  the latest reviewer verdict in the session (REQ-103, REQ-105).
+- Narrow option comparisons to genuinely differing material options or a
+  discriminating recovery. `tournament-review --result` can require a matching
+  `--task`/`--source` and checks two to four distinct summarized options.
+  A proposed standalone allowance ledger was removed: `--allowance` refuses
+  without writing files. Budget and failure identity stay with the owning task;
+  authenticated result admission and automatic successor-lineage accounting
+  remain unqualified (REQ-106).
+- Keep procedural learning proposal-first: `semantic-learning-review
+  --execute` and the other `--execute` launchers exit 2 with
+  `NATIVE_HOST_REQUIRED` instead of shelling out to an agent CLI.
+  Lesson helpers preserve candidate provenance and content/source-bound proposal
+  digests. `promote-lesson --apply` and the picker always refuse with
+  `AUTHENTICATED_APPROVAL_REQUIRED`: a caller-supplied digest and `--by` cannot
+  authenticate owner approval. Authorized application remains a reviewed source
+  edit, not an automatic learning side effect (REQ-107).
 
-Limits: no live multi-wave qualification or sustained parallel delivery; macOS
-unobserved; native-bridge hang behavior is fixture-tested only and its recovery
+Limits: no live multi-wave qualification or sustained parallel delivery;
+macOS command-level checks do not prove a loaded app; native-bridge hang behavior
+is fixture-tested only and its recovery
 identity lives in the bridge process; host loading of a prerelease version and
 loaded-context refresh are unobserved; the durable Run key owner and ACL are not
 verified on Windows. Audit findings F6, F8, F9 and F10 are tracked as issues

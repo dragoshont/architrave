@@ -53,6 +53,18 @@ def load_config(root: Path) -> dict[str, object]:
     return value
 
 
+IGNORED_CONFIG_KEYS = (
+    ("workers", "cleanupCompletedWorktrees"), ("runtime", "boot"), ("runtime", "stop"),
+    ("runtime", "reset"), ("runtime", "logs"), ("learning", "staleFactPolicy"),
+    ("learning", "promotionPolicy"), ("learning", "promoteAfterOccurrences"), ("learning", "promoteTargets"),
+)
+
+
+def ignored_config_keys(config: dict[str, object]) -> list[str]:
+    return [f"{section}.{key}" for section, key in IGNORED_CONFIG_KEYS
+            if isinstance(config.get(section), dict) and key in config[section]]
+
+
 GATE_TAIL_LINES = 40
 
 
@@ -256,7 +268,7 @@ REVIEW_NOTE = re.compile(r"(?:^|[;,])\s*review:\s*([^;|,]*)")
 
 REVIEWER_ROLE = re.compile(r"(?:architrave:)?(?:adversarial-judge|code-review|rubber-duck|security-review|architrave-review)", re.I)
 SESSION_UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
-SESSION_FACTS: dict[tuple[str, int, float], dict[str, str | None]] = {}
+SESSION_FACTS: dict[tuple[str, int, float], dict[str, object]] = {}
 RULING_START = r"^[^\w>|]*(?:\(?[a-z0-9]\)\s*)?"
 LABELLED_RULING = re.compile(RULING_START + r"(?i:(?:final\s+)?(?:verdict|outcome|result|ruling|(?:re-?)?review(?:\s+of\s+\S+)?)"
                              r"\W{0,6}(PASS|REVISE|FAIL))\b")
@@ -283,8 +295,8 @@ def session_home() -> Path:
     return Path(os.environ.get("COPILOT_HOME", Path.home() / ".copilot")) / "session-state"
 
 
-def session_facts(session: str) -> dict[str, str | None] | None:
-    """Kickoff role, model and final verdict of a local session log, or None when it is not logged here."""
+def session_facts(session: str) -> dict[str, object] | None:
+    """Kickoff role, model, final verdict and per-report rulings of a local session log, or None when not logged here."""
     log = session_home() / session.lower() / "events.jsonl"
     if not SESSION_UUID.fullmatch(session.lower()) or not log.is_file():
         return None
@@ -324,6 +336,7 @@ def session_facts(session: str) -> dict[str, str | None] | None:
                     reports.append(str(arguments.get("message") or ""))
         said = None
         said_all = []
+        rulings: list[tuple[str, str]] = []
         # The verdict is the ruling of the reviewer's last report (task_complete or a message to another session);
         # narration counts only when the session sent no report.
         for text in reports or messages:
@@ -331,30 +344,68 @@ def session_facts(session: str) -> dict[str, str | None] | None:
             if found:
                 said = found
                 said_all.append(found)
+                rulings.append((text, found))
         SESSION_FACTS.clear() if len(SESSION_FACTS) > 512 else None
         SESSION_FACTS[key] = {"role": role, "model": model, "models": " ".join(models), "verdict": said,
-                              "verdicts": " ".join(said_all)}
+                              "verdicts": " ".join(said_all), "rulings": rulings}
     return SESSION_FACTS[key]
 
 
-def review_session(reviewer: str, verdict: str, final: bool = True) -> tuple[str, str | None]:
+SUBJECT_ID = re.compile(r"(?<![\w-])REQ-[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*", re.I)
+DELIVERY_SUBJECT = re.compile(r"(?im)^\s*Delivery digest:\s*[0-9a-f]{64}\s*$")
+
+
+def mentions(text: str, subject: str) -> bool:
+    """True when a report names this subject (a REQ id or a digest) as a whole token, not as a longer id's prefix."""
+    return re.search(rf"(?<![\w-]){re.escape(subject)}(?![\w-]|\.\w)", text, re.I) is not None
+
+
+def subject_rulings(facts: dict[str, object], subject: str | None) -> tuple[list[str], str | None]:
+    """The reviewer's rulings that apply to one subject, oldest first, and why none apply.
+
+    Scoped and general corrections retain chronological order. Reports naming another REQ or delivery digest
+    do not decide this subject. A delivery digest needs an exact report, never a general fallback.
+    Without a subject every report counts (the whole-session legacy check).
+    """
+    rulings = list(facts.get("rulings") or [])
+    if subject is None:
+        return [v for _t, v in rulings], None
+    named = [v for t, v in rulings if mentions(t, subject)]
+    if re.fullmatch(r"[0-9a-f]{64}", subject, re.I):
+        return (named, None) if named else ([], "never reported on " + subject)
+    applicable = [v for t, v in rulings if mentions(t, subject)
+                  or not SUBJECT_ID.search(t) and not DELIVERY_SUBJECT.search(t)]
+    if applicable:
+        return applicable, None
+    return [], "never reported on " + subject
+
+
+def review_session(reviewer: str, verdict: str, final: bool = True, subject: str | None = None,
+                   legacy: bool = False) -> tuple[str, str | None]:
     """Check a `review: <session-id> <verdict>` note against the reviewer session's local log.
 
     ("verified", None); ("unknown", None) when the reviewer is not a session logged on this machine;
     ("contradicted", reason) when the log shows a different role or verdict. A final note (the latest naming
-    this session) must match the session's last report; an earlier one only one of its reports (a re-review).
+    this session) must match the session's last report on the subject; an earlier one only one of those reports
+    (a re-review). With a subject (REQ id or delivery digest), only that subject's reports and general reports count.
     """
     facts = session_facts(reviewer)
     if facts is None:
         return "unknown", None
-    role = facts["role"] or ""
+    role = str(facts["role"] or "")
     if not REVIEWER_ROLE.fullmatch(role):
         return "contradicted", f"session {reviewer[:8]} ran {role or 'no agent role'}, not a reviewer role"
-    if final and facts["verdict"] != verdict:
-        return "contradicted", (f"session {reviewer[:8]} last reported {facts['verdict'] or 'no ruling'}, not {verdict}; record "
-                                "its latest verdict, and use a fresh reviewer session for each delivery")
-    if not final and verdict not in (facts["verdicts"] or "").split():
-        return "contradicted", f"session {reviewer[:8]} never reported {verdict}"
+    said, missing = subject_rulings(facts, subject)
+    if missing and legacy:
+        (said, missing), subject = subject_rulings(facts, None), None
+    if missing:
+        return "contradicted", f"session {reviewer[:8]} {missing}"
+    about = f" on {subject}" if subject else ""
+    if final and (said[-1] if said else None) != verdict:
+        return "contradicted", (f"session {reviewer[:8]} last reported {said[-1] if said else 'no ruling'}, not {verdict}{about}; "
+                                "record its latest verdict, and use a fresh reviewer session for each delivery")
+    if not final and verdict not in said:
+        return "contradicted", f"session {reviewer[:8]} never reported {verdict}{about}"
     return "verified", None
 
 
@@ -489,12 +540,13 @@ def strict_reviews() -> bool:
     return session_home().is_dir()
 
 
-def review_passed(evidence: str, strict: bool = False) -> bool:
-    """True when the latest well-formed review note is PASS (and, when strict, verified in its session log)."""
+def review_passed(evidence: str, strict: bool = False, subject: str | None = None) -> bool:
+    """True when the latest well-formed review note is PASS (and, when strict, verified in its session log for this
+    subject's reports)."""
     notes = [(who_, v) for who_, v in review_notes(evidence) if v]
     if not notes or notes[-1][1] != "PASS":
         return False
-    return not strict or review_session(notes[-1][0], "PASS")[0] == "verified"
+    return not strict or review_session(notes[-1][0], "PASS", subject=subject)[0] == "verified"
 
 
 def model_family(model: str | None) -> str:
@@ -526,7 +578,7 @@ def lane_review_gaps(lane: dict[str, str], reqs: dict[str, dict[str, str]], stri
             continue
         if lane["state"].lower() != "done" and row["status"].lower() != "accepted":
             continue
-        if not review_passed(row["evidence"], strict):
+        if not review_passed(row["evidence"], strict, rid):
             gaps.append(rid)
         elif cross_family and strict:
             reviewer = [w for w, v in review_notes(row["evidence"]) if v][-1]
@@ -587,12 +639,15 @@ def parse_requirements(text: str, selected: set[str] | None = None) -> tuple[dic
         if status == "accepted" and not row["evidence"]:
             errors.append(f"{rid} is accepted without evidence")
         notes = review_notes(row["evidence"]) if selected is None or rid in selected else []
+        # A general sweep keeps accepted history readable: a reviewer that never named this REQ falls back to
+        # the whole-session check it was accepted under. Declared closure and open rows stay subject-bound.
+        legacy = selected is None and status == "accepted"
         for index, (reviewer, verdict) in enumerate(notes):
             if verdict is None:
                 errors.append(f"{rid} review note must read 'review: <reviewer> <PASS|REVISE|FAIL>'")
                 continue
             final = all(later.lower() != reviewer.lower() for later, _v in notes[index + 1:])
-            check, reason = review_session(reviewer, verdict, final)
+            check, reason = review_session(reviewer, verdict, final, rid, legacy)
             if check == "contradicted":
                 errors.append(f"{rid} review note contradicts the session log: {reason}")
             elif who(reviewer) and who(reviewer) == who(row["owner"]):
@@ -1323,6 +1378,9 @@ def checks(root: Path, quick: bool) -> int:
         for error in errors:
             print(f"FAIL  {error}")
         return 1
+    ignored = ignored_config_keys(config)
+    if ignored:
+        print("WARN  ignored deprecated config key(s): " + ", ".join(ignored) + "; remove them")
     if config.get("kind") == "knowledge":
         print("profile knowledge: UI design JSON validation not applicable")
     else:

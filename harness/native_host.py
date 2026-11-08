@@ -63,6 +63,26 @@ def requirements_kickoff(store: RunStore, task: dict, reqs: object) -> str:
     return store.requirements_context(task)
 
 
+def refuse_unreconciled_native_workers(store: RunStore, run_id: str) -> None:
+    """Do not close a native lease when this invocation cannot prove host disposition."""
+    state = store.load(run_id)
+    tasks = {task["id"]: task for task in state["tasks"]}
+    for worker in state["workers"]:
+        if worker["status"] != "RUNNING" or worker.get("adapter") != "native":
+            continue
+        task = tasks.get(worker.get("taskId"))
+        if task is None or task["status"] != "RUNNING":
+            continue
+        binding = worker.get("nativeBinding") or {}
+        owner = binding.get("hostTaskId")
+        raise RuntimeFailure(
+            "NATIVE_RECOVERY_PENDING",
+            "native host ownership is live or unknown; recovery cannot close this Run lease",
+            details={"taskId": task["id"], "attemptId": worker["id"],
+                     "hostTaskId": owner, "hostDisposition": "unconfirmed"},
+        )
+
+
 def routing_observation(requested, effective, reused_owner=False):
     fallback = None
     if not effective:
@@ -81,6 +101,7 @@ def main():
         return 0
     ticket = None
     store = None
+    admission_started = False
     try:
         request = receive()
         store = RunStore(request["repo"])
@@ -96,6 +117,7 @@ def main():
             emit({"status": "ok", "result": summary})
             return 0
         if action == "recover":
+            refuse_unreconciled_native_workers(store, run_id)
             if request.get("checkpointId"):
                 store.recover_native_checkpoint(run_id, request["checkpointId"], host_owner=request["owner"])
             emit({"status": "ok", "result": state_summary(store.recover_workers(run_id, task_id=request.get("taskId")))})
@@ -156,17 +178,31 @@ def main():
             "expiresAt": task["lease"]["expiresAt"],
             "effort": effort,
         })
-        admitted = receive()
+        admission = receive()
+        if admission.get("status") == "starting":
+            if admission.get("attemptId") != ticket.binding["workerId"]:
+                raise RuntimeFailure("NATIVE_ATTEMPT_MISMATCH", "start request does not match the persisted Run worker attempt")
+            admission_started = True
+            admitted = receive()
+        else:
+            admitted = admission
         if admitted.get("status") != "admitted":
             raise RuntimeFailure("NATIVE_ADMISSION_FAILED", admitted.get("error", "host did not admit the worker"))
         store.bind_native_owner(ticket, admitted["hostTaskId"])
         emit({"status": "bound", "binding": ticket.binding})
         observed = receive()
+        required_observation = {"hostTaskId", "hostStatus", "text"}
+        optional_observation = {"reusedOwner", "requestedModel", "effectiveModel", "usageTotal",
+                                "totalToolCalls", "turnsObserved", "budgetStop",
+                                "cancellationConfirmed", "removalConfirmed"}
+        if not required_observation.issubset(observed) or set(observed) - required_observation - optional_observation:
+            raise RuntimeFailure("NATIVE_TRANSPORT_INVALID", "native completion frame has an invalid shape")
         result = store.accept_native_candidate(
             ticket, host_task_id=observed["hostTaskId"],
             host_status=observed["hostStatus"], text=observed.get("text", ""),
             host_observation={key: observed.get(key) for key in (
-                "requestedModel", "effectiveModel", "usageTotal", "totalToolCalls", "turnsObserved", "budgetStop")},
+                "requestedModel", "effectiveModel", "usageTotal", "totalToolCalls", "turnsObserved", "budgetStop",
+                "cancellationConfirmed", "removalConfirmed")},
         )
         result["routing"] = routing_observation(observed.get("requestedModel"), observed.get("effectiveModel"),
                                                 observed.get("reusedOwner", False))
@@ -174,7 +210,7 @@ def main():
         return 0 if result["status"] == "candidate" else 1
     except (RuntimeFailure, OSError, ValueError, KeyError) as exc:
         cleanup_error = None
-        if ticket is not None and not ticket.consumed and store is not None:
+        if ticket is not None and not ticket.consumed and store is not None and not admission_started:
             try:
                 store.fail_task(ticket.binding["runId"], ticket.binding["taskId"], f"native bridge failed: {exc}")
             except RuntimeFailure as cleanup:
@@ -182,6 +218,8 @@ def main():
         emit({"status": "failed", "error": {
             "code": exc.code if isinstance(exc, RuntimeFailure) else "NATIVE_TRANSPORT_INVALID",
             "message": str(exc), "cleanupError": cleanup_error,
+            **({"ownership": "unknown", "attemptId": ticket.binding["workerId"],
+                "hostTaskId": ticket.binding.get("hostTaskId")} if admission_started and ticket is not None else {}),
             **({"details": exc.details} if isinstance(exc, RuntimeFailure) and exc.details else {}),
         }})
         return exc.exit_code if isinstance(exc, RuntimeFailure) else 1

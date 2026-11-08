@@ -640,9 +640,11 @@ Never read, export or log signing secrets or key material. Local identities and
 project-specific grants stay in the target project's records, not portable kit
 instructions. No blanket permission for arbitrary repositories or identities.
 
-Use a tournament for material architecture/dependency decisions, migrations,
-data-loss, security, infrastructure/runtime risk, recurring failures, or genuinely
-ambiguous alternatives; it is not a prerequisite for routine bounded work.
+Use a tournament only when viable options genuinely differ on material
+architecture/dependency, migration, data-loss, security or infrastructure/runtime
+risk, or when a recurring failure needs a discriminating recovery; it is not a
+prerequisite for routine bounded work. Bind its result to that decision; one
+allowance per decision survives retries, and rewording a failure does not renew it.
 
 The existing `effort: low|default|high` signal is optional. It is not a model
 selector or a reason to spawn. Map it only through a user/host-supported control;

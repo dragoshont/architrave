@@ -13,15 +13,6 @@
       "repo-profile",
       "lessons"
     ],
-    "redactionPolicy": "no-secrets",
-    "staleFactPolicy": "validate-before-use",
-    "promotionPolicy": "approval-required",
-    "promoteAfterOccurrences": 2,
-    "promoteTargets": [
-      "architrave.config.json",
-      "AGENTS.md",
-      ".github/instructions",
-      "docs"
-    ]
+    "redactionPolicy": "no-secrets"
   }
 }

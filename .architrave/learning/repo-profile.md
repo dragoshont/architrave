@@ -18,12 +18,12 @@ Architrave is a cross-platform, judge-gated agent kit distributed as Copilot, Cl
 
 - Plugin manifests: `plugin.json`, `.github/plugin/marketplace.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `.codex-plugin/plugin.json`.
 - Agent roster and repo conventions: `AGENTS.md`, `README.md`, `ROADMAP.md`.
-- Validation gate: `scripts/check-manifests.sh`.
+- Validation gate: `python3 scripts/check_manifests.py`.
 
 ## Build And Test
 
-- Validate plugin/manifests/frontmatter/schema: `scripts/check-manifests.sh`.
-- Validate run artifacts: `bash harness/architrave_cli.py validate-run <run-dir>` when executable bit is unavailable.
+- Validate plugin/manifests/frontmatter/schema: `python3 scripts/check_manifests.py`.
+- Validate run artifacts: `python3 harness/architrave_cli.py validate-run <run-dir>`.
 
 ## Architecture Map
 
@@ -43,9 +43,9 @@ Architrave is a cross-platform, judge-gated agent kit distributed as Copilot, Cl
 
 | Fact | Evidence | Last Checked |
 |---|---|---|
-| There are 13 packaged agents. | `find agents -maxdepth 1 -name '*.agent.md' | wc -l`; `scripts/check-manifests.sh` frontmatter pass. | 2026-07-11 |
-| Knowledge packs include operations UX, YAGNI, and the learning loop. | `scripts/check-manifests.sh` knowledge-pack pass. | 2026-07-10 |
-| Current released plugin version is 0.10.3 with structured workspace-hook output and updater propagation. | `plugin.json`; v0.10.3 release; issues #3 and #6 run artifacts. | 2026-07-10 |
+| There are 14 packaged agents. | `ls agents/*.agent.md | wc -l`. | 2026-11-08 |
+| Knowledge packs include operations UX, YAGNI, and the learning loop. | `python3 scripts/check_manifests.py` knowledge-pack pass. | 2026-07-10 |
+| UNVALIDATED: Current released plugin version is 0.10.3 with structured workspace-hook output and updater propagation. | `plugin.json`; v0.10.3 release; issues #3 and #6 run artifacts. | 2026-07-10 |
 | The released kit has a schema-valid `kind: knowledge` profile and explicit installer support. | `kit/examples/knowledge.architrave.json`; `scripts/test-config-profiles.sh`; `scripts/test-installers.sh`; v0.10.2 release. | 2026-07-10 |
 | Codex/ChatGPT package three plugin-only skills and two generated project roles; disposable live smokes validate skill invocation, role routing, and isolated MCP hostile-output handling. | `.codex-plugin/plugin.json`; `.codex/`; `skills/`; `scripts/test-codex-runtime.py --live`. | 2026-07-11 |
 | Knowledge adoption uses a five-agent crew (`architrave`, `adversarial-judge`, `tournament-analyst`, `product-research`, `runtime-observer`); explicit refresh safely migrates legacy full installs while preserving custom agents and Codex roles. | `tools/install_update.py install`; `tools/install_update.py update`; `scripts/test-installers.*`; run `20260721T-lean-install-hardening`. | 2026-07-21 |

@@ -200,13 +200,59 @@ class ImprovementTests(LearningFixture):
 
 
 class PromotionTests(LearningFixture):
+    def test_self_asserted_approval_cannot_authorize_guidance_write(self):
+        digest = self.approval("--lesson", "L1", "--target", "docs/guide.md")
+        for action, selector in (("promote-lesson", ["--lesson", "L1"]),
+                                 ("promote-lesson-picker", ["--index", "1"])):
+            result = self.cli(*selector, "--target", "docs/guide.md", "--apply",
+                              "--approve", digest, "--by", "Owner", launcher=action, code=2)
+            self.assertIn("AUTHENTICATED_APPROVAL_REQUIRED", result.stderr)
+        self.assertFalse((self.root / "docs").exists())
+
+    def approval(self, *args, launcher="promote-lesson"):
+        output = self.cli(*args, launcher=launcher).stdout
+        return output.split("proposal: ", 1)[1].split()[0]
+
     def test_dry_run_apply_and_picker(self):
-        self.cli("--lesson", "L1", "--target", "docs/guide.md", launcher="promote-lesson")
+        digest = self.approval("--lesson", "L1", "--target", "docs/guide.md")
         self.assertFalse((self.root / "docs/guide.md").exists())
-        self.cli("--index", "1", "--target", "docs/guide.md", "--apply", launcher="promote-lesson-picker")
-        self.assertIn("Use the quick gate.", (self.root / "docs/guide.md").read_text())
-        self.cli("--lesson", "Use the quick gate.", "--target", "docs/guide.md", "--apply", launcher="promote-lesson")
-        self.assertEqual((self.root / "docs/guide.md").read_text().count("## Promoted Lessons"), 1)
+        self.cli("--lesson", "L1", "--target", "docs/guide.md", "--apply", launcher="promote-lesson", code=2)
+        self.cli("--lesson", "L1", "--target", "docs/guide.md", "--apply", "--approve", "0" * 64,
+                 "--by", "Owner", launcher="promote-lesson", code=2)
+        self.cli("--lesson", "L1", "--target", "docs/guide.md", "--apply", "--approve", digest,
+                 launcher="promote-lesson", code=2)
+        self.cli("--lesson", "L1", "--target", "docs/other.md", "--apply", "--approve", digest,
+                 "--by", "Owner", launcher="promote-lesson", code=2)
+        self.assertFalse((self.root / "docs").exists())
+        self.assertEqual(digest, self.approval("--index", "1", "--target", "docs/guide.md",
+                                               launcher="promote-lesson-picker"))
+        self.cli("--index", "1", "--target", "docs/guide.md", "--apply", "--approve", digest, "--by", "Owner",
+                 launcher="promote-lesson-picker", code=2)
+        self.cli("--lesson", "Use the quick gate.", "--target", "docs/guide.md", "--apply", "--approve", digest,
+                 "--by", "Owner", launcher="promote-lesson", code=2)
+        output = self.cli("--lesson", "L1", "--target", "docs/guide.md", launcher="promote-lesson").stdout
+        self.assertIn('"evidence": "test"', output)
+        self.assertIn('"proposed-target": "docs"', output)
+        self.assertFalse((self.root / "docs").exists())
+
+    def test_altered_candidate_invalidates_prior_approval(self):
+        digest = self.approval("--lesson", "L1", "--target", "docs/guide.md")
+        self.lessons("| L1 | Use the quick gate. | other run | 2 | yes | docs | candidate | python check.py | |")
+        self.assertNotEqual(digest, self.approval("--lesson", "L1", "--target", "docs/guide.md"))
+        self.cli("--lesson", "L1", "--target", "docs/guide.md", "--apply", "--approve", digest,
+                 "--by", "Owner", launcher="promote-lesson", code=2)
+        self.assertFalse((self.root / "docs").exists())
+        self.lessons("| L1 | Use the quick gate. | run --> x | 2 | yes | docs | candidate | python check.py | |")
+        self.cli("promote-lesson", "--lesson", "L1", "--target", "docs/guide.md", code=2)
+
+    def test_protected_instruction_policy_and_evidence_targets_are_refused(self):
+        (self.root / "architrave.config.json").write_text('{"requirements": "docs/reqs.md"}', encoding="utf-8")
+        for target in ("AGENTS.md", "SPEC.md", "CLAUDE.md", ".github/copilot-instructions.md",
+                       "agents/x.agent.md", "skills/x/SKILL.md", "gates/rubric.md",
+                       ".architrave/learning/repo-lessons.md", "docs/reqs.md"):
+            self.cli("promote-lesson", "--lesson", "L1", "--target", target, code=2)
+        self.lessons("| L1 | Use --> the quick gate. | test | 2 | yes | docs | candidate | python check.py | |")
+        self.cli("promote-lesson", "--lesson", "L1", "--target", "docs/guide.md", code=2)
 
     def test_executable_check_or_explicit_prose_justification_required(self):
         self.lessons("| L1 | Use the quick gate. | test | 2 | yes | docs | candidate | | |")

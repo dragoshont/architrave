@@ -24,7 +24,7 @@ RunStore.add_task = lambda self, run_id, task, actor="coordinator": _fixture_add
     self, run_id, {"pushback": "KEEP:test fixture", **task}, actor)
 from worker_adapters import command_for, execute_work_packet
 from workspaces import WorkspaceManager
-from native_host import routing_observation, requirements_kickoff
+from native_host import routing_observation, requirements_kickoff, refuse_unreconciled_native_workers
 
 
 class NativeHostTests(unittest.TestCase):
@@ -979,6 +979,20 @@ class NativeHostTests(unittest.TestCase):
         resumed = RunStore(self.repo).resume(run_id)
         self.assertEqual("COMPLETED", resumed["status"])
         self.assertEqual("FINISHED", resumed["workers"][0]["status"])
+
+    def test_native_recovery_refuses_unreconciled_running_owner(self):
+        run_id, task_id = self.task()
+        ticket = self.store.begin_native_worker(run_id, task_id, host_owner="fixture-host")
+        before = self.store.load(run_id)
+        with self.assertRaises(RuntimeFailure) as error:
+            refuse_unreconciled_native_workers(self.store, run_id)
+        self.assertEqual("NATIVE_RECOVERY_PENDING", error.exception.code)
+        self.assertEqual(task_id, error.exception.details["taskId"])
+        self.assertEqual(ticket.binding["workerId"], error.exception.details["attemptId"])
+        after = self.store.load(run_id)
+        self.assertEqual(before["revision"], after["revision"])
+        self.assertEqual("RUNNING", after["tasks"][0]["status"])
+        self.assertEqual("RUNNING", after["workers"][0]["status"])
 
     def test_untrusted_dict_and_stale_revision_are_rejected(self):
         run_id, task_id = self.task()

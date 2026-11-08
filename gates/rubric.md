@@ -76,13 +76,17 @@ Score each **Pass / Concern / Fail** with a severity and cite evidence (a spec l
    create recursive boards. An explicit, reviewed unavailable-board outcome is
    acceptable without claiming display. Unavailable required delivery, visual
    or integration observation cannot count as PASS.
-2. **Tournament & recommended-plan quality** — a full tournament is required for
-   architecture/dependency choices, systemic failures, migrations, data loss,
-   security, deployment, or materially ambiguous options. Routine bounded
-   implementation needs no tournament, separate plan or recorded YAGNI rung.
-   For consequential decisions, require evidence-backed justification, not a
-   particular document format. Choosing a high-risk option without
-   justification is a Blocker.
+2. **Option comparison & recommended-plan quality** — one bounded comparison
+   only when viable options genuinely differ on material architecture,
+   dependency, migration, data-loss, security or deployment risk, or when a
+   repeated failure needs a discriminating recovery. A risky domain with one
+   obvious option, and routine bounded implementation, need no tournament,
+   separate plan or recorded YAGNI rung. The result binds to that task, failure
+   and source and feeds one disposition and next action; one allowance per
+   decision survives retries and renamed successors, and rewording a failure
+   does not renew it. For consequential decisions, require evidence-backed
+   justification, not a particular document format. Choosing a high-risk option
+   without justification is a Blocker.
 3. **Durable Run and phase observability** — applicable when adopted work needs
    resumability or external operations. Use canonical API-owned state, events,
    truthful checkpoints and required evidence; views are on-demand projections,

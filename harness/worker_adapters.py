@@ -473,11 +473,6 @@ def path_allowed(path: str, scopes: Sequence[str]) -> bool:
     return False
 
 
-def write_redacted(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(str(redact(text)), encoding="utf-8")
-
-
 def execute_work_packet(store: RunStore, run_id: str, task_id: str, worker_id: str) -> dict[str, Any]:
     state = store.load(run_id)
     task = find_task(state, task_id)

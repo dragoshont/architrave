@@ -49,22 +49,23 @@ passed independent review, and that whole chain is recorded in the program
 ledger. The gate caught a real file-ownership conflict and short session IDs.
 Two lanes could not run: a turn started by another session cannot show the
 owner a permission prompt. Sustained parallel delivery across many children
-(REQ-30/36) is **not yet proven**. Validation is local; hosted CI is off.
+(REQ-30/36) is **not yet proven**. The `validate` GitHub Actions workflow checks pushes and pull requests to `main`; the `release` workflow is disabled and releases are cut manually.
 
-**1.0.0-beta.1 is work in progress: not released, not 1.0 final.** It is on
-`main` but not built, published or installed (the version fields still read
-0.21.35), and every requirement it covers (REQ-95 to REQ-100) is still
-`in-progress`. Native Windows and macOS are the 1.0 targets; WSL2 is not. The
-work makes CLI-created Runs honor the configured autonomy and mutation-policy
+**1.0.0-beta.1 is a prerelease, not 1.0 final.** Native Windows and macOS are
+the 1.0 targets; WSL2 is not. The work makes CLI-created Runs honor the configured autonomy and mutation-policy
 defaults, reports each Run's execution, holds and one next action from
 canonical state (a conservative, best-effort mirror of `task-start`, which stays
-authoritative), adds a first pass at bounding native dispatch stages, and adds
-continuation and handoff guidance. The native pass has open defects: recovery
-adopts by prompt text and treats an empty listing as proof of no owner, an
-already-aborted invocation is not honored, preflight can take two 30 s windows,
-and unresolved admissions are not counted toward the child cap (#40 to #44).
-It does not demonstrate a live multi-wave qualification or sustained parallel
-delivery, macOS runs, a live native-bridge hang (fixture-tested only), host
+authoritative), bounds native dispatch stages, and adds continuation and
+handoff guidance. Recovery retains uncertain ownership instead of treating an
+empty listing as proof of absence. Attempts carry an identity; preflight shares
+one deadline, abort signals are honored, and uncertain admissions reserve
+capacity. Native resume/recovery refuses to release unconfirmed ownership.
+Task-specific review binding, proposal-only learning and removal of unused
+controls are included; broader delivery outcomes remain tracked in `SPEC.md`.
+MacOS command-level checks are separate from live host qualification.
+Genuine persistence-hang/lost-reply fixture coverage remains incomplete.
+This does not demonstrate a live multi-wave qualification or sustained parallel
+delivery, a live native-bridge hang (fixture-tested only), host
 loading of a prerelease version, loaded-context refresh after an update, or an
 owner and ACL check of the durable Run key on Windows. Every unaddressed item is
 a GitHub issue (#40 to #87, including audit findings F6, F8, F9 and F10); the
@@ -158,31 +159,32 @@ checks rather than a claimed equivalent automatic completion barrier.
 
 ## What you can use it for
 
-- **Build UI from your own design system.** Use Storybook or the configured
-  design source, real component names, and design tokens instead of a new
-  one-off design. The UI roles cover navigation, keyboard interaction,
-  empty/loading/error states, and visual details. Platform guidance covers
-  Apple HIG, Microsoft Fluent, and web accessibility. With a token generator
-  configured, the reconcile gate checks generated values against committed code.
-- **Keep UI and backend in agreement.** Start with architecture docs and API/data
-  contracts. Backend roles help with service boundaries, migrations, rollback
-  plans, implementation, and tests. Full-stack work uses the same contract
-  across the UI and service rather than planning each in isolation.
-- **Design operational workflows.** The operations guidance covers setup and
-  offboarding, inventories, uploads, roles and permissions, health, diagnostics,
-  queues, and scheduled or long-running jobs. It connects what the UI displays
-  to the data and action states the backend must provide.
-- **Work on non-app repositories.** The knowledge profile grounds work in docs,
-  scripts, skills, schemas, and tests without requiring Storybook or inventing
-  a UI or backend.
-- **Check the result, not just the build.** Run the repository's configured
-  checks. Add independent review for semantic or higher-risk changes, and
-  configured runtime evidence for app or deployment work: exercised workflows,
-  screenshots, health, logs, and the deployed artifact's digest.
+![Architrave use cases: research and knowledge; UI and product experience; services and full stack; maintenance and integration; review and delivery; platform and extensions. Specify an outcome, scope the work, verify the result, then deliver or name the blocker.](assets/use-cases.svg)
+
+Use the smallest relevant part, not every role for every task. These are work
+categories, not a promise that every host can execute every operation.
+
+| Use case | What Architrave helps you do | Grounding and boundary |
+|---|---|---|
+| **Research, knowledge and writing** | Verify sources, compare findings, preserve decisions, write documentation, and maintain scripts, schemas and non-app repositories. | The knowledge profile uses repository sources and evidence; it does not invent a UI or require Storybook. Writing can use author-provided voice samples. |
+| **UI, native UX and operations** | Build with your design system; improve navigation, keyboard behavior, accessibility and visual details; design setup, offboarding, roles, uploads, queues and diagnostics. | Configured Storybook/design sources and tokens; Apple HIG, Microsoft Fluent or web guidance. Operational states must agree with the backend. |
+| **Backend and full-stack development** | Define service boundaries and API/data contracts, implement approved slices, and plan migrations and rollback across UI and services. | Existing architecture and contracts; relevant builds/tests and actual integration evidence, not independent incompatible plans. |
+| **Debugging and maintenance** | Reproduce defects, trace root causes, refactor, reconcile old branches and remove proven unused or unwired code. | Existing consumers and regression checks. An unused-looking file or a passing build is not sufficient evidence for deletion or correctness. |
+| **Cross-repository and long-running delivery** | Coordinate independent owned slices, integrate candidates, preserve task evidence and resume interrupted work. | Native host sessions and optional adopted Runs; exclusive ownership, bounded capacity and explicit recovery. Sustained autonomous multi-wave delivery is still being qualified. |
+| **Review, decisions and recovery** | Adversarially review a proposal or result, audit selected real sessions, compare material alternatives and resolve a genuine stall. | Original criteria and source-bound evidence. Tournaments and CTO oversight are selective, not mandatory ceremonies or automatic watchdogs. |
+| **Infrastructure and runtime operations** | Produce infrastructure plans and inspect health, logs, versions, deployed digests and actual application behavior. | Plan/read-only by default. Apply, deployment, rollback and runtime mutation need exact scoped authorization, receipts and live verification. |
+| **Release and installation qualification** | Check source/version/package identity, canonical installation/update behavior, actual loaded builds and rollback evidence. | Explicit operation permission and the claimed host/OS matrix. Source tests and an installed digest alone do not prove a working release. |
+| **Agent, skill and MCP authoring** | Create or revise focused roles and reusable skills, or design/review an MCP integration's tools, permissions and failure behavior. | Explicit authoring requests use the corresponding skills; routine tool use does not start an authoring workflow. |
+| **Repository learning and oversight** | Capture evidence-backed candidate lessons and repo facts, assess improvement proposals, and oversee selected programs when requested. | Optional, source-checked and off the delivery path. Native memory/history are not grants; automatic self-rewriting or universal performance improvement is not promised. Learning apply-path hardening remains in progress. |
+
 - **Keep the change small.** Reuse existing code, platform features, and installed
   dependencies before adding another abstraction. Compare alternatives when
   an architecture choice, migration, security concern, or recurring failure
   makes the decision worth examining.
+
+The [approved delivery redesign](ROADMAP.md#approved-delivery-redesign-req-101108)
+is implementation work, not a claim that the proposed Done-first loop or all
+qualification scenarios already pass.
 
 ## Child sessions and resumable work
 
@@ -592,15 +594,15 @@ Everything Architrave ships, grouped by area. Paths point at the source of truth
 - Long-build runtime guidance — `docs/longbuild.md`.
 
 ### Native host bridge (Copilot)
-- `architrave_native_dispatch` and `_batch` (2–8 pre-decomposed packets) dispatch bounded WorkPackets through the joined host with owner binding, child limits, source binding and REQ acceptance in the kickoff. A first pass bounds each stage — a fixed 30 s preflight bound, then the lease expiry with a reserved cleanup budget — and a timeout returns a stage-labelled failure. `hostCancellationConfirmed` is `true` only when the host confirmed the cancel; it does not mean the task was removed, which `cleanup.confirmed` reports separately. Batch packets fail independently. Known defects: preflight can take two 30 s windows (#41), an already-aborted invocation is not honored (#42), and unresolved admissions are not counted toward the child cap (#43) — `extensions/architrave-native/bridge.mjs`.
-- `architrave_native_status`, `_cancel` (through the real owner, never a fabricated result) and `_recover` (closes orphaned records without replaying side effects). While admission or cleanup is unresolved the bridge keeps the WorkPacket's recovery identity and rejects a retry with `NATIVE_RECOVERY_PENDING`; `_cancel` then adopts and stops a late, persisted or exact-prompt-matched owner, or releases the identity after a confirmed-empty host listing, and stays blocked while the listing hangs. Known defects: adopting by exact prompt text can match a duplicate or a historical task, and an empty listing is not proof that no owner will appear later (#40). The identity lives in the bridge process (#46), and the evidence is fixture-only, not live host qualification; the fixture suite is timing-sensitive under load (#44).
+- `architrave_native_dispatch` and `_batch` (2–20 pre-decomposed packets, capped by `workers.maxParallel`, default 3) dispatch bounded WorkPackets through the joined host with owner binding, child limits, source binding and REQ acceptance in the kickoff. Preflight shares one fixed 30 s bound; later stages use the lease deadline and reserve cleanup time. Abort signals produce explicit failures; uncertain admissions retain capacity. Cancellation and removal confirmations are distinct; a timeout alone proves neither. Batch packets fail independently — `extensions/architrave-native/bridge.mjs`.
+- `architrave_native_status`, `_cancel` and `_recover` use actual ownership, never fabricated results. Recovery preserves an unresolved attempt and rejects replacement with `NATIVE_RECOVERY_PENDING`; an empty, failed or ambiguous listing does not prove absence. Late-owner adoption uses attempt identity, not prompt equality. Bridge-process recovery state and durable Run ownership are separate: after restart, unsafe recovery/resume is refused when host disposition cannot be proved. This is fail-closed containment, not fully automatic restart recovery. Transport regression evidence is not live supported-host qualification.
 - `architrave_native_gate` runs stored commands or observes configured workflows bound to the source, task and objective; `architrave_native_review` runs one fresh source-bound semantic review and admits only observed results — `docs/native-semantic-review.md`.
 
 ### Verification and review
 - Deterministic gates in one Python CLI (`python gates/gate_runner.py <gate>`): `checks`, `reconcile` (design tokens against code), `quality-gate`, `backend-checks` (build, tests, migration safety, secret scan, IaC plan and policy, never apply), `components`, `requirements`, `message-lint` (owner-message identifiers) — `gates/`.
 - Risk-scaled verification: R0/R1 deterministic, R2 one fresh-context reviewer, R3 adds real end-to-end or runtime evidence, R4 adds security and policy review; cross-family review with `review.crossFamily` — `gates/rubric.md`, `knowledge/execution-policy.md`.
 - Adversarial Judge with a PASS, REVISE or FAIL rubric covering spec conformance, root cause, YAGNI, UX, visual fidelity, accessibility, backend security, runtime and evidence — `agents/adversarial-judge.agent.md`, `gates/rubric.md`.
-- Semantic and tournament review launchers for Copilot, Claude or both — `harness/architrave_cli.py semantic-review`, `harness/architrave_cli.py tournament-review`.
+- Host-owned semantic and tournament review guidance — `harness/architrave_cli.py semantic-review` and `tournament-review` emit advisory instructions; `--execute` refuses with `NATIVE_HOST_REQUIRED` instead of launching another agent CLI.
 - Application legibility: health, release and deployment checks against the deployed artifact — `harness/legibility.py`, `docs/application-legibility.md`.
 - Explicit quality cadence rather than post-edit hooks, plus the narrow default-session bootstrap and declared-completion check — `docs/quality-check-cadence.md`.
 
@@ -612,7 +614,7 @@ Everything Architrave ships, grouped by area. Paths point at the source of truth
 - Repository profiles: application (UI, backend, IaC, runtime lanes) and `kind: knowledge` for docs, skills and automation repositories — `kit/architrave.config.schema.json`, `kit/examples/`.
 
 ### Learning and self-improvement
-- Four memory stores with a candidate-lesson queue, promotion after repeated occurrences and human approval — `knowledge/learning-loop.md`, `harness/promote-lesson*.{sh,ps1}`.
+- Four memory stores with a candidate-lesson queue and provenance-preserving proposals; automatic promotion is refused, and application remains an owner-authorized source edit — `knowledge/learning-loop.md`, `harness/improvement.py promote-lesson`.
 - Executable-first promotion, improvement proposals approved only with before/after evidence and a human, and a harness pruning review per model release — `harness/improvement.py`, `knowledge/learning-loop.md`.
 - Stale-fact guards: deterministic link checks, semantic review of prose claims and exact-line `UNVALIDATED:` marking — `harness/architrave_cli.py mark-stale-learning`, `harness/architrave_cli.py semantic-learning-review`.
 - Learning validation with a secret scan — `harness/validate_learning.py`.

@@ -75,7 +75,13 @@ def main() -> int:
         (learning / "repo-lessons.md").write_text("# Repo Lessons\n\nNo durable semantic claims here.\n")
         result = run(repo, "semantic-learning-review", "--provider", "copilot")
         prompt = (learning / "semantic-stale-facts-prompt.md").read_text()
-        check("semantic-review-prompt", "semantic-learning-review prompt:" in result.stdout and "JSON Lines only" in prompt)
+        check("semantic-review-prompt", "semantic-learning-review prompt:" in result.stdout and "JSON Lines only" in prompt
+              and "copilot -C" not in result.stdout and "claude --agent" not in result.stdout)
+        (learning / "semantic-stale-facts-prompt.md").unlink()
+        result = run(repo, "semantic-learning-review", "--execute")
+        check("semantic-review-execute-refused",
+              result.returncode == 2 and "NATIVE_HOST_REQUIRED" in result.stderr
+              and not (learning / "semantic-stale-facts-prompt.md").exists())
 
         findings = learning / "semantic-stale-facts.jsonl"
         findings.write_text(

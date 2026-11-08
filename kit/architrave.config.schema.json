@@ -164,7 +164,7 @@
         },
         "maxParallel": { "type": "integer", "minimum": 1, "maximum": 20, "description": "Active child cap for canonical task starts, native dispatch and running GHC lanes. Default 3; owner-approved values up to 20. Lower host limits win." },
         "worktreeRoot": { "type": "string", "minLength": 1 },
-        "cleanupCompletedWorktrees": { "type": "boolean" },
+        "cleanupCompletedWorktrees": { "type": "boolean", "description": "Deprecated and ignored compatibility key; remove it." },
         "enabledAdapters": {
           "type": "array",
           "items": { "type": "string", "enum": ["native", "shell", "copilot", "claude", "codex"] },
@@ -178,11 +178,11 @@
       "description": "Optional product and deployment legibility commands. Commands wrap existing repo tooling; Architrave does not replace the app or deployment platform.",
       "additionalProperties": false,
       "properties": {
-        "boot": { "type": "string" },
+        "boot": { "type": "string", "description": "Deprecated and ignored compatibility key; remove it." },
         "health": { "type": "string" },
-        "stop": { "type": "string" },
-        "reset": { "type": "string" },
-        "logs": { "type": "string" },
+        "stop": { "type": "string", "description": "Deprecated and ignored compatibility key; remove it." },
+        "reset": { "type": "string", "description": "Deprecated and ignored compatibility key; remove it." },
+        "logs": { "type": "string", "description": "Deprecated and ignored compatibility key; remove it." },
         "web": {
           "type": "object",
           "required": ["url", "e2e"],
@@ -369,10 +369,10 @@
         "lessonsPath": { "type": "string", "description": "Repo-relative markdown file for durable repeated lessons, e.g. .architrave/learning/repo-lessons.md." },
         "capture": { "type": "array", "description": "Artifact categories Architrave should keep for non-trivial runs.", "items": { "type": "string", "enum": ["run-artifacts", "gate-results", "judge-verdicts", "runtime-evidence", "repo-profile", "lessons"] } },
         "redactionPolicy": { "type": "string", "description": "How learning artifacts handle sensitive data. Use no-secrets unless the repo has a stricter custom policy.", "enum": ["no-secrets", "custom"] },
-        "staleFactPolicy": { "type": "string", "description": "How persisted facts are trusted before use or promotion.", "enum": ["validate-before-use", "manual-review"] },
-        "promotionPolicy": { "type": "string", "description": "How repeated lessons become durable repo instructions/config.", "enum": ["propose", "approval-required", "manual"] },
-        "promoteAfterOccurrences": { "type": "integer", "description": "How many repeated observations before Architrave should propose promotion into config/AGENTS/docs.", "minimum": 1 },
-        "promoteTargets": { "type": "array", "description": "Allowed durable destinations for promoted lessons.", "items": { "type": "string", "enum": ["architrave.config.json", "AGENTS.md", ".github/instructions", "docs"] } }
+        "staleFactPolicy": { "type": "string", "description": "Deprecated and ignored compatibility key; remove it.", "enum": ["validate-before-use", "manual-review"] },
+        "promotionPolicy": { "type": "string", "description": "Deprecated and ignored compatibility key; remove it. Promotion always needs a digest-bound owner approval.", "enum": ["propose", "approval-required", "manual"] },
+        "promoteAfterOccurrences": { "type": "integer", "description": "Deprecated and ignored compatibility key; remove it.", "minimum": 1 },
+        "promoteTargets": { "type": "array", "description": "Deprecated and ignored compatibility key; remove it. Protected instruction/policy files are always refused.", "items": { "type": "string", "enum": ["architrave.config.json", "AGENTS.md", ".github/instructions", "docs"] } }
       }
     }
   },

@@ -4043,6 +4043,17 @@ class RunStore:
     def recover_workers(self, run_id: str, *, task_id: str | None = None) -> dict[str, Any]:
         """Close orphan/expired records; an explicit failed task recovery never runs commands."""
         def mutate(state: dict[str, Any]) -> dict[str, Any]:
+            for worker in state["workers"]:
+                if worker["status"] != "RUNNING" or worker.get("adapter") != "native":
+                    continue
+                binding = worker.get("nativeBinding") or {}
+                raise RuntimeFailure(
+                    "NATIVE_RECOVERY_PENDING",
+                    "worker recovery cannot close a native lease without positive host reconciliation",
+                    details={"taskId": worker.get("taskId"),
+                             "attemptId": worker["id"], "hostTaskId": binding.get("hostTaskId"),
+                             "hostDisposition": "unconfirmed"},
+                )
             closed = []
             now = dt.datetime.now(dt.timezone.utc)
             for task in state["tasks"]:
@@ -5481,6 +5492,20 @@ class RunStore:
         def mutate(state: dict[str, Any]) -> dict[str, Any]:
             if Path(state["baseline"]["repository"]).resolve() != self.repository:
                 raise RuntimeFailure("STALE_REPOSITORY", "Run belongs to a different repository")
+            native_tasks = [task for task in state["tasks"]
+                            if task["status"] == "RUNNING"
+                            and task["workerProfile"] in {"native", "copilot", "claude", "codex"}]
+            if native_tasks:
+                task = native_tasks[0]
+                lease = task.get("lease") or {}
+                worker = next((item for item in state["workers"] if item["id"] == lease.get("owner")), None)
+                binding = (worker or {}).get("nativeBinding") or {}
+                raise RuntimeFailure(
+                    "NATIVE_RECOVERY_PENDING",
+                    "resume cannot close a native worker lease without positive host cancellation/removal reconciliation",
+                    details={"taskId": task["id"], "attemptId": lease.get("owner"),
+                             "hostTaskId": binding.get("hostTaskId"), "hostDisposition": "unconfirmed"},
+                )
             if drift:
                 state["baseline"]["commit"] = identity["commit"]
                 state["baseline"]["branch"] = identity["branch"]
@@ -6324,17 +6349,6 @@ DEFAULT_RISK_GATES = {
     "R3": ["deterministic", "e2e-or-reality", "semantic-independent-2"],
     "R4": ["deterministic", "e2e-or-reality", "semantic-independent-2", "security", "policy"],
 }
-
-
-def evaluation_config(repository: str) -> dict[str, Any]:
-    path = Path(repository) / "architrave.config.json"
-    if not path.is_file():
-        return {}
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return value.get("evaluation") or {} if isinstance(value, dict) else {}
 
 
 def repository_config(repository: str) -> dict[str, Any]:

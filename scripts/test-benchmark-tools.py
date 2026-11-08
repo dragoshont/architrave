@@ -414,6 +414,20 @@ class BenchmarkExecutionTests(unittest.TestCase):
         self.assertIn(str(Path(BENCH.sys.executable)), resolved)
         self.assertEqual(results[0]["command"], resolved)
 
+    def test_self_hosted_validation_commands_name_existing_scripts(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        scenarios = json.loads((root / "benchmarks/scenarios.json").read_text(encoding="utf-8"))["scenarios"]
+        checked = 0
+        for scenario in scenarios:
+            if scenario.get("fixture") != "..":
+                continue
+            for command in scenario.get("validation", []):
+                for token in command.split():
+                    if token.startswith(("scripts/", "gates/", "harness/")):
+                        checked += 1
+                        self.assertTrue((root / token).is_file(), f"{scenario['id']}: missing {token}")
+        self.assertGreater(checked, 0)
+
     def test_summary_surfaces_host_binding_and_honor(self) -> None:
         row = {
             "scenario": "task",

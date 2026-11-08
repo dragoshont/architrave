@@ -40,6 +40,24 @@ def global_instruction(root: Path, target: str) -> bool:
     ) for name in names)
 
 
+PROTECTED_FILES = {"agents.md", "claude.md", "spec.md", "architrave.config.json"}
+PROTECTED_DIRS = (".github/", ".architrave/", ".claude/", ".codex/", "agents/", "skills/", "gates/", "harness/")
+
+
+def protected_target(root: Path, relative: str) -> bool:
+    name = relative.casefold()
+    configured = set()
+    config = root / "architrave.config.json"
+    try:
+        value = json.loads(config.read_text(encoding="utf-8")).get("requirements") if config.is_file() else None
+        if isinstance(value, str):
+            configured.add(value.replace("\\", "/").removeprefix("./").casefold())
+    except (OSError, ValueError, AttributeError):
+        return True
+    return (name in PROTECTED_FILES | configured or name.startswith(PROTECTED_DIRS)
+            or global_instruction(root, relative))
+
+
 def target_digest(root: Path, target: str) -> str:
     path = repo_path(root, target)
     return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else "missing"
@@ -253,6 +271,10 @@ def run_check(root: Path, row: dict, phase: str, command: str | None, timeout: f
 
 
 def promote(root: Path, args: argparse.Namespace) -> None:
+    if args.apply:
+        raise ValueError("AUTHENTICATED_APPROVAL_REQUIRED: automatic lesson application is retired; "
+                         "a digest and --by cannot authenticate owner approval. Review the proposal "
+                         "and apply an authorized edit through the current host.")
     from validate_learning import validate
     _, errors = validate(root)
     if errors:
@@ -276,21 +298,24 @@ def promote(root: Path, args: argparse.Namespace) -> None:
     target = repo_path(root, args.target)
     if target.suffix.casefold() != ".md":
         raise ValueError("target must be a Markdown file")
+    relative = target.relative_to(root).as_posix()
+    if protected_target(root, relative):
+        raise ValueError("target is a protected instruction/policy/evidence file; edit it by hand with review")
     heading = getattr(args, "heading", "Promoted Lessons")
     if not heading.strip() or "\n" in heading or "\r" in heading:
         raise ValueError("heading must be one nonempty line")
-    entry = "- " + row["lesson"]
-    if not args.apply:
-        print(f"DRY RUN: would append to {args.target} under heading '{heading}':\n{entry}")
-        return
-    text = target.read_text(encoding="utf-8") if target.exists() else ""
-    if not re.search(r"^##\s+" + re.escape(heading) + r"$", text, re.MULTILINE):
-        text += ("\n" if text else "") + f"## {heading}\n\n"
-    elif text and not text.endswith("\n"):
-        text += "\n"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(text + entry + "\n", encoding="utf-8")
-    print(f"promoted lesson to {args.target}")
+    lesson = row["lesson"]
+    evidence = row.get("evidence", "").strip() or "-"
+    if any(mark in value for value in (lesson, evidence) for mark in ("<!--", "-->")):
+        raise ValueError("lesson text and evidence cannot contain HTML comment markers")
+    # Identify the proposal, not authority to apply it.
+    digest = hashlib.sha256(json.dumps(
+        {"row": row, "target": relative, "target_sha256": target_digest(root, relative),
+         "heading": heading}, sort_keys=True).encode("utf-8")).hexdigest()
+    print(f"DRY RUN: proposed addition to {relative} under heading '{heading}':\n- {lesson}\n"
+          f"proposal: {digest}\nprovenance: {json.dumps(row, sort_keys=True)}\n"
+          "No files changed. Apply only as an owner-authorized, reviewed source edit; "
+          "rollback is the inverse of that edit.")
 
 
 def parser() -> argparse.ArgumentParser:
@@ -325,7 +350,10 @@ def parser() -> argparse.ArgumentParser:
         else:
             promotion.add_argument("--index", type=int, required=True)
         promotion.add_argument("--target", required=True)
-        promotion.add_argument("--apply", action="store_true")
+        promotion.add_argument("--apply", action="store_true",
+                               help="retired: refuses with AUTHENTICATED_APPROVAL_REQUIRED")
+        promotion.add_argument("--approve", help="deprecated; cannot authorize application")
+        promotion.add_argument("--by", help="deprecated; caller identity is not authentication")
     for subparser in commands.choices.values():
         subparser.add_argument("--repo", default=".")
     return result

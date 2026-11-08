@@ -381,6 +381,11 @@ Verify: `make e2e`
             self.assertIn("not a reviewer role", out)
         code, out = self.requirements(example.replace(row, row + f"; review: {good}. PASS"))
         self.assertIn("review note must read", out)
+        shared = "5fffffff-1111-2222-3333-444444444444"
+        session(shared, "architrave:adversarial-judge", "Verdict: PASS\nREQ-02 meets its acceptance.",
+                "Verdict: REVISE\nREQ-03 lacks the restart case.")
+        code, out = self.requirements(example.replace(row, row + f"; review: {shared} PASS"))
+        self.assertEqual(code, 0, "a later unrelated REVISE in the same reviewer session keeps REQ-02's PASS: " + out)
         lane = ("\n| Lane | Repo | Project ID | Branch | Push target | REQ IDs | Depends on | Session ID | Assignment ID | State | "
                 "Mutable paths | Heavy build | Preflight | Preflight evidence | Preflight reported | Owner-only decisions | Superseded by |\n"
                 + "|---" * 17 + "|\n| L1 | me/app | p | b | private | REQ-02 | - | - | - | done | src | no | ok | - | no | [] | - |\n")
@@ -839,6 +844,55 @@ class ReviewVerification(unittest.TestCase):
                                ("Verdict: pass", "PASS"), ("Pass the gate first.", None)):
             self.assertEqual(self.gate.ruling(text), expected, text)
         self.assertEqual(self.gate.review_session(report, "PASS")[0], "contradicted")
+
+    def test_verdict_is_bound_to_its_subject_not_the_reviewers_latest_report(self):
+        sid = "abababab-1111-2222-3333-444444444444"
+        judge = {"type": "subagent.selected", "data": {"agentName": "architrave:adversarial-judge"}}
+        done = lambda text: {"type": "session.task_complete", "data": {"summary": text}}
+        self.log(sid, [judge, done("Verdict: PASS\nREQ-7 criteria met at abc1234."),
+                       done("Verdict: REVISE\nREQ-8 misses the restart case; REQ-70 untouched.")])
+        self.assertEqual(self.gate.review_session(sid, "PASS", subject="REQ-7")[0], "verified",
+                         "an unrelated later REVISE cannot rewrite task REQ-7's PASS")
+        self.assertEqual(self.gate.review_session(sid, "PASS", subject="REQ-8")[0], "contradicted")
+        self.assertEqual(self.gate.review_session(sid, "REVISE", subject="REQ-8")[0], "verified")
+        self.assertEqual(self.gate.review_session(sid, "PASS")[0], "contradicted", "no subject keeps the whole-session check")
+        state, reason = self.gate.review_session(sid, "PASS", subject="REQ-9")
+        self.assertEqual(state, "contradicted", "reports naming only other REQs never review REQ-9")
+        self.assertIn("never reported on REQ-9", reason)
+        self.assertFalse(self.gate.mentions("REQ-70 untouched", "REQ-7"), "a longer id is not this subject")
+        self.assertTrue(self.gate.mentions("fixed REQ-7.", "REQ-7"))
+        self.log(sid, [judge, done("Verdict: PASS\nREQ-7 criteria met."), done("Verdict: REVISE\nREQ-7 regressed on the new source.")])
+        self.assertEqual(self.gate.review_session(sid, "PASS", subject="REQ-7")[0], "contradicted",
+                         "the latest report on the same subject still decides it")
+        self.assertEqual(self.gate.review_session(sid, "PASS", final=False, subject="REQ-7")[0], "verified")
+        self.log(sid, [judge, done("Verdict: PASS\nREQ-7 criteria met."),
+                       done("Verdict: REVISE\nOverall regression.")])
+        self.assertEqual(self.gate.review_session(sid, "PASS", subject="REQ-7")[0], "contradicted",
+                         "a later general report invalidates the earlier scoped PASS")
+        self.assertEqual(self.gate.review_session(sid, "REVISE", subject="REQ-7")[0], "verified")
+        general = "acacacac-1111-2222-3333-444444444444"
+        self.log(general, [judge, done("Verdict: PASS on the whole change."), done("Verdict: REVISE\nREQ-8 incomplete.")])
+        self.assertEqual(self.gate.review_session(general, "PASS", subject="REQ-7")[0], "verified", "a general report applies")
+        self.assertEqual(self.gate.review_session("adadadad-1111-2222-3333-444444444444", "PASS", subject="REQ-7")[0], "unknown",
+                         "an unlogged reviewer stays unverified, never positive evidence")
+        digest = "f" * 64
+        self.log(sid, [judge, done(f"Verdict: PASS\nDelivery digest: {digest}"), done("Verdict: REVISE\nREQ-8 unrelated.")])
+        self.assertEqual(self.gate.review_session(sid, "PASS", subject=digest)[0], "verified")
+        self.assertEqual(self.gate.review_session(sid, "PASS", subject="e" * 64)[0], "contradicted",
+                         "a digest-bound report is not a general approval of different source bytes")
+        self.log(sid, [judge, done("Verdict: PASS on the whole change.")])
+        self.assertEqual(self.gate.review_session(sid, "PASS", subject=digest)[0], "contradicted",
+                         "an unbound report cannot certify an exact delivery")
+        legacy = "aeaeaeae-1111-2222-3333-444444444444"
+        self.log(legacy, [judge, done("Verdict: PASS\nREQ-48 lane reviewed.")])
+        row = lambda status: ("| ID | Requirement | Acceptance | Owner | Status | Evidence |\n|---|---|---|---|---|---|\n"
+                              f"| REQ-49 | x | y | lane | {status} | done; review: {legacy} PASS |\n")
+        errors = lambda status, selected=None: [e for e in self.gate.parse_requirements(row(status), selected)[2] if "REQ-49" in e]
+        self.assertEqual(errors("accepted"), [], "accepted history whose reviewer named another REQ stays readable")
+        for status, selected in (("accepted", {"REQ-49"}), ("in-progress", None)):
+            self.assertTrue(any("never reported on REQ-49" in e for e in errors(status, selected)), status)
+        self.log(legacy, [judge, done("Verdict: PASS\nREQ-48 lane reviewed."), done("Verdict: REVISE\nREQ-48 regressed.")])
+        self.assertTrue(errors("accepted"), "the legacy fallback is still the whole-session check")
 
     def test_board_note_reminds_only_a_coordinator_without_a_live_watcher(self):
         coordinator, child = "aaaaaaaa-9999-2222-3333-444444444444", "bbbbbbbb-9999-2222-3333-444444444444"

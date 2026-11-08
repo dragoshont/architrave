@@ -35,7 +35,7 @@
       "lane": "knowledge",
       "tags": ["authoring", "agent", "role-boundary"],
       "prompt": "Benchmark task. Make a focused improvement to `agents/runtime-observer.agent.md` so the read-only role reports only source-backed runtime observations and labels unavailable evidence rather than inferring successful state. Acceptance: inspect the current role and its runtime evidence contract; make the smallest coherent change; preserve host-neutral formatting; do not add tools, permissions, model pins, or a new role; run the repository manifest check. This benchmark has pre-approved proceeding without asking follow-up questions unless impossible.",
-      "validation": ["scripts/check-manifests.sh"],
+      "validation": ["{python} scripts/check_manifests.py"],
       "expectedArtifacts": [".architrave/runs"],
       "scoring": {
         "mustShow": ["existing role boundary preserved", "source-backed observations", "unavailable evidence remains explicit", "no permission expansion"],
@@ -49,7 +49,7 @@
       "lane": "knowledge",
       "tags": ["authoring", "skill", "packaging"],
       "prompt": "Benchmark task. Add an explicit-only plugin skill named `architrave-release-notes` for drafting release notes from checked-in repository evidence. Acceptance: keep its scope narrow and host-neutral; include a clear trigger and non-trigger; never invent claims, credentials, or author experience; drafting does not authorize publication; update the package's maintained skill inventory/tests; do not create project-local duplicate skills; run the manifest check. This benchmark has pre-approved proceeding without asking follow-up questions unless impossible.",
-      "validation": ["scripts/check-manifests.sh"],
+      "validation": ["{python} scripts/check_manifests.py"],
       "expectedArtifacts": [".architrave/runs", "skills/architrave-release-notes/SKILL.md"],
       "scoring": {
         "mustShow": ["explicit-only trigger and non-trigger", "repository-grounded claims", "plugin inventory updated", "no duplicate project skill"],

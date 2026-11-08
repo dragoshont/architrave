@@ -57,6 +57,10 @@ def main():
         gate('checks')
         assert (repo / 'build.ran').is_file() and (repo / 'test.ran').is_file(), 'build/test did not execute'
         gate('reconcile', contains=('UI design reconciliation not applicable for knowledge profile',))
+        config(dict(knowledge, learning={'promotionPolicy': 'approval-required', 'lessonsPath': 'lessons.md'}))
+        gate('checks', '--quick', contains=('WARN  ignored deprecated config key(s): learning.promotionPolicy; remove them',))
+        config(knowledge)
+        assert 'WARN' not in gate('checks', '--quick').stdout, 'no deprecation warning without ignored keys'
         gate('quality-gate', contains=(message, 'knowledge profile config valid'))
         result = gate('quality-gate', '--hook-json')
         assert result.stdout == '{"continue":true}' and result.stderr == '', 'hook success stream contract'

@@ -58,6 +58,45 @@ class ReviewLauncherTests(unittest.TestCase):
         self.assertIn("options must include kind DO_NOTHING", errors)
         self.assertIn("winnerBeatsDoNothing must explain why the winner beats doing nothing", errors)
 
+    def test_tournament_result_binds_task_source_without_side_effects(self) -> None:
+        fixture = json.loads((ROOT / "scripts" / "fixtures" / "tournament-result.json").read_text(encoding="utf-8"))
+        bound = {**fixture, "task": "T1", "source": "abc"}
+        result, ledger = self.run_dir / "result.json", self.run_dir / "tournaments.jsonl"
+        result.write_text(json.dumps(bound), encoding="utf-8")
+        quiet = contextlib.redirect_stdout(io.StringIO())
+        with quiet:
+            self.assertEqual(1, CLI.tournament_review(self.run_dir, False, result, {"task": "T2"}))
+            self.assertEqual(1, CLI.tournament_review(self.run_dir, False, result, {"task": "T1", "source": "old"}))
+            self.assertEqual(2, CLI.tournament_review(self.run_dir, False, result, None, ledger))
+            self.assertFalse(ledger.exists())
+            self.assertEqual(0, CLI.tournament_review(self.run_dir, False, result, {"task": "T1", "source": "abc"}))
+            self.assertEqual(2, CLI.tournament_review(self.run_dir, False, result, {"task": "T1"}, ledger))
+        self.assertFalse(ledger.exists())
+
+    def test_malformed_tournament_results_and_ledger_fail_explicitly(self) -> None:
+        fixture = json.loads((ROOT / "scripts" / "fixtures" / "tournament-result.json").read_text(encoding="utf-8"))
+        for result in ([], {**fixture, "options": 1}, {**fixture, "options": [{"kind": []}]},
+                       {**fixture, "winner": "NOT_AN_OPTION"}, {**fixture, "winnerBeatsDoNothing": True}):
+            self.assertTrue(CLI.validate_tournament_result(result))
+        result, ledger = self.run_dir / "result.json", self.run_dir / "tournaments.jsonl"
+        result.write_text(json.dumps({**fixture, "task": "T1"}), encoding="utf-8")
+        for content in ("not json", "null", "[]"):
+            ledger.write_text(content, encoding="utf-8")
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(2, CLI.tournament_review(self.run_dir, False, result, {"task": "T1"}, ledger))
+            self.assertEqual(content, ledger.read_text(encoding="utf-8"))
+
+    def test_tournament_validation_cannot_create_an_authority_ledger(self) -> None:
+        fixture = json.loads((ROOT / "scripts" / "fixtures" / "tournament-result.json").read_text(encoding="utf-8"))
+        result, ledger = self.run_dir / "result.json", self.run_dir / "tournaments.jsonl"
+        result.write_text(json.dumps({**fixture, "task": "T1"}), encoding="utf-8")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(2, CLI.tournament_review(self.run_dir, False, result, {"task": "T1"}, ledger))
+        self.assertFalse(ledger.exists())
+        self.assertTrue(CLI.validate_tournament_result({**fixture, "options": fixture["options"] * 2}))
+        self.assertTrue(CLI.validate_tournament_result({**fixture, "options": [
+            {"kind": "DO_NOTHING"}, {"kind": "SMALLEST_VIABLE"}]}))
+
     def test_audit_numbers_do_not_turn_unknown_or_invalid_usage_into_zero(self) -> None:
         for value in (None, True, -1, "12", 1.5):
             self.assertIsNone(session_audit.number(value))

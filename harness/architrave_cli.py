@@ -62,30 +62,54 @@ def semantic_review(run_dir: Path, provider: str, execute: bool) -> int:
     return 0
 
 
-def validate_tournament_result(result: object) -> list[str]:
+def validate_tournament_result(result: object, bind: dict[str, str] | None = None) -> list[str]:
     """Typed tournament result: DO_NOTHING and SMALLEST_VIABLE baselines plus why the winner beats doing nothing."""
+    if not isinstance(result, dict):
+        return ["result must be an object"]
     errors = []
-    options = result.get("options") if isinstance(result, dict) else None
-    kinds = {item.get("kind") for item in options or [] if isinstance(item, dict)}
+    for key, expected in (bind or {}).items():
+        if not isinstance(result, dict) or result.get(key) != expected:
+            errors.append(f"result {key} must be {expected!r} (stale or unrelated result)")
+    options = result.get("options")
+    if not isinstance(options, list) or not all(
+            isinstance(item, dict) and isinstance(item.get("kind"), str) for item in options):
+        return errors + ["options must be a list of objects with string kinds"]
+    kinds = {item["kind"] for item in options}
+    if not 2 <= len(options) <= 4 or len(kinds) != len(options):
+        errors.append("options must contain two to four distinct kinds")
+    if any(not isinstance(item.get("summary"), str) or not item["summary"].strip() for item in options):
+        errors.append("every option needs a nonempty summary")
     for kind in ("DO_NOTHING", "SMALLEST_VIABLE"):
         if kind not in kinds:
             errors.append(f"options must include kind {kind}")
-    if not isinstance(result, dict) or not result.get("winner"):
+    winner = result.get("winner")
+    if not isinstance(winner, str) or not winner.strip():
         errors.append("winner is required")
-    if not isinstance(result, dict) or not str(result.get("winnerBeatsDoNothing") or "").strip():
+    elif winner not in kinds:
+        errors.append("winner must name an option kind")
+    explanation = result.get("winnerBeatsDoNothing")
+    if not isinstance(explanation, str) or not explanation.strip():
         errors.append("winnerBeatsDoNothing must explain why the winner beats doing nothing")
     return errors
 
 
-def tournament_review(run_dir: Path, execute: bool, result_path: Path | None = None) -> int:
+def tournament_review(run_dir: Path, execute: bool, result_path: Path | None = None,
+                      bind: dict[str, str] | None = None, allowance: Path | None = None) -> int:
+    if allowance is not None:
+        print("NATIVE_HOST_REQUIRED: --allowance cannot establish task lineage or authority; "
+              "retain the existing task budget in the owning host, not a second ledger.", file=sys.stderr)
+        return 2
     if result_path is not None:
         try:
-            errors = validate_tournament_result(json.loads(result_path.read_text(encoding="utf-8")))
+            raw = result_path.read_bytes()
+            errors = validate_tournament_result(json.loads(raw), bind)
         except (OSError, json.JSONDecodeError) as exc:
             errors = [f"unreadable tournament result ({exc})"]
         for error in errors:
             print(f"FAIL  {error}")
         print("TOURNAMENT-RESULT: FAIL" if errors else "TOURNAMENT-RESULT: PASS")
+        if not errors:
+            print("Advisory shape/binding check only; not authenticated review, authority or budget admission.")
         return 1 if errors else 0
     if not run_dir.is_dir():
         print("tournament-review: run dir not found", file=sys.stderr)
@@ -121,19 +145,26 @@ def main(argv: list[str] | None = None) -> int:
     semantic = subparsers.add_parser("semantic-review")
     semantic.add_argument("--provider", choices=["copilot", "claude", "both"], default="both", help=argparse.SUPPRESS)
     semantic.add_argument("--run", dest="run_dir")
-    semantic.add_argument("--execute", action="store_true")
+    semantic.add_argument("--execute", action="store_true",
+                        help="retired: exits 2 with NATIVE_HOST_REQUIRED; run the role in the current host")
     tournament = subparsers.add_parser("tournament-review")
     tournament.add_argument("--run", dest="run_dir")
-    tournament.add_argument("--execute", action="store_true")
+    tournament.add_argument("--execute", action="store_true",
+                        help="retired: exits 2 with NATIVE_HOST_REQUIRED; run the role in the current host")
     tournament.add_argument("--result", help="validate a returned tournament result JSON")
+    tournament.add_argument("--task", help="require the result's task to match (original decision task id)")
+    tournament.add_argument("--source", help="require the result's source revision to match")
+    tournament.add_argument("--allowance", help="retired: exits 2; budgets stay with the owning task/host")
     init = subparsers.add_parser("init-run", help="legacy compact Run v1 record")
     init.add_argument("run_id", nargs="?")
     stale = subparsers.add_parser("mark-stale-learning")
     stale.add_argument("--apply", action="store_true")
     stale.add_argument("--repo", default=".")
     review = subparsers.add_parser("semantic-learning-review")
-    review.add_argument("--provider", choices=["copilot", "claude", "both"], default="both")
-    review.add_argument("--execute", action="store_true")
+    review.add_argument("--provider", choices=["copilot", "claude", "both"], default="both",
+                        help="deprecated and ignored; review runs in the current host")
+    review.add_argument("--execute", action="store_true",
+                        help="retired: exits 2 with NATIVE_HOST_REQUIRED; run the role in the current host")
     review.add_argument("--repo", default=".")
     review.add_argument("--prompt")
     review.add_argument("--output")
@@ -176,8 +207,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "tournament-review":
         if not args.result and not args.run_dir:
             parser.error("tournament-review needs --run or --result")
+        bind = {key: value for key, value in (("task", args.task), ("source", args.source)) if value}
         return tournament_review(Path(args.run_dir or ".").resolve(), args.execute,
-                                 Path(args.result) if args.result else None)
+                                 Path(args.result) if args.result else None, bind,
+                                 Path(args.allowance) if args.allowance else None)
     return 2
 
 

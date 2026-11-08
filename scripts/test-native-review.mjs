@@ -21,7 +21,7 @@ let conflictCompletion = false;
 const listeners = new Set();
 const tasks = new Map();
 let assertions = 0;
-const ok = value => { assert.ok(value); assertions++; };
+const ok = (value, message) => { assert.ok(value, message || JSON.stringify(value)); assertions++; };
 try {
     const setup = spawnSync(python, ["-c", `
 import sys, json
@@ -36,11 +36,11 @@ git('init','-q');git('config','user.name','Fixture');git('config','user.email','
 (r/'README.md').write_text('Public synthetic source\\n')
 (r/'public').mkdir();(r/'public'/'example.md').write_text('Public tracked nested source\\n')
 (r/'src').mkdir();(r/'src'/'sk-abcdefgh.py').write_text('Public filename fixture, not a credential\\n')
-(r/'architrave.config.json').write_text(json.dumps({'kind':'knowledge','build':'git diff --check','test':'git diff --check','review':{'crossFamily':True}}))
+(r/'architrave.config.json').write_text(json.dumps({'kind':'knowledge','build':'git diff --check','test':'git diff --check','review':{'crossFamily':True},'workers':{'maxParallel':20}}))
 git('add','.');git('commit','-qm','fixture')
 s=RunStore(r)
 s.create(run_id='review',goal='Source',outcome='Reviewed',criteria=[{'id':'QUAL','description':'Review source','scope':'fixture','risk':'R3','verificationType':'semantic','blocking':True}])
-s.add_task('review',{'id':'source','objective':'Review source','acceptanceCriteria':['QUAL'],'workerProfile':'native','risk':'R3','pushback':'KEEP:fixture','workPacket':{'budget':{'timeoutSeconds':120,'maxOutputBytes':8192,'maxTurns':20}}})
+s.add_task('review',{'id':'source','objective':'Read source','acceptanceCriteria':['QUAL'],'workerProfile':'native','risk':'R3','pushback':'KEEP:fixture','workPacket':{'budget':{'timeoutSeconds':120,'maxOutputBytes':8192,'maxTurns':20}}})
 `, ROOT, repo], { encoding: "utf8" });
     assert.equal(setup.status, 0, setup.stderr);
     await mkdir(join(trust, "harness"), { recursive: true });
@@ -119,7 +119,7 @@ s.add_task('review',{'id':'source','objective':'Review source','acceptanceCriter
             };
         },
     };
-    const context = vm.createContext({ Buffer, process, setTimeout, clearTimeout });
+    const context = vm.createContext({ Buffer, process, performance, setTimeout, clearTimeout });
     const module = new vm.SourceTextModule(source, {
         context, identifier: entry, initializeImportMeta: meta => { meta.url = new URL(`file:///${entry.replaceAll("\\", "/")}`).href; },
     });
@@ -209,7 +209,7 @@ sys.path.insert(0, str(Path(sys.argv[1])/'harness'))
 from architrave_runtime import RunStore
 s=RunStore(Path(sys.argv[2]))
 s.create(run_id='dispatch',goal='Bounded dispatch',outcome='Bounded',criteria=[{'id':'FIX','description':'d','scope':'fixture','risk':'R0','verificationType':'deterministic','blocking':True}])
-for t in ['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13']:
+for t in ['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13','t14']:
     s.add_task('dispatch',{'id':t,'objective':'Read README','acceptanceCriteria':['FIX'],'workerProfile':'native','risk':'R0','pushback':'KEEP:fixture','maxAttempts':2,'workPacket':{'budget':{'timeoutSeconds':3,'maxOutputBytes':800,'maxTurns':4}}})
 `, ROOT, repo], { encoding: "utf8" });
     assert.equal(dispatchRun.status, 0, dispatchRun.stderr);
@@ -218,23 +218,28 @@ for t in ['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13']:
     const original = { ...taskRpc };
     const hang = () => new Promise(() => {});
     const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-    const call = async (tool, args, label, limit = 20000) => {
+    const call = async (tool, args, label, limit = 20000, signal) => {
         const started = Date.now();
         let timer;
-        const reply = await Promise.race([tool.handler(args, { sessionId: "owner-one", toolCallId: label }),
+        const reply = await Promise.race([tool.handler(args, { sessionId: "owner-one", toolCallId: label, signal }),
             new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`TEST_TIMEOUT after ${limit}ms (${label})`)), limit); })])
             .finally(() => clearTimeout(timer));
         const value = JSON.parse(reply.textResultForLlm);
         return Array.isArray(value) ? { items: value, elapsed: Date.now() - started } : { ...value, elapsed: Date.now() - started };
     };
-    const dispatch = (task_id, label = task_id, extra = {}) => call(dispatchTool, { repo, run_id: "dispatch", task_id, ...extra }, label);
+    const dispatch = async (task_id, label = task_id, extra = {}) => {
+        return call(dispatchTool, { repo, run_id: "dispatch", task_id, ...extra }, label);
+    };
     const retry = { retry_hypothesis: "Fixture: the previous host owner was reconciled, so a fresh start can complete." };
-    const cancelPacket = task_id => call(cancelDefinition, { repo, run_id: "dispatch", task_id }, `cancel-${task_id}`);
+    const cancelPacket = async task_id => {
+        return call(cancelDefinition, { repo, run_id: "dispatch", task_id }, `cancel-${task_id}`);
+    };
     const blocked = value => value.status === "failed" && value.error?.code === "NATIVE_RECOVERY_PENDING";
     let agentNumber = 0;
     const running = async args => {
         const id = `dispatch-agent-${++agentNumber}`;
-        tasks.set(id, { id, type: "agent", status: "running", prompt: args.prompt });
+        tasks.set(id, { id, type: "agent", status: "running", prompt: args.prompt,
+            name: args.name, description: args.description });
         return { agentId: id };
     };
     const completing = async args => {
@@ -252,23 +257,55 @@ for t in ['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13']:
     const failures = [];
     const scenario = async (name, body) => {
         Object.assign(taskRpc, original);
-        try { await body(); } catch (error) { failures.push(`${name}: ${error.message}`); }
+        try { await body(); } catch (error) { failures.push(`${name}: ${error.stack || error.message}`); }
         finally { Object.assign(taskRpc, original); }
     };
     const within = value => value.elapsed < 8000;
 
     await scenario("fixture: hung startAgent is bounded at admission and retains recovery", async () => {
-        taskRpc.startAgent = hang;
+        let releaseStart;
+        let attemptMarker;
+        taskRpc.startAgent = args => {
+            attemptMarker = args.description;
+            return new Promise(resolve => { releaseStart = resolve; });
+        };
         const first = await dispatch("t1");
         ok(first.status === "failed" && first.error?.stage === "admission" && within(first));
         ok(first.hostCancellationConfirmed === false);
         ok(blocked(await dispatch("t1", "t1-retry")));
+        const configPath = join(repo, "architrave.config.json");
+        const config = JSON.parse(await readFile(configPath, "utf8"));
+        config.workers.maxParallel = 1;
+        await writeFile(configPath, JSON.stringify(config));
+        let capacityError;
+        try { await dispatch("t1-capacity-probe"); } catch (error) { capacityError = error; }
+        ok(capacityError?.message.includes("CHILD_LIMIT"));
+        tasks.set("late-t1", { id: "late-t1", type: "agent", status: "running", description: attemptMarker });
+        releaseStart({ agentId: "late-t1" });
+        taskRpc.startAgent = completing;
+        let retried;
+        for (let attempt = 0; attempt < 100; attempt++) {
+            retried = await dispatch("t1", "t1-after-late-cleanup", retry);
+            if (!blocked(retried)) break;
+            await sleep(20);
+        }
+        ok(retried && !blocked(retried) && retried.hostTaskId);
+        ok(!tasks.has("late-t1"));
+        config.workers.maxParallel = 20;
+        await writeFile(configPath, JSON.stringify(config));
     });
     await scenario("fixture: late admission after an empty listing is retained and cleaned", async () => {
         let lateAdmitted;
+        let attemptMarker;
+        let cancelCalls = 0;
+        let removeCalls = 0;
+        let releaseCancel;
         const late = new Promise(resolve => { lateAdmitted = resolve; });
+        const cancelGate = new Promise(resolve => { releaseCancel = resolve; });
         taskRpc.startAgent = args => new Promise(resolve => setTimeout(() => {
-            tasks.set("late-1", { id: "late-1", type: "agent", status: "running", prompt: args.prompt });
+            attemptMarker = args.description;
+            tasks.set("late-1", { id: "late-1", type: "agent", status: "running",
+                prompt: args.prompt, description: args.description });
             resolve({ agentId: "late-1" });
             lateAdmitted();
         }, 5000));
@@ -276,13 +313,36 @@ for t in ['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13']:
         ok(first.status === "failed" && first.error?.stage === "admission" && first.elapsed < 4900);
         ok(!tasks.has("late-1") && first.hostCancellationConfirmed === false);
         ok(blocked(await dispatch("t2", "t2-retry")));
+        taskRpc.cancel = async ({ id }) => {
+            cancelCalls++;
+            if (cancelCalls === 1) await cancelGate;
+            if (tasks.has(id)) tasks.get(id).status = "cancelled";
+            return { cancelled: true };
+        };
+        taskRpc.remove = async ({ id }) => {
+            removeCalls++;
+            tasks.delete(id);
+            return { removed: true };
+        };
         await Promise.race([late, sleep(15000).then(() => { throw new Error("TEST_TIMEOUT: late admission never fired"); })]);
-        await sleep(300); // Let the bridge's background settle cancel and remove the late owner.
+        for (let attempt = 0; attempt < 100 && cancelCalls === 0; attempt++) await sleep(10);
+        const lateCleanupStarted = Boolean(attemptMarker && cancelCalls === 1);
+        const reconciliation = cancelPacket("t2");
+        await sleep(50);
+        const serialized = cancelCalls === 1 && removeCalls === 0;
+        releaseCancel();
+        const released = await reconciliation;
+        ok(lateCleanupStarted && serialized);
+        ok(released.status === "ok" && released.hostCancellationConfirmed && released.hostRemovalConfirmed);
+        ok(cancelCalls === 1 && removeCalls === 1);
         ok(!tasks.has("late-1"));
-        const cancelled = await cancelPacket("t2");
-        ok(cancelled.recoveryOwner === "late-1" && cancelled.cleanup?.confirmed === true);
+        taskRpc.cancel = original.cancel;
+        taskRpc.remove = original.remove;
+        taskRpc.startAgent = completing;
+        const retried = await dispatch("t2", "t2-after-late-cleanup", retry);
+        ok(retried.hostTaskId && within(retried));
     });
-    await scenario("fixture: abort before binding adopts the orphan, then unblocks redispatch", async () => {
+    await scenario("fixture: concurrent lost-start recovery adopts one owner, then unblocks redispatch", async () => {
         let starts = 0;
         let orphan;
         taskRpc.startAgent = async args => {
@@ -291,24 +351,95 @@ for t in ['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13']:
         const first = await dispatch("t3");
         ok(first.status === "failed" && first.error?.stage === "admission" && first.hostCancellationConfirmed === false);
         ok(blocked(await dispatch("t3", "t3-retry")) && starts === 1 && tasks.has(orphan));
-        const released = await cancelPacket("t3");
+        let cancelCalls = 0;
+        let removeCalls = 0;
+        let enteredCancel;
+        let releaseCancel;
+        const cancelEntered = new Promise(resolve => { enteredCancel = resolve; });
+        const cancelGate = new Promise(resolve => { releaseCancel = resolve; });
+        taskRpc.cancel = async args => {
+            cancelCalls++;
+            enteredCancel();
+            await cancelGate;
+            return original.cancel(args);
+        };
+        taskRpc.remove = async args => {
+            removeCalls++;
+            return original.remove(args);
+        };
+        const firstRecovery = cancelPacket("t3");
+        await Promise.race([cancelEntered, sleep(2000).then(() => { throw new Error("TEST_TIMEOUT: recovery never reached cancel"); })]);
+        const secondRecovery = cancelPacket("t3");
+        releaseCancel();
+        const [released, joined] = await Promise.all([firstRecovery, secondRecovery]);
+        taskRpc.cancel = original.cancel;
+        taskRpc.remove = original.remove;
+        assert.equal(cancelCalls, 1, "concurrent reconciliations must share one cancellation"); assertions++;
+        assert.equal(removeCalls, 1, "concurrent reconciliations must share one removal"); assertions++;
         ok(released.status === "ok" && released.ownerListing === "adopted" && released.recoveryOwner === orphan);
+        ok(joined.status === "ok" && joined.ownerListing === "adopted" && joined.recoveryOwner === orphan);
+        ok(joined.hostCancellationConfirmed && joined.hostRemovalConfirmed && joined.candidate);
         ok(released.hostCancellationConfirmed === true && released.cleanup?.confirmed === true && !tasks.has(orphan));
         taskRpc.startAgent = completing;
         const again = await dispatch("t3", "t3-again", retry);
         ok(!blocked(again) && again.hostTaskId && within(again));
     });
-    await scenario("fixture: clean startAgent rejection is released by an empty reconcile listing", async () => {
-        taskRpc.startAgent = async () => { throw new Error("fixture host rejected start"); };
+    await scenario("fixture: identical historical prompt is not adopted over attempt identity", async () => {
+        let currentAttempt;
+        const historical = { id: "historical-identical", type: "agent", status: "running",
+            prompt: "same prompt", description: "older attempt" };
+        tasks.set(historical.id, historical);
+        taskRpc.startAgent = async args => {
+            historical.status = "completed";
+            historical.description = args.description;
+            currentAttempt = "current-identical";
+            tasks.set(currentAttempt, { id: currentAttempt, type: "agent", status: "running",
+                prompt: args.prompt, description: args.description });
+            throw new Error("fixture lost startAgent reply");
+        };
+        const first = await dispatch("t12");
+        ok(first.error?.stage === "admission" && blocked(await dispatch("t12", "t12-retry")));
+        const released = await cancelPacket("t12");
+        ok(released.status === "ok" && released.recoveryOwner === currentAttempt);
+        ok(released.hostCancellationConfirmed && released.hostRemovalConfirmed);
+        ok(tasks.has("historical-identical") && !tasks.has(currentAttempt));
+    });
+    await scenario("fixture: empty reconcile listing does not prove a rejected start absent", async () => {
+        let attemptMarker;
+        taskRpc.startAgent = async args => { attemptMarker = args.description; throw new Error("fixture host rejected start"); };
         const first = await dispatch("t10");
         ok(first.status === "failed" && first.error?.stage === "admission" && first.cleanup?.confirmed === false);
         ok(blocked(await dispatch("t10", "t10-retry")));
         const released = await cancelPacket("t10");
-        ok(released.status === "ok" && released.ownerListing === "empty" && released.cleanup?.confirmed === true);
-        ok(released.hostCancellationConfirmed === false);
-        taskRpc.startAgent = completing;
-        const again = await dispatch("t10", "t10-again", retry);
-        ok(!blocked(again) && again.hostTaskId && within(again));
+        ok(blocked(released) && released.cleanup?.confirmed === false);
+        ok(released.hostCancellationConfirmed === false && blocked(await dispatch("t10", "t10-again", retry)));
+        tasks.set("late-t10", { id: "late-t10", type: "agent", status: "running", description: attemptMarker });
+        const adopted = await cancelPacket("t10");
+        ok(adopted.status === "ok" && adopted.recoveryOwner === "late-t10");
+        ok(adopted.hostCancellationConfirmed && adopted.hostRemovalConfirmed);
+    });
+    await scenario("fixture: already aborted invocation never starts", async () => {
+        let starts = 0;
+        const controller = new AbortController();
+        controller.abort();
+        taskRpc.startAgent = async args => { starts++; return completing(args); };
+        const stopped = await call(dispatchTool, { repo, run_id: "dispatch", task_id: "t13" },
+            "aborted-before", 8000, controller.signal);
+        ok(stopped.status === "failed" && starts === 0);
+    });
+    await scenario("fixture: abort during observation confirms cancel and remove separately", async () => {
+        const controller = new AbortController();
+        let owner;
+        taskRpc.startAgent = async args => {
+            ({ agentId: owner } = await running(args));
+            setTimeout(() => controller.abort(), 150);
+            return { agentId: owner };
+        };
+        const stopped = await call(dispatchTool, { repo, run_id: "dispatch", task_id: "t13" },
+            "aborted-during", 20000, controller.signal);
+        ok(stopped.status === "failed" && stopped.error?.code === "NATIVE_ABORTED");
+        ok(stopped.hostCancellationConfirmed === true && stopped.hostRemovalConfirmed === true);
+        ok(owner && !tasks.has(owner));
     });
     await scenario("fixture: hung reconcile listing stays unconfirmed and blocked", async () => {
         taskRpc.startAgent = async args => { await running(args); throw new Error("fixture lost startAgent reply"); };
@@ -324,12 +455,12 @@ for t in ['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13']:
         ok(released.status === "ok" && released.cleanup?.confirmed === true);
     });
     await scenario("fixture: a failure with confirmed cancel and remove releases the identity", async () => {
-        taskRpc.startAgent = async () => ({ agentId: "ghost-t12" }); // Admitted id the host then cannot list.
-        const first = await dispatch("t12");
+        taskRpc.startAgent = async () => ({ agentId: "ghost-t14" }); // Admitted id the host then cannot list.
+        const first = await dispatch("t14");
         ok(first.status === "failed" && first.error?.code === "NATIVE_HOST_FAILED" && first.error?.stage === "observation");
         ok(first.hostCancellationConfirmed === true && first.cleanup?.confirmed === true && within(first));
         taskRpc.startAgent = completing;
-        const again = await dispatch("t12", "t12-again", retry);
+        const again = await dispatch("t14", "t14-again", retry);
         ok(!blocked(again) && again.hostTaskId && within(again));
     });
     await scenario("fixture: hung preflight listing returns a preflight failure without retained identity", async () => {
@@ -375,24 +506,38 @@ for t in ['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13']:
         const adopted = await cancelPacket("t6");
         ok(adopted.adopted === true && adopted.candidate && !tasks.has(first.hostTaskId));
     });
-    await scenario("fixture: hung persistence reply is bounded and adoption avoids redispatch", async () => {
+    await scenario("fixture: hung remove after candidate reply retains candidate and avoids redispatch", async () => {
         let starts = 0;
         taskRpc.startAgent = async args => { starts++; return completing(args); };
         taskRpc.remove = hang;
         const first = await dispatch("t7");
-        ok(first.status === "failed" && within(first));
+        ok(first.status === "failed" && first.error?.stage === "cleanup" && first.candidate && within(first));
         taskRpc.remove = original.remove;
         const adopted = await cancelPacket("t7");
         ok(adopted.adopted === true && starts === 1);
     });
     await scenario("fixture: one hung batch packet does not hold the other past the deadline", async () => {
-        taskRpc.startAgent = args => args.name.endsWith("t8") ? hang() : completing(args);
+        let releaseHung;
+        let attemptMarker;
+        taskRpc.startAgent = args => args.name.includes("t8") ?
+            (attemptMarker = args.description, new Promise(resolve => { releaseHung = resolve; })) : completing(args);
         const batch = await call(batchTool, { repo, run_id: "dispatch", task_ids: ["t8", "t9"] }, "batch");
         // Python per-packet preparation (worktree creation) runs one packet after the other in this fixture,
         // about 10 s for two packets with or without the hang, so the bound is one `within` window per packet.
         ok(batch.elapsed < 2 * 8000 && batch.items.length === 2);
         ok(batch.items[0].status === "failed" && batch.items[0].error?.stage === "admission");
         ok(batch.items[1].hostTaskId && batch.items[1].error?.stage !== "admission");
+        tasks.set("late-t8", { id: "late-t8", type: "agent", status: "running", description: attemptMarker });
+        releaseHung({ agentId: "late-t8" });
+        taskRpc.startAgent = completing;
+        let retried;
+        for (let attempt = 0; attempt < 100; attempt++) {
+            retried = await dispatch("t8", "t8-after-late-cleanup", retry);
+            if (!blocked(retried)) break;
+            await sleep(20);
+        }
+        ok(retried && !blocked(retried) && retried.hostTaskId);
+        ok(!tasks.has("late-t8"));
     });
     if (failures.length) {
         console.error(`FAIL native dispatch fixtures (${failures.length}):\n${failures.join("\n")}`);

@@ -26,13 +26,10 @@
     "defaultAdapter": "native",
     "maxParallel": 2,
     "worktreeRoot": ".architrave/worktrees",
-    "cleanupCompletedWorktrees": true,
     "enabledAdapters": ["native", "shell"]
   },
   "runtime": {
-    "boot": "npm run dev",
     "health": "curl -fsS http://localhost:3000/health",
-    "stop": "npm run dev:stop",
     "web": {
       "url": "http://localhost:3000",
       "e2e": "npx playwright test",

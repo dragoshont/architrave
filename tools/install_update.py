@@ -57,11 +57,7 @@ APPLICATION_CONFIG = """{
     "repoProfilePath": ".architrave/learning/repo-profile.md",
     "lessonsPath": ".architrave/learning/repo-lessons.md",
     "capture": ["run-artifacts", "gate-results", "judge-verdicts", "runtime-evidence", "repo-profile", "lessons"],
-    "redactionPolicy": "no-secrets",
-    "staleFactPolicy": "validate-before-use",
-    "promotionPolicy": "approval-required",
-    "promoteAfterOccurrences": 2,
-    "promoteTargets": ["architrave.config.json", "AGENTS.md", ".github/instructions", "docs"]
+    "redactionPolicy": "no-secrets"
   }
 }
 """
