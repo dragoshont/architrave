@@ -52,15 +52,20 @@ owner a permission prompt. Sustained parallel delivery across many children
 (REQ-30/36) is **not yet proven**. Validation for this delivery runs locally;
 releases are cut manually without enabling CI.
 
-**1.0.0 source scope.** The current code adds source-bound candidate integration,
-restart-safe native ownership, shared status/admission checks, observed option
-comparisons within an existing finite allowance, and exact owner-event-approved
-learning application and rollback. Task progress uses Not started, Started and
-Code ready; review and final evidence apply to the complete feature set.
+**1.0.0 candidate scope.** The current code adds source-bound candidate
+integration, ownership safeguards across restarts, shared status/admission
+checks, support for consuming option-comparison results within an existing
+finite allowance, and exact owner-event-approved learning application and
+rollback. Task progress uses Not started, Started and Code ready; review and
+final evidence apply to the complete feature set.
 These implementation capabilities do not imply that every target or live-host
-failure mode has been qualified.
+failure mode has been qualified. In a fresh installed 1.0.0 host, a Copilot
+worker started but its dispatch failed during cleanup without a result;
+cancellation and removal were not confirmed. Do not rely on that route for
+unattended delivery.
 
-**Historical beta qualification.** 1.0.0-beta.1 is a prerelease, not 1.0 final.
+**Historical beta qualification.** Both 1.0.0-beta.1 and the 1.0.0 candidate
+are prereleases, not a final release.
 Native Windows and macOS are
 the 1.0 targets; WSL2 is not. The work makes CLI-created Runs honor the configured autonomy and mutation-policy
 defaults, reports each Run's execution, holds and one next action from
@@ -75,9 +80,9 @@ controls are included; broader delivery outcomes remain tracked in `SPEC.md`.
 MacOS command-level checks are separate from live host qualification.
 Genuine persistence-hang/lost-reply fixture coverage remains incomplete.
 This does not demonstrate a live multi-wave qualification or sustained parallel
-delivery, a live native-bridge hang (fixture-tested only), host
-loading of a prerelease version, loaded-context refresh after an update, or an
-owner and ACL check of the durable Run key on Windows. Every unaddressed item is
+delivery, a live native-bridge hang (fixture-tested only), loaded-context
+refresh after an update, or an owner and ACL check of the durable Run key on
+Windows. Every unaddressed item is
 a GitHub issue (#40 to #87, including audit findings F6, F8, F9 and F10); the
 handover for continuing on another machine is #39. See the
 [changelog](CHANGELOG.md).

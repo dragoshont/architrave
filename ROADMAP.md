@@ -2,9 +2,10 @@
 
 ## Approved delivery redesign (REQ-101..108)
 
-Implementation approved on 8 November 2026; not a new release or a declaration
-of production readiness. Preserve the existing REQ-95..100 safety and evidence
-obligations rather than blanket-superseding unfinished work.
+Implementation was approved on 8 November 2026. A v1.0.0 candidate is published
+as a prerelease and installed locally; this is not a declaration of production
+readiness. Preserve the existing REQ-95..100 safety and evidence obligations
+rather than blanket-superseding unfinished work.
 
 Current task progress uses **Not started**, **Started** and **Code ready**.
 Finish every feature's code before the single review of the complete set.
@@ -30,10 +31,15 @@ scheduler, transcript database, compulsory debate or recursive audit board is
 planned. Real-program findings inform generic acceptance cases; private session
 logs, project identities and account-bearing artifacts are not published here.
 
+The installed 1.0.0 worker connection loaded, but a real worker dispatch failed
+during cleanup without producing a result, and cancellation/removal were not
+confirmed. The comparison path depends on that worker route; reliable
+end-to-end delivery is not established.
+
 ## v1.0.0-beta.1 - Completion-path prerelease (REQ-95..108)
 
-The synchronized version fields read 1.0.0-beta.1. Source preparation,
-publication, installed bytes and loaded-host behavior are separate evidence.
+For this prerelease the synchronized version fields read 1.0.0-beta.1. Source
+preparation, publication, installed bytes and loaded-host behavior are separate evidence.
 Unmet requirement criteria remain open rather than being accepted by release.
 Make the path from an owner outcome to verified delivery more reliable on
 native Windows and macOS (WSL2 is not a target). CLI-created Runs apply the
@@ -50,18 +56,19 @@ only commands that exist and run (REQ-99). Version tooling accepts a prerelease;
 the automatic release workflow stays disabled; publication is explicit
 (REQ-100).
 
-Current unreleased repairs add persisted attempt ownership and recovery through
-the joined host, real abort handling, shared preflight timing and retained
+Later 1.0.0 candidate repairs add persisted attempt ownership and recovery
+through the joined host, real abort handling, shared preflight timing and retained
 admission capacity. Empty listings cannot authorize a replacement. Recovery
 binds a uniquely observed owner before cancellation/removal; unknown cleanup
-still blocks. These source changes are not installed or released by updating
-this roadmap. Issue closure is not substituted for current source evidence.
+still blocks. These source changes are published and installed in the candidate;
+the live failure above remains unresolved. Issue closure is not substituted
+for current source evidence.
 
 Genuine persistence-hang/lost-reply fixture coverage remains incomplete.
 Not demonstrated: a live multi-wave qualification or sustained parallel
-delivery, the live native-bridge hang (fixture-tested only), host
-loading of a prerelease version, loaded-context refresh after an update, and an
-owner and ACL check of the durable Run key on Windows. Audit findings are
+delivery, the live native-bridge hang (fixture-tested only), loaded-context
+refresh after an update, and an owner and ACL check of the durable Run key on
+Windows. Audit findings are
 tracked as issues: F6 #77, F8 #75, F9 #61 and F10 #76. Every unaddressed item
 is an issue (#40 to #87); the handover for continuing on another machine is
 #39. MacOS command-level verification does not qualify those live-host cases.
