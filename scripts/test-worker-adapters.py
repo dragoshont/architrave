@@ -106,6 +106,7 @@ class WorkerAdapterTests(unittest.TestCase):
         timeout: int = 10,
         max_output: int = 1024 * 1024,
         adapter: str = "shell",
+        max_attempts: int = 1,
     ) -> tuple[str, str]:
         state = self.store.create(
             goal="Exercise a worker adapter.",
@@ -140,6 +141,7 @@ class WorkerAdapterTests(unittest.TestCase):
                 "acceptanceCriteria": ["WORKER-001"],
                 "requiredArtifacts": ["worker-result"],
                 "gate": "worker fixture",
+                "maxAttempts": max_attempts,
                 "workPacket": {
                     "execution": {"command": command, "cwd": None, "environment": []},
                     "budget": {"timeoutSeconds": timeout, "maxOutputBytes": max_output},
@@ -170,6 +172,23 @@ class WorkerAdapterTests(unittest.TestCase):
         self.assertEqual(["README.md"], result["changedPaths"])
         self.assertEqual("WAITING_RESOURCE", task["status"])
         self.assertNotEqual("COMPLETED", task["status"])
+
+    def test_shell_retries_preserve_every_attested_result(self) -> None:
+        run_id, task_id = self.create_task(
+            command=[sys.executable, "-c", "raise SystemExit(1)"],
+            mutable_paths=[], max_attempts=2,
+        )
+        first = execute_work_packet(self.store, run_id, task_id, "worker-1")
+        first_path = self.repo / first["artifacts"][0]
+        first_bytes = first_path.read_bytes()
+        workspace = self.store.load(run_id)["tasks"][0]["workspace"]
+        self.git("worktree", "add", "--detach", workspace, "HEAD")
+        self.store.start_task(run_id, task_id, worker_id="worker-2",
+                              retry_hypothesis="Recheck the exit on a fresh isolated worktree")
+        second = execute_work_packet(self.store, run_id, task_id, "worker-2")
+        self.assertNotEqual(first["artifacts"], second["artifacts"])
+        self.assertEqual(first_bytes, first_path.read_bytes())
+        self.assertEqual(2, len(self.store.load(run_id)["artifacts"]))
 
     def test_out_of_scope_edit_fails_candidate(self) -> None:
         run_id, task_id = self.create_task(

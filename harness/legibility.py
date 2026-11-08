@@ -16,7 +16,7 @@ import zlib
 from typing import Any, Callable, Sequence
 from urllib.parse import urlsplit
 
-from architrave_runtime import RunStore, RuntimeFailure, find_task, redact, run_command, utc_now
+from architrave_runtime import RunStore, RuntimeFailure, find_task, redact, require_mutation_allowed, run_command, utc_now
 from platform_launch import LaunchError, configured_shell_command
 from worker_adapters import bounded_environment, run_bounded, workspace_fingerprint
 
@@ -462,9 +462,36 @@ class LegibilityRunner:
 
         if surface == "ios":
             config = self.runtime.get("ios") or {}
+            if not task_id:
+                raise RuntimeFailure("IOS_TASK_REQUIRED", "iOS install/launch verification requires an authorized task")
+            state = self.store.load(self.run_id)
+            task = find_task(state, task_id)
+            side_effect = task.get("sideEffect") or {}
+            if (side_effect.get("operation") != "install" or not side_effect.get("target")
+                    or config.get("bundleId") != side_effect.get("target")
+                    or not {"install", "launch"}.issubset(task["operations"])):
+                raise RuntimeFailure("IOS_TASK_REQUIRED", "iOS verification requires declared install and launch scope")
+            for operation in ("install", "launch"):
+                require_mutation_allowed(state, side_effect["target"], operation, confirmed=False)
             screenshot_path = config.get("screenshotPath")
             build = self.recipe("ios.build", config.get("build"), required=True, timeout_seconds=1800)
+            if build["status"] != "pass":
+                return self._finalize_gate(surface, [build, *[
+                    self.recipe(name, None) for name in
+                    ("ios.install", "ios.launch", "ios.screenshot", "ios.blank-screen")
+                ]], task_id=task_id)
+            prepared = self.store.prepare_side_effect(
+                self.run_id, task_id, operation="install", target=side_effect["target"],
+            )
             install = self.recipe("ios.install", config.get("install"), required=True)
+            if install["status"] != "pass":
+                return self._finalize_gate(surface, [build, install, *[
+                    self.recipe(name, None) for name in ("ios.launch", "ios.screenshot", "ios.blank-screen")
+                ]], task_id=task_id)
+            current = self.store.load(self.run_id)
+            if current["revision"] != prepared["revision"]:
+                raise RuntimeFailure("TARGET_IDENTITY_STALE", "authority changed during iOS installation")
+            require_mutation_allowed(current, side_effect["target"], "launch", confirmed=False)
             launch = self.structured_recipe(
                 "ios.launch",
                 config.get("launch"),

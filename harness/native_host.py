@@ -217,6 +217,7 @@ def confirm_native_recovery(store: RunStore, run_id: str, host_owner: str,
             run_id, task["id"],
             f"native attempt {worker['id']} host owner {target['hostTaskId']} cancelled and removed during recovery",
             actor="native-host-recovery",
+            _native_reconciliation=store._native_recovery_ticket(binding),
         )
         recovered.append({"taskId": task["id"], "attemptId": worker["id"],
                           "hostRemovalConfirmed": target["removeRequired"], "alreadySettled": False})
@@ -320,19 +321,20 @@ def main():
         if action != "dispatch":
             raise RuntimeFailure("NATIVE_TRANSPORT_INVALID", "unknown native host action")
         task_id = request["taskId"]
-        requirements_kickoff(store, find_task(store.load(run_id), task_id), request.get("reqs"))
-        ticket = store.begin_native_worker(run_id, task_id, host_owner=request["owner"],
-                                          retry_hypothesis=request.get("retryHypothesis"),
-                                          owner_handle=request.get("ownerHandle"))
         state = store.load(run_id)
         task = find_task(state, task_id)
-        packet = {**task["workPacket"], "budget": ticket.snapshot["budget"]}
+        kickoff = requirements_kickoff(store, task, request.get("reqs"))
         stall = primary_criterion_status(state, store.events(run_id), store.repository)
         effort = map_effort(requested_effort(state, task, bool(stall and stall["stalled"])),
                             request.get("hostEffort") or {})
+        ticket = store.begin_native_worker(run_id, task_id, host_owner=request["owner"],
+                                          retry_hypothesis=request.get("retryHypothesis"),
+                                          owner_handle=request.get("ownerHandle"))
+        task = ticket.snapshot["task"]
+        packet = {**task["workPacket"], "budget": ticket.snapshot["budget"]}
         emit({
             "status": "prepared", "binding": ticket.binding,
-            "prompt": requirements_kickoff(store, task, request.get("reqs")) + render_prompt(packet) + "\n"
+            "prompt": kickoff + render_prompt(packet) + "\n"
             + f"Current Run: {run_id}. Use declared context, not another Run's scratch, receipts or latest-history discovery. "
             + "Explicit same-run reuse still requires current source and authority bindings.\n"
             + f"Use ONLY this isolated workspace, with absolute paths: {task['workspace']}\n"
@@ -392,7 +394,8 @@ def main():
         cleanup_error = None
         if ticket is not None and not ticket.consumed and store is not None and not admission_started:
             try:
-                store.fail_task(ticket.binding["runId"], ticket.binding["taskId"], f"native bridge failed: {exc}")
+                store.fail_task(ticket.binding["runId"], ticket.binding["taskId"], f"native bridge failed: {exc}",
+                                _native_reconciliation=ticket)
             except RuntimeFailure as cleanup:
                 cleanup_error = cleanup.code
         emit({"status": "failed", "error": {

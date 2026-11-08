@@ -1418,6 +1418,7 @@ class RunStore:
                 and task["status"] not in TERMINAL_TASK_STATUSES
                 and task.get("workKind") == "review"
             ):
+                assert_native_workers_settled(state, task)
                 task["status"] = "DEFERRED"
                 task["lease"] = None
                 task["deferredReason"] = reason
@@ -1727,6 +1728,9 @@ class RunStore:
             checkpoint["resolvedBy"] = actor
             checkpoint["resolutionRef"] = f"objective:{state['objective']['version'] + 1}"
             prior_version = state["objective"]["version"]
+            for task in state["tasks"]:
+                if task.get("objectiveVersion", prior_version) == prior_version:
+                    assert_native_workers_settled(state, task)
             new_version = prior_version + 1
             new_ids = {item["id"] for item in normalized}
             for criterion in state["acceptanceCriteria"]:
@@ -3365,8 +3369,8 @@ class RunStore:
             expires = acquired + dt.timedelta(seconds=max(1, lease_seconds_bound))
             task["lease"] = {
                 "owner": worker_id,
-                "acquiredAt": acquired.isoformat(timespec="seconds").replace("+00:00", "Z"),
-                "expiresAt": expires.isoformat(timespec="seconds").replace("+00:00", "Z"),
+                "acquiredAt": acquired.isoformat().replace("+00:00", "Z"),
+                "expiresAt": expires.isoformat().replace("+00:00", "Z"),
             }
             task["attempts"] += 1
             task["status"] = "RUNNING"
@@ -3614,12 +3618,22 @@ class RunStore:
             evidence_refs=evidence_refs,
         )
 
-    def fail_task(self, run_id: str, task_id: str, reason: str, actor: str = "coordinator") -> dict[str, Any]:
+    def fail_task(self, run_id: str, task_id: str, reason: str, actor: str = "coordinator",
+                  *, _native_reconciliation: NativeWorkerTicket | None = None) -> dict[str, Any]:
         def mutate(state: dict[str, Any]) -> dict[str, Any]:
             self._assert_repository_baseline(state)
             task = find_task(state, task_id)
             if task["status"] in TERMINAL_TASK_STATUSES:
                 raise RuntimeFailure("TASK_TERMINAL", f"task {task_id} is already terminal")
+            binding = None
+            if _native_reconciliation is not None:
+                ticket = _native_reconciliation
+                if (not isinstance(ticket, NativeWorkerTicket) or ticket.issuer is not self.__native_issuer
+                        or ticket.consumed or ticket.binding.get("runId") != run_id
+                        or ticket.binding.get("taskId") != task_id):
+                    raise RuntimeFailure("NATIVE_RESULT_UNTRUSTED", "native cleanup requires process-local host authority")
+                binding = ticket.binding
+            assert_native_workers_settled(state, task, reconciliation=binding)
             close_task_workers(state, task, reason)
             task["lease"] = None
             if task["sideEffect"] and task["sideEffect"]["state"] == "PENDING":
@@ -3631,11 +3645,17 @@ class RunStore:
             state["status"] = derive_run_status(state)
             return {"taskId": task_id, "reason": reason, "taskStatus": task["status"]}
 
-        return self._transaction(run_id, mutate, event_type="task.failed", actor=actor, task_id=task_id)
+        result = self._transaction(run_id, mutate, event_type="task.failed", actor=actor, task_id=task_id)
+        if _native_reconciliation is not None:
+            _native_reconciliation.consumed = True
+        return result
+
+    def _native_recovery_ticket(self, binding: dict[str, Any]) -> NativeWorkerTicket:
+        return NativeWorkerTicket(self.__native_issuer, copy.deepcopy(binding), {})
 
     def _require_native_ticket(
         self, ticket: NativeWorkerTicket | None, state: dict[str, Any], task: dict[str, Any],
-        *, allow_expired_failure: bool = False,
+        *, allow_expired_failure: bool = False, observed_at: dt.datetime | None = None,
     ) -> None:
         if (
             not isinstance(ticket, NativeWorkerTicket)
@@ -3674,7 +3694,8 @@ class RunStore:
             or not lease
             or lease["owner"] != binding["workerId"]
             or lease["acquiredAt"] != binding["acquiredAt"]
-            or (not allow_expired_failure and parse_iso(lease["expiresAt"]) <= dt.datetime.now(dt.timezone.utc))
+            or (not allow_expired_failure
+                and parse_iso(lease["expiresAt"]) <= (observed_at or dt.datetime.now(dt.timezone.utc)))
         ):
             raise RuntimeFailure("NATIVE_RESULT_STALE", "native objective/revision/lease binding is stale or replayed")
 
@@ -3732,6 +3753,7 @@ class RunStore:
             "head": run_command(["git", "rev-parse", "HEAD"], workspace),
             "ignored": ignored_fingerprint(workspace),
         }
+        snapshot["source"] = workspace_fingerprint(self.repository)
         worker_id = f"native-{uuid.uuid4().hex}"
         state = self.start_task(
             run_id, task_id, worker_id=worker_id,
@@ -3739,8 +3761,8 @@ class RunStore:
             retry_hypothesis=retry_hypothesis,
             _native_owner=host_owner,
         )
-        snapshot["source"] = workspace_fingerprint(self.repository)
         task = find_task(state, task_id)
+        snapshot["task"] = copy.deepcopy(task)
         worker = next(item for item in state["workers"] if item["id"] == worker_id)
         snapshot["budget"] = copy.deepcopy(worker.get("admittedBudget", task["workPacket"]["budget"]))
         snapshot["authority"] = sha256_value({
@@ -3817,9 +3839,11 @@ class RunStore:
 
         if not isinstance(ticket, NativeWorkerTicket):
             raise RuntimeFailure("NATIVE_RESULT_UNTRUSTED", "serialized native results are not accepted")
+        observed_at = dt.datetime.now(dt.timezone.utc)
         state = self.load(ticket.binding["runId"])
         task = find_task(state, ticket.binding["taskId"])
-        self._require_native_ticket(ticket, state, task, allow_expired_failure=host_status == "cancelled")
+        self._require_native_ticket(ticket, state, task, allow_expired_failure=host_status == "cancelled",
+                                    observed_at=observed_at)
         if host_task_id != ticket.binding["hostTaskId"] or host_status not in {"completed", "idle", "failed", "cancelled"}:
             raise RuntimeFailure("NATIVE_RESULT_UNTRUSTED", "result does not match the admitted host task")
         workspace = Path(ticket.snapshot["workspace"])
@@ -3843,7 +3867,7 @@ class RunStore:
             "schema": "architrave.native-candidate.v1", "binding": ticket.binding,
             "status": "failed" if errors else "candidate", "observedHostStatus": host_status,
             "summary": redact(bounded), "truncated": len(text.encode("utf-8")) > limit,
-            "changedPaths": changed, "errors": errors, "observedAt": utc_now(),
+            "changedPaths": changed, "errors": errors, "observedAt": observed_at.isoformat().replace("+00:00", "Z"),
             "hostObservation": redact(host_observation or {}),
             "source": {
                 "workspace": str(workspace), "commit": ticket.snapshot["head"],
@@ -3854,7 +3878,8 @@ class RunStore:
         self._atomic_write(path, result)
         def mutate(current: dict[str, Any]) -> dict[str, Any]:
             current_task = find_task(current, task["id"])
-            self._require_native_ticket(ticket, current, current_task, allow_expired_failure=host_status == "cancelled")
+            self._require_native_ticket(ticket, current, current_task, allow_expired_failure=host_status == "cancelled",
+                                        observed_at=observed_at)
             worker = next(item for item in current["workers"] if item["id"] == ticket.binding["workerId"])
             worker["status"] = "FAILED" if errors else "FINISHED"
             worker["finishedAt"] = utc_now()
@@ -4896,6 +4921,7 @@ class RunStore:
             task = find_task(state, task_id)
             if task["status"] in TERMINAL_TASK_STATUSES:
                 raise RuntimeFailure("TASK_TERMINAL", "terminal tasks cannot wait externally")
+            assert_native_workers_settled(state, task)
             if any(item["id"] == checkpoint_id for item in state["externalCheckpoints"]):
                 raise RuntimeFailure("EXTERNAL_CHECKPOINT_EXISTS", f"checkpoint already exists: {checkpoint_id}")
             target_binding = None
@@ -5556,9 +5582,42 @@ class RunStore:
         integration_source: dict[str, str] | None = None,
         actor: str = "coordinator",
     ) -> dict[str, Any]:
+        target_revision = None
+        if operation in TARGET_OPERATIONS:
+            before = self.load(run_id)
+            task = find_task(before, task_id)
+            intended = task.get("targetIdentity")
+            identity = before.get("targetIdentity") or {}
+            checkpoint = next((item for item in before["externalCheckpoints"]
+                               if item["id"] == identity.get("checkpointId")), None)
+            if (not isinstance(intended, dict) or identity.get("status") != "VERIFIED"
+                    or identity.get("taskId") != task_id
+                    or identity.get("objectiveVersion") != before["objective"]["version"]
+                    or identity.get("observed") != intended or intended.get("acceptanceTarget") != target
+                    or checkpoint is None or checkpoint["status"] != "RESOLVED"
+                    or operation not in task["operations"] or task_has_pending_checkpoint(before, task_id)):
+                raise RuntimeFailure("TARGET_IDENTITY_REQUIRED", "target side effects require current task-bound trusted identity")
+            require_mutation_allowed(before, target, operation, confirmed=confirmed)
+            executor, trusted_target = self._trusted_exact_target_executor(checkpoint, intended)
+            self._invoke_exact_target_executor(executor, {
+                "schema": EXACT_TARGET_REQUEST_SCHEMA,
+                "binding": {
+                    "runId": run_id, "objectiveVersion": before["objective"]["version"],
+                    "revision": before["revision"], "taskId": task_id, "checkpointId": checkpoint["id"],
+                    "checkpointType": checkpoint["type"], "provider": checkpoint["provider"],
+                    "principal": checkpoint["principal"], "challengeHash": checkpoint["challengeHash"],
+                },
+                "intended": intended,
+                "target": {key: trusted_target.get(key) for key in
+                           ("transport", "artifactPath", "workspaceMode", "ssh", "reconciliation")},
+            })
+            target_revision = before["revision"]
+
         def mutate(state: dict[str, Any]) -> dict[str, Any]:
             self._assert_repository_baseline(state)
             task = find_task(state, task_id)
+            if target_revision is not None and state["revision"] != target_revision:
+                raise RuntimeFailure("TARGET_IDENTITY_STALE", "target or authority changed during side-effect preflight")
             if integration_source is not None:
                 from worker_adapters import workspace_fingerprint
 
@@ -6312,6 +6371,23 @@ def find_task(state: dict[str, Any], task_id: str) -> dict[str, Any]:
     return task
 
 
+def assert_native_workers_settled(
+    state: dict[str, Any], task: dict[str, Any], *, reconciliation: dict[str, Any] | None = None,
+) -> None:
+    for worker in state["workers"]:
+        if worker["status"] != "RUNNING" or worker["adapter"] != "native" or worker["taskId"] != task["id"]:
+            continue
+        binding = worker.get("nativeBinding")
+        if (binding is not None and reconciliation == binding
+                and (task.get("lease") or {}).get("owner") == worker["id"]):
+            continue
+        raise RuntimeFailure(
+            "NATIVE_RECOVERY_PENDING", "observe native host cancellation before releasing its ownership",
+            details={"taskId": task["id"], "attemptId": worker["id"],
+                     "hostTaskId": (binding or {}).get("hostTaskId"), "hostDisposition": "unconfirmed"},
+        )
+
+
 def close_task_workers(state: dict[str, Any], task: dict[str, Any], reason: str) -> None:
     owner = (task.get("lease") or {}).get("owner")
     for worker in state["workers"]:
@@ -6340,7 +6416,11 @@ def mutable_scopes_overlap(left: Sequence[str], right: Sequence[str]) -> bool:
             [position for token in "*?[" if (position := pattern.find(token)) >= 0]
             or [len(pattern)]
         )
-        return pattern[:wildcard].rstrip("/")
+        literal = os.path.normcase(pattern[:wildcard]).replace("\\", "/")
+        # A partial path component can match any suffix, not just descendants.
+        if wildcard < len(pattern) and not literal.endswith("/"):
+            return literal.rsplit("/", 1)[0] if "/" in literal else ""
+        return literal.rstrip("/")
 
     for left_pattern in left:
         for right_pattern in right:

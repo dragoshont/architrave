@@ -146,6 +146,14 @@ conflicting binding, empty listing or unknown cancellation/removal cannot
 release capacity. This is a bounded recovery path, not a guarantee about an
 unobservable host.
 
+Failure, objective replacement, review-batch reset and external waits cannot
+release a running native owner without authenticated host cleanup. Pre-admission
+rollback uses the original process-local ticket; unknown or possibly started
+owners retain capacity. Worker-result files remain immutable across retries.
+Preparation precedes lease acquisition, and lease timestamps retain fractional
+seconds. An on-time native arrival may finish durable persistence after expiry;
+this does not renew the attempt or admit a late arrival.
+
 Then invoke `architrave_native_gate` (same repo/Run/task, `recipe` =
 `test`, `build`, `quick` or `ci`) or the public CLI:
 
@@ -181,6 +189,22 @@ side effect; uncertain side effects still need their existing reconciliation.
 
 The trust/capability boundary and same-user limitations are explicit in
 [`knowledge/runtime-v2.md`](../knowledge/runtime-v2.md#worker-adapters).
+
+## iOS verification
+
+The iOS reality gate requires an explicit running task with declared `install`
+and `launch` operations. Its installation side-effect target must equal the
+configured `runtime.ios.bundleId`, with scoped Run grants for both operations.
+The task's trusted exact-target identity must bind that same acceptance target.
+The registered observer rechecks the pinned artifact and workspace after build,
+before preparing installation. Missing task scope, denied policy or target drift
+stops installation and launch; failed build/install recipes stop later mutations.
+
+Installation is prepared as `UNCERTAIN` before executing the recipe. A passing
+lifecycle/pixel gate is not a mutation receipt and does not clear this hold:
+independent existing side-effect reconciliation is still required before replay
+or completion. Recipes cannot create grants or substitute their JSON claims for
+the trusted target observation.
 
 ## Policy amendment
 

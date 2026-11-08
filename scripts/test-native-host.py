@@ -11,12 +11,13 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "harness"))
-from architrave_runtime import RunStore, RuntimeFailure, effective_work_budget, feasibility_status, primary_failures, primary_criterion_status, state_summary
+from architrave_runtime import RunStore, RuntimeFailure, effective_work_budget, feasibility_status, mutable_scopes_overlap, parse_iso, primary_failures, primary_criterion_status, state_summary
 from worker_adapters import workspace_fingerprint
 
 _fixture_add_task = RunStore.add_task
@@ -1042,6 +1043,121 @@ class NativeHostTests(unittest.TestCase):
         self.assertEqual("RUNNING", after["tasks"][0]["status"])
         self.assertEqual("RUNNING", after["workers"][0]["status"])
 
+    def test_native_failure_and_external_wait_preserve_live_ownership(self):
+        run_id, task_id = self.task(max_attempts=2)
+        ticket = self.store.begin_native_worker(run_id, task_id, host_owner="fixture-host")
+        self.store.bind_native_owner(ticket, "host-task")
+        before = self.store.load(run_id)
+        for action in (
+            lambda: self.store.fail_task(run_id, task_id, "unconfirmed host failure"),
+            lambda: self.store.wait_external(
+                run_id, checkpoint_id="hold", task_id=task_id, checkpoint_type="AUTH_REQUIRED",
+                principal="owner", provider="host", reason="Authentication needed"),
+        ):
+            with self.assertRaises(RuntimeFailure) as error:
+                action()
+            self.assertEqual("NATIVE_RECOVERY_PENDING", error.exception.code)
+            self.assertEqual(before, self.store.load(run_id))
+        with self.assertRaises(RuntimeFailure) as error:
+            self.store.fail_task(run_id, task_id, "serialized cleanup", _native_reconciliation=ticket.binding)
+        self.assertEqual("NATIVE_RESULT_UNTRUSTED", error.exception.code)
+        self.assertEqual(before, self.store.load(run_id))
+
+    def test_native_pre_admission_rollback_requires_local_ticket_and_consumes_it(self):
+        run_id, task_id = self.task()
+        ticket = self.store.begin_native_worker(run_id, task_id, host_owner="fixture-host")
+        with self.assertRaises(RuntimeFailure) as error:
+            RunStore(self.repo).fail_task(run_id, task_id, "foreign issuer", _native_reconciliation=ticket)
+        self.assertEqual("NATIVE_RESULT_UNTRUSTED", error.exception.code)
+        state = self.store.fail_task(run_id, task_id, "host never admitted work", _native_reconciliation=ticket)
+        self.assertTrue(ticket.consumed)
+        self.assertEqual("FAILED", state["workers"][0]["status"])
+        self.assertIsNone(state["tasks"][0]["lease"])
+
+    def test_objective_and_review_reset_cannot_release_native_owners(self):
+        run_id, task_id = self.task()
+        self.store.add_task(run_id, {"id": "review", "objective": "Review current source",
+                                   "workerProfile": "native", "workKind": "review",
+                                   "acceptanceCriteria": ["FIX"], "risk": "R4"})
+        _, challenge = self.store.wait_external(
+            run_id, checkpoint_id="objective", task_id=task_id,
+            checkpoint_type="HUMAN_JUDGMENT_REQUIRED", principal="owner", provider="host",
+            reason="Owner requested objective correction")
+        self.store.begin_native_worker(run_id, "review", host_owner="fixture-host")
+        self.store.record_review_result(run_id, verdict="REVISE")
+        before = self.store.load(run_id)
+        for action in (
+            lambda: self.store.record_review_result(run_id, verdict="REVISE"),
+            lambda: self.store.replace_objective(
+                run_id, outcome="Corrected outcome", criteria=[{
+                    "id": "FIX", "description": "Fixture passes", "scope": "fixture",
+                    "risk": "R0", "verificationType": "deterministic", "blocking": True}],
+                correction="Owner changed objective", next_cheapest_test="Check corrected outcome",
+                checkpoint_id="objective", challenge=challenge, actor="human:owner"),
+        ):
+            with self.assertRaises(RuntimeFailure) as error:
+                action()
+            self.assertEqual("NATIVE_RECOVERY_PENDING", error.exception.code)
+            self.assertEqual(before, self.store.load(run_id))
+
+    def test_partial_component_globs_and_case_preserve_exclusive_ownership(self):
+        from worker_adapters import path_allowed
+        import os
+        for left, right, path in (
+            ("src/foo*.py", "src/foobar.py", "src/foobar.py"),
+            ("foo*.py", "foobar.py", "foobar.py"),
+            ("src/a[bc].py", "src/ab.py", "src/ab.py"),
+            ("src/foo*/bar.py", "src/foobar/bar.py", "src/foobar/bar.py"),
+        ):
+            self.assertTrue(path_allowed(path, [left]))
+            self.assertTrue(path_allowed(path, [right]))
+            self.assertTrue(mutable_scopes_overlap([left], [right]), (left, right))
+        self.assertFalse(mutable_scopes_overlap(["src/first/**"], ["src/second/**"]))
+        if os.name == "nt":
+            self.assertTrue(mutable_scopes_overlap(["src/FILE.py"], ["src/file.py"]))
+
+    def test_native_lease_retains_full_precision_and_prepared_scope(self):
+        run_id, task_id = self.task(budget={"timeoutSeconds": 10, "maxOutputBytes": 2048})
+        ticket = self.store.begin_native_worker(run_id, task_id, host_owner="fixture-host")
+        task = self.store.load(run_id)["tasks"][0]
+        self.assertEqual(task, ticket.snapshot["task"])
+        acquired = parse_iso(task["lease"]["acquiredAt"])
+        expires = parse_iso(task["lease"]["expiresAt"])
+        self.assertEqual(10, (expires - acquired).total_seconds())
+        self.assertNotEqual(0, acquired.microsecond)
+
+    def test_on_time_native_arrival_can_finish_persistence_after_deadline(self):
+        run_id, task_id = self.task(budget={"timeoutSeconds": 10, "maxOutputBytes": 2048})
+        ticket = self.store.begin_native_worker(run_id, task_id, host_owner="fixture-host")
+        self.store.bind_native_owner(ticket, "host-task")
+        deadline = parse_iso(ticket.snapshot["task"]["lease"]["expiresAt"])
+        write = self.store._atomic_write
+
+        def delayed_write(path, payload):
+            if payload.get("schema") == "architrave.native-candidate.v1":
+                time.sleep(max(0, (deadline - dt.datetime.now(dt.timezone.utc)).total_seconds()) + 0.02)
+            return write(path, payload)
+
+        self.assertGreater(deadline, dt.datetime.now(dt.timezone.utc))
+        with mock.patch.object(self.store, "_atomic_write", side_effect=delayed_write):
+            result = self.store.accept_native_candidate(
+                ticket, host_task_id="host-task", host_status="completed", text="on-time candidate")
+        self.assertEqual("candidate", result["status"])
+        self.assertLess(parse_iso(result["observedAt"]), deadline)
+        self.assertLess(deadline, dt.datetime.now(dt.timezone.utc))
+
+    def test_late_native_arrival_cannot_use_persistence_grace(self):
+        run_id, task_id = self.task(budget={"timeoutSeconds": 10, "maxOutputBytes": 2048})
+        ticket = self.store.begin_native_worker(run_id, task_id, host_owner="fixture-host")
+        self.store.bind_native_owner(ticket, "host-task")
+        deadline = parse_iso(ticket.snapshot["task"]["lease"]["expiresAt"])
+        time.sleep(max(0, (deadline - dt.datetime.now(dt.timezone.utc)).total_seconds()) + 0.02)
+        with self.assertRaises(RuntimeFailure) as error:
+            self.store.accept_native_candidate(
+                ticket, host_task_id="host-task", host_status="completed", text="late candidate")
+        self.assertEqual("NATIVE_RESULT_STALE", error.exception.code)
+        self.assertEqual("RUNNING", self.store.load(run_id)["workers"][0]["status"])
+
     def test_untrusted_dict_and_stale_revision_are_rejected(self):
         run_id, task_id = self.task()
         with self.assertRaises(RuntimeFailure) as error:
@@ -1053,8 +1169,10 @@ class NativeHostTests(unittest.TestCase):
         with self.assertRaises(RuntimeFailure) as error:
             self.store.accept_native_candidate(ticket, host_task_id="host-task", host_status="completed", text="stale")
         self.assertEqual("NATIVE_RESULT_STALE", error.exception.code)
-        self.store.fail_task(run_id, task_id, "stale candidate")
-        self.assertEqual("FAILED", self.store.load(run_id)["workers"][0]["status"])
+        with self.assertRaises(RuntimeFailure) as error:
+            self.store.fail_task(run_id, task_id, "stale candidate")
+        self.assertEqual("NATIVE_RECOVERY_PENDING", error.exception.code)
+        self.assertEqual("RUNNING", self.store.load(run_id)["workers"][0]["status"])
 
     def test_sibling_native_lifecycle_commutes_but_human_hold_does_not(self):
         run_id, task_id = self.task()

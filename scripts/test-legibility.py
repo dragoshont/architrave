@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
 import struct
 import sys
@@ -134,8 +135,54 @@ class LegibilityTests(unittest.TestCase):
                 }
             ],
             autonomy_scope="approved-program",
-            policy_allow=[{"scope": "sandbox:fixture", "operations": ["deploy"]}] if allow_deploy else [],
+            policy_allow=([{"scope": "sandbox:fixture", "operations": ["deploy"]}] if allow_deploy else
+                          [{"scope": "example.fixture", "operations": ["install", "launch"]}] if surface == "ios" else []),
         )
+        if surface == "ios":
+            trust = Path(self.temp.name) / "trust"
+            executors = trust / "executors"
+            executors.mkdir(parents=True, mode=0o700)
+            trust.chmod(0o700)
+            adapter = executors / "observer.py"
+            shutil.copyfile(ROOT / "trusted" / "exact_target_observer.py", adapter)
+            artifact = Path(self.temp.name) / "ios-artifact.bin"
+            artifact.write_bytes(b"fixture installation input\n")
+            identity = {
+                "provider": "ios", "artifact": artifact.name, "version": "fixture",
+                "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
+                "environment": "local-test", "workspace": str(self.repo), "acceptanceTarget": "example.fixture",
+            }
+            executable = Path(sys.executable).resolve()
+            registry = trust / "executors.json"
+            registry.write_text(json.dumps({
+                "schema": "architrave.executor-registry.v1", "exactTarget": {
+                    "executable": str(executable), "executableSha256": hashlib.sha256(executable.read_bytes()).hexdigest(),
+                    "adapter": str(adapter), "adapterSha256": hashlib.sha256(adapter.read_bytes()).hexdigest(),
+                    "allowedProviders": ["ios"], "allowedCheckpointTypes": ["SAFE_WRITE_TARGET_REQUIRED"],
+                    "timeoutSeconds": 10, "targets": [{
+                        "identity": identity, "transport": "local", "artifactPath": str(artifact),
+                        "workspaceMode": "exact-directory", "ssh": None,
+                    }],
+                },
+            }), encoding="utf-8")
+            registry.chmod(0o600)
+            self.enterContext(mock.patch("architrave_runtime.trusted_user_state_root", return_value=trust))
+            self.enterContext(mock.patch.object(RunStore, "_executor_registry_path", return_value=registry))
+            self.store.add_task(state["runId"], {
+                "id": "ios-verification", "objective": "Verify scoped iOS installation",
+                "workerProfile": "shell", "acceptanceCriteria": ["REALITY-001"], "risk": "R3",
+                "operations": ["install", "launch"], "targetIdentity": identity,
+                "sideEffect": {"operation": "install", "target": "example.fixture"},
+            })
+            _, challenge = self.store.wait_external(
+                state["runId"], checkpoint_id="ios-target", task_id="ios-verification",
+                checkpoint_type="SAFE_WRITE_TARGET_REQUIRED", principal="owner", provider="ios",
+                reason="Observe the exact fixture installation input",
+            )
+            self.store.attest_target_identity_checkpoint(
+                state["runId"], checkpoint_id="ios-target", challenge=challenge, actor="human:owner",
+            )
+            self.store.start_task(state["runId"], "ios-verification", worker_id="ios-observer")
         if runtime.get("deployment"):
             self.store.add_task(
                 state["runId"],
@@ -431,7 +478,7 @@ class LegibilityTests(unittest.TestCase):
                 }
             }, surface="ios"
         )
-        result = runner.verify_surface("ios")
+        result = runner.verify_surface("ios", task_id="ios-verification")
         self.assertEqual("fail", result["status"])
         self.assertIn("ios.blank-screen", result["failed"])
 
@@ -451,7 +498,75 @@ class LegibilityTests(unittest.TestCase):
             },
             surface="ios",
         )
-        self.assertEqual("pass", runner.verify_surface("ios")["status"])
+        self.assertEqual("pass", runner.verify_surface("ios", task_id="ios-verification")["status"])
+        task = self.store.load(runner.run_id)["tasks"][0]
+        self.assertEqual("UNCERTAIN", task["sideEffect"]["state"])
+        self.assertFalse(any(item["kind"] == "mutation-receipt"
+                             for item in self.store.load(runner.run_id)["artifacts"]))
+
+    def test_ios_requires_explicit_task_before_running_any_recipe(self) -> None:
+        sentinel = self.repo / "unexpected-ios-build"
+        runner, _ = self.create_runner({
+            "ios": {"bundleId": "example.fixture", "build": self.touch_command(str(sentinel)),
+                    "install": self.touch_command(str(sentinel)), "launch": self.touch_command(str(sentinel))},
+        }, surface="runtime")
+        with self.assertRaises(RuntimeFailure) as error:
+            runner.verify_surface("ios")
+        self.assertEqual("IOS_TASK_REQUIRED", error.exception.code)
+        self.assertFalse(sentinel.exists())
+
+    def test_ios_default_deny_stops_explicit_task_before_build(self) -> None:
+        sentinel = self.repo / "unexpected-ios-build"
+        runner, _ = self.create_runner({
+            "ios": {"bundleId": "example.fixture", "build": self.touch_command(str(sentinel)),
+                    "install": self.touch_command(str(sentinel)), "launch": self.touch_command(str(sentinel))},
+        }, surface="runtime")
+        self.store.add_task(runner.run_id, {
+            "id": "ios-denied", "objective": "Attempt undeclared installation", "workerProfile": "shell",
+            "acceptanceCriteria": ["REALITY-001"], "risk": "R3", "operations": ["install", "launch"],
+            "sideEffect": {"operation": "install", "target": "example.fixture"},
+        })
+        with self.assertRaises(RuntimeFailure) as error:
+            runner.verify_surface("ios", task_id="ios-denied")
+        self.assertEqual("MUTATION_DENIED", error.exception.code)
+        self.assertFalse(sentinel.exists())
+
+    def test_ios_target_drift_during_build_prevents_install(self) -> None:
+        sentinel = self.repo / "unexpected-ios-install"
+        artifact = Path(self.temp.name) / "ios-artifact.bin"
+        runner, _ = self.create_runner({
+            "ios": {"bundleId": "example.fixture",
+                    "build": self.python_command(
+                        f"from pathlib import Path; Path({str(artifact)!r}).write_bytes(b'changed build')"),
+                    "install": self.touch_command(str(sentinel)), "launch": self.touch_command(str(sentinel))},
+        }, surface="ios")
+        with self.assertRaises(RuntimeFailure) as error:
+            runner.verify_surface("ios", task_id="ios-verification")
+        self.assertEqual("EXECUTOR_FAILED", error.exception.code)
+        self.assertFalse(sentinel.exists())
+        self.assertEqual("PENDING", self.store.load(runner.run_id)["tasks"][0]["sideEffect"]["state"])
+
+    def test_ios_failed_build_prevents_install_and_launch(self) -> None:
+        sentinel = self.repo / "unexpected-ios-install"
+        runner, _ = self.create_runner({
+            "ios": {"bundleId": "example.fixture", "build": self.fail_command(),
+                    "install": self.touch_command(str(sentinel)), "launch": self.touch_command(str(sentinel))},
+        }, surface="ios")
+        result = runner.verify_surface("ios", task_id="ios-verification")
+        self.assertEqual("fail", result["status"])
+        self.assertFalse(sentinel.exists())
+        self.assertEqual("PENDING", self.store.load(runner.run_id)["tasks"][0]["sideEffect"]["state"])
+
+    def test_ios_failed_install_preserves_uncertainty_and_prevents_launch(self) -> None:
+        sentinel = self.repo / "unexpected-ios-launch"
+        runner, _ = self.create_runner({
+            "ios": {"bundleId": "example.fixture", "build": self.pass_command(),
+                    "install": self.fail_command(), "launch": self.touch_command(str(sentinel))},
+        }, surface="ios")
+        result = runner.verify_surface("ios", task_id="ios-verification")
+        self.assertEqual("fail", result["status"])
+        self.assertFalse(sentinel.exists())
+        self.assertEqual("UNCERTAIN", self.store.load(runner.run_id)["tasks"][0]["sideEffect"]["state"])
 
     def test_ios_lifecycle_runs_in_build_to_blank_screen_order(self) -> None:
         lifecycle = self.repo / "ios-lifecycle"
@@ -495,7 +610,7 @@ class LegibilityTests(unittest.TestCase):
             return analyze(path)
 
         runner.analyze_ios_screenshot = check_blank_screen  # type: ignore[method-assign]
-        self.assertEqual("pass", runner.verify_surface("ios")["status"])
+        self.assertEqual("pass", runner.verify_surface("ios", task_id="ios-verification")["status"])
 
     def test_ios_builtin_pixel_check_rejects_flat_screenshot(self) -> None:
         screenshot = self.repo / "ios-flat.png"
@@ -512,7 +627,7 @@ class LegibilityTests(unittest.TestCase):
                 }
             }, surface="ios"
         )
-        result = runner.verify_surface("ios")
+        result = runner.verify_surface("ios", task_id="ios-verification")
         self.assertEqual("fail", result["status"])
         blank = next(item for item in result["results"] if item["name"] == "ios.blank-screen")
         self.assertIn('"luminanceRange": 0', blank["stdout"])
@@ -533,7 +648,7 @@ class LegibilityTests(unittest.TestCase):
             },
             surface="ios",
         )
-        self.assertEqual("pass", runner.verify_surface("ios")["status"])
+        self.assertEqual("pass", runner.verify_surface("ios", task_id="ios-verification")["status"])
 
     def test_ios_stale_preexisting_evidence_is_rejected(self) -> None:
         screenshot = self.repo / "ios-stale.png"
@@ -562,7 +677,7 @@ class LegibilityTests(unittest.TestCase):
                 }
             }, surface="ios"
         )
-        result = runner.verify_surface("ios")
+        result = runner.verify_surface("ios", task_id="ios-verification")
         self.assertEqual("fail", result["status"])
         self.assertIn("ios.launch", result["failed"])
 

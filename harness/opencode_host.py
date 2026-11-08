@@ -159,7 +159,8 @@ def dispatch(store: RunStore, server: OpenCodeServer, run_id: str, task_id: str,
             raise unconfirmed(session_id) from exc
         if not ticket.consumed:
             try:
-                store.fail_task(run_id, task_id, f"opencode bridge failed: {exc}")
+                store.fail_task(run_id, task_id, f"opencode bridge failed: {exc}",
+                                _native_reconciliation=ticket)
             except Exception as cleanup:
                 print(f"opencode bridge could not fail task {task_id}: {cleanup}", file=sys.stderr)
         raise

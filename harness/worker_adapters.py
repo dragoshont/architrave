@@ -452,7 +452,9 @@ def ignored_fingerprint(workspace: Path) -> str:
     if ignored.returncode == 0:
         for encoded_path in sorted(item for item in ignored.stdout.split(b"\0") if item):
             relative = encoded_path.decode("utf-8", "replace").replace("\\", "/")
-            if relative.startswith((".architrave/runs/", ".architrave/worktrees/", "node_modules/", "__pycache__/")) or "/__pycache__/" in relative:
+            if (relative == ".architrave/resources.lock"
+                    or relative.startswith((".architrave/runs/", ".architrave/worktrees/", "node_modules/", "__pycache__/"))
+                    or "/__pycache__/" in relative):
                 continue
             candidate = workspace / relative
             if candidate.is_file() and not candidate.is_symlink():
@@ -741,7 +743,7 @@ def execute_work_packet(store: RunStore, run_id: str, task_id: str, worker_id: s
         escaped_paths = [path for path in changed_paths if not path_allowed(path, task["mutablePaths"])]
 
         artifact_dir = run_dir / "workers" / packet["workPacketId"]
-        result_path = artifact_dir / "result.json"
+        result_path = artifact_dir / f"result-{worker_id}-{uuid.uuid4().hex}.json"
 
         errors: list[dict[str, Any]] = []
         if execution["timedOut"]:
