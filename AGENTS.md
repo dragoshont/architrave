@@ -5,7 +5,9 @@ Do the requested work directly. Use the host's existing tools and permissions.
 - Read the relevant source before changing it.
 - Keep changes focused on the user's asks.
 - Use `tasks.md` only as a short list of those asks.
-- Status is blank, `In progress`, or `Code ready`. No additional status system.
+- Task status is blank, `In progress`, or `Code ready`. No additional status system.
+- `Feature ready` is one line for the whole list, set only when every ask is
+  completed. Until then it stays unset.
 - `Code ready` means the implementation is written. Report checking failures
   separately; they do not automatically authorize repair work.
 - Respect stops, scope changes, and required permission decisions.
