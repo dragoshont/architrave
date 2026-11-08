@@ -942,7 +942,8 @@ def chain_errors(root: Path, text: str, reqs: dict[str, dict[str, str]],
                 errors.append(f"{did} is active without evidence")
             weak = [e for e in cited if e in evidence and evidence[e]["status"].lower() != "supported"]
             if weak:
-                errors.append(f"{did} is active but rests on {', '.join(f'{e} ({evidence[e]['status']})' for e in weak)}; set it to reconsider")
+                details = ", ".join(f"{e} ({evidence[e]['status']})" for e in weak)
+                errors.append(f"{did} is active but rests on {details}; set it to reconsider")
     for rid, row in reqs.items():
         for did in ref_ids(" ".join((row["requirement"], row["acceptance"], row["evidence"])), "D"):
             if did not in decisions:

@@ -123,6 +123,8 @@ class InstallUpdateTests(unittest.TestCase):
         self.assertTrue((application / ".github/agents/ui-visual.agent.md").is_file())
         self.assertFalse((application / ".github/hooks/design-guard.json").exists())
         self.assertFalse((application / "gates/hooks").exists())
+        for relative in self.module.GUIDANCE_FILES:
+            self.assertEqual((application / relative).read_bytes(), (ROOT / relative).read_bytes())
 
         self.run_cli(
             "install",
@@ -941,6 +943,135 @@ class InstallUpdateTests(unittest.TestCase):
         self.assertFalse(lock.exists())
         self.assertFalse(transaction.exists())
         self.assertIn(".architrave/runs/", (target / ".gitignore").read_text(encoding="utf-8"))
+
+    def directory_link(self, target: Path, link: Path) -> None:
+        if os.name == "nt":
+            result = subprocess.run(
+                [os.environ.get("COMSPEC", "cmd.exe"), "/c", "mklink", "/J", str(link), str(target)],
+                capture_output=True, text=True,
+            )
+            if result.returncode:
+                self.skipTest(f"directory junctions are unavailable: {result.stderr!r}")
+        else:
+            os.symlink(target, link, target_is_directory=True)
+
+    def test_transaction_rejects_replaced_parent_before_committing(self) -> None:
+        target = self.workspace / "target"
+        external = self.workspace / "external"
+        (target / "gates").mkdir(parents=True)
+        external.mkdir()
+        original = external / "owner.txt"
+        original.write_bytes(b"external owner data")
+        managed = self.module.ManagedRoot(target, "review")
+        transaction = self.module.ManagedTransaction(managed)
+        transaction.__enter__()
+        managed.replace_bytes("newdir/new.py", b"new kit bytes")
+        managed.replace_bytes("gates/gate.py", b"new kit bytes")
+        (target / "gates").rmdir()
+        self.directory_link(external, target / "gates")
+        try:
+            with self.assertRaises((self.module.InstallerError, OSError)):
+                transaction.__exit__(None, None, None)
+            self.assertEqual(original.read_bytes(), b"external owner data")
+            self.assertFalse((external / "gate.py").exists())
+            self.assertFalse((target / "newdir").exists())
+        finally:
+            transaction.abort()
+
+    def test_pinned_parent_cannot_redirect_a_live_write(self) -> None:
+        target = self.workspace / "target"
+        external = self.workspace / "external"
+        (target / "gates").mkdir(parents=True)
+        external.mkdir()
+        managed = self.module.ManagedRoot(target, "review")
+        with managed.pinned_parent("gates/new.py") as (name, parent):
+            try:
+                (target / "gates").rename(target / "old-gates")
+            except PermissionError:
+                self.assertEqual(os.name, "nt")
+            else:
+                self.assertNotEqual(os.name, "nt", "Windows ancestors must be locked against renaming")
+                self.directory_link(external, target / "gates")
+            descriptor = os.open(name, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600, dir_fd=parent)
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(b"owned write")
+        self.assertFalse((external / "new.py").exists())
+
+    def test_recovery_rejects_external_backup_and_preserves_evidence(self) -> None:
+        target = self.workspace / "target"
+        target.mkdir()
+        external = self.workspace / "owner.txt"
+        external.write_bytes(b"owner data")
+        directory = target / ".architrave-install-transaction"
+        (directory / "backup").mkdir(parents=True)
+        (directory / "stage").mkdir()
+        manifest = {
+            "status": "prepared", "applied": 1, "inFlight": None, "operations": [{
+                "kind": "write", "relative": "AGENTS.md", "stage": "stage/0",
+                "mode": 0o644, "existed": True, "backup": "../../owner.txt",
+            }],
+        }
+        (directory / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        managed = self.module.ManagedRoot(target, "review")
+        with self.assertRaises(self.module.InstallerError):
+            self.module.ManagedTransaction(managed).__enter__()
+        self.assertEqual(external.read_bytes(), b"owner data")
+        self.assertTrue((directory / "manifest.json").is_file())
+        self.assertFalse((target / "AGENTS.md").exists())
+
+    def test_recovery_rejects_linked_transaction_tree(self) -> None:
+        target = self.workspace / "target"
+        external = self.workspace / "external"
+        target.mkdir()
+        external.mkdir()
+        marker = external / "manifest.json"
+        marker.write_text("external owner data", encoding="utf-8")
+        self.directory_link(external, target / ".architrave-install-transaction")
+        managed = self.module.ManagedRoot(target, "review")
+        with self.assertRaises(self.module.InstallerError):
+            self.module.ManagedTransaction(managed).__enter__()
+        self.assertEqual(marker.read_text(encoding="utf-8"), "external owner data")
+
+    def test_interrupted_rollback_can_resume_after_a_backup_was_restored(self) -> None:
+        target = self.workspace / "target"
+        target.mkdir()
+        original = b"restored original"
+        (target / "AGENTS.md").write_bytes(original)
+        directory = target / ".architrave-install-transaction"
+        (directory / "backup").mkdir(parents=True)
+        (directory / "stage").mkdir()
+        manifest = {
+            "status": "prepared", "applied": 1, "inFlight": None, "operations": [{
+                "kind": "write", "relative": "AGENTS.md", "stage": "stage/0",
+                "mode": 0o644, "existed": True, "backup": "backup/0",
+                "backupSha256": hashlib.sha256(original).hexdigest(),
+            }],
+        }
+        (directory / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        managed = self.module.ManagedRoot(target, "review")
+        with self.module.ManagedTransaction(managed):
+            pass
+        self.assertEqual((target / "AGENTS.md").read_bytes(), original)
+        self.assertFalse(directory.exists())
+
+    def test_malformed_agents_markers_never_discard_owner_instructions(self) -> None:
+        for content in (
+            f"# Owner\n{self.module.BEGIN}\nold managed text\n## Owner policy\nKeep user data.\n",
+            f"{self.module.BEGIN}\n{self.module.BEGIN}\nold\n{self.module.END}\n{self.module.END}\n",
+            f"{self.module.END}\nowner text\n{self.module.BEGIN}\n",
+        ):
+            target = self.workspace / uuid.uuid4().hex
+            target.mkdir()
+            (target / "AGENTS.md").write_text(content, encoding="utf-8")
+            before = snapshot(target)
+            self.run_cli("install", "--profile", "knowledge", str(target), expected=1)
+            self.assertEqual(snapshot(target), before)
+
+    def test_managed_paths_reject_drive_and_stream_spellings(self) -> None:
+        managed = self.module.ManagedRoot(self.workspace, "review")
+        for relative in ("C:/outside.txt", "gates/gate.py:stream"):
+            with self.assertRaises(self.module.InstallerError):
+                managed.path(relative)
 
     def test_empty_and_malformed_installer_lock_never_imply_dead_owner(self) -> None:
         for content in (b"", b"{partial", b'{"pid":null}', b'{"pid":true}', b'{"pid":99999999}',

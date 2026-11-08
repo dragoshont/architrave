@@ -336,6 +336,36 @@ class DeliveryChecks(unittest.TestCase):
         updated = check.read_json(check.session_report_path(SESSION))
         self.assertEqual(updated["observations"], {})
 
+    def test_first_seal_cannot_reuse_proof_from_before_implementation(self):
+        result = self.command("--prepare", "--reqs", "REQ-01", "--request", "owner-event",
+                              "--source", "provider.py")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        path = check.session_report_path(SESSION)
+        prepared = check.read_json(path)
+        self.assertIsInstance(prepared["audit"], dict)
+        prepared["board"] = self.report["board"]
+        prepared["expected"] = self.report["expected"]
+        prepared["observations"] = self.report["observations"]
+        check.write_report(path, prepared)
+        (self.repo / "provider.py").write_text("result = different.execute(request)\n")
+        result = self.command("--seal")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        sealed = check.read_json(path)
+        self.assertEqual(sealed["observations"], {})
+        sealed["observations"] = self.report["observations"]
+        self.assertTrue(any("earlier tool" in e for e in self.errors(sealed)))
+
+    def test_legacy_first_seal_without_intake_hash_requires_fresh_proof(self):
+        self.report.update(state="prepared", audit=None)
+        path = check.session_report_path(SESSION)
+        check.write_report(path, self.report, create=True)
+        result = self.command("--seal")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        sealed = check.read_json(path)
+        self.assertEqual(sealed["observations"], {})
+        sealed["observations"] = self.report["observations"]
+        self.assertTrue(any("earlier tool" in e for e in self.errors(sealed)))
+
     def test_pause_is_non_delivery_with_exact_hook_summary_and_explicit_resume(self):
         import session_guard
 

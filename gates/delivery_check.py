@@ -754,12 +754,13 @@ def session_command(args) -> int:
                 "board_owner_event_ids": list(args.request),
                 "references": [file_identity(Path(name)) for name in args.reference or []],
                 "expected": {rid: {"kind": "unclassified"} for rid in reqs},
-                "audit": None, "board": None, "dispositions": {}, "observations": {}, "review": None,
+                "audit": snapshot, "board": None, "dispositions": {}, "observations": {}, "review": None,
             }
             write_report(path, report, create=True)
             print(f"delivery-audit: PREPARED {path}")
             print("Set expected source/integration/visual outcomes from the owner request before implementing; "
                   "open/read the scoped program board. This grants no new operation permission.")
+            print("Intake source is bound; after source changes, seal before recording fresh acceptance observations.")
             return 0
         report = read_json(path)
         if (report.get("schema") != SCHEMA or Path(report["repo"]).resolve() != root
@@ -914,8 +915,8 @@ def session_command(args) -> int:
             current = current_scan(root, report)
             if current["requirements"] != report["original_requirements"]:
                 raise ValueError("requirements changed; preserve the intake and re-declare against actual owner corrections")
-            if (isinstance(report.get("audit"), dict)
-                    and source_evidence(current) != source_evidence(report["audit"])):
+            if (not isinstance(report.get("audit"), dict)
+                    or source_evidence(current) != source_evidence(report["audit"])):
                 # Re-sealing must not launder a successful run from older source.
                 report["observations"] = {}
                 report["proof_after"] = {rid: datetime.now(timezone.utc).isoformat() for rid in report["reqs"]}

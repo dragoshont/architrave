@@ -199,6 +199,22 @@ def main() -> int:
 
         run_simulated_windows_checks(base)
 
+        if os.name == "nt":
+            module = load_helper_module()
+            pinned = base / "pinned-directory"
+            pinned.mkdir()
+            handle = module.lock_windows_directory(pinned)
+            try:
+                try:
+                    pinned.rename(base / "moved-directory")
+                except PermissionError:
+                    pass
+                else:
+                    raise AssertionError("an open Codex directory pin must prevent renaming on Windows")
+            finally:
+                module.close_windows_handle(handle)
+            print("ok    actual Windows directory handle prevents ancestor replacement")
+
         crlf = base / "crlf"
         crlf.mkdir()
         config(crlf, b'[user]\r\nname = "Scoala"\r\n')

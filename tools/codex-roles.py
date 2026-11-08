@@ -199,7 +199,7 @@ def lock_windows_directory(path: Path) -> object:
     create_file.restype = wintypes.HANDLE
     handle = create_file(
         str(path),
-        0x80,  # FILE_READ_ATTRIBUTES
+        0x1,  # FILE_LIST_DIRECTORY: unlike READ_ATTRIBUTES, enforces delete sharing.
         0x1 | 0x2,  # FILE_SHARE_READ | FILE_SHARE_WRITE; deliberately no DELETE
         None,
         3,  # OPEN_EXISTING

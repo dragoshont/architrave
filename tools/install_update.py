@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import importlib.util
 import json
@@ -35,6 +36,13 @@ GATE_FILES = (
     "delivery_check.py",
     "session_guard.py",
     "rubric.md",
+)
+GUIDANCE_FILES = (
+    "docs/program-board.md",
+    "docs/delivery-authenticity.md",
+    "docs/native-semantic-review.md",
+    "docs/route-ribbon.md",
+    "kit/examples/requirements.md",
 )
 IGNORE_RULES = (
     ".architrave/runs/",
@@ -514,6 +522,7 @@ class ManagedRoot:
         if info is None or not _is_real_dir(info):
             raise InstallerError(f"{label}: target root must resolve to a real directory")
         self.root = resolved
+        self.identity = (info.st_dev, info.st_ino)
         self.label = label
         self.transaction: ManagedTransaction | None = None
         self.planned_dirs: set[Path] = set()
@@ -525,6 +534,7 @@ class ManagedRoot:
             not relative
             or pure.is_absolute()
             or "\\" in relative
+            or ":" in relative
             or any(part in ("", ".", "..") for part in raw_parts)
         ):
             raise InstallerError(f"{self.label}: unsafe managed path '{relative}'")
@@ -534,6 +544,77 @@ class ManagedRoot:
         except ValueError as exc:
             raise InstallerError(f"{self.label}: managed path escapes target root: {relative}") from exc
         return candidate
+
+    @contextmanager
+    def pinned_parent(self, relative: str, *, create: bool = False):
+        """Pin ancestors through each mutation; POSIX leaf operations use dir_fd."""
+        path = self.path(relative)
+        descriptors = []
+        handles = []
+        try:
+            if os.name == "nt":
+                import ctypes
+
+                kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+                kernel.CreateFileW.argtypes = [ctypes.c_wchar_p, ctypes.c_uint32, ctypes.c_uint32,
+                                              ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p]
+                kernel.CreateFileW.restype = ctypes.c_void_p
+                kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+                kernel.CloseHandle.restype = ctypes.c_int
+                parents = [*reversed(self.root.parents), self.root]
+                current = self.root
+                for part in path.parent.relative_to(self.root).parts:
+                    current /= part
+                    parents.append(current)
+                for parent in parents:
+                    info = _lstat(parent)
+                    if info is None and create and parent.is_relative_to(self.root):
+                        parent.mkdir()
+                        info = _lstat(parent)
+                    if info is None or not _is_real_dir(info):
+                        raise InstallerError(f"{self.label}: unsafe transaction parent: {parent}")
+                    handle = kernel.CreateFileW(ManagedTransaction._native_path(parent), 1, 3, None,
+                                                3, 0x02000000 | 0x00200000, None)
+                    if handle == ctypes.c_void_p(-1).value:
+                        raise OSError(ctypes.get_last_error(), f"cannot pin transaction parent: {parent}")
+                    handles.append(handle)
+                    after = _lstat(parent)
+                    if (after is None or not _is_real_dir(after)
+                            or (info.st_dev, info.st_ino) != (after.st_dev, after.st_ino)):
+                        raise InstallerError(f"{self.label}: transaction parent changed: {parent}")
+                info = self.root.lstat()
+                if (info.st_dev, info.st_ino) != self.identity:
+                    raise InstallerError(f"{self.label}: target root changed")
+                descriptor = None
+                info = _lstat(path)
+            else:
+                flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+                descriptor = os.open(self.root, flags)
+                descriptors.append(descriptor)
+                info = os.fstat(descriptor)
+                if (info.st_dev, info.st_ino) != self.identity:
+                    raise InstallerError(f"{self.label}: target root changed")
+                for part in path.parent.relative_to(self.root).parts:
+                    if create:
+                        try:
+                            os.mkdir(part, dir_fd=descriptor)
+                        except FileExistsError:
+                            pass
+                    descriptor = os.open(part, flags, dir_fd=descriptor)
+                    descriptors.append(descriptor)
+                try:
+                    info = os.stat(path.name, dir_fd=descriptor, follow_symlinks=False)
+                except FileNotFoundError:
+                    info = None
+            if info is not None and not _is_regular_file(info):
+                raise InstallerError(f"{self.label}: unsafe transaction file: {relative}")
+            yield path if descriptor is None else path.name, descriptor
+        finally:
+            for descriptor in reversed(descriptors):
+                os.close(descriptor)
+            if handles:
+                for handle in reversed(handles):
+                    kernel.CloseHandle(handle)
 
     def preflight_dir(self, relative: str) -> None:
         path = self.path(relative)
@@ -825,44 +906,152 @@ class ManagedTransaction:
                 os.close(descriptor)
 
     def _write_manifest(self, value: dict[str, object]) -> None:
-        path = self.directory / "manifest.json"
-        path.write_text(json.dumps(value, separators=(",", ":")) + "\n", encoding="utf-8")
-        with path.open("r+b") as stream:
-            os.fsync(stream.fileno())
+        self._write_artifact("manifest.json", (json.dumps(value, separators=(",", ":")) + "\n").encode())
+
+    def _artifact(self, relative: str):
+        return self.managed.pinned_parent(f".architrave-install-transaction/{relative}")
+
+    @staticmethod
+    def _read_entry(name, parent) -> tuple[bytes, int]:
+        if os.name == "nt":
+            import ctypes
+            import msvcrt
+
+            kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel.CreateFileW.argtypes = [ctypes.c_wchar_p, ctypes.c_uint32, ctypes.c_uint32,
+                                          ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p]
+            kernel.CreateFileW.restype = ctypes.c_void_p
+            handle = kernel.CreateFileW(ManagedTransaction._native_path(Path(name)), 0x80000000,
+                                        7, None, 3, 0x00200000, None)
+            if handle == ctypes.c_void_p(-1).value:
+                error = ctypes.get_last_error()
+                if error in {2, 3}:
+                    raise FileNotFoundError(error, "transaction input disappeared")
+                raise OSError(error, "transaction input cannot be opened")
+            try:
+                descriptor = msvcrt.open_osfhandle(handle, os.O_RDONLY | os.O_BINARY)
+            except OSError:
+                kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+                kernel.CloseHandle(handle)
+                raise
+        else:
+            descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=parent)
+        with os.fdopen(descriptor, "rb") as stream:
+            info = os.fstat(stream.fileno())
+            if not _is_regular_file(info):
+                raise InstallerError("transaction input is not a regular file")
+            return stream.read(), stat.S_IMODE(info.st_mode)
+
+    def _read_artifact(self, relative: str) -> bytes:
+        with self._artifact(relative) as (name, parent):
+            return self._read_entry(name, parent)[0]
+
+    def _write_artifact(self, relative: str, data: bytes, mode: int = 0o600) -> None:
+        with self._artifact(relative) as (name, parent):
+            temporary = f".architrave.tmp.{uuid.uuid4().hex}"
+            temporary_name = Path(name).parent / temporary if parent is None else temporary
+            descriptor = os.open(temporary_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode, dir_fd=parent)
+            try:
+                with os.fdopen(descriptor, "wb") as stream:
+                    stream.write(data)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                    if os.name != "nt":
+                        os.fchmod(stream.fileno(), stat.S_IMODE(mode))
+                os.replace(temporary_name, name, src_dir_fd=parent, dst_dir_fd=parent)
+            finally:
+                try:
+                    os.unlink(temporary_name, dir_fd=parent)
+                except FileNotFoundError:
+                    pass
+
+    def _recovery_manifest(self) -> dict[str, object]:
+        self.managed.preflight_tree(".architrave-install-transaction")
+        try:
+            manifest = json.loads(self._read_artifact("manifest.json"))
+        except (ValueError, UnicodeError) as exc:
+            raise InstallerError("unreadable installer recovery manifest; manual recovery required") from exc
+        if not isinstance(manifest, dict) or manifest.get("status") != "prepared":
+            raise InstallerError("invalid installer recovery manifest; manual recovery required")
+        operations = manifest.get("operations")
+        applied, in_flight = manifest.get("applied"), manifest.get("inFlight")
+        if (not isinstance(operations, list) or type(applied) is not int or not 0 <= applied <= len(operations)
+                or in_flight is not None and (type(in_flight) is not int or in_flight != applied
+                                             or not 0 <= in_flight < len(operations))):
+            raise InstallerError("invalid installer recovery progress; manual recovery required")
+        for index, item in enumerate(operations):
+            if (not isinstance(item, dict) or item.get("kind") not in {"write", "remove"}
+                    or not isinstance(item.get("relative"), str)
+                    or type(item.get("existed")) is not bool
+                    or type(item.get("createOnly", False)) is not bool
+                    or item.get("backup") != (f"backup/{index}" if item["existed"] else None)
+                    or item["kind"] == "write" and item.get("stage") != f"stage/{index}"
+                    or item.get("backupSha256") is not None and (
+                        not isinstance(item["backupSha256"], str)
+                        or not re.fullmatch(r"[a-f0-9]{64}", item["backupSha256"]))
+                    or item.get("createOnly") and (
+                        not isinstance(item.get("expectedSha256"), str)
+                        or not re.fullmatch(r"[a-f0-9]{64}", item["expectedSha256"]))):
+                raise InstallerError("invalid installer recovery operation; manual recovery required")
+            self.managed.preflight_file(item["relative"])
+            if item.get("backup"):
+                with self._artifact(item["backup"]):
+                    pass
+        directories = manifest.get("createdDirectories", [])
+        if not isinstance(directories, list) or not all(isinstance(value, str) for value in directories):
+            raise InstallerError("invalid installer recovery directories; manual recovery required")
+        for relative in directories:
+            self.managed.path(relative)
+            self.managed.preflight_dir(relative)
+        return manifest
 
     def _recover(self) -> None:
         self._assert_lock_owned()
-        manifest_path = self.directory / "manifest.json"
-        if not manifest_path.is_file():
-            raise InstallerError(f"{self.managed.label}: stale transaction has no recovery manifest")
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest = self._recovery_manifest()
         operations = manifest.get("operations", [])
         applied = int(manifest.get("applied", 0))
         in_flight = manifest["inFlight"]
         recoverable = [(index, item) for index, item in enumerate(operations)
                        if index < applied or index == in_flight]
         for _index, item in reversed(recoverable):
-            destination = self.managed.path(str(item["relative"]))
-            backup = self.directory / str(item["backup"]) if item.get("backup") else None
-            if item["kind"] == "write" and item.get("createOnly"):
-                stage = self.directory / str(item["stage"])
-                info = _lstat(destination)
-                if (info is not None and _is_regular_file(info) and stage.is_file()
-                        and os.path.samefile(stage, destination)
-                        and sha256_file(destination) == item["expectedSha256"]):
-                    destination.unlink()
-                elif info is not None:
-                    self.manual_action = True
-                    print(f"MANUAL_ACTION_REQUIRED: late/custom create-only destination preserved: {item['relative']}",
-                          file=sys.stderr)
-                continue
-            if item["kind"] == "remove" and _lstat(destination) is not None:
-                continue
-            if backup and backup.is_file():
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                os.replace(backup, destination)
-            elif not item.get("existed"):
-                destination.unlink(missing_ok=True)
+            with self.managed.pinned_parent(item["relative"], create=True) as (destination, parent):
+                try:
+                    info = os.stat(destination, dir_fd=parent, follow_symlinks=False)
+                except FileNotFoundError:
+                    info = None
+                if item["kind"] == "write" and item.get("createOnly"):
+                    with self._artifact(item["stage"]) as (stage, stage_parent):
+                        stage_info = os.stat(stage, dir_fd=stage_parent, follow_symlinks=False)
+                        owned = (info is not None and
+                                 (info.st_dev, info.st_ino) == (stage_info.st_dev, stage_info.st_ino)
+                                 and hashlib.sha256(self._read_entry(destination, parent)[0]).hexdigest()
+                                 == item["expectedSha256"])
+                    if owned:
+                        os.unlink(destination, dir_fd=parent)
+                    elif info is not None:
+                        self.manual_action = True
+                        print(f"MANUAL_ACTION_REQUIRED: late/custom create-only destination preserved: {item['relative']}",
+                              file=sys.stderr)
+                    continue
+                if item["kind"] == "remove" and info is not None:
+                    continue
+                if item.get("backup"):
+                    with self._artifact(item["backup"]) as (backup, backup_parent):
+                        try:
+                            content, _ = self._read_entry(backup, backup_parent)
+                        except FileNotFoundError:
+                            restored = (info is not None and item.get("backupSha256") is not None
+                                        and hashlib.sha256(self._read_entry(destination, parent)[0]).hexdigest()
+                                        == item["backupSha256"])
+                            if not restored:
+                                raise InstallerError("recovery backup is missing; manual recovery required")
+                        else:
+                            if (item.get("backupSha256") is not None
+                                    and hashlib.sha256(content).hexdigest() != item["backupSha256"]):
+                                raise InstallerError("recovery backup changed; manual recovery required")
+                            os.replace(backup, destination, src_dir_fd=backup_parent, dst_dir_fd=parent)
+                elif not item.get("existed") and info is not None:
+                    os.unlink(destination, dir_fd=parent)
         for directory in sorted(
             (self.root / value for value in manifest.get("createdDirectories", [])),
             key=lambda path: len(path.parts),
@@ -912,11 +1101,11 @@ class ManagedTransaction:
                 raise InstallerError("installer ownership write was incomplete; manual recovery required")
             os.fsync(descriptor)
             self._assert_lock_owned()
-            if self.directory.exists():
+            if _lstat(self.directory) is not None:
                 self._recover()
-            self.directory.mkdir()
-            (self.directory / "stage").mkdir()
-            (self.directory / "backup").mkdir()
+            with self.managed.pinned_parent(".architrave-install-transaction/.initializing", create=True) as (_, parent):
+                for name in ("stage", "backup"):
+                    os.mkdir(self.directory / name if parent is None else name, dir_fd=parent)
         except Exception:
             if locked:
                 self._release_lock()
@@ -934,9 +1123,7 @@ class ManagedTransaction:
         if create_only and _lstat(destination) is not None:
             raise InstallerError(f"{self.managed.label}: managed destination already exists: {relative}")
         index = len(self.operations)
-        stage = self.directory / "stage" / str(index)
-        stage.write_bytes(data)
-        os.chmod(stage, stat.S_IMODE(mode))
+        self._write_artifact(f"stage/{index}", data, mode)
         self.operations.append(
             {"kind": "write", "relative": relative, "stage": f"stage/{index}", "mode": mode,
              "createOnly": create_only, "expectedSha256": hashlib.sha256(data).hexdigest()}
@@ -954,18 +1141,23 @@ class ManagedTransaction:
         self._assert_lock_owned()
         manifest_operations: list[dict[str, object]] = []
         for index, operation in enumerate(self.operations):
-            destination = self.managed.path(str(operation["relative"]))
-            info = _lstat(destination)
             backup_name = None
-            if info is not None:
-                self.managed.require_file(str(operation["relative"]))
-                backup_name = f"backup/{index}"
-                shutil.copy2(destination, self.directory / backup_name, follow_symlinks=False)
+            backup_digest = None
+            relative = str(operation["relative"])
+            self.managed.preflight_file(relative)
+            existed = _lstat(self.managed.path(relative)) is not None
+            if existed:
+                with self.managed.pinned_parent(relative) as (destination, parent):
+                    content, mode = self._read_entry(destination, parent)
+                    backup_name = f"backup/{index}"
+                    self._write_artifact(backup_name, content, mode)
+                    backup_digest = hashlib.sha256(content).hexdigest()
             manifest_operations.append(
                 {
                     **operation,
-                    "existed": info is not None,
+                    "existed": existed,
                     "backup": backup_name,
+                    "backupSha256": backup_digest,
                 }
             )
         manifest = {
@@ -986,19 +1178,21 @@ class ManagedTransaction:
                 if fail_after is not None and int(fail_after) == index:
                     raise OSError(f"injected install/update failure at replacement {index}")
                 relative = str(operation["relative"])
-                destination = self.managed.path(relative)
-                destination.parent.mkdir(parents=True, exist_ok=True)
                 manifest["inFlight"] = index
                 self._write_manifest(manifest)
-                if operation["kind"] == "write":
-                    stage = self.directory / str(operation["stage"])
-                    if operation.get("createOnly"):
-                        os.link(stage, destination, follow_symlinks=False)
+                with self.managed.pinned_parent(relative, create=True) as (destination, parent):
+                    if operation["kind"] == "write":
+                        with self._artifact(operation["stage"]) as (stage, stage_parent):
+                            if operation.get("createOnly"):
+                                os.link(stage, destination, src_dir_fd=stage_parent, dst_dir_fd=parent,
+                                        follow_symlinks=False)
+                            else:
+                                os.replace(stage, destination, src_dir_fd=stage_parent, dst_dir_fd=parent)
                     else:
-                        os.replace(stage, destination)
-                        os.chmod(destination, stat.S_IMODE(int(operation["mode"])))
-                else:
-                    destination.unlink(missing_ok=True)
+                        try:
+                            os.unlink(destination, dir_fd=parent)
+                        except FileNotFoundError:
+                            pass
                 manifest["applied"] = index + 1
                 manifest["inFlight"] = None
                 self._write_manifest(manifest)
@@ -1024,7 +1218,8 @@ class ManagedTransaction:
 
     def abort(self) -> None:
         self.managed.transaction = None
-        if self.directory.exists() and self.lock_bytes is not None and self._lock_matches(self.lock_bytes):
+        if (self.directory.exists() and not (self.directory / "manifest.json").exists()
+                and self.lock_bytes is not None and self._lock_matches(self.lock_bytes)):
             shutil.rmtree(self.directory)
         self._release_lock()
         if self in self.active:
@@ -1162,6 +1357,10 @@ def copy_shared_assets(managed: ManagedRoot, kit: Path) -> None:
     managed.ensure_dir("harness")
     managed.copy_tree(kit / "harness", "harness")
     print("  ok harness")
+    for relative in GUIDANCE_FILES:
+        managed.ensure_dir(PurePosixPath(relative).parent.as_posix())
+        managed.replace_file(kit / relative, relative)
+    print("  ok adopted agent and delivery guidance")
     print("  native agent workers require one user-scope setup: python <kit>/tools/install_update.py native-host-install")
 
 
@@ -1188,14 +1387,15 @@ def update_agents_stanza(managed: ManagedRoot, kit: Path) -> None:
         content = "# AGENTS.md\n"
     else:
         content = managed.require_file("AGENTS.md").read_text(encoding="utf-8")
+    if content.count(BEGIN) != content.count(END):
+        raise InstallerError(f"{managed.label}: AGENTS.md has unbalanced managed markers; repair it before updating")
     while True:
         begin = content.find(BEGIN)
         if begin < 0:
             break
         end = content.find(END, begin + len(BEGIN))
-        if end < 0:
-            content = content[:begin]
-            break
+        if end < 0 or BEGIN in content[begin + len(BEGIN):end]:
+            raise InstallerError(f"{managed.label}: AGENTS.md has malformed managed markers; repair it before updating")
         content = content[:begin] + content[end + len(END) :]
     stanza = (kit / "templates" / "AGENTS.stanza.md").read_text(encoding="utf-8").rstrip()
     refreshed = f"{content.rstrip()}\n\n{BEGIN}\n{stanza}\n{END}\n"
@@ -1243,7 +1443,7 @@ def install(args: argparse.Namespace, kit: Path) -> int:
             "knowledge",
             "harness",
         ),
-        destination_files=(
+        destination_files=GUIDANCE_FILES + (
             "architrave.config.json",
             ".gitignore",
             "AGENTS.md",
@@ -1252,7 +1452,7 @@ def install(args: argparse.Namespace, kit: Path) -> int:
             ".github/workflows/copilot-setup-steps.yml",
             "gates/.kit-version",
         ),
-        source_files=source_files,
+        source_files=source_files + GUIDANCE_FILES,
     )
     for source in constitutions:
         require_source_file(source, "install")
@@ -1334,7 +1534,7 @@ def update(args: argparse.Namespace, kit: Path) -> int:
         kit,
         source_trees=source_trees,
         destination_trees=destination_trees,
-        destination_files=(
+        destination_files=GUIDANCE_FILES + (
             "architrave.config.json",
             ".gitignore",
             "AGENTS.md",
@@ -1342,7 +1542,7 @@ def update(args: argparse.Namespace, kit: Path) -> int:
             "constitution-windows.md",
             "gates/.kit-version",
         ),
-        source_files=(
+        source_files=GUIDANCE_FILES + (
             "templates/AGENTS.stanza.md",
             "plugin.json",
         ),
