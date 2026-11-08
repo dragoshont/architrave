@@ -32,6 +32,8 @@ REQ-94) are recorded in the [roadmap](ROADMAP.md) and on GitHub Releases.
   capacity, and an empty listing cannot release ownership. Run resume and native
   recovery refuse unconfirmed host ownership. Concurrent cancellation requests
   join one reconciliation instead of racing over the owner and bridge pipe.
+  Overlapping dispatches recheck same-task ownership after host preflight;
+  cleanup removes only the reservation belonging to that invocation.
   Restart-safe automatic recovery, genuine persistence-hang/lost-reply coverage
   and real-host hang qualification remain unproven (REQ-97, REQ-104).
 - Guide the lead to name the transport, integrate children in deliberate waves,

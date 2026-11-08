@@ -265,7 +265,7 @@ async function finishLateAdmission(entry, hostTaskId) {
       entry.candidate = await bounded(entry.connection.next(), "persistence", Date.now() + RECOVERY_MS);
       await bounded(entry.connection.close(), "cleanup", Date.now() + RECOVERY_MS);
       entry.bridgeClosed = true;
-      active.delete(entry.key);
+      if (active.get(entry.key) === entry) active.delete(entry.key);
     } catch (error) {
       entry.recoveryPending = true;
       entry.recoveryError = String(error.message ?? error);
@@ -354,7 +354,7 @@ async function reconcileDispatchOnce(entry) {
     try { await bounded(entry.connection.close(), "cleanup", Date.now() + RECOVERY_MS); entry.bridgeClosed = true; }
     catch { entry.connection.child.kill(); }
   }
-  active.delete(entry.key);
+  if (active.get(entry.key) === entry) active.delete(entry.key);
   return { status: "ok", cancelled: Boolean(entry.cancelled), hostCancellationConfirmed: Boolean(entry.cancelled),
     hostRemovalConfirmed: Boolean(entry.hostRemoved),
     hostTaskId: entry.hostTaskId, recoveryOwner: entry.hostTaskId, cleanup: { confirmed: true, errors: [] },
@@ -387,6 +387,15 @@ function request(args, action, invocation) {
       provenance: "executing user-installed extension manifest; pinned files rechecked" } };
 }
 
+function dispatchConflict(entry) {
+  return result({ status: "failed", hostCancellationConfirmed: Boolean(entry.cancelled),
+    hostRemovalConfirmed: Boolean(entry.hostRemoved),
+    error: entry.recoveryPending ? { code: "NATIVE_RECOVERY_PENDING", stage: entry.stage,
+      message: "An earlier dispatch of this WorkPacket has unresolved admission or cleanup; reconcile it with architrave_native_cancel instead of redispatching" } :
+      { code: "NATIVE_DISPATCH_ACTIVE", stage: entry.stage, message: "This WorkPacket is already being dispatched by this bridge" },
+    ...(entry.hostTaskId ? { hostTaskId: entry.hostTaskId, recoveryOwner: entry.hostTaskId } : {}) });
+}
+
 const tools = [
   {
     name: "architrave_native_dispatch",
@@ -404,12 +413,7 @@ const tools = [
       return withAdmission(async () => {
       const key = `${args.run_id}:${args.task_id}`;
       const retained = active.get(key);
-      if (retained?.dispatch) return result({ status: "failed", hostCancellationConfirmed: Boolean(retained.cancelled),
-        hostRemovalConfirmed: Boolean(retained.hostRemoved),
-        error: retained.recoveryPending ? { code: "NATIVE_RECOVERY_PENDING", stage: retained.stage,
-          message: "An earlier dispatch of this WorkPacket has unresolved admission or cleanup; reconcile it with architrave_native_cancel instead of redispatching" } :
-          { code: "NATIVE_DISPATCH_ACTIVE", stage: retained.stage, message: "This WorkPacket is already being dispatched by this bridge" },
-        ...(retained.hostTaskId ? { hostTaskId: retained.hostTaskId, recoveryOwner: retained.hostTaskId } : {}) });
+      if (retained?.dispatch) return dispatchConflict(retained);
       const preflightUntil = performance.now() + PREFLIGHT_MS;
       let tasks;
       try { tasks = await bounded(hostTasks(), "preflight", preflightUntil,
@@ -420,6 +424,8 @@ const tools = [
           error: { code: error.aborted ? "NATIVE_ABORTED" : "NATIVE_HOST_FAILED",
             stage: "preflight", message: String(error.message) } });
       }
+      const concurrent = active.get(key);
+      if (concurrent?.dispatch) return dispatchConflict(concurrent);
       if (semanticScope) throw new Error("SEMANTIC_REVIEW_BUSY: frozen review owns this joined session");
       const owned = new Set([...active.values()].map(entry => entry.hostTaskId));
       const outside = tasks.filter(task => task.type === "agent" && task.status === "running" && !owned.has(task.id)).length;
@@ -453,7 +459,7 @@ const tools = [
         const prepared = await bounded(connection.next(), "preflight", preflightUntil,
           { signal: invocation.signal, clock: () => performance.now() });
         if (prepared.status !== "prepared") {
-          active.delete(key);
+          if (active.get(key) === entry) active.delete(key);
           await bounded(connection.close(), "cleanup", Date.now() + RECOVERY_MS).catch(() => connection.child.kill());
           entry.bridgeClosed = true;
           return result(prepared);
@@ -542,7 +548,7 @@ const tools = [
             candidate, hostTaskId, recoveryOwner: hostTaskId, timedOut: Boolean(timeout), effort: prepared.effort,
             cleanup: { confirmed: false, errors } });
         }
-        active.delete(key);
+        if (active.get(key) === entry) active.delete(key);
         return result({ ...candidate, hostTaskId, hostCancellationConfirmed: Boolean(entry.cancelled),
           hostRemovalConfirmed: Boolean(entry.hostRemoved), timedOut: Boolean(timeout), effort: prepared.effort });
       } catch (error) {
@@ -578,7 +584,7 @@ const tools = [
           catch { connection.child.kill(); }
         }
         // Retain the identity only while something is unresolved; a confirmed-clean failure lets the Run retry.
-        if (!errors.length && !entry.admissionPending && !entry.unknownOwner) active.delete(key);
+        if (!errors.length && !entry.admissionPending && !entry.unknownOwner && active.get(key) === entry) active.delete(key);
         return result({ status: "failed", error: { code: error.aborted ? "NATIVE_ABORTED" : "NATIVE_HOST_FAILED",
           stage, message: String(error.message ?? error) },
           hostTaskId: entry.hostTaskId, hostCancellationConfirmed: Boolean(entry.cancelled),

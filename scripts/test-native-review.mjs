@@ -342,15 +342,45 @@ for t in ['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13','
         const retried = await dispatch("t2", "t2-after-late-cleanup", retry);
         ok(retried.hostTaskId && within(retried));
     });
-    await scenario("fixture: concurrent lost-start recovery adopts one owner, then unblocks redispatch", async () => {
+    await scenario("fixture: overlapping dispatch and recovery retain exactly one lost-start owner", async () => {
         let starts = 0;
         let orphan;
         taskRpc.startAgent = async args => {
             starts++; ({ agentId: orphan } = await running(args)); throw new Error("fixture lost startAgent reply");
         };
-        const first = await dispatch("t3");
+        let listCalls = 0;
+        let releaseLists;
+        let bothListed;
+        const listsGate = new Promise(resolve => { releaseLists = resolve; });
+        const listed = new Promise(resolve => { bothListed = resolve; });
+        taskRpc.list = async () => {
+            if (++listCalls <= 2) {
+                if (listCalls === 2) bothListed();
+                await listsGate;
+            }
+            return original.list();
+        };
+        const calls = [dispatch("t3", "t3-first"), dispatch("t3", "t3-overlap")];
+        await Promise.race([listed, sleep(2000).then(() => { throw new Error("TEST_TIMEOUT: overlapping listings never entered"); })]);
+        releaseLists();
+        const outcomes = await Promise.all(calls);
+        taskRpc.list = original.list;
+        const first = outcomes.find(value => value.error?.stage === "admission");
+        ok(outcomes.filter(value => ["NATIVE_DISPATCH_ACTIVE", "NATIVE_RECOVERY_PENDING"].includes(value.error?.code)).length === 1,
+            "overlapping dispatch must retain one owner instead of replacing its reservation");
         ok(first.status === "failed" && first.error?.stage === "admission" && first.hostCancellationConfirmed === false);
         ok(blocked(await dispatch("t3", "t3-retry")) && starts === 1 && tasks.has(orphan));
+        const configPath = join(repo, "architrave.config.json");
+        const config = JSON.parse(await readFile(configPath, "utf8"));
+        config.workers.maxParallel = 1;
+        await writeFile(configPath, JSON.stringify(config));
+        taskRpc.list = async () => ({ tasks: [] });
+        let capacityError;
+        try { await dispatch("t3-capacity-probe"); } catch (error) { capacityError = error; }
+        taskRpc.list = original.list;
+        config.workers.maxParallel = 20;
+        await writeFile(configPath, JSON.stringify(config));
+        ok(capacityError?.message.includes("CHILD_LIMIT") && starts === 1);
         let cancelCalls = 0;
         let removeCalls = 0;
         let enteredCancel;
@@ -540,7 +570,7 @@ for t in ['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13','
         ok(!tasks.has("late-t8"));
     });
     if (failures.length) {
-        console.error(`FAIL native dispatch fixtures (${failures.length}):\n${failures.join("\n")}`);
+        console.error(`FAIL native dispatch fixtures (${failures.length}); fixture root: ${root}\n${failures.join("\n")}`);
         process.exit(1);
     }
     console.log(`PASS native semantic SDK fixtures: ${assertions} assertions; not live host qualification`);
