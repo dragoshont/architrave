@@ -5,7 +5,7 @@ import json
 import re
 import sys
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 LEARNING_FILES = (".architrave/learning/repo-profile.md", ".architrave/learning/repo-lessons.md")
 LINK = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
@@ -80,6 +80,23 @@ def _write_lines(path: Path, lines: list[str]) -> None:
     path.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
 
 
+def _repo_path(repo: Path, value: str) -> Path:
+    relative = Path(value.replace("\\", "/"))
+    windows = PureWindowsPath(value)
+    if not value or relative.is_absolute() or windows.drive or windows.root or ".." in windows.parts:
+        raise ValueError("path must be repo-relative and stay inside the repo")
+    root = repo.resolve()
+    path = root
+    for component in relative.parts:
+        path /= component
+        if path.is_symlink():
+            raise ValueError("symlink paths are not accepted")
+    resolved = path.resolve()
+    if resolved == root or not resolved.is_relative_to(root):
+        raise ValueError("path must be repo-relative and stay inside the repo")
+    return resolved
+
+
 def _stale(line: str, repo: Path) -> bool:
     for target in LINK.findall(line):
         if not target or target.startswith(("http://", "https://", "mailto:", "#")):
@@ -97,8 +114,14 @@ def mark_stale_learning(repo: Path, apply: bool) -> int:
         print(f"mark-stale-learning: repo dir not found: {repo}", file=sys.stderr)
         return 2
     changed = False
+    paths = {}
+    try:
+        paths = {name: _repo_path(repo, name) for name in LEARNING_FILES}
+    except (OSError, ValueError) as exc:
+        print(f"mark-stale-learning: {exc}", file=sys.stderr)
+        return 2
     for name in LEARNING_FILES:
-        path = repo / name
+        path = paths[name]
         if not path.is_file():
             continue
         out = []
@@ -126,13 +149,19 @@ def semantic_learning_review(repo: Path, provider: str, execute: bool,
         print("NATIVE_HOST_REQUIRED: invoke the adversarial judge through the current host; agent CLI launchers are prohibited.",
               file=sys.stderr)
         return 2
-    for name in LEARNING_FILES:
-        path = repo / name
+    try:
+        source_paths = [_repo_path(repo, name) for name in LEARNING_FILES]
+        prompt_path = _repo_path(repo, prompt or ".architrave/learning/semantic-stale-facts-prompt.md")
+        output_path = _repo_path(repo, output or ".architrave/learning/semantic-stale-facts.jsonl")
+        if prompt_path == output_path:
+            raise ValueError("prompt and findings paths must be different")
+    except (OSError, ValueError) as exc:
+        print(f"semantic-learning-review: {exc}", file=sys.stderr)
+        return 2
+    for name, path in zip(LEARNING_FILES, source_paths):
         if not path.is_file() or path.stat().st_size == 0:
             print(f"semantic-learning-review: missing/empty {name}", file=sys.stderr)
             return 2
-    prompt_path = repo / (prompt or ".architrave/learning/semantic-stale-facts-prompt.md")
-    output_path = repo / (output or ".architrave/learning/semantic-stale-facts.jsonl")
     prompt_path.parent.mkdir(parents=True, exist_ok=True)
     prompt_path.write_text(SEMANTIC_PROMPT, encoding="utf-8")
     print(f"semantic-learning-review prompt: {prompt_path}")
@@ -146,7 +175,12 @@ def apply_semantic_learning_findings(repo: Path, findings: str, apply: bool) -> 
     if not repo.is_dir():
         print(f"apply-semantic-learning-findings: repo dir not found: {repo}", file=sys.stderr)
         return 2
-    source = repo / findings
+    try:
+        source = _repo_path(repo, findings)
+        learning_paths = {name: _repo_path(repo, name) for name in LEARNING_FILES}
+    except (OSError, ValueError) as exc:
+        print(f"apply-semantic-learning-findings: {exc}", file=sys.stderr)
+        return 2
     if not source.is_file():
         print(f"apply-semantic-learning-findings: findings file not found: {findings}", file=sys.stderr)
         return 2
@@ -171,7 +205,7 @@ def apply_semantic_learning_findings(repo: Path, findings: str, apply: bool) -> 
             print(f"FAIL  invalid line for {name}: {line}")
             fail = True
             continue
-        path = repo / name
+        path = learning_paths[name]
         if not path.is_file():
             print(f"FAIL  missing learning file: {name}")
             fail = True

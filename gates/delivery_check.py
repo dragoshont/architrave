@@ -363,7 +363,7 @@ def board_errors(value: object, report: dict, log: list[dict]) -> list[str]:
         read_at = timestamp(read_end.get("timestamp"))
         if opened_at > timestamp(read.get("timestamp")):
             raise ValueError("board read precedes open")
-        if opened_at < cutoff:
+        if timestamp(read.get("timestamp")) < cutoff:
             raise ValueError("board observation predates the current owner scope")
         first_edit = first_source_edit(Path(report["repo"]), log, cutoff)
         if first_edit is not None and read_at > first_edit:
@@ -503,8 +503,8 @@ def check_report(root: Path, report: dict, *, require_review: bool = True) -> li
             else:
                 rows, _, parse_errors = gate.parse_requirements(path.read_text(encoding="utf-8-sig"), set(reqs))
                 errors.extend(parse_errors)
-                errors.extend(f"{rid}: requirement is not accepted" for rid in reqs
-                              if rows.get(rid, {}).get("status", "").lower() != "accepted")
+                errors.extend(f"{rid}: code is not ready" for rid in reqs
+                              if rows.get(rid, {}).get("status", "").lower() not in gate.REQ_CODE_READY)
     except (ValueError, OSError, KeyError, TypeError, AttributeError) as exc:
         errors.append(f"delivery inspection blocked: {exc}")
     return errors

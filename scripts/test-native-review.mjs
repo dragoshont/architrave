@@ -525,26 +525,35 @@ for t in ['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13','
         const released = await cancelPacket("t5");
         ok(released.status === "ok" && released.hostCancellationConfirmed === true && released.cleanup?.confirmed === true);
     });
-    await scenario("fixture: hung remove after persistence retains and adopts the candidate", async () => {
+    await scenario("fixture: hung remove defers persistence and preserves the observed result", async () => {
         taskRpc.startAgent = completing;
         taskRpc.remove = hang;
         const first = await dispatch("t6");
         ok(first.status === "failed" && first.error?.stage === "cleanup" && within(first));
-        ok(first.candidate && first.cleanup?.confirmed === false && first.recoveryOwner === first.hostTaskId);
+        ok(!first.candidate && first.cleanup?.confirmed === false && first.recoveryOwner === first.hostTaskId);
+        ok(first.hostCancellationConfirmed === true && first.hostRemovalConfirmed === false && tasks.has(first.hostTaskId));
         ok(blocked(await dispatch("t6", "t6-retry")));
         taskRpc.remove = original.remove;
         const adopted = await cancelPacket("t6");
-        ok(adopted.adopted === true && adopted.candidate && !tasks.has(first.hostTaskId));
+        ok(adopted.adopted === true && adopted.candidate?.result?.status === "failed" &&
+            adopted.candidate.result.observedHostStatus === "cancelled" && !tasks.has(first.hostTaskId),
+            JSON.stringify(adopted));
+        ok(adopted.candidate.result.summary === "Fixture result: README read." &&
+            adopted.hostCancellationConfirmed === true && adopted.hostRemovalConfirmed === true);
     });
-    await scenario("fixture: hung remove after candidate reply retains candidate and avoids redispatch", async () => {
-        let starts = 0;
+    await scenario("fixture: hung remove retains ownership and avoids redispatch before persistence", async () => {
+        let starts = 0, cancels = 0, removals = 0;
         taskRpc.startAgent = async args => { starts++; return completing(args); };
+        taskRpc.cancel = async args => { cancels++; return original.cancel(args); };
         taskRpc.remove = hang;
         const first = await dispatch("t7");
-        ok(first.status === "failed" && first.error?.stage === "cleanup" && first.candidate && within(first));
-        taskRpc.remove = original.remove;
+        ok(first.status === "failed" && first.error?.stage === "cleanup" && !first.candidate && within(first));
+        ok(blocked(await dispatch("t7", "t7-retry")) && starts === 1 && cancels === 1);
+        taskRpc.remove = async args => { removals++; return original.remove(args); };
         const adopted = await cancelPacket("t7");
-        ok(adopted.adopted === true && starts === 1);
+        ok(adopted.adopted === true && adopted.candidate?.result?.status === "failed" &&
+            adopted.candidate.result.observedHostStatus === "cancelled" &&
+            adopted.cleanup?.confirmed === true && starts === 1 && cancels === 1 && removals === 1);
     });
     await scenario("fixture: one hung batch packet does not hold the other past the deadline", async () => {
         let releaseHung;
@@ -569,6 +578,84 @@ for t in ['t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13','
         ok(retried && !blocked(retried) && retried.hostTaskId);
         ok(!tasks.has("late-t8"));
     });
+    for (const mode of ["abort", "deferred-abort", "timeout"]) {
+        const deferred = mode === "deferred-abort";
+        await scenario(`fixture: retained owner ${mode} persists cancellation without removal`, async () => {
+            const run = `retained-${mode}`;
+            const owner = `retained-owner-${mode}`;
+            const seed = spawnSync(python, ["-c", `
+import sys
+sys.path.insert(0,sys.argv[1]+'/harness')
+from architrave_runtime import RunStore
+s=RunStore(sys.argv[2]);run=sys.argv[3];owner=sys.argv[4]
+s.create(run_id=run,goal='Retained owner abort',outcome='Confirmed cancellation without removal',
+ criteria=[{'id':'FIX','description':'d','scope':'fixture','risk':'R0','verificationType':'deterministic','blocking':True}])
+s.add_task(run,{'id':'retained','objective':'Read README','acceptanceCriteria':['FIX'],'workerProfile':'native',
+ 'risk':'R0','pushback':'KEEP:fixture','maxAttempts':3,
+ 'workPacket':{'budget':{'timeoutSeconds':3,'maxOutputBytes':800,'maxTurns':4}}})
+ticket=s.begin_native_worker(run,'retained',host_owner='owner-one')
+s.bind_native_owner(ticket,owner)
+s.accept_native_candidate(ticket,host_task_id=owner,host_status='cancelled',text='Previous retained turn cancelled')
+`, ROOT, repo, run, owner], { encoding: "utf8" });
+            assert.equal(seed.status, 0, seed.stderr);
+            tasks.set(owner, { id: owner, type: "agent", status: "idle", prompt: "Previous retained turn" });
+            const controller = new AbortController();
+            let starts = 0, cancels = 0, removals = 0;
+            taskRpc.startAgent = async args => { starts++; return completing(args); };
+            taskRpc.sendMessage = async ({ id, message }) => {
+                ok(id === owner);
+                tasks.get(id).status = "running";
+                tasks.get(id).prompt = message;
+                if (mode !== "timeout") setTimeout(() => controller.abort(), 150);
+                return { sent: true };
+            };
+            taskRpc.cancel = async args => {
+                cancels++;
+                return deferred ? { cancelled: false } : original.cancel(args);
+            };
+            taskRpc.remove = async args => { removals++; return original.remove(args); };
+            const packet = { repo, run_id: run, task_id: "retained", owner_handle: owner, ...retry };
+            const stopped = await call(dispatchTool, packet, run, 20000, controller.signal);
+            if (mode === "timeout") {
+                ok(stopped.status === "failed" && stopped.timedOut === true && within(stopped), JSON.stringify(stopped));
+                ok(stopped.result?.hostObservation.budgetStop === "time");
+            } else {
+                ok(stopped.error?.code === "NATIVE_ABORTED" && stopped.error?.stage === "observation" && within(stopped));
+            }
+            ok(stopped.hostCancellationConfirmed === !deferred && stopped.hostRemovalConfirmed === false);
+            ok(tasks.has(owner) && removals === 0 && starts === 0);
+            let receipt = mode === "timeout" ? stopped : stopped.candidate;
+            if (deferred) {
+                ok(stopped.cleanup?.confirmed === false && !receipt && tasks.get(owner).status === "running");
+                ok(blocked(await call(dispatchTool, packet, `${run}-blocked`)));
+                taskRpc.cancel = async args => { cancels++; return original.cancel(args); };
+                const recovered = await call(cancelDefinition, { repo, run_id: run, task_id: "retained" }, `${run}-recover`);
+                ok(recovered.status === "ok" && recovered.cleanup?.confirmed === true &&
+                    recovered.hostCancellationConfirmed === true && recovered.hostRemovalConfirmed === false,
+                    JSON.stringify(recovered));
+                receipt = recovered.candidate;
+            } else if (mode !== "timeout") {
+                ok(stopped.cleanup?.confirmed === true, JSON.stringify(stopped));
+            }
+            ok(receipt?.result?.observedHostStatus === "cancelled" &&
+                receipt.result.hostObservation.cancellationConfirmed === true &&
+                receipt.result.hostObservation.removalConfirmed === false, JSON.stringify(receipt));
+            ok(tasks.has(owner) && tasks.get(owner).status === "cancelled" &&
+                starts === 0 && removals === 0 && cancels === (deferred ? 2 : 1));
+            const canonical = spawnSync(python, ["-c", `
+import sys
+sys.path.insert(0,sys.argv[1]+'/harness')
+from architrave_runtime import RunStore
+s=RunStore(sys.argv[2]).load(sys.argv[3])
+assert s['tasks'][0]['lease'] is None
+expected='READY' if sys.argv[4]=='timeout' else 'FAILED'
+assert s['tasks'][0]['status']==expected, s['tasks'][0]['status']
+assert len(s['workers'])==2 and all(w['status']!='RUNNING' for w in s['workers'])
+`, ROOT, repo, run, mode], { encoding: "utf8" });
+            assert.equal(canonical.status, 0, canonical.stderr); assertions++;
+            delete taskRpc.sendMessage;
+        });
+    }
     if (failures.length) {
         console.error(`FAIL native dispatch fixtures (${failures.length}); fixture root: ${root}\n${failures.join("\n")}`);
         process.exit(1);

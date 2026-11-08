@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 import sys
 
-from architrave_runtime import cli as runtime_cli
+from architrave_runtime import cli as runtime_cli, validate_tournament_result
 import learning_tools
 from validate_learning import validate as validate_learning
 from validate_run_v2 import validate as validate_run_v2
@@ -60,37 +60,6 @@ def semantic_review(run_dir: Path, provider: str, execute: bool) -> int:
         "execution": "host-owned; this helper cannot execute or attest a reviewer",
     }, indent=2))
     return 0
-
-
-def validate_tournament_result(result: object, bind: dict[str, str] | None = None) -> list[str]:
-    """Typed tournament result: DO_NOTHING and SMALLEST_VIABLE baselines plus why the winner beats doing nothing."""
-    if not isinstance(result, dict):
-        return ["result must be an object"]
-    errors = []
-    for key, expected in (bind or {}).items():
-        if not isinstance(result, dict) or result.get(key) != expected:
-            errors.append(f"result {key} must be {expected!r} (stale or unrelated result)")
-    options = result.get("options")
-    if not isinstance(options, list) or not all(
-            isinstance(item, dict) and isinstance(item.get("kind"), str) for item in options):
-        return errors + ["options must be a list of objects with string kinds"]
-    kinds = {item["kind"] for item in options}
-    if not 2 <= len(options) <= 4 or len(kinds) != len(options):
-        errors.append("options must contain two to four distinct kinds")
-    if any(not isinstance(item.get("summary"), str) or not item["summary"].strip() for item in options):
-        errors.append("every option needs a nonempty summary")
-    for kind in ("DO_NOTHING", "SMALLEST_VIABLE"):
-        if kind not in kinds:
-            errors.append(f"options must include kind {kind}")
-    winner = result.get("winner")
-    if not isinstance(winner, str) or not winner.strip():
-        errors.append("winner is required")
-    elif winner not in kinds:
-        errors.append("winner must name an option kind")
-    explanation = result.get("winnerBeatsDoNothing")
-    if not isinstance(explanation, str) or not explanation.strip():
-        errors.append("winnerBeatsDoNothing must explain why the winner beats doing nothing")
-    return errors
 
 
 def tournament_review(run_dir: Path, execute: bool, result_path: Path | None = None,

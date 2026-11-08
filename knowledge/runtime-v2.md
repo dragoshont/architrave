@@ -322,6 +322,22 @@ Record CONTINUE/BOUNDED_GO/PIVOT/PARK, reported delta, failed hypotheses, blocke
 next step, uncertainty and revisit condition in the existing task. Native/shell
 dispatch consumes the selected WorkPacket bounds; no extra report files.
 
+For a material option comparison, establish this finite window **before**
+dispatching a read-only native analyst in the same scope. The observed result
+must be one JSON object with `task`, `source` (the unchanged commit), `failure`
+(the owning decision snapshot's `failureDigest`), two to four
+distinct `options` (`kind` and `summary`), `winner`, and `winnerBeatsDoNothing`.
+Include `DO_NOTHING` and `SMALLEST_VIABLE`; a routine task does not qualify.
+Consume its authenticated worker artifact with `feasibility-record
+--comparison-ref artifact:<id>` rather than importing a result file. The
+decision, rationale and next step then come from the observed result:
+`DO_NOTHING` parks, `SMALLEST_VIABLE` selects bounded continuation, and another
+winner selects a pivot. The original window, observed spend and deadline remain
+in force. Unknown turn usage does not become zero. The consumed reference and
+criterion scope stay in the existing decision snapshot across retries and
+renamed successors; another comparison cannot renew the allowance. This
+changes neither permissions nor the objective and never starts another agent.
+
 ```bash
 python harness/architrave_runtime.py feasibility-record <run> <task> \
   --trigger user --decision BOUNDED_GO --seconds 120 --turns 8 --output-bytes 2000 \

@@ -616,12 +616,14 @@ class RunStore:
         document = self.requirements_document()
         bound = {rid for task in state["tasks"] for rid in task.get("reqs", [])}
         session_id = os.environ.get("COPILOT_AGENT_SESSION_ID")
+        declared = False
         if session_id:
             from delivery_check import check_session, declared_for
 
             try:
+                declared = declared_for(self.repository, session_id)
                 errors = (check_session(self.repository, session_id, allow_withdrawal=False)
-                          if declared_for(self.repository, session_id) else [])
+                          if declared else [])
             except (ValueError, KeyError, OSError, TypeError, AttributeError) as exc:
                 errors = [str(exc)]
             if errors:
@@ -634,10 +636,19 @@ class RunStore:
             return
         rows, _ = document
         # superseded/withdrawn rows already require an owner correction in the gate.
-        done = {"accepted", "superseded", "withdrawn"}
+        done = {"code ready", "accepted", "superseded", "withdrawn"}
         pending = sorted(rid for rid in bound if rid not in rows or rows[rid]["status"].lower() not in done)
         if pending:
-            raise RuntimeFailure("REQ_NOT_ACCEPTED", "Run completion requires accepted requirements", details={"reqs": pending})
+            raise RuntimeFailure("REQ_NOT_ACCEPTED", "Run completion requires all feature code to be ready",
+                                 details={"reqs": pending})
+        if not declared:
+            from gate_runner import review_passed, strict_reviews
+
+            unreviewed = sorted(rid for rid in bound if rows[rid]["status"].lower() == "code ready"
+                                and not review_passed(rows[rid]["evidence"], strict_reviews(), rid))
+            if unreviewed:
+                raise RuntimeFailure("REQ_NOT_ACCEPTED", "Run completion requires the final review of all features",
+                                     details={"reqs": unreviewed})
 
     def _sync_requirement_claims(self, state: dict[str, Any], *, event_type: str,
                                  task_id: str | None, payload: dict[str, Any]) -> None:
@@ -2321,19 +2332,23 @@ class RunStore:
         return self._transaction(run_id, mutate, event_type="focus.corrected", actor=actor)
 
     def record_feasibility(
-        self, run_id: str, task_id: str, *, trigger: str, decision: str,
-        window: dict[str, int], rationale: str, next_step: str, revisit: str,
+        self, run_id: str, task_id: str, *, trigger: str, decision: str | None,
+        window: dict[str, int], rationale: str | None, next_step: str | None, revisit: str,
         uncertainty: str, product_delta: str, blocker: str, failed_hypotheses: Sequence[str] = (),
         owner_ceiling: dict[str, int] | None = None, owner_deadline: str | None = None,
-        actor: str = "coordinator",
+        comparison_ref: str | None = None, actor: str = "coordinator",
     ) -> dict[str, Any]:
         """One on-demand decision in the existing task; never a worker or scheduler."""
         decisions = {"CONTINUE", "BOUNDED_GO", "PIVOT", "PARK"}
-        if trigger not in {"user", "stall", "repeated-failure", "budget"} or decision not in decisions:
+        if (trigger not in {"user", "stall", "repeated-failure", "budget"}
+                or not comparison_ref and decision not in decisions):
             raise RuntimeFailure("FEASIBILITY_INVALID", "reset needs an explicit supported trigger and decision")
         text = {"rationale": rationale, "nextStep": next_step, "revisit": revisit,
                 "uncertainty": uncertainty, "reportedProductDelta": product_delta, "blocker": blocker}
-        if any(not value.strip() or len(value) > 1000 for value in text.values()) or "\n" in rationale:
+        supplied = {key: value for key, value in text.items()
+                    if not comparison_ref or key not in {"rationale", "nextStep"}}
+        if (any(not isinstance(value, str) or not value.strip() or len(value) > 1000
+                for value in supplied.values()) or not comparison_ref and "\n" in rationale):
             raise RuntimeFailure("FEASIBILITY_INVALID", "compact decision fields and one-line rationale are required")
         if len(failed_hypotheses) > 8 or any(not item.strip() or len(item) > 500 for item in failed_hypotheses):
             raise RuntimeFailure("FEASIBILITY_INVALID", "at most eight compact failed hypotheses")
@@ -2367,11 +2382,33 @@ class RunStore:
                 or trigger == "budget" and global_budget and global_budget["signal"] in {"BUDGET_80", "BUDGET_100"}
             ):
                 raise RuntimeFailure("FEASIBILITY_TRIGGER_UNPROVEN", "quiet/time alone is not an established reset signal")
+            decision_text = dict(text)
+            selected_decision = decision
+            comparison = None
+            prior = lane_feasibility(state, task)
+            if comparison_ref:
+                if not (task["risk"] in {"R2", "R3", "R4"} or task["changeKind"] != "normal"
+                        or trigger != "user"):
+                    raise RuntimeFailure("COMPARISON_NOT_MATERIAL", "routine work does not need an option comparison")
+                if any(owner.get("feasibility", {}).get("snapshot", {}).get("comparisonRef")
+                       and feasibility_applies(owner, task, owner["feasibility"]) for owner in state["tasks"]):
+                    raise RuntimeFailure("COMPARISON_ALREADY_USED", "this scope already consumed its comparison; do not renew it")
+                if not prior:
+                    raise RuntimeFailure("COMPARISON_WINDOW_REQUIRED", "declare the owning task's finite window before dispatching its analyst")
+                comparison, result = self._native_comparison(state, task, comparison_ref, prior, events)
+                winner = next(option for option in result["options"] if option["kind"] == result["winner"])
+                selected_decision = {"DO_NOTHING": "PARK", "SMALLEST_VIABLE": "BOUNDED_GO"}.get(
+                    result["winner"], "PIVOT")
+                decision_text.update(rationale=result["winnerBeatsDoNothing"], nextStep=winner["summary"])
+                if (any(len(decision_text[key]) > 1000 for key in ("rationale", "nextStep"))
+                        or "\n" in decision_text["rationale"]):
+                    raise RuntimeFailure("COMPARISON_INVALID", "the observed decision must fit the compact feasibility fields")
             criterion_id = (primary["id"] if primary
                             and primary["id"] in task["acceptanceCriteria"] else None)
-            prior = lane_feasibility(state, task)
             scope = copy.deepcopy(prior["snapshot"]) if prior else {}
             criteria = set(scope.get("primaryCriteria", []))
+            if comparison_ref:
+                criteria.update(task["acceptanceCriteria"])
             if criterion_id:
                 criteria.add(criterion_id)
             scope.update(primaryCriterion=criterion_id or scope.get("primaryCriterion"),
@@ -2381,6 +2418,8 @@ class RunStore:
                    and (other["status"] == "RUNNING" or other.get("lease")) for other in state["tasks"]):
                 raise RuntimeFailure("HOST_PAUSE_REQUIRED", "settle the actual host owner before recording this recovery window")
             evidence = feasibility_evidence(state, task, self.repository)
+            if comparison is not None:
+                evidence = sha256_value({"taskEvidence": evidence, "comparison": comparison["sha256"]})
             now = dt.datetime.now(dt.timezone.utc)
             if prior:
                 if feasibility_status(state, task)["expired"]:
@@ -2410,10 +2449,10 @@ class RunStore:
                     or global_budget and global_budget["signal"] == "BUDGET_100"):
                 decision_value, partial = "PARK", True
             else:
-                decision_value, partial = decision, False
+                decision_value, partial = selected_decision, False
             dependencies = [find_task(state, item) for item in task["dependencies"]]
             task["feasibility"] = {
-                **{key: redact(value.strip()) for key, value in text.items()},
+                **{key: redact(value.strip()) for key, value in decision_text.items()},
                 "trigger": trigger, "decision": decision_value, "partial": partial,
                 "startedAt": prior["startedAt"] if prior else utc_now(),
                 "expiresAt": end.isoformat(timespec="seconds").replace("+00:00", "Z"),
@@ -2421,12 +2460,15 @@ class RunStore:
                 "recordedSequence": state["eventCursor"]["sequence"] + 1,
                 "window": chosen, "ceiling": ceiling, "evidenceDigest": evidence,
                 "snapshot": {
+                    **({"comparisonRef": comparison_ref or prior["snapshot"]["comparisonRef"]}
+                       if comparison_ref or prior and prior["snapshot"].get("comparisonRef") else {}),
                     "primaryCriterion": scope["snapshot"].get("primaryCriterion"),
                     "primaryCriteria": scope["snapshot"].get("primaryCriteria", []),
                     "lanes": scope["snapshot"].get("lanes", []),
                     "accountingSequence": state["eventCursor"]["sequence"] + 1,
                     "objective": state["objective"]["description"][:1000],
                     "risk": task["risk"],
+                    "failureDigest": sha256_value(task.get("loop")),
                     "failedHypotheses": [redact(item) for item in failed_hypotheses],
                     "failures": primary_failures(state, events, task["acceptanceCriteria"][0])[-3:],
                     "dependencies": [{"id": item["id"], "status": item["status"]} for item in dependencies[:8]],
@@ -2439,10 +2481,77 @@ class RunStore:
                     "availableBudget": remaining,
                 },
             }
+            if comparison is not None:
+                comparison["consumedByTask"] = task_id
+                comparison["attestation"] = self._artifact_attestation(comparison)
+                state["focus"]["nextCheapestTest"] = decision_text["nextStep"].strip()
             return {"taskId": task_id, "lane": lane, "decision": decision_value,
-                    "partial": partial, "window": chosen, "rationale": text["rationale"]}
+                    "partial": partial, "window": chosen, "rationale": decision_text["rationale"],
+                    **({"comparisonRef": comparison_ref} if comparison_ref else {})}
 
         return self._transaction(run_id, mutate, event_type="feasibility.recorded", actor=actor, task_id=task_id)
+
+    def _native_comparison(
+        self, state: dict[str, Any], task: dict[str, Any], reference: str,
+        window: dict[str, Any], events: Sequence[dict[str, Any]],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        from worker_adapters import workspace_fingerprint
+
+        require_evidence_refs(state, [reference], allowed={"artifact"})
+        artifact = next(item for item in state["artifacts"] if f"artifact:{item['id']}" == reference)
+        if artifact["kind"] != "worker-result" or artifact["producer"] != "worker" or artifact["consumedByTask"]:
+            raise RuntimeFailure("COMPARISON_UNTRUSTED", "comparison must be an unconsumed observed native candidate")
+        try:
+            path = (self.repository / safe_relative_path(artifact["path"], "comparison")).resolve()
+            path.relative_to(self.repository)
+            raw = path.read_bytes()
+            if hashlib.sha256(raw).hexdigest() != artifact["sha256"]:
+                raise RuntimeFailure("ARTIFACT_TAMPERED", "comparison changed after observation")
+            candidate = json.loads(raw)
+        except (OSError, ValueError) as exc:
+            raise RuntimeFailure("COMPARISON_INVALID", "comparison receipt is unreadable or escapes the repository") from exc
+        if not isinstance(candidate, dict):
+            raise RuntimeFailure("COMPARISON_INVALID", "comparison receipt must be an object")
+        binding = candidate.get("binding") or {}
+        worker = next((item for item in state["workers"] if item["id"] == binding.get("workerId")), None)
+        if (candidate.get("schema") != "architrave.native-candidate.v1" or candidate.get("status") != "candidate"
+                or candidate.get("truncated") or candidate.get("changedPaths") or candidate.get("errors")
+                or not worker or worker["status"] != "FINISHED" or worker.get("nativeBinding") != binding):
+            raise RuntimeFailure("COMPARISON_UNTRUSTED", "only a complete result observed from the bound native owner is admissible")
+        producer = find_task(state, binding["taskId"])
+        if (producer["mutablePaths"] or producer["operations"] or producer["sideEffect"]
+                or producer["objectiveVersion"] != task["objectiveVersion"]
+                or not set(task["acceptanceCriteria"]).issubset(producer["acceptanceCriteria"])
+                or not feasibility_applies(task, producer, window)
+                or not any(event["type"] == "task.started"
+                           and event["payload"].get("workerId") == binding["workerId"]
+                           and event["sequence"] > window["startSequence"] for event in events)):
+            raise RuntimeFailure("COMPARISON_SCOPE", "comparison must be read-only and cover the owning task's current criteria")
+        source = candidate.get("source") or {}
+        if not producer.get("workspace"):
+            raise RuntimeFailure("COMPARISON_SOURCE_STALE", "comparison has no canonical analyst workspace")
+        workspace = Path(producer["workspace"]).resolve()
+        if (source.get("workspace") != str(workspace)
+                or source.get("workspaceSha256") != workspace_fingerprint(workspace)
+                or source.get("destination") != str(self.repository)
+                or source.get("destinationSha256") != workspace_fingerprint(self.repository)
+                or workspace_fingerprint(workspace, include_ignored=False)
+                != workspace_fingerprint(self.repository, include_ignored=False)
+                or source.get("commit") != run_command(["git", "rev-parse", "HEAD"], self.repository)):
+            raise RuntimeFailure("COMPARISON_SOURCE_STALE", "comparison must have observed the unchanged destination source")
+        try:
+            result = json.loads(candidate["summary"])
+        except (KeyError, TypeError, json.JSONDecodeError) as exc:
+            raise RuntimeFailure("COMPARISON_INVALID", "the native comparison must return one JSON object") from exc
+        failure_digest = sha256_value(task.get("loop"))
+        if window["snapshot"].get("failureDigest") != failure_digest:
+            raise RuntimeFailure("COMPARISON_FAILURE_STALE", "the owning failure changed after this comparison window was declared")
+        errors = validate_tournament_result(result, {
+            "task": task["id"], "source": source["commit"], "failure": failure_digest,
+        })
+        if errors:
+            raise RuntimeFailure("COMPARISON_INVALID", "; ".join(errors))
+        return artifact, result
 
     def human_checkpoint(self, run_id: str | None = None) -> dict[str, Any]:
         state = self.load(run_id)
@@ -3038,6 +3147,57 @@ class RunStore:
                 details=stall,
             )
 
+    def _assert_task_start_context(
+        self, state: dict[str, Any], task: dict[str, Any], events: Sequence[dict[str, Any]],
+    ) -> None:
+        self._assert_context_scope(state, task)
+        self._validate_task_requirements(task)
+        pushback = task.get("pushback")
+        if pushback is None and state["focus"].get("pushbackRequired"):
+            raise RuntimeFailure("PUSHBACK_MISSING", "record a KEEP/CUT/DEFER push-back verdict before starting this task")
+        if pushback is not None and pushback["verdict"] != "KEEP":
+            raise RuntimeFailure("PUSHBACK_NOT_KEPT", f"push-back verdict {pushback['verdict']} never dispatches")
+        reset = feasibility_status(state, task)
+        if reset and (reset["expired"] or reset["decision"] not in {"CONTINUE", "BOUNDED_GO"}):
+            raise RuntimeFailure("FEASIBILITY_STOP", "lane is paused/expired; synthesize the retained partial decision", details=reset)
+        budget = budget_signal(state, events, self.repository)
+        if budget and budget["signal"] == "BUDGET_100":
+            raise RuntimeFailure("BUDGET_100", "Run budget is exhausted; no new worker dispatches", details=budget)
+        self._assert_primary_admission(state, task, events)
+
+    def _assert_task_resources(
+        self, state: dict[str, Any], task: dict[str, Any], *, confirmed: bool = False,
+    ) -> None:
+        if task["attempts"] >= task["retryPolicy"]["maxAttempts"]:
+            raise RuntimeFailure("RETRY_EXHAUSTED", f"task {task['id']} exhausted its retry policy")
+        if task.get("retryNotBefore") and parse_iso(task["retryNotBefore"]) > dt.datetime.now(dt.timezone.utc):
+            raise RuntimeFailure("RETRY_BACKOFF", f"task {task['id']} is within its declared retry backoff window",
+                                 details={"retryNotBefore": task["retryNotBefore"]})
+        max_parallel = (repository_config(str(self.repository)).get("workers") or {}).get("maxParallel", 3)
+        max_parallel = min(20, max_parallel) if type(max_parallel) is int and max_parallel > 0 else 3
+        running = [other for other in state["tasks"] if other["id"] != task["id"] and other["status"] == "RUNNING"]
+        if len(running) >= max_parallel:
+            raise RuntimeFailure("PARALLELISM_EXCEEDED", f"configured workers.maxParallel={max_parallel} concurrent task limit reached")
+        if task["mutablePaths"]:
+            mutating = [other for other in running if other["mutablePaths"]]
+            if mutating and not task.get("workspace"):
+                raise RuntimeFailure("WORKSPACE_ISOLATION_REQUIRED", "concurrent mutating tasks require isolated assigned workspaces")
+            conflicting = [other["id"] for other in mutating
+                           if mutable_scopes_overlap(task["mutablePaths"], other["mutablePaths"])]
+            if conflicting:
+                raise RuntimeFailure("RESOURCE_CONFLICT", "concurrent mutating tasks have overlapping mutable paths",
+                                     details={"tasks": conflicting})
+            cross_run = self._cross_run_mutation_conflicts(state["runId"], task["mutablePaths"])
+            if cross_run:
+                raise RuntimeFailure("RESOURCE_CONFLICT", "another Run has an active overlapping mutable scope",
+                                     details={"tasks": cross_run})
+            if task.get("workspace") and any(other.get("workspace")
+                    and Path(other["workspace"]).resolve() == Path(task["workspace"]).resolve() for other in mutating):
+                raise RuntimeFailure("WORKSPACE_COLLISION", "concurrent mutating tasks cannot share a workspace")
+            require_mutation_allowed(state, "repository", "edit", confirmed=confirmed)
+        if task["sideEffect"] is not None:
+            require_mutation_allowed(state, task["sideEffect"]["target"], task["sideEffect"]["operation"], confirmed=confirmed)
+
     def start_task(
         self,
         run_id: str,
@@ -3049,27 +3209,15 @@ class RunStore:
         actor: str = "coordinator",
         retry_hypothesis: str | None = None,
         retry_evidence: Sequence[str] = (),
+        _native_owner: str | None = None,
     ) -> dict[str, Any]:
         require_id(worker_id, "worker id")
         preflight_revision: int | None = None
         preflight_observation: dict[str, Any] | None = None
         snapshot = self.load(run_id)
         snapshot_task = find_task(snapshot, task_id)
-        self._assert_context_scope(snapshot, snapshot_task)
-        self._validate_task_requirements(snapshot_task)
-        pushback = snapshot_task.get("pushback")
-        if pushback is None and snapshot["focus"].get("pushbackRequired"):
-            raise RuntimeFailure("PUSHBACK_MISSING", "record a KEEP/CUT/DEFER push-back verdict before starting this task")
-        if pushback is not None and pushback["verdict"] != "KEEP":
-            raise RuntimeFailure("PUSHBACK_NOT_KEPT", f"push-back verdict {pushback['verdict']} never dispatches")
         events = self.events(run_id)
-        reset = feasibility_status(snapshot, snapshot_task)
-        if reset and (reset["expired"] or reset["decision"] not in {"CONTINUE", "BOUNDED_GO"}):
-            raise RuntimeFailure("FEASIBILITY_STOP", "lane is paused/expired; synthesize the retained partial decision", details=reset)
-        budget = budget_signal(snapshot, events, self.repository)
-        if budget and budget["signal"] == "BUDGET_100":
-            raise RuntimeFailure("BUDGET_100", "Run budget is exhausted; no new worker dispatches", details=budget)
-        self._assert_primary_admission(snapshot, snapshot_task, events)
+        self._assert_task_start_context(snapshot, snapshot_task, events)
         if TARGET_OPERATIONS.intersection(snapshot_task.get("operations") or []):
             identity = snapshot.get("targetIdentity")
             if (
@@ -3132,12 +3280,8 @@ class RunStore:
                     "cannot start a task while the Run is paused; call resume() explicitly first",
                 )
             task = find_task(state, task_id)
-            self._validate_task_requirements(task)
-            self._assert_context_scope(state, task)
-            self._assert_primary_admission(state, task, self._read_events(self.run_dir(run_id)))
+            self._assert_task_start_context(state, task, self._read_events(self.run_dir(run_id)))
             reset = feasibility_status(state, task)
-            if reset and (reset["expired"] or reset["decision"] not in {"CONTINUE", "BOUNDED_GO"}):
-                raise RuntimeFailure("FEASIBILITY_STOP", "lane reset prevents dispatch", details=reset)
             if reset:
                 effective_work_budget(state, task)
             loop = task.get("loop")
@@ -3207,68 +3351,8 @@ class RunStore:
                         or sha256_file(artifact_path) != expected_identity.get("sha256")
                     ):
                         raise RuntimeFailure("TARGET_IDENTITY_STALE", "verified target artifact changed after attestation")
-            if task["attempts"] >= task["retryPolicy"]["maxAttempts"]:
-                raise RuntimeFailure("RETRY_EXHAUSTED", f"task {task_id} exhausted its retry policy")
-            if task.get("retryNotBefore") and parse_iso(task["retryNotBefore"]) > dt.datetime.now(dt.timezone.utc):
-                raise RuntimeFailure(
-                    "RETRY_BACKOFF",
-                    f"task {task_id} is within its declared retry backoff window",
-                    details={"retryNotBefore": task["retryNotBefore"]},
-                )
-            max_parallel = (repository_config(str(self.repository)).get("workers") or {}).get("maxParallel", 3)
-            # Same rule as the requirements gate: 1..20, anything else falls back to the default of three.
-            max_parallel = min(20, max_parallel) if isinstance(max_parallel, int) and not isinstance(max_parallel, bool) and max_parallel > 0 else 3
-            if max_parallel is not None:
-                running = sum(1 for other in state["tasks"] if other["id"] != task_id and other["status"] == "RUNNING")
-                if running >= int(max_parallel):
-                    raise RuntimeFailure(
-                        "PARALLELISM_EXCEEDED",
-                        f"configured workers.maxParallel={max_parallel} concurrent task limit reached",
-                    )
-            if task["mutablePaths"]:
-                active_mutating = [
-                    other
-                    for other in state["tasks"]
-                    if other["id"] != task_id and other["status"] == "RUNNING" and other["mutablePaths"]
-                ]
-                if active_mutating and not task.get("workspace"):
-                    raise RuntimeFailure(
-                        "WORKSPACE_ISOLATION_REQUIRED",
-                        "concurrent mutating tasks require isolated assigned workspaces",
-                    )
-                conflicting = [
-                    other["id"]
-                    for other in active_mutating
-                    if mutable_scopes_overlap(task["mutablePaths"], other["mutablePaths"])
-                ]
-                if conflicting:
-                    raise RuntimeFailure(
-                        "RESOURCE_CONFLICT",
-                        "concurrent mutating tasks have overlapping mutable paths",
-                        details={"tasks": conflicting},
-                    )
-                cross_run_conflicts = self._cross_run_mutation_conflicts(state["runId"], task["mutablePaths"])
-                if cross_run_conflicts:
-                    raise RuntimeFailure(
-                        "RESOURCE_CONFLICT",
-                        "another Run has an active overlapping mutable scope",
-                        details={"tasks": cross_run_conflicts},
-                    )
-                if task.get("workspace") and any(
-                    other.get("workspace")
-                    and Path(other["workspace"]).resolve() == Path(task["workspace"]).resolve()
-                    for other in active_mutating
-                ):
-                    raise RuntimeFailure("WORKSPACE_COLLISION", "concurrent mutating tasks cannot share a workspace")
-            if task["mutablePaths"]:
-                require_mutation_allowed(state, "repository", "edit", confirmed=confirmed)
+            self._assert_task_resources(state, task, confirmed=confirmed)
             if task["sideEffect"] is not None:
-                require_mutation_allowed(
-                    state,
-                    task["sideEffect"]["target"],
-                    task["sideEffect"]["operation"],
-                    confirmed=confirmed,
-                )
                 task["sideEffect"]["state"] = "PENDING"
             if task["checkpointPolicy"]["beforeSideEffect"]:
                 append_checkpoint(state, task_id, "TASK_START")
@@ -3307,6 +3391,15 @@ class RunStore:
                 worker["mutablePaths"] = task["mutablePaths"]
                 worker["taskId"] = task_id
             worker = next(item for item in state["workers"] if item["id"] == worker_id)
+            if _native_owner is not None:
+                if worker["adapter"] != "native" or not _native_owner or len(_native_owner) > 256:
+                    raise RuntimeFailure("NATIVE_OWNER_REQUIRED", "native preparation requires a bounded joined-host owner")
+                worker["nativeBinding"] = {
+                    "runId": run_id, "taskId": task_id, "workerId": worker_id,
+                    "workPacketId": task["workPacket"]["workPacketId"],
+                    "objectiveVersion": state["objective"]["version"], "revision": state["revision"] + 1,
+                    "acquiredAt": task["lease"]["acquiredAt"], "owner": _native_owner, "hostTaskId": None,
+                }
             if admitted_budget is not None:
                 worker["admittedBudget"] = admitted_budget
             else:
@@ -3644,6 +3737,7 @@ class RunStore:
             run_id, task_id, worker_id=worker_id,
             lease_seconds=task["workPacket"]["budget"]["timeoutSeconds"], actor="native-host",
             retry_hypothesis=retry_hypothesis,
+            _native_owner=host_owner,
         )
         snapshot["source"] = workspace_fingerprint(self.repository)
         task = find_task(state, task_id)
@@ -3680,6 +3774,39 @@ class RunStore:
         ticket.binding["hostTaskId"] = host_task_id
         ticket.binding["revision"] = state["revision"]
         return state
+
+    def bind_recovered_native_owner(
+        self, run_id: str, task_id: str, *, attempt_id: str, host_owner: str, host_task_id: str,
+    ) -> dict[str, Any]:
+        """Persist the exact owner observed by the joined host without renewing or releasing its lease."""
+        require_id(attempt_id, "native attempt")
+        if any(not isinstance(value, str) or not value or len(value) > 256
+               for value in (host_owner, host_task_id)):
+            raise RuntimeFailure("NATIVE_OWNER_REQUIRED", "recovery requires the actual joined host and task identities")
+
+        def mutate(state: dict[str, Any]) -> dict[str, Any]:
+            task = find_task(state, task_id)
+            worker = next((item for item in state["workers"] if item["id"] == attempt_id), None)
+            lease = task.get("lease")
+            if (task["status"] != "RUNNING" or not lease or lease["owner"] != attempt_id
+                    or task["objectiveVersion"] != state["objective"]["version"]
+                    or not worker or worker["adapter"] != "native" or worker["status"] != "RUNNING"
+                    or worker["taskId"] != task_id):
+                raise RuntimeFailure("NATIVE_RESULT_STALE", "recovery no longer owns this exact running native attempt")
+            binding = {
+                "runId": run_id, "taskId": task_id, "workerId": attempt_id,
+                "workPacketId": task["workPacket"]["workPacketId"],
+                "objectiveVersion": state["objective"]["version"],
+                "acquiredAt": lease["acquiredAt"], "owner": host_owner, "hostTaskId": host_task_id,
+            }
+            previous = worker.get("nativeBinding")
+            if previous and any(previous.get(key) != value for key, value in binding.items()
+                                if key != "hostTaskId" or previous.get(key) is not None):
+                raise RuntimeFailure("NATIVE_OWNER_TASK_MISMATCH", "recovery conflicts with the persisted native owner")
+            worker["nativeBinding"] = {**binding, "revision": state["revision"] + 1}
+            return {"workerId": attempt_id, "hostTaskId": host_task_id, "phase": "recovery-binding"}
+
+        return self._transaction(run_id, mutate, event_type="worker.admitted", actor="native-host", task_id=task_id)
 
     def accept_native_candidate(
         self, ticket: NativeWorkerTicket, *, host_task_id: str, host_status: str, text: str,
@@ -3718,6 +3845,11 @@ class RunStore:
             "summary": redact(bounded), "truncated": len(text.encode("utf-8")) > limit,
             "changedPaths": changed, "errors": errors, "observedAt": utc_now(),
             "hostObservation": redact(host_observation or {}),
+            "source": {
+                "workspace": str(workspace), "commit": ticket.snapshot["head"],
+                "workspaceSha256": workspace_fingerprint(workspace),
+                "destination": str(self.repository), "destinationSha256": ticket.snapshot["source"],
+            },
         }
         self._atomic_write(path, result)
         def mutate(current: dict[str, Any]) -> dict[str, Any]:
@@ -5421,11 +5553,25 @@ class RunStore:
         operation: str,
         target: str,
         confirmed: bool = False,
+        integration_source: dict[str, str] | None = None,
         actor: str = "coordinator",
     ) -> dict[str, Any]:
         def mutate(state: dict[str, Any]) -> dict[str, Any]:
             self._assert_repository_baseline(state)
             task = find_task(state, task_id)
+            if integration_source is not None:
+                from worker_adapters import workspace_fingerprint
+
+                if (operation != "edit" or target != "repository" or task["status"] != "WAITING_RESOURCE"
+                        or any(item["status"] == "RUNNING" or item.get("lease") for item in state["tasks"])):
+                    raise RuntimeFailure("CANDIDATE_NOT_READY", "settle all workers before integrating their source")
+                if (not task.get("workspace")
+                        or integration_source.get("attempt") != str(task["attempts"])
+                        or integration_source.get("workspace") != str(Path(task["workspace"]).resolve())
+                        or integration_source.get("destination") != str(self.repository)
+                        or integration_source.get("workspaceSha256") != workspace_fingerprint(Path(task["workspace"]))
+                        or integration_source.get("destinationSha256") != workspace_fingerprint(self.repository)):
+                    raise RuntimeFailure("CANDIDATE_SOURCE_STALE", "candidate or destination changed before integration")
             if task["status"] not in {"RUNNING", "WAITING_RESOURCE"}:
                 raise RuntimeFailure("SIDE_EFFECT_NOT_READY", "side effect task must be running or awaiting coordinator validation")
             require_mutation_allowed(state, target, operation, confirmed=confirmed)
@@ -6342,6 +6488,34 @@ def require_evidence_refs(state: dict[str, Any], references: Sequence[str], *, a
         )
 
 
+def validate_tournament_result(result: object, bind: dict[str, str] | None = None) -> list[str]:
+    if not isinstance(result, dict):
+        return ["result must be an object"]
+    errors = [f"result {key} must be {expected!r} (stale or unrelated result)"
+              for key, expected in (bind or {}).items() if result.get(key) != expected]
+    options = result.get("options")
+    if not isinstance(options, list) or not all(
+            isinstance(item, dict) and isinstance(item.get("kind"), str) for item in options):
+        return errors + ["options must be a list of objects with string kinds"]
+    kinds = {item["kind"] for item in options}
+    if not 2 <= len(options) <= 4 or len(kinds) != len(options):
+        errors.append("options must contain two to four distinct kinds")
+    if any(not isinstance(item.get("summary"), str) or not item["summary"].strip() for item in options):
+        errors.append("every option needs a nonempty summary")
+    for kind in ("DO_NOTHING", "SMALLEST_VIABLE"):
+        if kind not in kinds:
+            errors.append(f"options must include kind {kind}")
+    winner = result.get("winner")
+    if not isinstance(winner, str) or not winner.strip():
+        errors.append("winner is required")
+    elif winner not in kinds:
+        errors.append("winner must name an option kind")
+    explanation = result.get("winnerBeatsDoNothing")
+    if not isinstance(explanation, str) or not explanation.strip():
+        errors.append("winnerBeatsDoNothing must explain why the winner beats doing nothing")
+    return errors
+
+
 DEFAULT_RISK_GATES = {
     "R0": ["deterministic"],
     "R1": ["deterministic"],
@@ -6974,7 +7148,18 @@ def execution_projection(state: dict[str, Any], store: "RunStore", events: list[
             if mutation_decision(state, "repository", "edit", confirmed=False)["status"] != "allowed":
                 hold("MUTATION_DENIED", task["id"], "mutation is denied or needs owner confirmation under the Run policy")
                 continue
-            disposition = ("integrate-candidate", f"python harness/workspaces.py --repo . integrate {run_id} {task['id']}")
+            started_at = max((event["sequence"] for event in events
+                              if event["type"] == "task.started" and event.get("taskId") == task["id"]), default=0)
+            results = {artifact["id"] for artifact in state["artifacts"] if artifact["producer"] == "worker"
+                       and artifact["kind"] == "worker-result" and f"task:{task['id']}" in artifact["evidenceRefs"]}
+            observed = any(event["type"] == "artifact.recorded" and event["payload"].get("artifactId") in results
+                           and event["sequence"] > started_at for event in events)
+            if not observed:
+                if "worker-result" not in missing:
+                    missing.append("worker-result")
+                disposition = ("produce-artifacts", None)
+            else:
+                disposition = ("integrate-candidate", f"python harness/workspaces.py --repo . integrate {run_id} {task['id']}")
         elif failed:
             disposition = ("repair-failed-gate", None)
         elif not passed:
@@ -7005,24 +7190,10 @@ def execution_projection(state: dict[str, Any], store: "RunStore", events: list[
 
         def refusal() -> str | None:
             try:
-                store._assert_context_scope(state, task)
-                store._validate_task_requirements(task)
+                store._assert_task_start_context(state, task, events)
             except RuntimeFailure as exc:
                 return exc.code
-            pushback = task.get("pushback")
-            if pushback is None and state["focus"].get("pushbackRequired"):
-                return "PUSHBACK_MISSING"
-            if pushback is not None and pushback["verdict"] != "KEEP":
-                return "PUSHBACK_NOT_KEPT"
             reset = feasibility_status(state, task)
-            if reset and (reset["expired"] or reset["decision"] not in {"CONTINUE", "BOUNDED_GO"}):
-                return "FEASIBILITY_STOP"
-            if budget and budget["signal"] == "BUDGET_100":
-                return "BUDGET_100"
-            try:
-                store._assert_primary_admission(state, task, events)
-            except RuntimeFailure as exc:
-                return exc.code
             if TARGET_OPERATIONS.intersection(task.get("operations") or []):
                 return "TARGET_IDENTITY_REQUIRED"
             if drift:
@@ -7055,32 +7226,10 @@ def execution_projection(state: dict[str, Any], store: "RunStore", events: list[
                 return "LANE_DEFERRED"
             if task_has_pending_checkpoint(state, task["id"]):
                 return "EXTERNAL_CHECKPOINT_PENDING"
-            if task["attempts"] >= task["retryPolicy"]["maxAttempts"]:
-                return "RETRY_EXHAUSTED"
-            if task.get("retryNotBefore") and parse_iso(task["retryNotBefore"]) > now:
-                return "RETRY_BACKOFF"
-            if len(running) >= max_parallel:
-                return "PARALLELISM_EXCEEDED"
-            if task["mutablePaths"]:
-                mutating = [other for other in running if other["mutablePaths"]]
-                if mutating and not task.get("workspace"):
-                    return "WORKSPACE_ISOLATION_REQUIRED"
-                if any(mutable_scopes_overlap(task["mutablePaths"], other["mutablePaths"]) for other in mutating):
-                    return "RESOURCE_CONFLICT"
-                try:
-                    if store._cross_run_mutation_conflicts(run_id, task["mutablePaths"]):
-                        return "RESOURCE_CONFLICT"
-                except RuntimeFailure as exc:
-                    return exc.code
-                if task.get("workspace") and any(
-                        other.get("workspace")
-                        and Path(other["workspace"]).resolve() == Path(task["workspace"]).resolve()
-                        for other in mutating):
-                    return "WORKSPACE_COLLISION"
-            scopes = ([("repository", "edit")] if task["mutablePaths"] else []) + (
-                [(task["sideEffect"]["target"], task["sideEffect"]["operation"])] if task["sideEffect"] else [])
-            if any(mutation_decision(state, scope, op, confirmed=False)["status"] != "allowed" for scope, op in scopes):
-                return "MUTATION_DENIED"
+            try:
+                store._assert_task_resources(state, task)
+            except RuntimeFailure as exc:
+                return exc.code
             return None
 
         code = refusal()
@@ -7165,6 +7314,11 @@ def execution_projection(state: dict[str, Any], store: "RunStore", events: list[
     else:
         next_action = action("blocked", [item["taskId"] for item in not_dispatchable] or [task["id"] for task in current],
                              "; ".join(sorted({item["code"] for item in not_dispatchable})) or "no admissible action", None)
+    for task_id in next_action["taskIds"]:
+        reset = lane_feasibility(state, find_task(state, task_id))
+        if reset and reset["snapshot"].get("comparisonRef"):
+            next_action["reason"] += f"; comparison selected {reset['decision']}: {reset['nextStep']}"
+            break
     hold_list = [{**item, "taskIds": cap(item["taskIds"])} for item in holds.values()]
     execution = {
         "leaseRecords": {"live": cap(live), "expired": cap(expired), "count": len(leased)},
@@ -7357,8 +7511,11 @@ def build_parser() -> argparse.ArgumentParser:
     feasibility.add_argument("run_id")
     feasibility.add_argument("task_id")
     feasibility.add_argument("--trigger", choices=["user", "stall", "repeated-failure", "budget"], required=True)
-    feasibility.add_argument("--decision", choices=["CONTINUE", "BOUNDED_GO", "PIVOT", "PARK"], required=True)
-    for option in ("rationale", "next-step", "revisit", "uncertainty", "product-delta", "blocker"):
+    feasibility.add_argument("--comparison-ref", help="consume an observed native comparison, not imported JSON")
+    feasibility.add_argument("--decision", choices=["CONTINUE", "BOUNDED_GO", "PIVOT", "PARK"])
+    feasibility.add_argument("--rationale")
+    feasibility.add_argument("--next-step")
+    for option in ("revisit", "uncertainty", "product-delta", "blocker"):
         feasibility.add_argument("--" + option, required=True)
     feasibility.add_argument("--hypothesis", action="append", default=[])
     feasibility.add_argument("--seconds", type=int, required=True)
@@ -7676,6 +7833,7 @@ def cli(argv: Sequence[str] | None = None) -> int:
                 revisit=args.revisit, uncertainty=args.uncertainty, product_delta=args.product_delta,
                 blocker=args.blocker,
                 failed_hypotheses=args.hypothesis,
+                comparison_ref=args.comparison_ref,
             ))
         elif command == "review-record":
             output = state_summary(

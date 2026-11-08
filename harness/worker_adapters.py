@@ -796,6 +796,11 @@ def execute_work_packet(store: RunStore, run_id: str, task_id: str, worker_id: s
             "changedPaths": changed_paths,
             "errors": errors,
             "artifacts": [result_path.relative_to(store.repository).as_posix()],
+            "source": {
+                "workspace": str(workspace), "commit": before_head,
+                "workspaceSha256": workspace_fingerprint(workspace),
+                "destination": str(store.repository), "destinationSha256": peer_before[str(store.repository)],
+            },
         }
         result_path.parent.mkdir(parents=True, exist_ok=True)
         result_path.write_text(

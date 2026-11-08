@@ -5,19 +5,23 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tempfile
 import uuid
 from typing import Any, Sequence
 
 from architrave_runtime import RunStore, RuntimeFailure, find_task, redact
-from worker_adapters import git_status, path_allowed
+from worker_adapters import git_status, path_allowed, workspace_fingerprint
 
 
-def git(repository: Path, arguments: Sequence[str], *, input_text: str | None = None) -> str:
+def git(repository: Path, arguments: Sequence[str], *, input_text: str | None = None,
+        environment: dict[str, str] | None = None) -> str:
     process = subprocess.run(
         ["git", *arguments],
         cwd=repository,
@@ -25,6 +29,7 @@ def git(repository: Path, arguments: Sequence[str], *, input_text: str | None = 
         text=True,
         capture_output=True,
         check=False,
+        env={**os.environ, **environment} if environment else None,
     )
     if process.returncode != 0:
         raise RuntimeFailure(
@@ -91,6 +96,12 @@ class WorkspaceManager:
         workspace = Path(task["workspace"]).resolve()
         if workspace == self.repository:
             raise RuntimeFailure("WORKSPACE_NOT_ISOLATED", "candidate collection requires an isolated worktree")
+        source = {
+            "workspace": str(workspace), "commit": git(workspace, ["rev-parse", "HEAD"]).strip(),
+            "ref": git(workspace, ["rev-parse", "--abbrev-ref", "HEAD"]).strip(),
+            "workspaceSha256": workspace_fingerprint(workspace),
+            "destination": str(self.repository), "destinationSha256": workspace_fingerprint(self.repository),
+        }
         changed = sorted(git_status(workspace))
         escaped = [path for path in changed if not path_allowed(path, task["mutablePaths"])]
         if escaped:
@@ -99,20 +110,62 @@ class WorkspaceManager:
                 "workspace contains out-of-scope changes",
                 details={"paths": escaped},
             )
-        git(workspace, ["add", "-N", "."])
-        # Diff against HEAD (not the index) so changes already staged by the worker -- not just
-        # the working-tree-vs-index delta -- are captured in the candidate patch.
-        patch = git(workspace, ["diff", "HEAD", "--binary"])
+        artifact_dir = self.store.run_dir(run_id) / "workspaces" / task_id
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        # A temporary index includes untracked files without changing the observed worker index.
+        with tempfile.TemporaryDirectory(prefix="collect-", dir=artifact_dir) as temporary:
+            environment = {"GIT_INDEX_FILE": str(Path(temporary) / "index")}
+            git(workspace, ["read-tree", "HEAD"], environment=environment)
+            git(workspace, ["add", "-N", "."], environment=environment)
+            patch = git(workspace, ["diff", "HEAD", "--binary"], environment=environment)
+        if workspace_fingerprint(workspace) != source["workspaceSha256"]:
+            raise RuntimeFailure("CANDIDATE_SOURCE_STALE", "workspace changed during candidate collection")
         redacted_patch = redact(patch)
         if redacted_patch != patch:
             raise RuntimeFailure("SECRET_IN_PATCH", "candidate patch appears to contain secret material")
-        run_dir = self.store.run_dir(run_id)
-        artifact_dir = run_dir / "workspaces" / task_id
-        artifact_dir.mkdir(parents=True, exist_ok=True)
-        patch_path = artifact_dir / "candidate.patch"
+        receipts = [item for item in state["artifacts"] if item["producer"] == "worker"
+                    and item["kind"] == "worker-result" and f"task:{task_id}" in item["evidenceRefs"]]
+        if not receipts:
+            raise RuntimeFailure("CANDIDATE_RESULT_REQUIRED", "collect requires an observed native or shell worker result")
+        receipt = receipts[-1]
+        raw = (self.repository / receipt["path"]).read_bytes()
+        if hashlib.sha256(raw).hexdigest() != receipt["sha256"]:
+            raise RuntimeFailure("ARTIFACT_TAMPERED", "worker result changed after observation")
+        try:
+            observed = json.loads(raw)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeFailure("CANDIDATE_RESULT_INVALID", "worker result is not readable JSON") from exc
+        if not isinstance(observed, dict):
+            raise RuntimeFailure("CANDIDATE_RESULT_INVALID", "worker result must be an object")
+        binding = observed.get("source") or {}
+        events = self.store.events(run_id)
+        started = next((event for event in reversed(events)
+                        if event["type"] == "task.started" and event.get("taskId") == task_id), None)
+        result_owner = (observed.get("binding") or {}).get("workerId") or observed.get("workerId")
+        worker = next((item for item in state["workers"] if item["id"] == result_owner), None)
+        destination = binding.get("destinationSha256")
+        for event in events:
+            if not started or event["sequence"] <= started["sequence"] or event["type"] != "workspace.integrated":
+                continue
+            prior = event["payload"]
+            prior_source = prior.get("source") or {}
+            if prior_source.get("destination") == str(self.repository) and prior_source.get("destinationSha256") == destination:
+                destination = prior.get("destinationSha256")
+        if (observed.get("status") != "candidate" or not worker or worker["status"] != "FINISHED"
+                or not started or result_owner != started["payload"]["workerId"]
+                or not any(event["type"] == "artifact.recorded" and event["payload"].get("artifactId") == receipt["id"]
+                           and event["sequence"] > started["sequence"] for event in events)
+                or not binding.get("destinationSha256") or destination != source["destinationSha256"]
+                or any(binding.get(key) != source[key]
+                       for key in ("workspace", "commit", "workspaceSha256", "destination"))):
+            raise RuntimeFailure("CANDIDATE_SOURCE_STALE", "source or destination no longer matches the current worker result")
+        source["workerResultRef"] = f"artifact:{receipt['id']}"
+        source["observedDestinationSha256"] = binding["destinationSha256"]
+        source["attempt"] = str(task["attempts"])
+        suffix = uuid.uuid4().hex[:10]
+        patch_path = artifact_dir / f"candidate-{suffix}.patch"
         with patch_path.open("w", encoding="utf-8", newline="\n") as handle:
             handle.write(patch)
-        suffix = uuid.uuid4().hex[:10]
         patch_artifact_id = f"workspace-patch-{task_id}-{suffix}"
         self.store._record_workspace_artifact(
             run_id,
@@ -128,11 +181,22 @@ class WorkspaceManager:
             "changedPaths": changed,
             "patch": patch_path.relative_to(self.repository).as_posix(),
             "patchArtifactRef": f"artifact:{patch_artifact_id}",
+            "source": source,
         }
 
     def integrate(self, run_id: str, task_id: str, *, confirmed: bool = False) -> dict[str, Any]:
         state = self.store.load(run_id)
         task = find_task(state, task_id)
+        events = self.store.events(run_id)
+        finished_at = max((event["sequence"] for event in events
+                           if event["type"] == "worker.finished" and event.get("taskId") == task_id), default=0)
+        integrated = next((event for event in reversed(events)
+                           if event["type"] == "workspace.integrated" and event.get("taskId") == task_id
+                           and event["sequence"] > finished_at), None)
+        if integrated:
+            return {**integrated["payload"], "status": "already-integrated"}
+        if task["status"] != "WAITING_RESOURCE" or task.get("lease") or not finished_at:
+            raise RuntimeFailure("CANDIDATE_NOT_READY", "only a settled successful worker candidate can be integrated")
         decision = self.store.policy_check(run_id, "repository", "edit", confirmed=confirmed)
         if decision["status"] != "allowed":
             raise RuntimeFailure("MUTATION_DENIED", f"workspace integration is {decision['status']}", details=decision)
@@ -156,8 +220,10 @@ class WorkspaceManager:
             operation="edit",
             target="repository",
             confirmed=confirmed,
+            integration_source=candidate["source"],
         )
         git(self.repository, ["apply", "--binary", str(patch_path)])
+        git(self.repository, ["apply", "--reverse", "--check", "--binary", str(patch_path)])
         self.store.reconcile_side_effect(
             run_id,
             task_id,
@@ -167,7 +233,8 @@ class WorkspaceManager:
 
         def mark_integrated(run: dict[str, Any]) -> dict[str, Any]:
             current = find_task(run, task_id)
-            return {"taskId": task_id, "workspace": current["workspace"], "patch": candidate["patch"]}
+            return {"taskId": task_id, "workspace": current["workspace"], "patch": candidate["patch"],
+                    "source": candidate["source"], "destinationSha256": workspace_fingerprint(self.repository)}
 
         self.store._transaction(
             run_id,

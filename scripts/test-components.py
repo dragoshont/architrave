@@ -19,6 +19,12 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNNER = ROOT / "gates" / "gate_runner.py"
 EXAMPLE = ROOT / "kit" / "examples" / "requirements.md"
 
+def legacy_example():
+    return (EXAMPLE.read_text().replace("| Started |", "| in-progress |")
+            .replace("| Not started |", "| open |").replace("| Code ready |", "| accepted |")
+            .replace("Implementation in commit abc1234; final review deferred until all feature code is ready.",
+                     "commit abc1234, test log ci/123"))
+
 
 def git(path: Path, *args: str) -> None:
     subprocess.run(["git", "-C", str(path), *args], check=True, capture_output=True)
@@ -144,7 +150,7 @@ class ComponentGate(unittest.TestCase):
         return process.returncode, process.stdout + process.stderr
 
     def test_requirements_file_needs_table_acceptance_evidence_corrections_and_handoff(self):
-        example = EXAMPLE.read_text()
+        example = legacy_example()
         code, out = self.requirements(example)
         self.assertEqual(code, 0, out)
         self.assertIn("ARCHITRAVE-REQUIREMENTS: PASS", out)
@@ -177,11 +183,11 @@ class ComponentGate(unittest.TestCase):
         self.assertIn("already owned by ui-lane", out)
         code, out = self.requirements(example, "--claim", "REQ-03,REQ-02,REQ-77", "--owner", "x")
         self.assertIn("REQ-03: status is superseded", out)
-        self.assertIn("REQ-02: status is accepted", out)
+        self.assertIn("REQ-02: status is code ready", out)
         self.assertIn("REQ-77: not in", out)
         code, out = self.requirements(example, "--done")
         self.assertEqual(code, 1)
-        self.assertIn("2 active REQs are not accepted: REQ-01, REQ-04", out)
+        self.assertIn("2 tasks are not code ready: REQ-01, REQ-04", out)
         narrowed = example.replace("| C-01 | supersede |", "| C-02 | narrow | REQ-01 | Owner asked X; doing Y |\n| C-01 | supersede |")
         code, out = self.requirements(narrowed, "--done")
         self.assertIn("narrow corrections lack owner acknowledgement: C-02", out)
@@ -189,6 +195,15 @@ class ComponentGate(unittest.TestCase):
         self.assertIn("lack owner acknowledgement: C-02", out)
         code, out = self.requirements(narrowed.replace("doing Y", 'doing Y; owner acknowledged: "fine, Y"'), "--done")
         self.assertNotIn("lack owner acknowledgement", out)
+
+    def test_code_ready_progress_defers_evidence_and_review_until_final_completion(self):
+        ready = EXAMPLE.read_text().replace("| Started |", "| Code ready |").replace("| Not started |", "| Code ready |")
+        code, out = self.requirements(ready)
+        self.assertEqual(code, 0, out)
+        code, out = self.requirements(ready, "--done")
+        self.assertEqual(code, 1, out)
+        self.assertIn("REQ-01 needs final outcome evidence", out)
+        self.assertIn("the final review must cover REQ-01", out)
 
     def test_lane_table_enforces_single_live_owner_caps_and_supersede(self):
         header = ("\n| Lane | Repo | Project ID | Branch | Push target | REQ IDs | Depends on | Session ID | "
@@ -298,7 +313,7 @@ Verify: `make e2e`
         code, out = run(stale)
         self.assertIn("D-1 is active but rests on E-1 (stale); set it to reconsider", out)
         code, out = run(stale.replace("| E-1 | active |", "| E-1 | reconsider |"))
-        self.assertIn("REQ-01 is accepted on D-1, which is reconsider", out)
+        self.assertIn("REQ-01 cannot finish on D-1, which is reconsider", out)
         broken = (ledger.replace("| review-b |", "| research-a |")
                   .replace("| judge | fixed | judge | `make e2e` at " + cited + " |", "| judge | fixed | app-lane | agreed by two agents |")
                   .replace("| New service: duplicate state |", "| - |")
@@ -312,7 +327,7 @@ Verify: `make e2e`
         opened = opened.replace("| judge | fixed | judge |", "| judge | open | - |")
         git(backend, "-c", "user.email=a@b", "-c", "user.name=a", "revert", "--no-edit", "HEAD")
         code, out = run(opened, "--done")
-        self.assertIn("REQ-01 is accepted while high finding F-1 is open", out)
+        self.assertIn("REQ-01 cannot finish while high finding F-1 is open", out)
         self.assertIn("open serious findings: F-1", out)
         code, out = run(opened.replace("| open | - | `make e2e`", "| deferred | - | `make e2e`"))
         self.assertIn("F-1 high finding is deferred without a quoted owner acknowledgement", out)
@@ -320,7 +335,7 @@ Verify: `make e2e`
         self.assertEqual(code, 0, out)
 
     def test_review_notes_have_a_format_and_block_acceptance_on_revise(self):
-        example = EXAMPLE.read_text()
+        example = legacy_example()
         row = "commit abc1234, test log ci/123"
         code, out = self.requirements(example.replace(row, row + "; review: judge PASS"))
         self.assertEqual(code, 0, out)
@@ -369,7 +384,7 @@ Verify: `make e2e`
                 "A PASS needs all criteria met.\nVerdict: REVISE")
         session("2ccccccc-1111-2222-3333-444444444444", "architrave:backend-implementer", "**PASS**")
         session("3ddddddd-1111-2222-3333-444444444444", "my-prejudged-implementer", "**PASS**")
-        example = EXAMPLE.read_text()
+        example = legacy_example()
         row = "commit abc1234, test log ci/123"
         code, out = self.requirements(example.replace(row, row + f"; review: {good} PASS"))
         self.assertEqual(code, 0, out)
@@ -432,7 +447,7 @@ Verify: `make e2e`
         self.assertEqual(code, 0, out)
         spec = self.hub / "SPEC.md"
         claimed = spec.read_text()
-        self.assertIn("| first | claimed |", claimed)
+        self.assertIn("| first | Not started |", claimed)
         self.assertIn("commit before dispatch", out)
         code, out = self.requirements(claimed, "--claim", "REQ-04", "--owner", "second")
         self.assertEqual(code, 1, out)
@@ -486,7 +501,7 @@ Verify: `make e2e`
 
     def test_evidence_and_product_dirt_are_semantic_not_ledger_proof(self):
         git(self.hub, "init", "-q", "-b", "main")
-        accepted = EXAMPLE.read_text().replace("| in-progress | |", "| accepted | trust me |").replace(
+        accepted = legacy_example().replace("| in-progress | |", "| accepted | trust me |").replace(
             "| | open | |", "| | accepted | trust me |")
         self.assertEqual(self.requirements(accepted, "--done")[0], 0)
         git(self.hub, "add", ".")

@@ -20,7 +20,7 @@ rows; the extra tables below appear only for consequential work.
 | **Decide** | Decision rows: choice, rejected alternatives, evidence | An active decision rests only on supported evidence. A REQ can't be accepted on a decision under reconsideration |
 | **Build** | REQ rows, owner corrections and the cross-repository lane table | One live owner per REQ and path; running lanes within `workers.maxParallel`; one heavy build at a time; dependencies done before a lane runs; running lanes have full session IDs; supersessions name an existing lane. Preflight and restart reconciliation are coordinator behavior, not gate checks |
 | **Challenge** | Finding rows from any review: severity, disposition, verifier, evidence | A fix needs a commit that resolves in a configured checkout, or an existing evidence or decision id; agreement alone doesn't count. A serious finding needs a verifier who isn't the target's owner or author. Deferral needs a quoted owner acknowledgement, which the gate can't authenticate. Open high findings block completion |
-| **Deliver** | Accepted REQs with evidence and a committed `## Handoff` | Repository-wide `--done` checks all REQs; declared `--done --delivery-session` checks its selected requirements and relevant dependencies. Unaccepted requirements, narrowing or serious findings in that scope block delivery. `--handoff` requires committed state and its predecessor commit |
+| **Deliver** | Code-ready tasks, final evidence and review, and a committed `## Handoff` | Repository-wide `--done` checks all REQs; declared `--done --delivery-session` checks its selected requirements and relevant dependencies. Unfinished code, missing final evidence, narrowing or serious findings in that scope block completion. `--handoff` requires committed state and its predecessor commit |
 
 Tables that look like these but use different headers fail rather than being skipped. The gate checks identity, provenance, freshness and links. Whether a source
 really supports its claim is the independent reviewer's call. The adversarial
@@ -49,9 +49,19 @@ passed independent review, and that whole chain is recorded in the program
 ledger. The gate caught a real file-ownership conflict and short session IDs.
 Two lanes could not run: a turn started by another session cannot show the
 owner a permission prompt. Sustained parallel delivery across many children
-(REQ-30/36) is **not yet proven**. The `validate` GitHub Actions workflow checks pushes and pull requests to `main`; the `release` workflow is disabled and releases are cut manually.
+(REQ-30/36) is **not yet proven**. Validation for this delivery runs locally;
+releases are cut manually without enabling CI.
 
-**1.0.0-beta.1 is a prerelease, not 1.0 final.** Native Windows and macOS are
+**1.0.0 source scope.** The current code adds source-bound candidate integration,
+restart-safe native ownership, shared status/admission checks, observed option
+comparisons within an existing finite allowance, and exact owner-event-approved
+learning application and rollback. Task progress uses Not started, Started and
+Code ready; review and final evidence apply to the complete feature set.
+These implementation capabilities do not imply that every target or live-host
+failure mode has been qualified.
+
+**Historical beta qualification.** 1.0.0-beta.1 is a prerelease, not 1.0 final.
+Native Windows and macOS are
 the 1.0 targets; WSL2 is not. The work makes CLI-created Runs honor the configured autonomy and mutation-policy
 defaults, reports each Run's execution, holds and one next action from
 canonical state (a conservative, best-effort mirror of `task-start`, which stays
@@ -81,9 +91,12 @@ handover for continuing on another machine is #39. See the
    their REQ ids. When you change your mind, the change is recorded as a typed
    correction row (`add`, `revise`, `retract`, `supersede`, `narrow`) before the
    agent acts on it, so it survives context compaction and session restarts.
-3. **Verify.** `accepted` needs evidence. `python gates/gate_runner.py
-   requirements --done` passes only when every active REQ is accepted, and the
-   independent review grades against the same rows.
+3. **Finish the code, then review.** Task statuses are **Not started**,
+   **Started** and **Code ready**. Mark a feature Code ready when its
+   implementation is finished, without waiting for review. Review the complete
+   feature set together only after all feature code is ready, not feature by
+   feature. `python gates/gate_runner.py requirements --done` checks the final
+   evidence and review; Code ready alone does not pass that check.
 4. **Hand off.** The `## Handoff` note (Next, Failed approaches, Verify) lets a
    fresh session resume in minutes without retrying dead ends.
 
@@ -561,9 +574,9 @@ Everything Architrave ships, grouped by area. Paths point at the source of truth
 
 ### Specification and requirements
 - Requirements file with REQ rows (id, requirement, acceptance, owner, status, evidence), typed correction rows and a Handoff note — `kit/examples/requirements.md`, `SPEC.md` default or config `requirements`.
-- `requirements` gate: validates the table, testable acceptance, non-empty evidence for accepted rows, typed corrections and Handoff; `--claim <ids> --owner <lane>` writes ownership/claimed status, refuses conflicting or closed lanes and prints acceptance plus corrections (commit before dispatch); `--done` checks completion; `--handoff` rejects uncommitted requirements or newer local SDD progress and warns about sibling scratch; optional `--expect <predecessor-sha>` rejects stale successor history. Evidence truth remains a source/primary-criterion oversight check — `gates/gate_runner.py`.
+- `requirements` gate: validates Not started, Started and Code ready task progress, testable acceptance, typed corrections and Handoff; historical status spellings remain readable. `--claim <ids> --owner <lane>` records ownership without starting a Not started task and refuses conflicting or finished work; `--done` checks final evidence and review after the code is ready. `--handoff` rejects uncommitted requirements or newer local SDD progress and warns about sibling scratch; optional `--expect <predecessor-sha>` rejects stale successor history — `gates/gate_runner.py`.
 - `checks` and `quality-gate` validate the requirements file whenever one exists, and `components` fails a multi-component program without one — `gates/gate_runner.py`.
-- Run v2 binds tasks to REQ ids, records claims as events and refuses completion while bound REQs are not accepted — `harness/architrave_runtime.py`, `docs/runtime-v2.md`.
+- Run v2 binds tasks to REQ ids, records claims as events and refuses completion before the bound code is ready and the final review is present — `harness/architrave_runtime.py`, `docs/runtime-v2.md`.
 - Upfront challenge at intake: contradictions, risky assumptions and better approaches are named before work starts — `agents/architrave.agent.md`.
 - Tournament of Options for architecture, migration, security, data-loss and recurring-failure decisions, with "do nothing" and "smallest viable" baselines — `skills/architrave-tournament/`, `agents/tournament-analyst.agent.md`.
 - YAGNI ladder as a gate: delete, reuse, platform feature, then the smallest new code — `knowledge/yagni.md`.
@@ -595,7 +608,7 @@ Everything Architrave ships, grouped by area. Paths point at the source of truth
 
 ### Native host bridge (Copilot)
 - `architrave_native_dispatch` and `_batch` (2–20 pre-decomposed packets, capped by `workers.maxParallel`, default 3) dispatch bounded WorkPackets through the joined host with owner binding, child limits, source binding and REQ acceptance in the kickoff. Preflight shares one fixed 30 s bound; later stages use the lease deadline and reserve cleanup time. Abort signals produce explicit failures; uncertain admissions retain capacity. Cancellation and removal confirmations are distinct; a timeout alone proves neither. Batch packets fail independently — `extensions/architrave-native/bridge.mjs`.
-- `architrave_native_status`, `_cancel` and `_recover` use actual ownership, never fabricated results. Recovery preserves an unresolved attempt and rejects replacement with `NATIVE_RECOVERY_PENDING`; an empty, failed or ambiguous listing does not prove absence. Late-owner adoption uses attempt identity, not prompt equality. Bridge-process recovery state and durable Run ownership are separate: after restart, unsafe recovery/resume is refused when host disposition cannot be proved. This is fail-closed containment, not fully automatic restart recovery. Transport regression evidence is not live supported-host qualification.
+- `architrave_native_status`, `_cancel` and `_recover` use actual ownership, never fabricated results. Recovery preserves an unresolved attempt and rejects replacement with `NATIVE_RECOVERY_PENDING`; an empty, failed or ambiguous listing does not prove absence. After restart the joined host can recover an exact persisted owner or uniquely identified attempt, persist that binding, and confirm cancellation and removal separately. Unknown cleanup remains blocked and counts against capacity. Transport regression evidence is not live supported-host qualification.
 - `architrave_native_gate` runs stored commands or observes configured workflows bound to the source, task and objective; `architrave_native_review` runs one fresh source-bound semantic review and admits only observed results — `docs/native-semantic-review.md`.
 
 ### Verification and review
@@ -603,6 +616,7 @@ Everything Architrave ships, grouped by area. Paths point at the source of truth
 - Risk-scaled verification: R0/R1 deterministic, R2 one fresh-context reviewer, R3 adds real end-to-end or runtime evidence, R4 adds security and policy review; cross-family review with `review.crossFamily` — `gates/rubric.md`, `knowledge/execution-policy.md`.
 - Adversarial Judge with a PASS, REVISE or FAIL rubric covering spec conformance, root cause, YAGNI, UX, visual fidelity, accessibility, backend security, runtime and evidence — `agents/adversarial-judge.agent.md`, `gates/rubric.md`.
 - Host-owned semantic and tournament review guidance — `harness/architrave_cli.py semantic-review` and `tournament-review` emit advisory instructions; `--execute` refuses with `NATIVE_HOST_REQUIRED` instead of launching another agent CLI.
+- Material option decisions can consume an observed, task/source-bound native analyst artifact through `feasibility-record --comparison-ref`. The existing finite window and consumed allowance survive retries; imported JSON remains advisory and does not authorize a decision — `knowledge/runtime-v2.md`.
 - Application legibility: health, release and deployment checks against the deployed artifact — `harness/legibility.py`, `docs/application-legibility.md`.
 - Explicit quality cadence rather than post-edit hooks, plus the narrow default-session bootstrap and declared-completion check — `docs/quality-check-cadence.md`.
 

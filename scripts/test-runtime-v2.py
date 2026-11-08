@@ -119,6 +119,7 @@ class RuntimeV2Tests(unittest.TestCase):
         mutable: bool = False,
         side_effect: dict[str, str] | None = None,
         risk: str = "R1",
+        execution: list[str] | None = None,
     ) -> dict[str, object]:
         return self.store.add_task(
             run_id,
@@ -136,6 +137,8 @@ class RuntimeV2Tests(unittest.TestCase):
                 "gate": "fixture gate",
                 "maxAttempts": 2,
                 "sideEffect": side_effect,
+                **({"workPacket": {"execution": {"command": execution, "cwd": None, "environment": []}}}
+                   if execution else {}),
             },
         )
 
@@ -1258,7 +1261,7 @@ class RuntimeV2Tests(unittest.TestCase):
             "requiredArtifacts": ["evidence-native-live"], "gate": "fixture gate", "maxAttempts": 2,
             "sideEffect": None,
         })
-        self.store.start_task(run_id, "native-live", worker_id="native-attempt-live")
+        self.store.start_task(run_id, "native-live", worker_id="native-attempt-live", _native_owner="joined-host")
         before = self.store.load(run_id)
         with self.assertRaises(RuntimeFailure) as error:
             self.store.resume(run_id)
@@ -1271,6 +1274,21 @@ class RuntimeV2Tests(unittest.TestCase):
         self.assertEqual("RUNNING", task["status"])
         self.assertEqual("native-attempt-live", task["lease"]["owner"])
         self.assertEqual("RUNNING", worker["status"])
+        self.assertEqual("joined-host", worker["nativeBinding"]["owner"])
+        bound = self.store.bind_recovered_native_owner(
+            run_id, "native-live", attempt_id="native-attempt-live",
+            host_owner="joined-host", host_task_id="observed-owner",
+        )
+        self.assertEqual(task["lease"], bound["tasks"][0]["lease"])
+        self.assertEqual("observed-owner", bound["workers"][0]["nativeBinding"]["hostTaskId"])
+        for owner, host_task in (("other-host", "observed-owner"), ("joined-host", "other-owner")):
+            with self.assertRaises(RuntimeFailure) as conflict:
+                self.store.bind_recovered_native_owner(
+                    run_id, "native-live", attempt_id="native-attempt-live",
+                    host_owner=owner, host_task_id=host_task,
+                )
+            self.assertEqual("NATIVE_OWNER_TASK_MISMATCH", conflict.exception.code)
+        self.assertEqual(bound["revision"], self.store.load(run_id)["revision"])
 
     def test_worker_recover_holds_expired_native_lease_through_api_and_cli(self) -> None:
         state = self.create()
@@ -2736,13 +2754,18 @@ class RuntimeV2Tests(unittest.TestCase):
                 # but an unconfirmed integration is not, so the candidate becomes an owner hold.
                 run_id = str(self.create(allow=[{"scope": "repository", "operations": ["edit"]}],
                                          confirmation=[] if allowed else ["edit"])["runId"])
-                self.add_task(run_id, "iso", mutable=True)
+                self.add_task(run_id, "iso", mutable=True, execution=[
+                    sys.executable, "-c",
+                    f"from pathlib import Path; Path('README.md').write_text('# Candidate {allowed}\\n')",
+                ])
                 workspace_cli("create", run_id, "iso")
                 workspace = Path(self.store.load(run_id)["tasks"][0]["workspace"])
                 self.runtime_cli("task-start", run_id, "iso", "--worker-id", f"w-{allowed}",
                                  *([] if allowed else ["--confirmed"]))
-                (workspace / "README.md").write_text(f"# Candidate {allowed}\n", encoding="utf-8")
-                self.runtime_cli("worker-finish", run_id, "iso", "--worker-id", f"w-{allowed}", "--status", "FINISHED")
+                worker = subprocess.run([sys.executable, str(ROOT / "harness/worker_adapters.py"),
+                                         "--repo", str(self.repo), run_id, "iso", "--worker-id", f"w-{allowed}"],
+                                        capture_output=True, text=True)
+                self.assertEqual(0, worker.returncode, worker.stderr)
                 status = self.runtime_cli("status", run_id)["result"]
                 if not allowed:
                     self.assertEqual(("owner-hold", True), (status["nextAction"]["kind"], status["nextAction"]["ownerRequired"]))
@@ -3049,15 +3072,19 @@ class RuntimeV2Tests(unittest.TestCase):
             self.assertEqual(0, result.returncode, result.stderr)
 
         run_id = str(self.create(allow=[{"scope": "repository", "operations": ["edit"]}])["runId"])
-        self.add_task(run_id, "iso", mutable=True)
+        self.add_task(run_id, "iso", mutable=True, execution=[
+            sys.executable, "-c", "from pathlib import Path; Path('README.md').write_text('# Candidate\\n')",
+        ])
         self.add_task(run_id, "peer")
         workspace_cli("create", run_id, "iso")
         try:
             workspace = Path(self.store.load(run_id)["tasks"][0]["workspace"])
             self.runtime_cli("task-start", run_id, "iso", "--worker-id", "w-iso")
             self.runtime_cli("task-start", run_id, "peer", "--worker-id", "w-peer")
-            (workspace / "README.md").write_text("# Candidate\n", encoding="utf-8")
-            self.runtime_cli("worker-finish", run_id, "iso", "--worker-id", "w-iso", "--status", "FINISHED")
+            worker = subprocess.run([sys.executable, str(ROOT / "harness/worker_adapters.py"),
+                                     "--repo", str(self.repo), run_id, "iso", "--worker-id", "w-iso"],
+                                    capture_output=True, text=True)
+            self.assertEqual(0, worker.returncode, worker.stderr)
             status = self.runtime_cli("status", run_id)["result"]
             self.assertEqual("integrate-candidate", status["execution"]["finishedCandidates"][0]["disposition"])
             self.assertEqual(("wait-for-worker", ["peer"]), (status["nextAction"]["kind"], status["nextAction"]["taskIds"]))

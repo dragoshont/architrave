@@ -5,6 +5,31 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## 1.0.0
+
+- Bind candidate integration to actual workspace/destination source, preserve
+  the worker index, retain immutable patches and make repeated integration
+  idempotent. Shared dispatch checks revalidate budget and ownership inside
+  the task-start transaction (REQ-103/105).
+- Persist native attempt ownership before dispatch and bind uniquely recovered
+  owners before cleanup. Unknown owners retain capacity across restart;
+  cancellation, removal and result persistence remain separate (REQ-97/104).
+- Consume observed native option comparisons in the existing bounded
+  feasibility decision, without imported verdicts or renewed retry allowances
+  (REQ-106).
+- Add exact original-owner-event approval for lesson application and rollback,
+  retaining source/target/content provenance in the existing learning register.
+  Missing approval remains proposal-only; no real lesson has been applied as
+  part of this implementation (REQ-107).
+- Use Not started, Started and Code ready for task progress in the current
+  requirements and program board. Code readiness does not require an
+  individual review; review the complete feature set at the end. Final
+  evidence checks remain separate, and historical records stay readable
+  (REQ-105, C-101).
+- Write gate CLI stdout/stderr as UTF-8 so redirected native Windows output
+  can include actual requirement text without crashing on an ANSI codepage
+  (REQ-99).
+
 ## 1.0.0-beta.1
 
 Prerelease preparation for the completion-path repairs. Make the path from an owner outcome

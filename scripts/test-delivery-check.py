@@ -656,6 +656,18 @@ class DeliveryChecks(unittest.TestCase):
         self.report["board"] = {"open_call_id": "open", "read_call_id": "missing"}
         self.assertTrue(any("board" in e for e in self.errors()))
 
+    def test_reused_board_requires_fresh_read_not_fresh_open(self):
+        for event in self.log:
+            if event["data"].get("toolCallId") == "open":
+                event["timestamp"] = "2026-01-01T09:00:00Z"
+        self.assertEqual(check.board_errors(self.report["board"], self.report, self.log), [])
+        for event in self.log:
+            if (event["type"] == "tool.execution_start"
+                    and event["data"].get("toolCallId") == "read"):
+                event["timestamp"] = "2026-01-01T09:59:59Z"
+        self.assertTrue(any("predates the current owner scope" in error
+                            for error in check.board_errors(self.report["board"], self.report, self.log)))
+
     def test_explicit_failed_or_absent_canvas_is_not_displayed_success(self):
         self.tool("no-canvas", "open_canvas", {"canvasId": "browser"},
                   result="Host does not support a browser canvas", success=False)

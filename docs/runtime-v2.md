@@ -18,7 +18,7 @@ The complete behavioral contract lives in
 ## Requirements binding
 
 Set `requirements` in `architrave.config.json` to your repository requirements
-file. New tasks and WorkPackets must name `reqs`; unknown, accepted, superseded
+file. New tasks and WorkPackets must name `reqs`; unknown, Code ready, accepted, superseded
 or withdrawn REQs cannot start. For example (one line):
 
 ```text
@@ -40,8 +40,10 @@ Native dispatch takes `reqs: ["REQ-1"]`; batch takes
 Python checks canonical bindings; prompts begin with current acceptance text and
 all corrections. Existing admission and child caps remain enforced.
 
-Completion rereads the file: every bound REQ must be `accepted`, even for
-cancelled/deferred tasks. Evidence and existing gates still apply. Without a
+Final completion rereads the file: every bound REQ must be `Code ready`
+(historical `accepted` remains readable), even for cancelled/deferred tasks.
+Code readiness itself does not demand an individual review. The final combined
+review and evidence checks still apply at closure. Without a
 `requirements` key, `SPEC.md` is used when it contains a `| ID | ... | Status |`
 table; a prose `SPEC.md` is ignored and binding is off.
 
@@ -87,7 +89,9 @@ lists from config.
   checked in its order, including `STALE_REPOSITORY` and feasibility-lane
   codes. Admissible tasks beyond `workers.maxParallel`, or that overlap a
   selected task, are listed under `sequenced`. They are not refused. The mirror
-  is a lock-free, best-effort subset of `task-start`.
+  is a lock-free, best-effort subset of `task-start`. Context, requirements,
+  pushback, feasibility, budget, capacity and resource-policy checks share the
+  same helpers, rerun inside the task-start transaction.
 - `holds` lists owner-required items: `BUDGET_100`,
   `EXTERNAL_CHECKPOINT_PENDING`, and `MUTATION_DENIED`. A hold code equals the
   `task-start` refusal code only for a READY task; a task waiting on a
@@ -121,6 +125,26 @@ WorkPacket, creates the isolated workspace before task start, observes the
 actual host result and binds a compact candidate to the Run. No model settings
 or caller-authored result JSON are accepted. Unsupported hosts return an early
 capability error without inventing a human authorization checkpoint.
+
+Worker candidates record the actual workspace, base commit, workspace digest
+and destination. Collection requires the current native or shell worker's
+observed result, including its original destination digest; manually marking
+a worker finished is not sufficient. Earlier peers in the same wave may change
+that destination only through a continuous recorded integration digest chain.
+Unrecorded drift is refused. Collection uses a temporary Git index and immutable patch
+files; it does not change the worker's index. Integration checks that the
+observed candidate is still current, waits for all workers to settle, and
+revalidates both source and destination inside the side-effect preparation
+transaction. Repeated integration returns the existing recorded disposition
+instead of applying the patch again. A lost apply/reconciliation reply remains
+uncertain, not an instruction to replay the patch.
+
+Native owner identity is persisted at preparation. After restart the joined
+host can bind a uniquely identified attempt to its actual host task before
+cleanup. The worker/task/lease/objective identities must still match; a
+conflicting binding, empty listing or unknown cancellation/removal cannot
+release capacity. This is a bounded recovery path, not a guarantee about an
+unobservable host.
 
 Then invoke `architrave_native_gate` (same repo/Run/task, `recipe` =
 `test`, `build`, `quick` or `ci`) or the public CLI:

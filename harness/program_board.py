@@ -30,7 +30,9 @@ gate = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gate)
 
 STATE_HOME = Path(os.environ.get("COPILOT_HOME", Path.home() / ".copilot")) / "session-state"
-REQ_TONE = {"accepted": "done", "claimed": "open", "in-progress": "active", "blocked": "blocked", "open": "open"}
+REQ_TONE = {"code ready": "done", "started": "active", "not started": "open",
+            "accepted": "done", "claimed": "open", "in-progress": "active", "blocked": "active", "open": "open"}
+REQ_LABEL = {"done": "Code ready", "active": "Started", "open": "Not started"}
 LANE_TONE = {"done": "done", "running": "active", "blocked": "blocked", "idle": "open", "ready": "open",
              "superseded": "gone", "stopped": "gone"}
 
@@ -466,64 +468,44 @@ def timeline(sessions: list[dict], lane_by_session: dict, remote: list[dict] = (
 def render(data: dict) -> str:
     reqs, lanes, sessions = data["reqs"], data["lanes"], data["sessions"]
     active_req = {rid: r for rid, r in reqs.items() if r["status"].lower() not in gate.REQ_CLOSED}
-    accepted = sum(1 for r in active_req.values() if r["status"].lower() == "accepted")
+    ready = sum(1 for r in active_req.values() if r["status"].lower() in gate.REQ_CODE_READY)
     total_in, total_out = sum(s["input"] for s in sessions), sum(s["output"] for s in sessions)
     total_cached = sum(s["cached"] for s in sessions)
-    unverified, reviewed, verified = data["unverified"], data["reviewed"], data["verified"]
-    unreviewed_accepted = [r for r in active_req if active_req[r]["status"].lower() == "accepted" and r not in reviewed]
+    unverified = data["unverified"]
     active = sum(s["active_min"] for s in sessions)
     wall = ((max(s["end"] for s in sessions) - sessions[0]["start"]).total_seconds() / 60) if sessions else 0
     running = sum(1 for lane in lanes if lane["state"].lower() == "running")
     workers = [lane for lane in lanes if not lane.get("synthetic")]
-    stats = [("REQs accepted", f"{accepted}/{len(active_req)}"),
+    stats = [("Code ready", f"{ready}/{len(active_req)}"),
              ("repository ledger structural checks", "PASS" if not data["errors"] else f"{len(data['errors'])} issues"),
-             ("lanes missing a review (blocks --done)", str(sum(1 for lane in lanes if not lane.get("synthetic")
-                                                                 and gate.lane_review_gaps(lane, reqs, data["strict"], data["cross"])))),
-             ("accepted, evidence unresolved", str(len(unverified & set(active_req)))),
-             ("accepted, not reviewed", str(len(unreviewed_accepted))),
-             ("PASS review executions verified", f"{len(verified & set(active_req))}/{len(reviewed & set(active_req))}"),
+             ("Review timing", "After all feature code is ready"),
              ("worker lanes running", f"{running}/{len(workers)}"),
              ("history sessions", str(len(sessions))), ("history tokens in/out/cache", f"{num(total_in)}/{num(total_out)}/{num(total_cached)}"),
              ("model min, cumulative history", f"{active:.0f}"), ("history span min", f"{wall:.0f}")]
     overview = "".join(f"<div><b>{esc(v)}</b><span>{esc(k)}</span></div>" for k, v in stats)
-    primary_stats = [("Accepted", f"{accepted}/{len(active_req)}"),
+    primary_stats = [("Code ready", f"{ready}/{len(active_req)}"),
                      ("Ledger structure", "PASS" if not data["errors"] else f"{len(data['errors'])} issues"),
                      ("Sessions", str(len(sessions)))]
     if sessions:
         primary_stats += [("Tokens · In / Out / Cache", f"{num(total_in)} / {num(total_out)} / {num(total_cached)}"),
                           ("Model time", f"{active:.0f}m"), ("History span", f"{wall:.0f}m")]
-    if reviewed & set(active_req):
-        primary_stats.append(("Reviews verified", f"{len(verified & set(active_req))}/{len(reviewed & set(active_req))}"))
     if running:
         primary_stats.append(("Lanes active", f"{running}/{len(workers)}"))
-    review_gaps = sum(1 for lane in workers if gate.lane_review_gaps(lane, reqs, data["strict"], data["cross"]))
-    if review_gaps:
-        primary_stats.append(("Review gaps", str(review_gaps)))
-    if unverified & set(active_req):
-        primary_stats.append(("Evidence issues", str(len(unverified & set(active_req)))))
-    if unreviewed_accepted:
-        primary_stats.append(("Unreviewed", str(len(unreviewed_accepted))))
     primary = "".join(f"<div><b>{esc(v)}</b><span>{esc(k)}</span></div>" for k, v in primary_stats)
     boxes = []
     for lane in lanes:
         ids = [rid.upper() for rid in re.findall(r"REQ-[A-Za-z0-9_.-]+", lane["req ids"], re.I)]
-        delivered = {r for r in ids if lane["state"].lower() == "done" and r in reqs
-                     and reqs[r]["status"].lower() not in gate.REQ_CLOSED | {"accepted", "blocked"}}
+        ids = [rid for rid in ids if rid in active_req]
+        if not ids:
+            continue
         squares = "".join(
-            f"<button class='sq {'delivered' if r in delivered else REQ_TONE.get(reqs[r]['status'].lower(), 'open') if r in reqs else 'open'}{' warn' if r in unverified else ''}{' rev' if r in reviewed else ''}{' vrf' if r in verified else ''}' "
-            f"data-d='{esc(r)} · {esc(reqs[r]['status'] if r in reqs else 'unknown')}{' · delivered by this lane, awaiting acceptance' if r in delivered else ''} · {esc(data['identities'].get(r, {}).get('detail', 'no evidence'))}{' · review execution verified in its session log' if r in verified else ' · reviewed (note only)' if r in reviewed else ' · not reviewed'} · {esc((reqs[r]['requirement'] if r in reqs else ''))}' "
-            f"aria-label='{esc(r)} {esc(reqs[r]['status'] if r in reqs else 'unknown')}: {esc(reqs[r]['requirement'] if r in reqs else '')}'></button>" for r in ids)
-        done = sum(1 for r in ids if r in reqs and reqs[r]["status"].lower() == "accepted")
-        missing = bool(gate.lane_review_gaps(lane, reqs, data["strict"], data["cross"])) and not lane.get("synthetic")
-        risky = missing or (lane.get("synthetic") and any(
-            r in reqs and reqs[r]["status"].lower() == "accepted" and r not in reviewed for r in ids))
+            f"<button class='sq {REQ_TONE.get(reqs[r]['status'].lower(), 'open')}' "
+            f"data-d='{esc(r)} · {REQ_LABEL[REQ_TONE.get(reqs[r]['status'].lower(), 'open')]} · {esc(reqs[r]['requirement'])} · {esc(data['identities'].get(r, {}).get('detail', 'no evidence'))}' "
+            f"aria-label='{esc(r)} {REQ_LABEL[REQ_TONE.get(reqs[r]['status'].lower(), 'open')]}: {esc(reqs[r]['requirement'])}'></button>" for r in ids)
+        done = sum(1 for r in ids if reqs[r]["status"].lower() in gate.REQ_CODE_READY)
         tone = LANE_TONE.get(lane["state"].lower(), "open")
-        status = ([] if lane.get("synthetic") else [lane["state"]])
-        if risky:
-            status.append("review missing")
-        status.append(f"{done}/{len(ids)} accepted")
-        boxes.append(f"<section class='box {tone}{' unrev' if risky else ''}' data-synthetic='{'true' if lane.get('synthetic') else 'false'}'><h3>{esc(lane['lane'])}</h3>"
-                     f"<p>{esc(' · '.join(status))}</p>"
+        boxes.append(f"<section class='box {tone}' data-synthetic='{'true' if lane.get('synthetic') else 'false'}'><h3>{esc(lane['lane'])}</h3>"
+                     f"<p>{done}/{len(ids)} code ready</p>"
                      f"<div class='grid'>{squares}</div></section>")
     css = """
 :root{color-scheme:dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#10161e;color:#edf3f8}
@@ -605,9 +587,9 @@ h2,h3,summary{break-after:avoid}
 details,details>*,details::details-content{display:block;content-visibility:visible}
 }
 """
-    legend = ("<div class='legend'><span><i class='done'></i>Accepted</span><span><i class='active'></i>In progress</span>"
-              "<span><i class='delivered'></i>Awaiting acceptance</span><span><i class='blocked'></i>Blocked</span><span><i class='open'></i>Open</span><span><i class='open warn'></i>Evidence issue</span>"
-              "<span><i class='sq rev open'></i>Reviewed</span><span><i class='unrevkey'></i>Review missing</span></div>")
+    legend = ("<div class='legend'><span><i class='open'></i>Not started</span>"
+              "<span><i class='active'></i>Started</span><span><i class='done'></i>Code ready</span></div>"
+              "<p class='note'>Review the complete feature set after all feature code is ready.</p>")
     script = ("<script>const d=document.getElementById('detail');document.querySelectorAll('button.sq').forEach(b=>b.onclick=()=>{"
               "document.querySelectorAll('.sq.sel').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');d.textContent=b.dataset.d});"
               "const freshness=document.getElementById('freshness');"
@@ -686,8 +668,8 @@ def audit_panel(data: dict) -> str:
     path = STATE_HOME / data["coordinator"] / "files" / "session-audit.json"
     heading = "<section class='delivery-audit' aria-labelledby='audit-heading'><h2 id='audit-heading'>Delivery improvements</h2>"
     if not path.exists():
-        return (heading + "<p class='note'>Not audited. Run architrave-review with this session's "
-                "goal and history to assess delivery and approach; token counts alone are not quality.</p></section>")
+        return (heading + "<p class='note'>Review is deferred until all feature code is ready. "
+                "Then review the complete set together, not individual features.</p></section>")
     try:
         sys.path.insert(0, str(ROOT / "harness"))
         from session_audit import read_json, report_state

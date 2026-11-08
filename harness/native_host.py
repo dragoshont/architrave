@@ -63,24 +63,164 @@ def requirements_kickoff(store: RunStore, task: dict, reqs: object) -> str:
     return store.requirements_context(task)
 
 
-def refuse_unreconciled_native_workers(store: RunStore, run_id: str) -> None:
-    """Do not close a native lease when this invocation cannot prove host disposition."""
-    state = store.load(run_id)
-    tasks = {task["id"]: task for task in state["tasks"]}
-    for worker in state["workers"]:
-        if worker["status"] != "RUNNING" or worker.get("adapter") != "native":
-            continue
-        task = tasks.get(worker.get("taskId"))
-        if task is None or task["status"] != "RUNNING":
-            continue
+def host_task_inventory(value: object) -> list[dict]:
+    if not isinstance(value, list):
+        raise RuntimeFailure("NATIVE_TRANSPORT_INVALID", "native recovery requires an observed host task listing")
+    tasks = []
+    for task in value:
+        if (not isinstance(task, dict) or not isinstance(task.get("id"), str) or not task["id"]
+                or task.get("type") != "agent" or not isinstance(task.get("status"), str)):
+            raise RuntimeFailure("NATIVE_TRANSPORT_INVALID", "host task listing contains an invalid identity")
+        tasks.append({"id": task["id"], "type": task["type"], "status": task["status"],
+                      "description": task.get("description") if isinstance(task.get("description"), str) else ""})
+    return tasks
+
+
+def native_workers(store: RunStore, run_id: str | None = None):
+    states = []
+    if run_id is not None:
+        states.append(store.load(run_id))
+    elif store.runs_root.is_dir():
+        for directory in sorted(store.runs_root.iterdir()):
+            if directory.is_dir() and (directory / "run.json").is_file():
+                states.append(store.load(directory.name))
+    for state in states:
+        tasks = {task["id"]: task for task in state["tasks"]}
+        for worker in state["workers"]:
+            if worker.get("status") != "RUNNING" or worker.get("adapter") != "native":
+                continue
+            task = tasks.get(worker.get("taskId"))
+            if (task is None or task.get("status") != "RUNNING"
+                    or (task.get("lease") or {}).get("owner") != worker.get("id")):
+                raise RuntimeFailure(
+                    "NATIVE_RECOVERY_PENDING", "native worker and task lease identities do not agree",
+                    details={"runId": state["runId"], "taskId": worker.get("taskId"),
+                             "attemptId": worker.get("id"), "hostDisposition": "unconfirmed"},
+                )
+            yield state, task, worker
+
+
+def unresolved_native_reservations(store: RunStore, host_tasks: list[dict]) -> list[str]:
+    """Keep canonical attempts counted when the current host listing cannot account for them."""
+    reservations = []
+    for _, _, worker in native_workers(store):
         binding = worker.get("nativeBinding") or {}
-        owner = binding.get("hostTaskId")
+        host_id = binding.get("hostTaskId")
+        if host_id:
+            accounted = any(task["id"] == host_id and task["status"] == "running" for task in host_tasks)
+        else:
+            marker = f"Architrave native attempt:{worker['id']}"
+            accounted = any(task["description"] == marker and task["status"] == "running" for task in host_tasks)
+        if not accounted:
+            reservations.append(worker["id"])
+    return reservations
+
+
+def refuse_unreconciled_native_workers(store: RunStore, run_id: str) -> None:
+    """Keep the read-only refusal seam for callers without joined-host cleanup proof."""
+    for _, task, worker in native_workers(store, run_id):
         raise RuntimeFailure(
             "NATIVE_RECOVERY_PENDING",
             "native host ownership is live or unknown; recovery cannot close this Run lease",
             details={"taskId": task["id"], "attemptId": worker["id"],
-                     "hostTaskId": owner, "hostDisposition": "unconfirmed"},
+                     "hostTaskId": (worker.get("nativeBinding") or {}).get("hostTaskId"),
+                     "hostDisposition": "unconfirmed"},
         )
+
+
+def native_recovery_targets(store: RunStore, run_id: str, host_owner: str,
+                            host_tasks: list[dict], task_id: str | None = None) -> list[dict]:
+    targets = []
+    for state, task, worker in native_workers(store, run_id):
+        if task_id is not None and task["id"] != task_id:
+            continue
+        binding = worker.get("nativeBinding") or {}
+        if binding and binding.get("owner") != host_owner:
+            raise RuntimeFailure(
+                "NATIVE_RECOVERY_PENDING", "native attempt belongs to a different joined host owner",
+                details={"taskId": task["id"], "attemptId": worker["id"],
+                         "hostTaskId": binding.get("hostTaskId"), "hostDisposition": "unconfirmed"},
+            )
+        host_id = binding.get("hostTaskId")
+        if not host_id:
+            marker = f"Architrave native attempt:{worker['id']}"
+            matches = [item for item in host_tasks if item["description"] == marker]
+            if len(matches) != 1:
+                raise RuntimeFailure(
+                    "NATIVE_RECOVERY_PENDING",
+                    "unbound native start has no unique attempt-matched host owner; absence is unconfirmed",
+                    details={"taskId": task["id"], "attemptId": worker["id"],
+                             "candidateCount": len(matches), "hostDisposition": "unconfirmed"},
+                )
+            host_id = matches[0]["id"]
+            store.bind_recovered_native_owner(
+                state["runId"], task["id"], attempt_id=worker["id"],
+                host_owner=host_owner, host_task_id=host_id,
+            )
+        retained = any(
+            previous["id"] != worker["id"]
+            and previous["taskId"] == task["id"]
+            and (previous.get("nativeBinding") or {}).get("hostTaskId") == host_id
+            for previous in state["workers"]
+        )
+        targets.append({"attemptId": worker["id"], "taskId": task["id"], "hostTaskId": host_id,
+                        "removeRequired": not retained})
+    if len({item["hostTaskId"] for item in targets}) != len(targets):
+        raise RuntimeFailure("NATIVE_RECOVERY_PENDING", "multiple Run attempts claim the same host owner")
+    return targets
+
+
+def confirm_native_recovery(store: RunStore, run_id: str, host_owner: str,
+                            targets: list[dict], proof: object) -> list[dict]:
+    if not isinstance(proof, dict) or set(proof) != {"status", "owners"} or proof["status"] != "reconciled":
+        raise RuntimeFailure("NATIVE_RECOVERY_PENDING", "host cancellation/removal proof was not supplied")
+    owners = proof["owners"]
+    if not isinstance(owners, list) or len(owners) != len(targets):
+        raise RuntimeFailure("NATIVE_RECOVERY_PENDING", "host cleanup proof does not cover every native attempt")
+    supplied = {}
+    for item in owners:
+        if (not isinstance(item, dict) or set(item) - {
+                "attemptId", "hostTaskId", "cancellationConfirmed", "removalConfirmed", "error"}
+                or not {"attemptId", "hostTaskId", "cancellationConfirmed", "removalConfirmed"}.issubset(item)
+                or item.get("error") is not None and not isinstance(item.get("error"), str)):
+            raise RuntimeFailure("NATIVE_RECOVERY_PENDING", "host cleanup proof has an invalid shape")
+        supplied[item["attemptId"]] = item
+    expected = {target["attemptId"] for target in targets}
+    if set(supplied) != expected:
+        raise RuntimeFailure("NATIVE_RECOVERY_PENDING", "host cleanup proof does not match the Run attempts")
+    recovered = []
+    for target in targets:
+        result = supplied[target["attemptId"]]
+        if (result["hostTaskId"] != target["hostTaskId"] or result["cancellationConfirmed"] is not True
+                or result["removalConfirmed"] is not target["removeRequired"]):
+            raise RuntimeFailure(
+                "NATIVE_RECOVERY_PENDING", result.get("error") or
+                "host did not confirm required cancellation and removal",
+                details={"taskId": target["taskId"], "attemptId": target["attemptId"],
+                         "hostTaskId": target["hostTaskId"], "hostDisposition": "unconfirmed"},
+            )
+        state = store.load(run_id)
+        task = find_task(state, target["taskId"])
+        worker = next((item for item in state["workers"] if item["id"] == target["attemptId"]), None)
+        if worker is None:
+            raise RuntimeFailure("NATIVE_RECOVERY_PENDING", "native attempt disappeared during host cleanup")
+        if worker["status"] != "RUNNING" or task["status"] != "RUNNING":
+            recovered.append({"taskId": task["id"], "attemptId": worker["id"],
+                              "hostRemovalConfirmed": target["removeRequired"], "alreadySettled": True})
+            continue
+        binding = worker.get("nativeBinding") or {}
+        if ((task.get("lease") or {}).get("owner") != worker["id"]
+                or binding.get("hostTaskId") != target["hostTaskId"]
+                or binding.get("owner") != host_owner):
+            raise RuntimeFailure("NATIVE_RECOVERY_PENDING", "Run ownership changed during host cleanup")
+        store.fail_task(
+            run_id, task["id"],
+            f"native attempt {worker['id']} host owner {target['hostTaskId']} cancelled and removed during recovery",
+            actor="native-host-recovery",
+        )
+        recovered.append({"taskId": task["id"], "attemptId": worker["id"],
+                          "hostRemovalConfirmed": target["removeRequired"], "alreadySettled": False})
+    return recovered
 
 
 def routing_observation(requested, effective, reused_owner=False):
@@ -116,11 +256,37 @@ def main():
             summary["runtime"]["nativeInstallation"] = request.get("nativeInstallation")
             emit({"status": "ok", "result": summary})
             return 0
-        if action == "recover":
-            refuse_unreconciled_native_workers(store, run_id)
+        if action == "capacity":
+            tasks = host_task_inventory(request.get("hostTasks"))
+            emit({"status": "ok", "result": {
+                "unresolvedAttemptIds": unresolved_native_reservations(store, tasks),
+            }})
+            return 0
+        if action in {"native-cancel", "recover"}:
+            tasks = host_task_inventory(request.get("hostTasks"))
+            targets = native_recovery_targets(
+                store, run_id, request["owner"], tasks,
+                task_id=request.get("taskId") if action == "native-cancel" else None,
+            )
+            if action == "native-cancel" and not targets:
+                raise RuntimeFailure("NATIVE_RECOVERY_PENDING", "no live native Run attempt is available to reconcile")
+            recovered = []
+            if targets:
+                emit({"status": "recovery-required", "targets": targets})
+                recovered = confirm_native_recovery(
+                    store, run_id, request["owner"], targets, receive(),
+                )
+            if action == "native-cancel":
+                emit({"status": "ok", "result": {
+                    "cancelled": True, "recovered": recovered,
+                    "hostCancellationConfirmed": True,
+                    "hostRemovalConfirmed": all(item["hostRemovalConfirmed"] for item in recovered),
+                }})
+                return 0
             if request.get("checkpointId"):
                 store.recover_native_checkpoint(run_id, request["checkpointId"], host_owner=request["owner"])
-            emit({"status": "ok", "result": state_summary(store.recover_workers(run_id, task_id=request.get("taskId")))})
+            emit({"status": "ok", "result": state_summary(
+                store.recover_workers(run_id, task_id=request.get("taskId")))})
             return 0
         if action == "gate":
             emit({"status": "ok", "result": store.execute_gate(
@@ -188,6 +354,7 @@ def main():
             admitted = admission
         if admitted.get("status") != "admitted":
             raise RuntimeFailure("NATIVE_ADMISSION_FAILED", admitted.get("error", "host did not admit the worker"))
+        admission_started = True
         store.bind_native_owner(ticket, admitted["hostTaskId"])
         emit({"status": "bound", "binding": ticket.binding})
         observed = receive()
@@ -197,6 +364,19 @@ def main():
                                 "cancellationConfirmed", "removalConfirmed"}
         if not required_observation.issubset(observed) or set(observed) - required_observation - optional_observation:
             raise RuntimeFailure("NATIVE_TRANSPORT_INVALID", "native completion frame has an invalid shape")
+        reused_owner = observed.get("reusedOwner", False)
+        if not isinstance(reused_owner, bool):
+            raise RuntimeFailure("NATIVE_TRANSPORT_INVALID", "native completion owner-reuse claim must be boolean")
+        if reused_owner != bool(request.get("ownerHandle")):
+            raise RuntimeFailure("NATIVE_TRANSPORT_INVALID", "native completion owner reuse does not match admission")
+        if reused_owner:
+            if (observed.get("removalConfirmed") is not False
+                    or not isinstance(observed.get("cancellationConfirmed"), bool)):
+                raise RuntimeFailure("NATIVE_TRANSPORT_INVALID", "retained owners require cancellation proof and cannot be removed")
+            if observed["hostStatus"] == "cancelled" and observed["cancellationConfirmed"] is not True:
+                raise RuntimeFailure("NATIVE_RECOVERY_PENDING", "retained owner cancellation was not confirmed")
+        elif observed.get("cancellationConfirmed") is not True or observed.get("removalConfirmed") is not True:
+            raise RuntimeFailure("NATIVE_RECOVERY_PENDING", "candidate persistence requires confirmed host cancellation and removal")
         result = store.accept_native_candidate(
             ticket, host_task_id=observed["hostTaskId"],
             host_status=observed["hostStatus"], text=observed.get("text", ""),
@@ -205,7 +385,7 @@ def main():
                 "cancellationConfirmed", "removalConfirmed")},
         )
         result["routing"] = routing_observation(observed.get("requestedModel"), observed.get("effectiveModel"),
-                                                observed.get("reusedOwner", False))
+                                                reused_owner)
         emit({"status": "failed" if result["status"] == "failed" else "ok", "result": result})
         return 0 if result["status"] == "candidate" else 1
     except (RuntimeFailure, OSError, ValueError, KeyError) as exc:

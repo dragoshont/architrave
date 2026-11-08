@@ -561,6 +561,53 @@ class NativeHostTests(unittest.TestCase):
         state = self.store.load(run_id)
         self.assertTrue(feasibility_status(state, state["tasks"][0])["expired"])
 
+    def test_observed_comparison_selects_action_without_renewing_allowance(self):
+        run_id, analyst = self.task()
+        owner = "material-decision"
+        self.store.add_task(run_id, {
+            "id": owner, "objective": "Choose a material architecture change",
+            "workerProfile": "native", "risk": "R2", "acceptanceCriteria": ["FIX"],
+        })
+        state = self.feasibility(run_id, owner)
+        original = state["tasks"][1]["feasibility"]
+        result = {
+            "task": owner, "source": state["baseline"]["commit"],
+            "failure": original["snapshot"]["failureDigest"],
+            "options": [
+                {"kind": "DO_NOTHING", "summary": "Keep the current architecture"},
+                {"kind": "SMALLEST_VIABLE", "summary": "Run the existing bounded acceptance probe"},
+            ],
+            "winner": "SMALLEST_VIABLE",
+            "winnerBeatsDoNothing": "The bounded probe resolves the actual uncertainty.",
+        }
+        ticket = self.store.begin_native_worker(run_id, analyst, host_owner="fixture-host")
+        self.store.bind_native_owner(ticket, "comparison-owner")
+        candidate = self.store.accept_native_candidate(
+            ticket, host_task_id="comparison-owner", host_status="completed",
+            text=json.dumps(result), host_observation={"turnsObserved": 2},
+        )
+        reference = candidate["artifactRef"]
+        readme = self.repo / "README.md"
+        before = readme.read_bytes()
+        readme.write_text("changed source\n", encoding="utf-8")
+        with self.assertRaises(RuntimeFailure) as stale:
+            self.feasibility(run_id, owner, comparison_ref=reference)
+        self.assertEqual("COMPARISON_SOURCE_STALE", stale.exception.code)
+        readme.write_bytes(before)
+        state = self.feasibility(
+            run_id, owner, comparison_ref=reference, decision=None, rationale=None, next_step=None,
+        )
+        decision = state["tasks"][1]["feasibility"]
+        self.assertEqual("BOUNDED_GO", decision["decision"])
+        self.assertLessEqual(decision["expiresAt"], original["expiresAt"])
+        self.assertEqual(6, decision["window"]["maxTurns"])
+        self.assertEqual(result["options"][1]["summary"], state["focus"]["nextCheapestTest"])
+        self.assertEqual(reference, decision["snapshot"]["comparisonRef"])
+        self.assertEqual(owner, state["artifacts"][0]["consumedByTask"])
+        with self.assertRaises(RuntimeFailure) as repeated:
+            self.feasibility(run_id, owner, comparison_ref=reference)
+        self.assertEqual("COMPARISON_ALREADY_USED", repeated.exception.code)
+
     def test_feasibility_native_ticket_uses_atomic_admission_budget_after_interleaving(self):
         run_id, first_id = self.task(budget={"timeoutSeconds": 600, "maxTurns": 30, "maxOutputBytes": 4096})
         self.store.add_task(run_id, {"id": "second", "objective": "Next discriminating test",
@@ -740,7 +787,8 @@ class NativeHostTests(unittest.TestCase):
             {"repo": str(self.repo), "action": "dispatch", "runId": run, "taskId": task_id,
              "owner": "host", "reqs": ["REQ-1"]},
             {"status": "admitted", "hostTaskId": "host-task"},
-            {"hostTaskId": "host-task", "hostStatus": "cancelled", "text": "cancelled"},
+            {"hostTaskId": "host-task", "hostStatus": "cancelled", "text": "cancelled",
+             "cancellationConfirmed": True, "removalConfirmed": True},
         ]
         result = subprocess.run([sys.executable, str(ROOT / "harness/native_host.py")],
             input="".join(json.dumps(message) + "\n" for message in messages),

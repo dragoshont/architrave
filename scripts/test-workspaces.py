@@ -14,12 +14,13 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "harness"))
 
-from architrave_runtime import RunStore, RuntimeFailure
+from architrave_runtime import RunStore, RuntimeFailure, state_summary
 
 _fixture_add_task = RunStore.add_task
 RunStore.add_task = lambda self, run_id, task, actor="coordinator": _fixture_add_task(
     self, run_id, {"pushback": "KEEP:test fixture", **task}, actor)
 from workspaces import WorkspaceManager
+from worker_adapters import execute_work_packet
 
 
 class WorkspaceManagerTests(unittest.TestCase):
@@ -31,7 +32,7 @@ class WorkspaceManagerTests(unittest.TestCase):
         self.git("config", "user.email", "architrave@example.invalid")
         self.git("config", "user.name", "Architrave Test")
         (self.repo / ".gitignore").write_text(
-            ".architrave/runs/\n.architrave/worktrees/\n",
+            ".architrave/runs/\n.architrave/worktrees/\n.architrave/runtime.key\n.architrave/resources.lock\n",
             encoding="utf-8",
         )
         (self.repo / "architrave.config.json").write_text(
@@ -80,7 +81,8 @@ class WorkspaceManagerTests(unittest.TestCase):
         )
         return state["runId"]
 
-    def add_task(self, run_id: str, task_id: str, mutable_paths: list[str]) -> None:
+    def add_task(self, run_id: str, task_id: str, mutable_paths: list[str],
+                 command: list[str] | None = None, *, max_attempts: int = 1) -> None:
         self.store.add_task(
             run_id,
             {
@@ -94,8 +96,24 @@ class WorkspaceManagerTests(unittest.TestCase):
                 "acceptanceCriteria": ["WORKSPACE-001"],
                 "requiredArtifacts": [],
                 "gate": "workspace fixture",
+                "maxAttempts": max_attempts,
+                **({"workPacket": {"execution": {"command": command, "cwd": None, "environment": []}}}
+                   if command else {}),
             },
         )
+
+    def observed_candidate(self, run_id: str, task_id: str, *, staged: bool = False,
+                           max_attempts: int = 1) -> dict:
+        command = "from pathlib import Path; Path('README.md').write_text('after\\n')"
+        if staged:
+            command += "; import subprocess; subprocess.run(['git', 'add', 'README.md'], check=True)"
+        self.add_task(run_id, task_id, ["README.md"], [sys.executable, "-c", command], max_attempts=max_attempts)
+        created = self.manager.create(run_id, task_id)
+        worker = f"worker-{task_id}"
+        self.store.start_task(run_id, task_id, worker_id=worker)
+        result = execute_work_packet(self.store, run_id, task_id, worker)
+        self.assertEqual("candidate", result["status"], result)
+        return created
 
     def test_mutating_tasks_receive_unique_detached_worktrees(self) -> None:
         run_id = self.create_run()
@@ -148,30 +166,84 @@ class WorkspaceManagerTests(unittest.TestCase):
         # drops any content a worker already `git add`-ed. Diffing against HEAD instead must
         # capture staged content just as reliably as unstaged content.
         run_id = self.create_run()
-        self.add_task(run_id, "staged", ["README.md"])
-        created = self.manager.create(run_id, "staged")
+        created = self.observed_candidate(run_id, "staged", staged=True)
         workspace = Path(created["workspace"])
-        (workspace / "README.md").write_text("staged change\n", encoding="utf-8")
-        subprocess.run(["git", "add", "README.md"], cwd=workspace, check=True, capture_output=True, text=True)
+        index_before = subprocess.run(["git", "diff", "--cached"], cwd=workspace, check=True, capture_output=True).stdout
         candidate = self.manager.collect(run_id, "staged")
         patch_text = (self.repo / candidate["patch"]).read_text(encoding="utf-8")
-        self.assertIn("staged change", patch_text)
+        self.assertIn("after", patch_text)
         self.assertIn("README.md", candidate["changedPaths"])
+        self.assertEqual(index_before, subprocess.run(
+            ["git", "diff", "--cached"], cwd=workspace, check=True, capture_output=True).stdout)
         self.assertFalse((self.repo / candidate["patch"]).with_name("status.json").exists())
 
     def test_coordinator_integration_applies_scoped_patch_and_records_artifact(self) -> None:
         run_id = self.create_run()
-        self.add_task(run_id, "integrate", ["README.md"])
-        created = self.manager.create(run_id, "integrate")
-        (Path(created["workspace"]) / "README.md").write_text("after\n", encoding="utf-8")
-        self.store.start_task(run_id, "integrate", worker_id="worker-integrate")
-        self.store.finish_worker(run_id, "integrate", worker_id="worker-integrate", status="FINISHED")
+        self.observed_candidate(run_id, "integrate")
+        unrelated = self.repo / "allowed/value.txt"
+        unrelated.write_text("changed destination\n", encoding="utf-8")
+        with self.assertRaises(RuntimeFailure) as drift:
+            self.manager.integrate(run_id, "integrate", confirmed=True)
+        self.assertEqual("CANDIDATE_SOURCE_STALE", drift.exception.code)
+        self.assertEqual("before\n", (self.repo / "README.md").read_text(encoding="utf-8"))
+        unrelated.write_text("before\n", encoding="utf-8")
         result = self.manager.integrate(run_id, "integrate", confirmed=True)
         self.assertEqual("integrated", result["status"])
         self.assertEqual("after\n", (self.repo / "README.md").read_text(encoding="utf-8"))
         state = self.store.load(run_id)
         self.assertGreaterEqual(len(state["artifacts"]), 1)
         self.assertEqual("workspace.integrated", self.store.events(run_id)[-1]["type"])
+        repeated = self.manager.integrate(run_id, "integrate", confirmed=True)
+        self.assertEqual("already-integrated", repeated["status"])
+        self.assertEqual(1, sum(event["type"] == "workspace.integrated" for event in self.store.events(run_id)))
+        self.assertEqual("after\n", (self.repo / "README.md").read_text(encoding="utf-8"))
+
+    def test_collection_requires_an_observed_worker_result(self) -> None:
+        run_id = self.create_run()
+        self.add_task(run_id, "unobserved", ["README.md"])
+        created = self.manager.create(run_id, "unobserved")
+        (Path(created["workspace"]) / "README.md").write_text("unobserved\n", encoding="utf-8")
+        self.store.start_task(run_id, "unobserved", worker_id="unobserved-worker")
+        self.store.finish_worker(run_id, "unobserved", worker_id="unobserved-worker", status="FINISHED")
+        self.assertEqual("produce-artifacts", state_summary(self.store.load(run_id))["nextAction"]["kind"])
+        with self.assertRaises(RuntimeFailure) as missing:
+            self.manager.collect(run_id, "unobserved")
+        self.assertEqual("CANDIDATE_RESULT_REQUIRED", missing.exception.code)
+
+    def test_wave_candidates_follow_only_recorded_integration_digest_changes(self) -> None:
+        run_id = self.create_run()
+        self.observed_candidate(run_id, "first")
+        self.add_task(run_id, "second", ["allowed/**"], [
+            sys.executable, "-c", "from pathlib import Path; Path('allowed/value.txt').write_text('second result\\n')",
+        ])
+        self.manager.create(run_id, "second")
+        self.store.start_task(run_id, "second", worker_id="second-worker")
+        candidate = execute_work_packet(self.store, run_id, "second", "second-worker")
+        self.assertEqual("candidate", candidate["status"], candidate)
+        first = self.manager.integrate(run_id, "first", confirmed=True)
+        unexpected = self.repo / "unexpected.txt"
+        unexpected.write_text("unrecorded destination change\n", encoding="utf-8")
+        with self.assertRaises(RuntimeFailure) as drift:
+            self.manager.integrate(run_id, "second", confirmed=True)
+        self.assertEqual("CANDIDATE_SOURCE_STALE", drift.exception.code)
+        unexpected.unlink()
+        second = self.manager.integrate(run_id, "second", confirmed=True)
+        self.assertEqual(first["source"]["observedDestinationSha256"], second["source"]["observedDestinationSha256"])
+        self.assertNotEqual(first["source"]["destinationSha256"], second["source"]["destinationSha256"])
+        self.assertEqual("after\n", (self.repo / "README.md").read_text(encoding="utf-8"))
+        self.assertEqual("second result\n", (self.repo / "allowed/value.txt").read_text(encoding="utf-8"))
+        self.assertEqual(2, sum(event["type"] == "workspace.integrated" for event in self.store.events(run_id)))
+
+    def test_collection_cannot_reuse_a_prior_attempt_result(self) -> None:
+        run_id = self.create_run()
+        self.observed_candidate(run_id, "retry", max_attempts=2)
+        self.store.fail_task(run_id, "retry", "Retry after new review evidence")
+        self.store.start_task(run_id, "retry", worker_id="worker-retry",
+                              retry_hypothesis="Recheck the candidate against the new review evidence")
+        self.store.finish_worker(run_id, "retry", worker_id="worker-retry", status="FINISHED")
+        with self.assertRaises(RuntimeFailure) as stale:
+            self.manager.collect(run_id, "retry")
+        self.assertEqual("CANDIDATE_SOURCE_STALE", stale.exception.code)
 
     def test_cleanup_refuses_active_or_dirty_workspace_without_force(self) -> None:
         run_id = self.create_run()
@@ -244,11 +316,7 @@ class WorkspaceManagerTests(unittest.TestCase):
 
     def test_uncertain_workspace_integration_cannot_replay(self) -> None:
         run_id = self.create_run()
-        self.add_task(run_id, "integrate", ["README.md"])
-        created = self.manager.create(run_id, "integrate")
-        (Path(created["workspace"]) / "README.md").write_text("after\n", encoding="utf-8")
-        self.store.start_task(run_id, "integrate", worker_id="worker-integrate")
-        self.store.finish_worker(run_id, "integrate", worker_id="worker-integrate", status="FINISHED")
+        self.observed_candidate(run_id, "integrate")
         candidate = self.manager.collect(run_id, "integrate")
         self.store.prepare_side_effect(
             run_id,

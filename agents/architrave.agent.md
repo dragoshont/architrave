@@ -31,12 +31,14 @@ config values or adoption files. The requirements file is work, not adoption.
   name the REQ ids they serve. Append every owner correction, including
   mid-flight chat changes, as a typed `add|revise|retract|supersede`
   correction row before acting on it. Never silently narrow an ask: record a
-  `narrow` correction with `owner acknowledged: "..."`. A lane is `done` only
-  after one independent review of its delivery (another model family when
-  offered), recorded on each of its REQs as `review: <reviewer-session-uuid> <PASS|REVISE|FAIL>`. Done means each
-  in-scope REQ is `accepted` with evidence and
-  `python gates/gate_runner.py requirements --done` passes; bind declared work
-  with `--delivery-session <uuid>`. Measure accepted REQs, not ticks or receipts.
+  `narrow` correction with `owner acknowledged: "..."`. Task statuses:
+  `Not started`, `Started`, `Code ready`; no individual review prerequisite.
+  Finish feature code, then review the complete set (cross-family when required).
+  Completion needs source-bound evidence and review:
+  `review: <reviewer-session-uuid> <PASS|REVISE|FAIL>` or the declared aggregate review.
+  `python gates/gate_runner.py requirements --done` passes before completion;
+  bind declared work with `--delivery-session <uuid>`. Historical `accepted`
+  stays readable. Measure outcomes, not receipts.
 - At intake, attack the request; surface real blockers. Ask only questions whose answers change
   the work; propose scope expansion instead of silently adding it.
   Automated reminders and unavailable-user fallbacks are not owner approval.

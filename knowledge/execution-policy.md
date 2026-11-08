@@ -318,10 +318,13 @@ the saved repository, use a registration whose repository matches the clone's
 current origin; never edit remotes to satisfy the host. A superseded lane is not resurrected, and its mutable paths
 remain owned until its session is verified stopped. Lane states are `ready`,
 `running`, `blocked`, `idle`, `superseded`, `stopped` and `done`; only
-`stopped` and `done` release ownership. Set a lane `done` only after one
-independent review of its delivered commits; record `review: <reviewer
-session UUID> <verdict>` on each of its REQs. `requirements --done` fails on a done lane
-without a PASS, and on any lane with an accepted REQ lacking one; where local session logs
+`stopped` and `done` release ownership. These are execution-ownership states,
+not the three visible task-progress states: Not started, Started and Code ready.
+Finish every feature's code before the combined final review; do not make an
+individual review a prerequisite for Code ready. Record the final review as
+`review: <reviewer session UUID> <verdict>` on its REQs or use the declared
+aggregate delivery review. `requirements --done` checks the final review,
+not an intermediate code-progress update; where local session logs
 exist it counts a PASS only when that session's log shows a reviewer kickoff role ending in
 that verdict. Start the reviewer's report with a `Verdict:` line and use a fresh reviewer session for each
 delivery. A done lane names the session that did the work; where local session logs exist that

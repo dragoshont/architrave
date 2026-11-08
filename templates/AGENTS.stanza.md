@@ -10,13 +10,14 @@ instructions without claiming uninstalled gates or Runs.
 
 Spec-driven: record requests and owner corrections as REQ rows with testable
 acceptance in the requirements file (config `requirements`, else `SPEC.md`)
-before non-trivial work; done means those REQs are accepted with evidence.
+before non-trivial work. Use Not started, Started or Code ready. Finish code,
+then review together; completion requires evidence and the gate.
 Follow **Specifications** in `knowledge/execution-policy.md`: preserve owner-goal
 coverage and observable behavior; supporting tasks do not replace the result.
 Before implementation, declare session scope and open/read one scoped program
 board per the kit's `docs/program-board.md`, including direct work. Report
 unavailable/denied canvas; assigned children/reviewers use the parent's board.
-Build the requested behavior first; report what works and what proves it.
+Build behavior first; show evidence.
 Host permissions remain host-owned; infrastructure/runtime mutation defaults to
 deny. Preserve scoped grants, human holds, secrets and uncertain-side-effect recovery.
 No unrequested fakes, result substitutes or feature/integration flags, including tests.

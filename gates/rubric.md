@@ -67,7 +67,8 @@ Score each **Pass / Concern / Fail** with a severity and cite evidence (a spec l
    no scope drift; honest about unfinished work. Grade the behavior against the
    REQ rows and their acceptance. Non-trivial work without REQ rows with testable
    acceptance is a Major finding. Claiming done while an in-scope REQ is not
-   `accepted` with evidence, or acting on an owner correction that was never
+   `Code ready` with final evidence and combined review (or historically
+   `accepted` with evidence), or acting on an owner correction that was never
    recorded as a correction row, is a Blocker. Missing other planning documents
    are not findings; scope mistakes and unverified claims are.
    Required non-trivial board startup includes direct work: verify one scoped

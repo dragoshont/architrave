@@ -6,17 +6,22 @@ Implementation approved on 8 November 2026; not a new release or a declaration
 of production readiness. Preserve the existing REQ-95..100 safety and evidence
 obligations rather than blanket-superseding unfinished work.
 
+Current task progress uses **Not started**, **Started** and **Code ready**.
+Finish every feature's code before the single review of the complete set.
+Individual feature reviews are not part of this sequence (SPEC correction C-101).
+
 - REQ-101: a public-safe, accessible use-case SVG and complete README map,
   distinguishing supported work categories from conditional operations.
 - REQ-102: remove proven overhead and misleading/no-op wiring without breaking
   consumers, installation or required safeguards.
 - REQ-103/104: native visible result-to-action binding, bounded working sets,
   actual candidate identity, safe ownership/capacity/cancellation and recovery.
-- REQ-105: consistent Done-first task semantics, source/event-bound review,
-  one bounded critical repair wave, selective invalidation and final E2E;
+- REQ-105: code-first task progress, one final source-bound review of all
+  features, bounded repairs, selective invalidation and final E2E;
   resolve real nested-scope/installed-interface dead ends.
 - REQ-106/107: consume consequential option comparisons without renewed retry
-  budgets; keep procedural learning proposal-first and provenance-preserving.
+  budgets through native worker evidence; keep procedural learning
+  proposal-first, with exact owner-bound application and rollback.
 - REQ-108: real early vertical slices and explicit outcome/host/installation
   qualification, with unsuccessful and unobserved cases disclosed.
 
@@ -45,11 +50,12 @@ only commands that exist and run (REQ-99). Version tooling accepts a prerelease;
 the automatic release workflow stays disabled; publication is explicit
 (REQ-100).
 
-Native repairs add attempt correlation, real abort handling, shared preflight
-timing and retained admission capacity. Empty listings cannot authorize a
-replacement. Resume/recovery refuses unconfirmed native ownership after restart;
-that refusal is not an automatic recovery capability. Issue history remains
-available; issue closure is not substituted for current source evidence.
+Current unreleased repairs add persisted attempt ownership and recovery through
+the joined host, real abort handling, shared preflight timing and retained
+admission capacity. Empty listings cannot authorize a replacement. Recovery
+binds a uniquely observed owner before cancellation/removal; unknown cleanup
+still blocks. These source changes are not installed or released by updating
+this roadmap. Issue closure is not substituted for current source evidence.
 
 Genuine persistence-hang/lost-reply fixture coverage remains incomplete.
 Not demonstrated: a live multi-wave qualification or sustained parallel

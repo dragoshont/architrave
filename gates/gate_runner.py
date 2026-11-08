@@ -237,7 +237,9 @@ def check_component(root: Path, item: dict[str, object]) -> tuple[bool, Path | N
 
 
 REQ_COLUMNS = ("id", "requirement", "acceptance", "owner", "status", "evidence")
-REQ_ACTIVE = {"open", "claimed", "in-progress", "blocked", "accepted"}
+REQ_PROGRESS = {"not started", "started", "code ready"}
+REQ_CODE_READY = {"code ready", "accepted"}
+REQ_ACTIVE = REQ_PROGRESS | {"open", "claimed", "in-progress", "blocked", "accepted"}
 REQ_CLOSED = {"superseded", "withdrawn"}
 CORRECTION_TYPES = {"add", "revise", "retract", "supersede", "narrow"}
 HANDOFF_FIELDS = ("next", "failed approaches", "verify")
@@ -564,9 +566,10 @@ def model_families(session: str) -> set[str] | None:
 
 
 def lane_review_gaps(lane: dict[str, str], reqs: dict[str, dict[str, str]], strict: bool = False,
-                     cross_family: bool = False) -> list[str]:
-    """REQs in a lane still needing a PASS review: all open ones in a done lane, accepted ones anywhere.
+                     cross_family: bool = False, *, final: bool = False) -> list[str]:
+    """Review gaps at final completion, preserving historical accepted-row checks.
 
+    The three progress statuses do not require individual feature reviews.
     Strict (local session logs present): the latest PASS must be verified in its reviewer session log, and with
     `review.crossFamily` no model family the reviewer used may match one the lane session used.
     """
@@ -576,7 +579,9 @@ def lane_review_gaps(lane: dict[str, str], reqs: dict[str, dict[str, str]], stri
         row = reqs.get(rid)
         if not row or row["status"].lower() in REQ_CLOSED:
             continue
-        if lane["state"].lower() != "done" and row["status"].lower() != "accepted":
+        if row["status"].lower() in REQ_PROGRESS and not final:
+            continue
+        if lane["state"].lower() != "done" and row["status"].lower() not in REQ_CODE_READY:
             continue
         if not review_passed(row["evidence"], strict, rid):
             gaps.append(rid)
@@ -633,7 +638,8 @@ def parse_requirements(text: str, selected: set[str] | None = None) -> tuple[dic
     for rid, row in reqs.items():
         status = row["status"].lower()
         if status not in REQ_ACTIVE | REQ_CLOSED:
-            errors.append(f"{rid} status {row['status']!r} is not one of {', '.join(sorted(REQ_ACTIVE | REQ_CLOSED))}")
+            errors.append(f"{rid} status {row['status']!r} must be Not started, Started or Code ready "
+                          "(historical status spellings remain readable)")
         if status in REQ_ACTIVE and not row["acceptance"]:
             errors.append(f"{rid} has no testable acceptance")
         if status == "accepted" and not row["evidence"]:
@@ -865,8 +871,10 @@ def git_source_errors(root: Path, sid: str, source: str, status: str, repos: dic
 
 
 def chain_errors(root: Path, text: str, reqs: dict[str, dict[str, str]],
-                 config: dict[str, object], selected: set[str] | None = None) -> tuple[list[str], list[str], list[str]]:
+                 config: dict[str, object], selected: set[str] | None = None, *,
+                 final: bool = False) -> tuple[list[str], list[str], list[str]]:
     """Research -> decision -> requirement -> finding links: (errors, done-blockers, notes)."""
+    finished = REQ_CODE_READY if final else {"accepted"}
     evidence = {row["id"]: row for row in ledger_table(
         text, ("id", "question", "source"), ("id", "question", "source", "claim", "author", "status", "reviewed by"))}
     decisions = {row["id"]: row for row in ledger_table(
@@ -939,8 +947,8 @@ def chain_errors(root: Path, text: str, reqs: dict[str, dict[str, str]],
         for did in ref_ids(" ".join((row["requirement"], row["acceptance"], row["evidence"])), "D"):
             if did not in decisions:
                 errors.append(f"{rid} cites unknown {did}")
-            elif rid in relevant and row["status"].lower() == "accepted" and decisions[did]["status"].lower() in {"reconsider", "proposed"}:
-                errors.append(f"{rid} is accepted on {did}, which is {decisions[did]['status']}")
+            elif rid in relevant and row["status"].lower() in finished and decisions[did]["status"].lower() in {"reconsider", "proposed"}:
+                errors.append(f"{rid} cannot finish on {did}, which is {decisions[did]['status']}")
     for row in findings:
         fid, severity, disposition = row["id"], row["severity"].lower(), row["disposition"].lower()
         if severity not in FINDING_SEVERITIES:
@@ -970,8 +978,8 @@ def chain_errors(root: Path, text: str, reqs: dict[str, dict[str, str]],
         if serious and disposition == "open":
             blockers.append(fid)
             for target in targets:
-                if target in reqs and reqs[target]["status"].lower() == "accepted":
-                    errors.append(f"{target} is accepted while {severity} finding {fid} is open")
+                if target in reqs and reqs[target]["status"].lower() in finished:
+                    errors.append(f"{target} cannot finish while {severity} finding {fid} is open")
     return errors, blockers, notes
 
 
@@ -1157,7 +1165,7 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
     reqs, corrections, errors = parse_requirements(text, selected)
     errors.extend(delivery_errors)
     config = load_config(root)
-    more, blockers, notes = chain_errors(root, text, reqs, config, selected)
+    more, blockers, notes = chain_errors(root, text, reqs, config, selected, final=done)
     errors.extend(more)
     for note in notes:
         print(f"note  {note}")
@@ -1189,7 +1197,7 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
                 errors.append(f"claim {rid}: not in {value}")
                 continue
             status = row["status"].lower()
-            if status in REQ_CLOSED | {"accepted"}:
+            if status in REQ_CLOSED | REQ_CODE_READY:
                 errors.append(f"claim {rid}: status is {status}; do not dispatch it")
             elif row["owner"] and owner and row["owner"] != owner:
                 errors.append(f"claim {rid}: already owned by {row['owner']}; do not spawn a duplicate lane")
@@ -1207,6 +1215,7 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
         from delivery_check import check_session, declared_for
 
         current_session = delivery_session or os.environ.get("COPILOT_AGENT_SESSION_ID")
+        declared = False
         if current_session:
             try:
                 declared = declared_for(root, current_session)
@@ -1216,9 +1225,9 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
             if not delivery_session and declared:
                 errors.extend(check_session(root, current_session, allow_withdrawal=False))
         pending = [rid for rid, row in reqs.items() if (selected is None or rid in selected)
-                   and row["status"].lower() in REQ_ACTIVE - {"accepted"}]
+                   and row["status"].lower() in REQ_ACTIVE - REQ_CODE_READY]
         if pending:
-            errors.append(f"not done: {len(pending)} active REQs are not accepted: {', '.join(pending[:20])}")
+            errors.append(f"not done: {len(pending)} tasks are not code ready: {', '.join(pending[:20])}")
         unacked = [c["id"] for c in corrections
                    if c["type"].lower() == "narrow" and not OWNER_ACK.search(c["change"])
                    and (selected is None or not ref_ids(c["target"], "REQ")
@@ -1228,6 +1237,15 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
         if blockers:
             errors.append(f"not done: open serious findings: {', '.join(blockers)}")
         strict = strict_reviews()
+        ready = {rid: row for rid, row in reqs.items()
+                 if row["status"].lower() == "code ready" and (selected is None or rid in selected)}
+        if not pending:
+            for rid, row in ready.items():
+                if not row["evidence"].strip():
+                    errors.append(f"not done: {rid} needs final outcome evidence")
+                if not declared and not review_passed(row["evidence"], strict, rid):
+                    errors.append(f"not done: the final review must cover {rid}")
+        review_reqs = {rid: row for rid, row in reqs.items() if rid not in ready or not declared}
         for lane in lanes:
             if selected is not None:
                 # Ambiguous legacy lanes remain in scope; exact unrelated lanes do not.
@@ -1240,8 +1258,9 @@ def requirements_gate(root: Path, claim: str | None, owner: str | None, done: bo
             elif lane["state"].lower() == "done" and strict and session_facts(lane["session id"]) is None:
                 errors.append(f"not done: lane {lane['lane']} session {lane['session id'][:8]} is not logged on this machine; "
                               "run --done on the machine that hosted it, or correct the session ID")
-            unreviewed = lane_review_gaps(lane, reqs, strict, bool((config.get("review") or {}).get("crossFamily"))
-                                          if isinstance(config.get("review"), dict) else False)
+            unreviewed = lane_review_gaps(lane, review_reqs, strict,
+                                          bool((config.get("review") or {}).get("crossFamily"))
+                                          if isinstance(config.get("review"), dict) else False, final=not pending)
             if unreviewed:
                 errors.append(f"not done: lane {lane['lane']} ({lane['state']}) lacks a PASS review on {', '.join(unreviewed)}")
     if claim is not None and not errors:
@@ -1530,4 +1549,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
     raise SystemExit(main())
