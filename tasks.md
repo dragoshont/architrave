@@ -17,7 +17,7 @@ Feature ready:
 | Resolve the three loop-review contradictions using relevant public best practices. | Code ready |
 | Make material ambiguity escalation, implementation-before-test-support, a two-review final evaluation by default and findings-to-REQ-correction routing explicit in the development loop. | Code ready |
 | Address reported Sol 6.1 failure patterns and invented constraints, then adversarially review the changes. | Code ready |
-| Monitor and steer the selected session every ten minutes. | In progress |
+| Stop the selected session-monitoring schedule at the owner's request. | Code ready |
 | Resolve hook failures in sessions retaining a removed plugin version. | In progress |
 | Address observed rereading stalls, scoped stops under automatic continuation and misleading inherited-branch progress. | Code ready |
 | Prepare 1.0.4 with the delivery-focus and session-recovery improvements. | Code ready |
@@ -28,5 +28,5 @@ Feature ready:
 | Install 1.0.4 for Codex from the public release and verify its release package. | Code ready |
 | Retire the obsolete SPEC/REQ completion barrier while retaining loop detection and host permissions. | Code ready |
 | Make the program board use tasks.md and its task statuses instead of requiring SPEC.md. | Code ready |
-| Review, publish and install the 1.0.5 task-workflow repair for Copilot and Codex. | In progress |
+| Review, publish and install the 1.0.5 task-workflow repair for Copilot and Codex. | Code ready |
 | Audit the reported held-worker delay and harden phase handoffs and advisory wait detection before release. | Code ready |
