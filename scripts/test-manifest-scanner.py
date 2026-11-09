@@ -4,6 +4,7 @@
 import contextlib
 import importlib.util
 import io
+import json
 import os
 from pathlib import Path
 import shutil
@@ -79,6 +80,25 @@ def main():
                 assert bump.main([version]) == 1, version
         assert (ROOT / 'plugin.json').read_bytes() == before
         print('ok    non-SemVer versions rejected without changing release manifests')
+
+        for filename, _ in bump.FIELDS:
+            target = repo / filename
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ROOT / filename, target)
+        shutil.copy2(ROOT / 'scripts/bump_version.py', repo / 'scripts/bump_version.py')
+        env = os.environ.copy()
+        env['PYTHONIOENCODING'] = 'cp1252'
+        result = subprocess.run(
+            [sys.executable, str(repo / 'scripts/bump_version.py'), '1.0.5'],
+            cwd=repo, env=env, capture_output=True, text=True, encoding='cp1252',
+        )
+        assert result.returncode == 0, f'version bump failed with Windows console encoding: {result.stderr}'
+        for filename, keys in bump.FIELDS:
+            value = json.loads((repo / filename).read_text(encoding='utf-8'))
+            for key in keys:
+                value = value[key]
+            assert value == '1.0.5', (filename, keys, value)
+        print('ok    version bump updates every field with Windows console encoding')
 
         spec = importlib.util.spec_from_file_location('manifest_scanner_fixture', scanner)
         module = importlib.util.module_from_spec(spec)

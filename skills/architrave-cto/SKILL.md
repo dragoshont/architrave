@@ -31,8 +31,8 @@ action. Oversight mode returns the oversight table instead.
   Signing grant reuse, not another consent request. CTO neither signs nor grants
   policy. New identity/keychain policy, distribution/notarization/publication and
   install/daemon changes need coverage; real host/keychain prompts remain mandatory.
-- **Overprecaution:** choose the smallest useful authorized action. Optional
-  safeguards are not mandatory gates: remove invented backup/snapshot holds
+- **Overprecaution:** choose the next authorized action that advances the requested
+  outcome. Optional safeguards are not mandatory gates: remove invented backup/snapshot holds
   and circular creation-evidence prerequisites. Name the actual host/Run/legal
   constraint; dedicated experiments reduce optional ceremony, not real controls.
   An accepted optional snapshot omission need not block an authorized install.

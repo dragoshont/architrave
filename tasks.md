@@ -16,3 +16,12 @@ Feature ready:
 | Make the general development loop foremost and preserve its case, specification holds, final reviews and authorized delivery across interruptions. | Code ready |
 | Resolve the three loop-review contradictions using relevant public best practices. | Code ready |
 | Make material ambiguity escalation, implementation-before-test-support, a two-review final evaluation by default and findings-to-REQ-correction routing explicit in the development loop. | Code ready |
+| Address reported Sol 6.1 failure patterns and invented constraints, then adversarially review the changes. | Code ready |
+| Monitor and steer the selected session every ten minutes. | In progress |
+| Resolve hook failures in sessions retaining a removed plugin version. | In progress |
+| Address observed rereading stalls, scoped stops under automatic continuation and misleading inherited-branch progress. | Code ready |
+| Prepare 1.0.4 with the delivery-focus and session-recovery improvements. | Code ready |
+| Address Task completion focus issues and build 1.0.4 locally. | Code ready |
+| Include automatic repeated-investigation loop detection in the local 1.0.4 build. | Code ready |
+| Publish 1.0.4 and install it from the public release on this machine. | In progress |
+| Remove superseded Architrave versions after affected sessions load the update. | In progress |

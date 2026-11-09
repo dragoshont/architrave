@@ -1,24 +1,26 @@
 ---
 name: architrave
-description: "Spec-driven supervision for non-trivial repository changes: repository requirements with testable acceptance first, direct work or bounded native children traced to REQs, durable policy/evidence and risk-scaled verification. Not for a one-line edit or a read-only question."
+description: "Spec-driven supervision for non-trivial repository changes: testable requirements, direct work or bounded children, and risk-scaled verification. Not for one-line edits or read-only questions."
 ---
 
 Resolve the plugin root from this skill's reported directory (`../..`), not cwd
 or guessed caches. Read `agents/architrave.agent.md` there once, unless that
 contract is already loaded. It is the canonical lead contract; do not load both
 plugin and adopted copies. Repository instructions and the user's mandate apply.
-Use the lead's **Development loop** for every development case and restore its
-current phase after interruptions.
+Use the lead's **Development loop** and restore its phase after interruptions.
 
 Work is spec-driven: record owner outcomes as REQs with observable acceptance in config `requirements`
 (else `SPEC.md`); finish with accepted evidence. Follow **Specifications** in
-`knowledge/execution-policy.md`, not an agent-step checklist.
+`knowledge/execution-policy.md`.
 
-Declare session scope and open and read one scoped program board before
-implementation (`docs/program-board.md`), including direct work. Assigned
+Declare scope and open and read one scoped program board before implementation
+(`docs/program-board.md`), including direct work. Assigned
 children/reviewers reuse their parent's scope.
 
+Never add an approval stage or re-ask to proceed with authorized work unless
+the owner requests it. Honor actual host permissions and explicit stops; do
+not extend grants to uncovered operations.
+
 Plugin-only use does not require repo initialization. Read
-`architrave.config.json` when present; missing adoption is not a reason to
-create config, gates or Runs. Do not preload every pack: use the lead contract's
-disclosure table only for the operation at hand.
+`architrave.config.json` if present; never create config, gates or Runs for
+missing adoption. Do not preload every pack; load only relevant sources.

@@ -43,7 +43,7 @@ def main(argv=None):
         return 1
     for filename, keys in FIELDS:
         field = ''.join(f'[{key}]' if isinstance(key, int) else f'.{key}' for key in keys)
-        print(f'  • {filename} {field} → {version}')
+        print(f'  - {filename} {field} -> {version}')
     print(f'\nBumped to {version}. Next:')
     print('  python scripts/check_manifests.py')
     print(f'  git commit -am "Release v{version}" && git tag v{version} && git push origin main --tags')

@@ -12,6 +12,7 @@ skill's reported directory (`../..`), not repository cwd or guessed caches.
 - Before writing, verify cwd, repository identity and branch/base match the
   assignment, allowing the intended isolated worktree branch. Stop on mismatch
   or unavailable identity; a path in a prompt is not proof of destination.
+  Missing sources on another ref do not authorize changing the assigned base.
   Report denied host authorization without bypassing it or retrying unchanged.
 - Work to the assigned REQ ids and their acceptance in the requirements file
   (config `requirements`, else `SPEC.md`). Read its `## Handoff` and correction
@@ -37,6 +38,19 @@ skill's reported directory (`../..`), not repository cwd or guessed caches.
 - Continue authorized work past intermediate status. Research a narrow unknown
   when it changes the next action; return a real blocker after reasonable
   supported alternatives, not a routine phase-approval request.
+- Before treating a prerequisite as blocking, check current owner direction,
+  governing policy or a real host or technical constraint; do not promote an
+  agent assumption or recommendation into a requirement. Keep genuine permission,
+  safety and material-ambiguity holds; continue independent authorized work.
+  Check existing grants and the actual scope of any pause; do not turn an old
+  error or a stop on other work into a new approval request. A current denial
+  still blocks its operation.
+- Scope owner stops precisely; automatic continuation neither clears them nor
+  requires false completion. When unchanged rereads replace implementation,
+  stop rechecking, reuse findings and change the next action or report the exact blocker
+  (execution policy, Context), not an arbitrary timer or summary-count quota.
+- Honor the owner's selected mode; unattended autopilot work stays in autopilot.
+  Report actual blocked prompts without bypassing host permissions.
 - Do not invent backup, snapshot or phase-approval prerequisites for already
   authorized work. Use the execution policy's Authorized action guidance:
   proportional optional safeguards, real constraints preserved, supported

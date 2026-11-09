@@ -25,9 +25,9 @@ evidence checks.
 
 ## Compact default-session bootstrap
 
-The Copilot plugin's `plugin.json` references root `hooks.json`. Its only
-registrations are command `sessionStart` and an exact `preToolUse`
-`^task_complete$` matcher, both running `gates/session_guard.py`.
+The Copilot plugin's `plugin.json` references root `hooks.json`. Its command
+registrations are `sessionStart`, a read/search-only `postToolUse` matcher, and
+an exact `preToolUse` `^task_complete$` matcher, all running `gates/session_guard.py`.
 `sessionStart` returns only `additionalContext` (at most 140 words), pointing
 to that installed kit's skill and canonical lead paths. It does not inject the
 whole contract, submit a prompt, start a board, change permissions or write
@@ -38,6 +38,48 @@ session scope, then opens and reads one scoped existing program board before
 implementation (`docs/program-board.md`). Read-only/trivial work and assigned
 children/reviewers do not start recursive boards. An unavailable or denied
 canvas must be reported, not replaced with invented observations.
+
+## Automatic repeated-investigation detection
+
+The `postToolUse` hook observes successful `view`/`read_file`, `glob`,
+`grep`/`rg`, `web_fetch`, `web_search` and `semantic_code_search` results.
+On the fourth identical request/result within the latest 24 observed reads or
+searches it returns **only** `additionalContext`. Copilot appends this nudge to
+the tool result on the same turn; the original result remains unchanged.
+Interleaved reads count, and changed output resets the count for that request.
+A different query or range is a different request. An edit or file touch does
+not by itself prove progress or reset the detector.
+
+The reminder directs the agent to reuse findings and take the next authorized
+action, or name the exact missing fact or hold. It explicitly preserves necessary
+research, read-only assignments, owner stops and host permissions. It never
+denies tools, forces code, invents approval stages, marks work complete or starts
+another turn. Four repetitions is a heuristic signal, not proof of a stall or
+a deadline to produce code.
+
+One reminder is emitted per unchanged request/result while retained in the
+window, with at least 12 observed reads/searches between reminders. This avoids
+turning the remedy into another reminder loop. The per-session cache is
+`<COPILOT_HOME>/session-state/<uuid>/files/architrave-loop.json`, accompanied by
+a stable `.lock` file. Only SHA-256 fingerprints of cwd, agent identity, tool,
+arguments and result are retained, not their plaintext. Different sessions,
+working directories and agent identities do not share repetition counts.
+The cache retains at most 24 observations and 24 reminder fingerprints;
+atomic replacement and OS locking serialize concurrent hook processes.
+It survives session resume and compaction without reading transcripts, touching
+repository files or changing canonical Run/delivery state.
+
+Malformed input, an unreadable/corrupt cache or lock contention beyond two
+seconds produces an explicit, input-redacted monitoring-unavailable advisory,
+not a denial. The command has a five-second host timeout. These failures do not
+silently establish that a session is making progress.
+
+This is bounded repetition detection, **not semantic supervision**. Shell
+commands, unknown tools, changing output, different read arguments and model-only
+planning loops are not detected. A host may disable or skip hooks, and the model
+may ignore a nudge. An installed plugin must actually load this registration;
+building a new archive does not refresh already-running sessions. Process tests
+prove the packaged detector and protocol, not live-host loading or agent recovery.
 
 ## Scoped completion barrier
 
@@ -117,7 +159,8 @@ fresh-session bootstrap must be checked on the target host after installation.
 Protocol-shaped subprocess checks and explicit checker-result unit tests prove
 adapter behavior only, not live-host loading or provider execution.
 
-Contract sources checked 2026-10-29:
+Hook output contract rechecked 2026-11-09 for `postToolUse`/`additionalContext`;
+other compatibility sources checked 2026-10-29:
 [Copilot hooks reference](https://docs.github.com/en/copilot/reference/hooks-reference),
 [Copilot plugin reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference),
 [Microsoft's client-specific hook paths and substitutions](https://github.com/microsoft/GitHub-Copilot-for-Azure/blob/main/docs/hooks.md),

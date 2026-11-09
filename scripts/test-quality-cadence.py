@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Explicit quick checks remain; scoped startup/completion hooks never poll."""
+"""Explicit quality checks remain; advisory read hooks never run quality jobs."""
 from __future__ import annotations
 
 import contextlib
@@ -132,7 +132,7 @@ class QualityCadenceTests(unittest.TestCase):
 
     def test_scoped_session_hooks_do_not_restore_quality_polling(self):
         hooks = json.loads((ROOT / "hooks.json").read_text(encoding="utf-8"))["hooks"]
-        self.assertEqual({"sessionStart", "preToolUse"}, set(hooks))
+        self.assertEqual({"sessionStart", "preToolUse", "postToolUse"}, set(hooks))
         self.assertEqual("^task_complete$", hooks["preToolUse"][0]["matcher"])
         for entries in hooks.values():
             for entry in entries:

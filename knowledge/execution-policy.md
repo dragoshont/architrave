@@ -53,7 +53,9 @@ Use the existing task/requirements list and Handoff, never a second loop ledger.
    Required checks and higher review floors remain mandatory.
    Triage findings against the original owner asks: record each accepted finding
    that changes expected behavior as a `revise` or `add` REQ correction and
-   reject the rest with a reason. Route accepted fixes to fresh implementer
+   reject the rest with a reason. Require a governing criterion, relevant source
+   and concrete consequence for each accepted finding; speculation is not a
+   verified defect. Route accepted fixes to fresh implementer
    sidebar sessions grouped by owned area, never to the reviewers; the
    coordinator may apply a one-line fix directly. Address findings, rerun
    affected checks and refresh affected review evidence before authorized
@@ -182,6 +184,12 @@ deliverable, with exclusive mutable ownership, and integrate and verify the
 results in the parent. This keeps authorized parallel work visible instead of
 hiding it in an ephemeral subagent.
 
+When the owner explicitly requests a pipeline, dispatch the next eligible,
+independent assignment as capacity frees, subject to owner-set limits, actual
+dependencies, exclusive paths and required frozen-wave integration. Continue
+independent coordinator work; an advisory backlog heuristic is not a hard
+limit. Never create redundant work solely to fill a slot.
+
 Name the active transport (visible sidebar sessions or the native bridge) when
 the program or lane table starts, and keep one authoritative owner and result
 mapping for it. A child returns a candidate against a frozen base and the lead
@@ -296,11 +304,92 @@ evidence and continue. Before declaring a blocker, try reasonable supported
 alternatives; repeated-failure stops, human consent, ownership and safety still
 apply. "By any means" never authorizes bypassing these boundaries.
 
+Before treating a prerequisite, ordering, approval or capacity limit as
+mandatory, identify the governing owner direction, current contract or safety
+policy, host restriction, or demonstrated technical dependency. Distinguish
+mandatory language from advice: an agent assumption, existing implementation,
+child recommendation or earlier summary is not itself a new requirement.
+Verify the specific claim; remove an unsupported hold and take the next
+authorized action. A materially unclear contract remains held under the
+Development loop; real permission and safety holds and uncertain side effects
+still block their dependent operations. Plan-only scope or an explicit
+instruction to wait for approval remains binding; an explanation of a plan
+during already-authorized work is not itself an approval gate.
+Check the current scoped grants and the actual scope of any pause. A past error
+or a stop on different work is not a new approval requirement; a current denial
+still blocks its operation. An expired runtime credential blocks the dependent
+execution, not separately authorized design or source work.
+
+Apply an owner stop to the named operation and scope, not an invented global
+read-only restriction or permission to resume affected implementation. Continue
+separately authorized analysis or edits outside that stop. Distinguish owner
+messages from host-generated continuation using available provenance, not
+wording alone. Automatic continuation does not clear a stop or authorize false
+completion. Do not mark unfinished delivery complete to silence reminders or
+repeat paused-status replies without a material change. If continuation persists,
+verify the host-reported mode and report the supported remedy; do not bypass a
+denied mode control or claim that a proposed switch already happened.
+An explicit owner redirect from building to investigation changes the current
+request, not the unfinished feature's readiness. Truthfully close a completed
+investigation through the supported completion path, stating that implementation
+remains paused and incomplete; do not relabel or bypass an existing delivery check.
+
+Answer direct questions at the next available turn boundary from current
+evidence; cite a questioned prerequisite's source or label it an inference.
+When asked for progress, identify the active case and count only owner-requested
+outcomes actually completed; say when the evidence is unavailable. An observed
+result that contradicts a clear acceptance criterion is unmet, not merely
+unconfirmed; missing or unreliable evidence remains unverified. Code ready is
+still distinct from acceptance. Do not replace implementation with repeated
+status, polling or prerequisite research. Observe a running action without
+duplicating it, and continue independent authorized work when possible.
+
+Repeated unchanged investigation without a relevant new fact, decision,
+acceptance delta or newly verified blocker is stalled work, even when summaries
+retain the next action and promise to start implementation. A file touch or
+unrelated edit alone is not product progress. Surface the stall, reuse retained
+findings and reconcile the current case once, then implement a dependency-ready
+slice or name the exact missing fact or hold. Necessary investigation that
+answers a new question remains valid. Reopen sources for changed inputs, a
+missing fact or a failing behavior check, not another full confirmation of
+known interfaces. Compaction alone is not failure; compaction plus this pattern
+requires a changed next action. Do not substitute a coding deadline or
+summary-count quota for progress.
+Separate observed context pressure from a proven cause; tool-set reduction or a
+larger window is a possible host remedy, not a guaranteed cure. Use supported,
+authorized host controls, preserve uncommitted work and never route around
+denials or assume a reset safely transfers that work.
+
+For model-specific diagnosis or an explicit model request, distinguish the
+requested model or tier from the host-reported actual route, fallback and client
+version. Report observed values in the existing result when available, and
+otherwise say they are unknown. Missing telemetry neither authorizes guessing
+nor blocks ordinary implementation; never change the user's model selection
+without authorization. When a specific route is a requested acceptance
+criterion, leave it unverified if the host does not expose the actual route.
+
+Public reports involving GPT-6.1 Sol describe
+[ambiguous completion](https://github.com/openai/codex/issues/54514),
+[scope expansion](https://github.com/openai/codex/issues/56332),
+[lost scheduling](https://github.com/openai/codex/issues/54622),
+[skipped approval waits](https://github.com/microsoft/vscode/issues/345010),
+[review precision changes](https://github.com/openai/codex/issues/59128) and
+[routing fallback](https://github.com/github/copilot-cli/issues/5097). These
+reports motivate model-neutral safeguards; they do not prove a model-only cause
+or that instructions alone prevent the failures.
+
 Retrieve the smallest relevant slice: governing repository instructions,
 contracts or design sources, implementation files, and nearby tests. Load large
 documents or broader history only when focused retrieval is insufficient.
 Handoffs and worker results are bounded summaries with source paths or artifact
 references; they do not duplicate transcripts or repository content.
+
+Verify the intended base before moving a session branch to another workstream.
+Missing files do not establish that base: inspect other refs without moving
+HEAD when sufficient; if the intended base is unresolved, ask before importing
+that history. Already-authorized branch operations need no repeat approval.
+In progress reports separate inherited commits and base diff from changes
+produced by this session; qualify unpushed counts by observed remote freshness.
 
 After requirements exist, rehydrate a task slice, not the whole ledger on every
 turn: selected full acceptance rows, necessary dependency rows, applicable
@@ -396,10 +485,12 @@ assignment IDs and state to the ledger. After restart, reconcile against
 `get_sessions_status` and use `get_session` to inspect idle, missing or unknown
 sessions; those states never trigger automatic respawn or completion. Record
 the exact permission denial and report it once; never retry unchanged or bypass
-host permissions. Start child sessions with `create_session` kickoff mode `interactive` so
-their permission prompts reach the owner; a turn started by
-`send_session_message` cannot prompt, so an idle child without granted tools is
-auto-denied. If `create_session` rejects a project because its origin no longer matches
+host permissions. Honor the owner's selected mode; keep unattended work in
+autopilot when chosen. Do not switch to interactive merely to keep work moving.
+When the host cannot show a permission prompt for a turn started by
+`send_session_message`, report the actual denied operation and continue other
+authorized work rather than inventing permission or bypassing the host.
+If `create_session` rejects a project because its origin no longer matches
 the saved repository, use a registration whose repository matches the clone's
 current origin; never edit remotes to satisfy the host. A superseded lane is not resurrected, and its mutable paths
 remain owned until its session is verified stopped. Lane states are `ready`,
@@ -514,7 +605,15 @@ report that exact limitation without fabricating a panel or retrying unchanged.
 Continue independently safe authorized work; required board acceptance stays
 unverified until the observation exists.
 
-The Copilot command hook adds only a compact `sessionStart` pointer. The sole
+The Copilot command hooks add a compact `sessionStart` pointer and an advisory
+`postToolUse` detector for repeated identical read/search results. Four matching
+observations within the last 24 supported reads/searches inject one corrective
+nudge; changed output resets that request's count. The local fingerprint cache
+survives resume, is bounded and does not contain source text or arguments.
+This detects repetition, not semantic lack of progress: necessary research,
+read-only work, scoped stops and host permissions remain valid. It neither blocks
+tools nor forces edits or continuation; see `docs/quality-check-cadence.md` for
+coverage, reminder suppression and host-loading limits. The sole
 `preToolUse` matcher is `task_complete`: an existing session-owned
 `architrave-delivery.json` declares work and invokes the read-only delivery
 checker. Both `prepared` and `sealed` reports are checked; only current accepted
@@ -664,8 +763,9 @@ verification evidence.
 
 ### Authorized action
 
-Choose the smallest useful action within the existing mandate. Name the source
-of a mandatory hold: an actual host permission, scoped Run policy/checkpoint,
+Choose the next authorized action that advances the requested outcome toward
+its full acceptance. Name the source of a mandatory hold: an actual host
+permission, scoped Run policy/checkpoint,
 legal consent, explicit owner hold or destructive-operation boundary. Missing
 tool evidence is uncertainty to investigate, not policy denial. Agent-added
 preferences are optional precautions, not new authority or vetoes.

@@ -9,6 +9,15 @@
         "timeoutSec": 30
       }
     ],
+    "postToolUse": [
+      {
+        "type": "command",
+        "matcher": "^(?:functions\\.)?(view|read_file|glob|grep|rg|web_fetch|web_search|semantic_code_search)$",
+        "bash": "python3 -B \"${PLUGIN_ROOT}/gates/session_guard.py\" post-tool-use",
+        "powershell": "python -B \"${PLUGIN_ROOT}\\gates\\session_guard.py\" post-tool-use",
+        "timeoutSec": 5
+      }
+    ],
     "preToolUse": [
       {
         "type": "command",

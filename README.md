@@ -52,15 +52,23 @@ owner a permission prompt. Sustained parallel delivery across many children
 (REQ-30/36) is **not yet proven**. Validation for this delivery runs locally;
 releases are cut manually without enabling CI.
 
+**1.0.4.** A local Copilot hook automatically detects four identical
+read/search results within 24 observations and injects a corrective nudge.
+The bounded fingerprint cache survives resume; reminders are suppressed for
+unchanged evidence. This is advisory repetition detection, not a guarantee of
+agent recovery: it never blocks tools, forces edits or overrides stops.
+The guidance also respects the owner's chosen Autopilot mode and existing
+scoped grants. Installing an update does not refresh already-running sessions.
+See [hook coverage and limits](docs/quality-check-cadence.md#automatic-repeated-investigation-detection).
+
 **1.0.2 source build.** The adversarial fixes cover native ownership and timing,
 immutable retry results, overlapping mutable scopes, installer path safety,
 delivery-source freshness, and task-authorized iOS installation. See the
-[changelog](CHANGELOG.md) for the behavior changes. This local version does not
-replace the published 1.0.1 release or change the pinned installation command.
+[changelog](CHANGELOG.md) for the behavior changes. These fixes are included in the public 1.0.4 release.
 Synthetic regression coverage is not live-host qualification.
-The repository quality gate still blocks on historical REQ-60/REQ-63 review
-notes that claim PASS where the cited local reviewer last reported REVISE.
-This build does not rewrite that review history or claim the gate passed.
+The original reviewer clarified that the earlier source-readiness PASS covered
+REQ-60 and REQ-63. The local quality gate now passes with that reviewer history
+available; the clarification is not installed or runtime proof.
 
 **1.0.1 packaging.** This release restores the full v1.0.0 plugin, including
 its Python code and Copilot hooks, after the instructions-only reduction.
@@ -108,6 +116,11 @@ as a REQ correction before release.
 All in-scope cases must be code ready before two independent final sidebar
 reviews by default; accepted findings become REQ corrections routed to fresh
 implementers and are resolved before authorized deployment. Recover that phase after interruptions.
+Ground blocking restrictions in owner direction, applicable policy or evidence;
+do not promote agent assumptions into requirements or bypass real holds.
+Recover repeated unchanged investigation from the current case, not another
+round of rereading. Honor scoped stops despite automatic continuation; do not
+count inherited branch history as new implementation.
 Code ready records written implementation, not successful runtime qualification.
 Permission and qualification holds still block their dependent operations and
 delivery acceptance, not independent source review.
@@ -170,6 +183,8 @@ crew of always-loaded instructions. Non-trivial work declares its REQs and
 original owner references, then starts one scoped program board and opens/reads
 it in the browser canvas before implementation. Read-only questions, trivial
 edits and assigned child reviewers do not create another coordinator.
+Its read/search hook automatically nudges repeated unchanged investigation;
+it does not run quality checks after every tool or force continuation.
 
 Do not introduce fixtures, fakes, mocks, stubs, canned/replayed provider results
 or feature/integration flags without an explicit user request for that purpose
@@ -432,7 +447,7 @@ Install Architrave in an agent client you already use.
 With **GitHub Copilot** (CLI, desktop app, or VS Code):
 
 ```bash
-copilot plugin marketplace add dragoshont/architrave#v1.0.1
+copilot plugin marketplace add dragoshont/architrave#v1.0.4
 copilot plugin install architrave@architrave
 ```
 
@@ -457,6 +472,13 @@ Start a conversation in the host, select or invoke Architrave, and describe
 the change you want. Plugin-only use does not require modifying the target
 repository. The plugin adds Architrave's host-specific instructions and
 roles; it uses tools already available to the host.
+
+In Copilot, the default agent can invoke the `/architrave` skill, or you can
+select the custom Architrave agent. The skill loads the same lead contract
+unless it is already loaded; choosing the default agent does not itself remove
+that context. A host goal command, where available, has its own lifecycle:
+check that the host actually invokes the skill rather than assuming chained
+slash commands do so.
 
 For example:
 
@@ -563,6 +585,16 @@ copilot plugin update architrave
 claude plugin marketplace update architrave
 claude plugin update architrave@architrave
 ```
+
+Copilot sessions open during an update can retain the previous plugin path. If
+the host removes that version, the completion hook can fail (on Windows, with
+`os error 267`). Finish or safely pause work before updating, then restart
+affected sessions and verify that each has loaded the new version before
+retrying. Opening a restart control alone does not establish that it reloaded;
+do not disable the hook.
+Remove superseded Architrave registrations and cached directories only after
+the sessions using them have reloaded. Do not clear the whole Copilot cache or
+delete unrelated plugins or session history.
 
 Plugin updates do not refresh kit files copied into adopted repositories. Run
 the updater from the updated kit to refresh those files:

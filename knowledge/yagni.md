@@ -17,10 +17,10 @@ Before writing code, stop at the first rung that satisfies the acceptance criter
 3. **Platform/native feature:** Does the platform solve it? Use system UI, browser/native inputs, database constraints, OS APIs, framework validation, or built-in routing before custom code.
 4. **Standard library:** Does the language/runtime standard library solve it correctly, including edge cases? Use it.
 5. **Already-installed dependency:** If a dependency is already in the repo and fits the task, use it. Do not add a new dependency for what a few clear lines can do.
-6. **Tiny local implementation:** Write the smallest local code that satisfies the criteria and tests.
+6. **Local implementation:** Write the code needed for the full acceptance, including wiring and safeguards, without speculative scope.
 7. **New abstraction/dependency/config:** Add only with evidence: at least two concrete uses, a current contract/ADR, measurable need, or explicit user requirement. Otherwise document the future path as a candidate lesson, not code.
 
-The ladder is a reflex, not a research project. If two rungs work, choose the higher rung and move on. The first correct minimal solution wins.
+The ladder is a reflex, not a research project. If two rungs work, choose the higher rung and move on. The first solution that fully meets the acceptance without speculative scope wins.
 
 ## Minimal scope is not minimal diagnosis
 

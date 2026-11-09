@@ -9,7 +9,9 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -51,6 +53,169 @@ class SessionGuardTests(unittest.TestCase):
         self.report.parent.mkdir(parents=True, exist_ok=True)
         self.report.write_text(content, encoding="utf-8")
 
+    def read_payload(self, **overrides):
+        return {
+            "sessionId": self.session, "cwd": str(ROOT),
+            "toolName": "view", "toolArgs": {"path": "example.py", "view_range": [1, 20]},
+            "toolResult": {"resultType": "success", "textResultForLlm": "unchanged source"},
+            **overrides,
+        }
+
+    def test_repeated_unchanged_reads_inject_one_advisory_through_the_command(self):
+        for _ in range(3):
+            self.assertEqual({}, self.invoke("post-tool-use", self.read_payload()))
+        result = self.invoke("post-tool-use", self.read_payload())
+        self.assertEqual({"additionalContext"}, set(result))
+        context = result["additionalContext"]
+        self.assertIn("Possible investigation loop", context)
+        self.assertIn("4 identical results", context)
+        self.assertIn("next authorized action", context)
+        self.assertIn("explicit stops", context)
+        self.assertIn("necessary research", context)
+        self.assertNotIn("permissionDecision", result)
+        self.assertNotIn("modifiedResult", result)
+        for _ in range(8):
+            self.assertEqual({}, self.invoke("post-tool-use", self.read_payload()))
+
+    def test_interleaved_reads_and_resume_keep_loop_evidence(self):
+        for _ in range(3):
+            self.assertEqual({}, guard.post_tool_use(self.read_payload()))
+            self.assertEqual({}, guard.post_tool_use(self.read_payload(
+                toolName="rg", toolArgs={"pattern": "request", "glob": "*.py"},
+            )))
+        self.invoke("session-start", {"sessionId": self.session, "source": "resume"})
+        self.assertIn("additionalContext", self.invoke("post-tool-use", self.read_payload()))
+        # A nearby repeated search must not generate another immediate reminder.
+        self.assertEqual({}, guard.post_tool_use(self.read_payload(
+            toolName="rg", toolArgs={"pattern": "request", "glob": "*.py"},
+        )))
+
+    def test_changed_evidence_and_distinct_questions_do_not_trigger(self):
+        for index in range(32):
+            self.assertEqual({}, guard.post_tool_use(self.read_payload(
+                toolArgs={"path": "example.py", "view_range": [index, index + 10]},
+            )))
+            self.assertEqual({}, guard.post_tool_use(self.read_payload(
+                toolResult={"resultType": "success", "textResultForLlm": f"revision {index}"},
+            )))
+        # Changing a formerly repeated result starts a fresh observation, not a stale alert.
+        for _ in range(3):
+            self.assertEqual({}, guard.post_tool_use(self.read_payload()))
+        self.assertEqual({}, guard.post_tool_use(self.read_payload(
+            toolResult={"resultType": "success", "textResultForLlm": "changed source"},
+        )))
+        self.assertEqual({}, guard.post_tool_use(self.read_payload()))
+
+    def test_file_touches_do_not_count_as_verified_progress(self):
+        for _ in range(3):
+            self.assertEqual({}, guard.post_tool_use(self.read_payload()))
+            self.assertEqual({}, guard.post_tool_use(self.read_payload(toolName="edit")))
+        self.assertIn("additionalContext", guard.post_tool_use(self.read_payload()))
+
+    def test_loop_cache_is_bounded_private_and_isolated_by_session_and_cwd(self):
+        private_payload = self.read_payload(
+            toolArgs={"path": "PRIVATE_PATH", "query": "PRIVATE_QUERY"},
+            toolResult={"resultType": "success", "textResultForLlm": "PRIVATE_SOURCE"},
+        )
+        for _ in range(3):
+            self.assertEqual({}, guard.post_tool_use(private_payload))
+        self.assertEqual({}, guard.post_tool_use({**private_payload, "sessionId": str(uuid4())}))
+        self.assertEqual({}, guard.post_tool_use({**private_payload, "cwd": str(self.home)}))
+        self.assertEqual({}, guard.post_tool_use({**private_payload, "agentId": "separate-agent"}))
+        for index in range(64):
+            self.assertEqual({}, guard.post_tool_use(self.read_payload(toolArgs={"path": f"{index}.py"})))
+        cache = self.report.with_name("architrave-loop.json")
+        serialized = cache.read_text(encoding="utf-8")
+        for secret in ("PRIVATE_PATH", "PRIVATE_QUERY", "PRIVATE_SOURCE", str(ROOT)):
+            self.assertNotIn(secret, serialized)
+        state = json.loads(serialized)
+        self.assertLessEqual(len(state["history"]), 24)
+        self.assertLessEqual(len(state["notified"]), 24)
+        self.assertLess(cache.stat().st_size, 16384)
+        self.assertFalse(self.report.exists())
+        self.assertEqual({}, guard.post_tool_use(private_payload))
+
+    def test_reminders_rearm_after_changed_evidence_or_window_eviction(self):
+        for _ in range(3):
+            self.assertEqual({}, guard.post_tool_use(self.read_payload()))
+        self.assertIn("additionalContext", guard.post_tool_use(self.read_payload()))
+        for _ in range(12):
+            self.assertEqual({}, guard.post_tool_use(self.read_payload()))
+        changed = self.read_payload(
+            toolResult={"resultType": "success", "textResultForLlm": "new source"},
+        )
+        for _ in range(3):
+            self.assertEqual({}, guard.post_tool_use(changed))
+        self.assertIn("additionalContext", guard.post_tool_use(changed))
+        for index in range(24):
+            self.assertEqual({}, guard.post_tool_use(self.read_payload(toolArgs={"path": f"{index}.py"})))
+        for _ in range(3):
+            self.assertEqual({}, guard.post_tool_use(changed))
+        self.assertIn("additionalContext", guard.post_tool_use(changed))
+
+    def test_copilot_snake_case_and_json_arguments_share_fingerprints(self):
+        payload = {
+            "session_id": self.session, "cwd": str(ROOT), "tool_name": "Read",
+            "tool_input": json.dumps(self.read_payload()["toolArgs"]),
+            "tool_result": {"result_type": "success", "text_result_for_llm": "unchanged source"},
+        }
+        for _ in range(3):
+            self.assertEqual({}, guard.post_tool_use(payload))
+        self.assertIn("additionalContext", guard.post_tool_use(self.read_payload(toolName="functions.view")))
+
+    def test_only_successful_supported_reads_are_observed(self):
+        for payload in (
+            self.read_payload(toolName="powershell"),
+            self.read_payload(toolName="task_complete"),
+            self.read_payload(toolName="edit"),
+            self.read_payload(toolResult={"resultType": "failure", "textResultForLlm": "failed"}),
+        ):
+            for _ in range(5):
+                self.assertEqual({}, guard.post_tool_use(payload))
+        self.assertEqual([], list(self.home.iterdir()))
+
+    def test_invalid_input_and_broken_cache_warn_without_denying_or_leaking(self):
+        for payload in (
+            self.read_payload(sessionId="../escape"),
+            self.read_payload(session_id=str(uuid4())),
+            self.read_payload(toolArgs="PRIVATE_INVALID_JSON"),
+            self.read_payload(toolResult=None),
+        ):
+            result = self.invoke("post-tool-use", payload)
+            self.assertEqual({"additionalContext"}, set(result))
+            self.assertIn("loop monitoring unavailable", result["additionalContext"])
+            self.assertNotIn("PRIVATE_INVALID_JSON", json.dumps(result))
+        cache = self.report.with_name("architrave-loop.json")
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        for content in ("{PRIVATE_BROKEN_CACHE", '[]', '{"schema":"unexpected"}', "x" * 20000):
+            cache.write_text(content, encoding="utf-8")
+            result = self.invoke("post-tool-use", self.read_payload())
+            self.assertEqual({"additionalContext"}, set(result))
+            self.assertIn("loop monitoring unavailable", result["additionalContext"])
+            self.assertEqual(content, cache.read_text(encoding="utf-8"))
+
+    def test_parallel_hook_processes_do_not_lose_counts_or_repeat_notices(self):
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            results = list(pool.map(
+                lambda _: self.invoke("post-tool-use", self.read_payload()), range(8),
+            ))
+        notices = [result for result in results if result]
+        self.assertEqual(1, len(notices), notices)
+        self.assertIn("Possible investigation loop", notices[0]["additionalContext"])
+        state = json.loads(self.report.with_name("architrave-loop.json").read_text(encoding="utf-8"))
+        self.assertEqual(8, len(state["history"]))
+
+    def test_lock_contention_warns_within_the_hook_deadline(self):
+        self.report.parent.mkdir(parents=True, exist_ok=True)
+        lock = self.report.with_name("architrave-loop.lock")
+        with guard._loop_lock(lock):
+            started = time.monotonic()
+            result = self.invoke("post-tool-use", self.read_payload())
+        self.assertLess(time.monotonic() - started, 5)
+        self.assertEqual({"additionalContext"}, set(result))
+        self.assertIn("loop monitoring unavailable (TimeoutError)", result["additionalContext"])
+        self.assertFalse(self.report.with_name("architrave-loop.json").exists())
+
     def assert_denied(self, result):
         self.assertEqual({"permissionDecision", "permissionDecisionReason"}, set(result))
         self.assertEqual("deny", result["permissionDecision"])
@@ -75,8 +240,10 @@ class SessionGuardTests(unittest.TestCase):
             self.assertIn("qualification/permission holds block dependent operations", context)
             self.assertIn("All code ready before two independent final reviews by default", context)
             self.assertIn("route accepted findings as REQ corrections to fresh implementers", context)
-            self.assertIn("resolve findings before authorized deployment", context)
-            self.assertIn("Restore current case and phase after resume", context)
+            self.assertIn("resolve before authorized deployment", context)
+            self.assertIn("Never invent prerequisites; respect scoped grants, stops, host permissions and the owner's selected mode", context)
+            self.assertIn("declare scope per docs/program-board.md", context)
+            self.assertIn("Restore case/phase after resume; stop unchanged rereads and take the next authorized action or state the exact hold", context)
             self.assertLess(context.index("Development loop:"), context.index("Before non-trivial implementation:"))
             self.assertIn("Read-only/trivial", context)
             self.assertIn("work needs no declaration, board or sidebar", context)
@@ -188,8 +355,11 @@ class SessionGuardTests(unittest.TestCase):
         self.assertEqual("hooks.json", manifest["hooks"])
         hooks = json.loads((ROOT / manifest["hooks"]).read_text(encoding="utf-8"))
         self.assertEqual(1, hooks["version"])
-        self.assertEqual({"sessionStart", "preToolUse"}, set(hooks["hooks"]))
-        for event, command in (("sessionStart", "session-start"), ("preToolUse", "pre-tool-use")):
+        self.assertEqual({"sessionStart", "preToolUse", "postToolUse"}, set(hooks["hooks"]))
+        for event, command in (
+            ("sessionStart", "session-start"), ("preToolUse", "pre-tool-use"),
+            ("postToolUse", "post-tool-use"),
+        ):
             entries = hooks["hooks"][event]
             self.assertEqual(1, len(entries))
             entry = entries[0]
@@ -204,6 +374,12 @@ class SessionGuardTests(unittest.TestCase):
         self.assertTrue(re.fullmatch(matcher, "task_complete"))
         for tool in ("task", "view", "powershell", "not_task_complete", "task_complete_extra"):
             self.assertIsNone(re.fullmatch(matcher, tool))
+        matcher = hooks["hooks"]["postToolUse"][0]["matcher"]
+        for tool in ("view", "rg", "grep", "glob", "web_fetch", "web_search",
+                     "semantic_code_search", "read_file", "functions.view"):
+            self.assertIsNotNone(re.fullmatch(matcher, tool), tool)
+        for tool in ("powershell", "bash", "edit", "ask_user", "task_complete", "preview"):
+            self.assertIsNone(re.fullmatch(matcher, tool), tool)
         claude = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
         self.assertNotIn("hooks", claude)
 

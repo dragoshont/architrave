@@ -5,6 +5,37 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## 1.0.4 (2026-11-09)
+
+- Add automatic Copilot `postToolUse` repetition detection: four identical
+  read/search results in a bounded 24-observation window inject a corrective
+  nudge. A private per-session fingerprint cache survives resume, serializes
+  parallel hook calls and suppresses duplicate reminders. Changed results reset
+  their request's count; errors report monitoring unavailable without denying
+  tools. No forced edits, result rewriting, stop overrides or approval stages.
+- Strengthen instruction guidance for grounded prerequisites, direct answers,
+  owner stops, and recovery from repeated investigation without meaningful
+  progress. File touches alone are not progress; necessary research remains
+  valid. Instruction guidance complements the advisory repetition detector;
+  neither guarantees model recovery.
+- Respect the owner's chosen Autopilot mode for unattended work. Scope past
+  errors and pauses to the operations they affect, and reuse existing grants
+  rather than inventing new approval requirements.
+- Clarify the original reviewer's source-readiness coverage for REQ-60 and
+  REQ-63; the historical review clarification is not runtime proof.
+- Aim the next authorized action and YAGNI guidance at the full requested
+  outcome, including required wiring and safeguards, rather than a partial
+  subset or speculative scope.
+- Distinguish inherited branch changes from the current session's work, and
+  report actual model routing only when the host exposes it.
+- Document the default-agent skill and custom-agent entry points without
+  assuming that a host goal command invokes the skill automatically.
+- Keep the version bump tool's progress output compatible with Windows
+  consoles using legacy encodings.
+- Document the stale plugin-path completion-hook failure. This source update
+  cannot repair sessions already retaining a removed plugin directory; restart
+  and verify the loaded version or restore that directory with authorization.
+
 ## 1.0.2
 
 - Preserve native execution budgets through Python bookkeeping, retain
