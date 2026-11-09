@@ -18,6 +18,10 @@ others, typed as `DO_NOTHING` and `SMALLEST_VIABLE`, plus `winner` and
 why the chosen
 option beats doing nothing.
 
+For a held specification ambiguity, compare the sidebar research child's
+technical interpretations and return the recommended one for a REQ correction.
+Owner-intent choices go to the owner; a tournament does not decide them.
+
 The optional `python "<kit-root>/harness/architrave_cli.py" tournament-review
 --result <json> --task <id> --source <rev>` checks result shape and supplied
 bindings only. It cannot authenticate the analyst, verify tradeoffs or authorize

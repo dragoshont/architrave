@@ -7,18 +7,21 @@ For non-trivial work use the `architrave` skill or adopted
 That lead contract owns delegation, verification and stop rules.
 If this stanza is copied without the rest of the kit, follow repository
 instructions without claiming uninstalled gates or Runs.
+Read-only questions and trivial edits need no board or sidebar.
 
-Spec-driven: record requests and owner corrections as REQ rows with testable
-acceptance in the requirements file (config `requirements`, else `SPEC.md`)
-before non-trivial work. Use Not started, Started or Code ready. Finish code,
-then review together; completion requires evidence and the gate.
+Development loop: one case, acceptance/design, focused checks, authorized commit;
+hold unclear specifications until a sidebar-researched REQ decision; all code
+ready, then two independent reviews; fix findings via REQ corrections before
+authorized deployment; restore case/phase after interruptions.
+
+Spec-driven: record requests and owner corrections as REQ rows with observable
+acceptance in configured requirements (else `SPEC.md`) before non-trivial work.
 Follow **Specifications** in `knowledge/execution-policy.md`: preserve owner-goal
-coverage and observable behavior; supporting tasks do not replace the result.
-Before implementation, declare session scope and open/read one scoped program
-board per the kit's `docs/program-board.md`, including direct work. Report
-unavailable/denied canvas; assigned children/reviewers use the parent's board.
+coverage and observable behavior.
+Before non-trivial implementation, including direct work, declare scope and
+open/read one scoped program board (`docs/program-board.md`).
+Report unavailable/denied canvas; children/reviewers reuse parent scope.
 Build behavior first; show evidence.
-Host permissions remain host-owned; infrastructure/runtime mutation defaults to
-deny. Preserve scoped grants, human holds, secrets and uncertain-side-effect recovery.
-No unrequested fakes, result substitutes or feature/integration flags, including tests.
+Host permissions and scoped grants/holds remain binding; infrastructure/runtime
+mutation defaults to deny. Preserve secrets and uncertain-side-effect recovery.
 Copilot hooks bootstrap/check declared completion only; no automatic PostToolUse quality hooks.

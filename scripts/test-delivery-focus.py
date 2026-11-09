@@ -39,6 +39,50 @@ codex_roles = "\n".join(
 )
 
 required = {
+    "lead foregrounds development loop": (agent, "## Development loop"),
+    "lead honors owner loop corrections": (agent, "explicit owner changes take precedence"),
+    "policy one implementation case": (execution, "Select one implementation case at a time"),
+    "policy grounded case design": (execution, "high- and low-level designs when present"),
+    "policy authorized scoped commits": (execution, "Commit scoped work when authorized"),
+    "policy unknown specification child": (execution, "bounded read-only sidebar child"),
+    "policy missing implementation blocks readiness": (execution, "Unresolved specifications or missing implementation block Code ready"),
+    "policy qualification differs from readiness": (execution, "Written implementation may be Code ready while qualification or permission holds remain"),
+    "lead qualification differs from readiness": (agent, "Code ready means written implementation, not verified delivery"),
+    "lead two final reviews by default": (agent, "run two independent final sidebar reviews by default"),
+    "lead findings become REQ corrections": (agent, "route accepted findings as REQ corrections to fresh implementers"),
+    "lead ambiguity decision releases hold": (agent, "Release only after a REQ correction records"),
+    "lead regression when no check exists": (agent, "one real regression if none"),
+    "policy defines material ambiguity": (execution, "An ambiguity is material when existing sources leave open observable behavior"),
+    "policy non-material choices follow conventions": (execution, "Settle non-material choices from existing code and conventions"),
+    "policy ambiguity routes by kind": (execution, "an owner-intent choice goes to the owner and stays held until answered"),
+    "policy ambiguity tournament": (execution, "risk go to a visible tournament"),
+    "policy correction releases hold": (execution, "REQ correction citing its evidence before releasing the hold"),
+    "policy behavior before test support": (execution, "Analyze the acceptance and implement the behavior before adding test support"),
+    "policy one real regression": (execution, "add one focused regression check that exercises the real behavior"),
+    "policy test work is not progress": (execution, "work that does not move an acceptance criterion is not case progress"),
+    "policy two final reviews by default": (execution, "run two independent read-only sidebar reviews"),
+    "policy independent frozen reviews": (execution, "give both reviewers the same frozen revision, keep each unaware of the other's verdict"),
+    "policy findings become corrections": (execution, "record each accepted finding that changes expected behavior as a `revise` or `add` REQ correction"),
+    "policy fresh implementers fix findings": (execution, "Route accepted fixes to fresh implementer sidebar sessions"),
+    "policy fix round cap": (execution, "After two fix rounds that leave serious findings open"),
+    "policy both review verdicts": (execution, "confirm both final verdicts are PASS"),
+    "policy tournament covers held interpretations": (execution, "held specification interpretations that differ on those risks"),
+    "tournament compares held interpretations": (tournament_skill, "compare the sidebar research child's technical interpretations"),
+    "tournament leaves owner intent to owner": (tournament_skill, "Owner-intent choices go to the owner"),
+    "worker fixes only accepted finding": (work_skill, "implement only the accepted finding and its REQ correction"),
+    "worker behavior before test support": (work_skill, "Implement the behavior before test support"),
+    "worker classifies ambiguity": (work_skill, "it is an owner-intent choice, or the options differ on material technical risk"),
+    "lead completion review is conditional": (agent, "Completion needs source-bound evidence and any required review"),
+    "README readiness differs from qualification": (readme, "Code ready records written implementation, not successful runtime qualification"),
+    "handoff qualification stays operation-specific": (long_programs, "qualification/permission holds remain operation-specific, not automatic code-readiness blockers"),
+    "adopted non-trivial boundary": (stanza, "For non-trivial work use"),
+    "adopted trivial-work exemption": (stanza, "Read-only questions and trivial edits need no board or sidebar"),
+    "adopted board boundary": (stanza, "Before non-trivial implementation"),
+    "policy task-scoped final review": (execution, "review count, coverage split and host routing"),
+    "policy resumes loop phase": (execution, "At every resumption, recover that loop"),
+    "adopted development loop": (stanza, "Development loop: one case"),
+    "skill routes development loop": (lead_skill, "**Development loop**"),
+    "worker returns unclear contracts": (work_skill, "Return unclear specifications to the parent"),
     "claimed is queued not active": (board_source, '"claimed": "open"'),
     "explicit implementation stays blue": (board_source, '"in-progress": "active"'),
     "spec owner outcomes": (execution, "contract for the owner's requested outcomes"),
@@ -393,6 +437,66 @@ precaution_scenarios = {
         ("instruction sent, execution started, observed result and accepted outcome",
          "Pending delegation is not delivery", "Source/test success is not installed/native success"),
         ("An instruction sent proves delivery",)),
+    "unclear case does not block independent cases or permit guessing": (
+        execution,
+        ("hold that behavior rather than infer a contract",
+         "Continue the next independent ready case while research proceeds",
+         "report that limitation and preserve the hold"),
+        ("Guess the missing contract to finish the case",)),
+    "missing specification or implementation still blocks final review": (
+        execution,
+        ("After all in-scope cases are code ready",
+         "Unresolved specifications or missing implementation block Code ready",
+         "Only an explicit owner scope correction can remove an in-scope case"),
+        ("Missing implementation may be silently omitted",)),
+    "written implementation with a qualification hold can receive source review": (
+        execution,
+        ("Written implementation may be Code ready while qualification or permission holds remain",
+         "Such holds stay attached to their exact dependent operation and acceptance criterion",
+         "they do not prevent independent source review"),
+        ("A held case is not code ready",
+         "Runtime qualification must pass before Code ready",)),
+    "code readiness never waives dependent delivery holds": (
+        execution,
+        ("still block dependent deployment or delivery acceptance",
+         "Code ready does not grant permission or prove acceptance"),
+        ("Code ready authorizes deployment",)),
+    "mechanical work does not acquire a mandatory semantic review": (
+        execution,
+        ("Trivial edits and mechanical changes fully proven by deterministic evidence need no semantic review unless the owner or risk policy requires it",
+         "Required checks and higher review floors remain mandatory"),
+        ("All development requires a sidebar review",)),
+    "accepted review findings route to fresh implementers with corrected REQs": (
+        execution,
+        ("record each accepted finding that changes expected behavior as a `revise` or `add` REQ correction",
+         "Route accepted fixes to fresh implementer sidebar sessions grouped by owned area, never to the reviewers",
+         "the original reviewers re-check only the affected findings",
+         "stop and bring the exact conflict to the owner"),
+        ("Reviewers fix their own findings",)),
+    "material ambiguity resolves by recorded decision": (
+        execution,
+        ("hold that behavior rather than infer a contract",
+         "an owner-intent choice goes to the owner and stays held until answered",
+         "REQ correction citing its evidence before releasing the hold"),
+        ("Release the hold once research returns",)),
+    "parallel research preserves implementation and delivery boundaries": (
+        execution,
+        ("Requested parallel research does not authorize parallel implementation or early delivery",
+         "Parallel implementation must follow the mandate"),
+        ("Research delegation marks the affected case code ready",)),
+    "review and deployment settings stay task-specific": (
+        execution,
+        ("run two independent read-only sidebar reviews",
+         "Preserve the owner's requested review count, coverage split and host routing",
+         "Review routing, deployment stack and destination are task-specific",
+         "Address findings, rerun affected checks and refresh affected review evidence before authorized deployment"),
+        ("Every project requires the same reviewers and deployment stack",)),
+    "resume restores loop rather than summary authority": (
+        execution,
+        ("current case, its next action, held cases and resolving children",
+         "remaining cases, and final review/delivery phase",
+         "not just the latest assistant summary"),
+        ("A progress reply terminates the development loop",)),
 }
 
 
@@ -421,6 +525,18 @@ for name, text, stale in (
 ):
     if contains_guidance(text, stale):
         missing.append(name)
+for name, text, stale in (
+    ("blanket held-case readiness returned", execution, "A held case is not code ready"),
+    ("long-program blanket readiness returned", long_programs,
+     "held cases do not count as code ready for final review/deployment"),
+    ("lead conditional final review returned", agent, "owner-/risk-required final reviews"),
+    ("policy conditional final review returned", execution,
+     "when required by the owner or risk policy"),
+    ("policy universal review-tier denial returned", execution,
+     "No new progress file, harness or universal review tier follows"),
+):
+    if contains_guidance(text, stale):
+        missing.append(name)
 for name, (text, phrase) in required.items():
     reflowed = "\n\t".join(text.split())
     if contains_guidance(text, phrase) != contains_guidance(reflowed, phrase):
@@ -441,6 +557,12 @@ for name, text in (("skill", lead_skill), ("stanza", stanza)):
         missing.append(f"{name} duplicates too much of the lead contract")
 if len(agent.split()) > 1068:
     missing.append("lead exceeds its 1068-word baseline")
+if agent.find("## Development loop") > agent.find("## Core contract"):
+    missing.append("development loop is buried after the core contract")
+loop_contract = execution.split("## Development loop", 1)[-1].split("## Specifications", 1)[0]
+for task_specific in ("Fusion", "Docker", "PostgreSQL"):
+    if task_specific in loop_contract:
+        missing.append(f"development loop hard-codes task-specific {task_specific}")
 for phrase in ("visible intake block", "non-trivial work has canonical",
                "Missing artifacts are a Major concern"):
     if contains_guidance(rubric, phrase):

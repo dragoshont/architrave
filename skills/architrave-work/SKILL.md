@@ -52,10 +52,21 @@ skill's reported directory (`../..`), not repository cwd or guessed caches.
 
 ## Development
 
+For a multi-case assignment, follow the parent's development loop one case at
+a time: acceptance/design, implementation, focused checks, then an authorized
+scoped commit. Return unclear specifications to the parent with the affected
+behavior held; continue only independent cases inside the assignment. Do not
+spawn clarification children or replace the parent's final feature review.
+For a review-finding fix, implement only the accepted finding and its REQ
+correction; report other issues to the parent.
+
 Read the relevant contract, existing implementation and nearby tests first.
 Reuse the working seam; make the smallest complete change in owned paths.
 Reproduce a bug before fixing it where feasible. Check the actual requested
 behavior with focused existing tests/builds, including relevant error paths.
+Implement the behavior before test support. When no existing check covers a
+changed acceptance criterion, add one focused regression check that exercises
+the real behavior; test or fixture work that does not move acceptance is not progress.
 No unrequested fixtures, fakes, mocks, stubs, canned/replayed result substitutes
 or feature/integration flags, including test-only substitutes. Preserve existing
 tests and real safety controls. Honor explicitly approved official emulators
@@ -75,6 +86,9 @@ Separate verified facts, competing interpretations and unknowns. Resolve
 contradictions or name them; stop when there is enough evidence for the next
 decision or the assigned budget is exhausted. Return the answer, sources,
 limitations and implementation consequence, not a broad literature review.
+For a held specification ambiguity, return the viable interpretations with
+evidence, a recommendation, and whether existing sources settle it, it is an
+owner-intent choice, or the options differ on material technical risk.
 
 ## Writing and author voice
 

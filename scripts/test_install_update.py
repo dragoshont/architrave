@@ -158,6 +158,19 @@ class InstallUpdateTests(unittest.TestCase):
             "gates/gate_runner.py",
         ):
             self.assertTrue((knowledge / relative).is_file(), relative)
+        for target in (application, knowledge):
+            self.assertEqual(
+                (ROOT / "agents/architrave.agent.md").read_bytes(),
+                (target / ".github/agents/architrave.agent.md").read_bytes(),
+            )
+            self.assertEqual(
+                (ROOT / "knowledge/execution-policy.md").read_bytes(),
+                (target / "knowledge/execution-policy.md").read_bytes(),
+            )
+            self.assertIn(
+                (ROOT / "templates/AGENTS.stanza.md").read_text(encoding="utf-8").rstrip(),
+                (target / "AGENTS.md").read_text(encoding="utf-8"),
+            )
 
 
     @unittest.skipIf(sys.version_info < (3, 11), "optional Codex role installation requires Python 3.11+")
@@ -182,6 +195,18 @@ class InstallUpdateTests(unittest.TestCase):
         self.run_cli("update", "--agents", "--codex", str(target))
         self.assertFalse(application_agent.exists())
         self.assertEqual(custom.read_text(encoding="utf-8"), "custom\n")
+        self.assertEqual(
+            (ROOT / "agents/architrave.agent.md").read_bytes(),
+            (target / ".github/agents/architrave.agent.md").read_bytes(),
+        )
+        self.assertEqual(
+            (ROOT / "knowledge/execution-policy.md").read_bytes(),
+            (target / "knowledge/execution-policy.md").read_bytes(),
+        )
+        self.assertIn(
+            (ROOT / "templates/AGENTS.stanza.md").read_text(encoding="utf-8").rstrip(),
+            (target / "AGENTS.md").read_text(encoding="utf-8"),
+        )
         updated = snapshot(target)
         self.run_cli("update", "--agents", "--codex", str(target))
         self.assertEqual(snapshot(target), updated)

@@ -7,6 +7,8 @@ Resolve the plugin root from this skill's reported directory (`../..`), not cwd
 or guessed caches. Read `agents/architrave.agent.md` there once, unless that
 contract is already loaded. It is the canonical lead contract; do not load both
 plugin and adopted copies. Repository instructions and the user's mandate apply.
+Use the lead's **Development loop** for every development case and restore its
+current phase after interruptions.
 
 Work is spec-driven: record owner outcomes as REQs with observable acceptance in config `requirements`
 (else `SPEC.md`); finish with accepted evidence. Follow **Specifications** in

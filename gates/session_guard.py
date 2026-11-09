@@ -14,17 +14,23 @@ from uuid import UUID
 def bootstrap_context() -> str:
     root = Path(__file__).resolve().parents[1]
     return (
-        "For non-trivial repository work, invoke architrave "
+        "For non-trivial development, invoke architrave "
         f"(`{root / 'skills' / 'architrave' / 'SKILL.md'}`); without a skill loader, "
         f"read `{root / 'agents' / 'architrave.agent.md'}` once. "
-        "Before implementation: record REQs against original owner messages/references, "
+        "Development loop: one case, acceptance/design, focused checks, authorized commit; "
+        "hold unclear specifications for sidebar research and continue independent cases. "
+        "Code ready means written implementation; qualification/permission holds block dependent operations. "
+        "All code ready before two independent final reviews by default; route accepted findings "
+        "as REQ corrections to fresh implementers; resolve findings before authorized deployment. "
+        "Restore current case and phase after resume. "
+        "Before non-trivial implementation: record REQs against original owner messages/references, "
         "declare this session's scope per docs/program-board.md in that kit, then "
         "open and read ONE scoped program board in the host browser canvas. "
-        "Report unavailable/denied host capability; never invent a panel. "
-        "Read-only/trivial work needs no declaration or board; assigned workers/reviewers "
+        "Report unavailable/denied capability. "
+        "Read-only/trivial work needs no declaration, board or sidebar; assigned workers/reviewers "
         "use their parent's scope without recursive boards. "
         "No unrequested fake results or feature/integration flags, including tests. "
-        "Preserve existing scoped grants and host permissions. Load details on demand."
+        "Preserve existing scoped grants and host permissions."
     )
 
 

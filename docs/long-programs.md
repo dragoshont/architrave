@@ -94,6 +94,12 @@ Verify: the command that shows the current state
 The gate fails if any line is empty. A fresh session reads this note and the git
 log, runs `Verify`, and picks one requirement. Restarting a stale session then
 costs minutes instead of hours, and nobody retries a dead end.
+Keep the current development case, held specification questions and their
+sidebar owners, next independent case, and final review/delivery phase in those
+same lines. Resume the [development loop](../knowledge/execution-policy.md#development-loop),
+not a new plan. Missing implementation or unresolved specifications block Code
+ready; qualification/permission holds remain operation-specific, not automatic
+code-readiness blockers. Delivery still requires its evidence and permissions.
 
 Before a coordinator hands over to a fresh session, commit the requirements file
 and run:

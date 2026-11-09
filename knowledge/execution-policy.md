@@ -6,6 +6,88 @@ An explicitly configured user pin may be passed to a documented per-child host
 control. Persist reported selection only in compact worker evidence, not product
 truth. An absent/unsupported request inherits the parent and reports that fact.
 
+## Development loop
+
+The owner's development loop remains an active instruction across turns,
+corrections, child returns, compaction and handoffs, not a disposable plan.
+Use the existing task/requirements list and Handoff, never a second loop ledger.
+
+1. Select one implementation case at a time unless the owner requested parallel
+   implementation. Read its full acceptance and relevant architecture/design
+   contracts (high- and low-level designs when present), change the code, and
+   run focused existing checks. Analyze the acceptance and implement the behavior
+   before adding test support. When no existing check covers a changed acceptance
+   criterion, add one focused regression check that exercises the real behavior,
+   with the implementation and without new substitutes. Test, fixture or harness
+   work that does not move an acceptance criterion is not case progress; when it
+   grows while product behavior stays unchanged, return to the case. Mark code ready when implementation is written;
+   record checking failures separately. Commit scoped work when authorized,
+   without bundling unrelated dirty work or making each case await final review.
+2. Resolve a material specification ambiguity through a bounded read-only sidebar
+   child. An ambiguity is material when existing sources leave open observable
+   behavior, a public contract or data shape, persisted data, a security or
+   permission effect, or an owner-visible outcome. Settle non-material choices
+   from existing code and conventions and state them in the report.
+   Bind the child's question to the relevant source and affected case; hold that
+   behavior rather than infer a contract. Continue the next independent ready
+   case while research proceeds. If the host cannot create the child, report
+   that limitation and preserve the hold. The child returns the viable
+   interpretations with evidence and a recommendation. A source-settled answer
+   is the coordinator's to record; an owner-intent choice goes to the owner and
+   stays held until answered; interpretations that differ on material
+   architecture, migration, data-loss, security or runtime risk go to a visible
+   tournament. Record the decision as a `revise` or `add` REQ correction citing
+   its evidence before releasing the hold. Clarification is not another mutable
+   implementation wave. Requested parallel research does not authorize parallel
+   implementation or early delivery.
+3. After all in-scope cases are code ready, run two independent read-only
+   sidebar reviews of the complete implementation against the governing
+   acceptance and design by default.
+   Preserve the owner's requested review count, coverage split and host routing.
+   Without owner settings, split coverage between acceptance conformance and design/risk, give
+   both reviewers the same frozen revision, keep each unaware of the other's
+   verdict, and prefer model families other than the implementer's when the host
+   offers model choice (`review.crossFamily` enforces this when configured).
+   Trivial edits and mechanical changes fully proven by deterministic evidence
+   need no semantic review unless the owner or risk policy requires it.
+   Required checks and higher review floors remain mandatory.
+   Triage findings against the original owner asks: record each accepted finding
+   that changes expected behavior as a `revise` or `add` REQ correction and
+   reject the rest with a reason. Route accepted fixes to fresh implementer
+   sidebar sessions grouped by owned area, never to the reviewers; the
+   coordinator may apply a one-line fix directly. Address findings, rerun
+   affected checks and refresh affected review evidence before authorized
+   deployment: the original reviewers re-check only the affected findings.
+   After two fix rounds that leave serious findings open, stop and bring the
+   exact conflict to the owner instead of starting another round. Verify the actual requested target after
+   deployment. Review routing, deployment stack and destination are task-specific, not universal
+   defaults; this loop does not authorize an unrequested deployment.
+
+Unresolved specifications or missing implementation block Code ready and cannot
+be silently omitted from final review. Written implementation may be Code ready
+while qualification or permission holds remain. Such holds stay attached to their
+exact dependent operation and acceptance criterion and still block dependent
+deployment or delivery acceptance; they do not prevent independent source review.
+Code ready does not grant permission or prove acceptance. Only an explicit owner
+scope correction can remove an in-scope case.
+Preserve the current case, its next action, held cases and resolving children,
+remaining cases, and final review/delivery phase in the existing task state and
+Handoff. At every resumption, recover that loop from current source, owner
+corrections and observed results, not just the latest assistant summary. Continue
+the next authorized action; a progress reply does not terminate the loop.
+
+Basis and limits: [Anthropic's long-running-agent guidance](https://www.anthropic.com/research/effective-harnesses-for-long-running-agents)
+supports incremental work and recoverable progress;
+[Google's small-change guidance](https://google.github.io/eng-practices/review/developer/small-cls.html)
+supports self-contained changes and continuing independent work;
+[GitHub's instruction guidance](https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/add-custom-instructions/add-repository-instructions#custom-instructions-in-use)
+warns against conflicting instructions. These sources do not prescribe this
+repository's Code ready label or final-review order. Existing instruction/process
+checks do not establish live-agent adherence: assess actual actions and outcomes,
+not just matching prose ([Google's behavioral-evaluation guidance](https://developers.googleblog.com/the-anatomy-of-harness-engineering-how-to-evaluate-iterate-and-guard-ai-coding-agents/)).
+No new progress file or harness follows from these examples; the two-review
+default comes from the owner's direction, not from these sources.
+
 ## Specifications
 
 The requirements file is a contract for the owner's requested outcomes, not
@@ -89,15 +171,16 @@ No second spec ledger, mandatory planning document or keyword quality score.
 
 ## Delegation
 
-Before a non-trivial multi-part task, identify independent deliverables and
+Within the owner's loop, identify independent deliverables and
 whether they can advance concurrently without shared mutable files or a
-dependency between them. When the host exposes sidebar-session creation,
+dependency between them. Parallel implementation must follow the mandate, not
+replace a requested case-by-case cadence. When the host exposes sidebar-session creation,
 every lane and every independent review must be a coordinated, visible sidebar
 session; the owner should not have to ask, and a running lane row without a
 host session ID fails the `requirements` gate. Create one bounded session per
 deliverable, with exclusive mutable ownership, and integrate and verify the
-results in the parent. This makes useful parallel work visible instead of
-silently serializing it or hiding it in an ephemeral subagent.
+results in the parent. This keeps authorized parallel work visible instead of
+hiding it in an ephemeral subagent.
 
 Name the active transport (visible sidebar sessions or the native bridge) when
 the program or lane table starts, and keep one authoritative owner and result
@@ -222,7 +305,10 @@ references; they do not duplicate transcripts or repository content.
 After requirements exist, rehydrate a task slice, not the whole ledger on every
 turn: selected full acceptance rows, necessary dependency rows, applicable
 correction chains, explicit global rules and unresolved potentially relevant
-restrictions, plus the existing Next/Failed approaches/Verify. Native packets
+restrictions, plus the existing Next/Failed approaches/Verify. Retain the
+Development loop's current case and final review/delivery phase in that same
+working set; a returned research answer does not advance the whole feature's
+phase or clear other cases' holds. Native packets
 already use `requirements_context(task)`; direct sessions retrieve the same
 bounded sources. Re-read changed rows and referenced code just in time.
 
@@ -323,7 +409,9 @@ not the three visible task-progress states: Not started, Started and Code ready.
 Finish every feature's code before the combined final review; do not make an
 individual review a prerequisite for Code ready. Record the final review as
 `review: <reviewer session UUID> <verdict>` on its REQs or use the declared
-aggregate delivery review. `requirements --done` checks the final review,
+aggregate delivery review. With two final reviewers, record both notes; the gate
+checks only the latest note, so confirm both final verdicts are PASS before
+completion. `requirements --done` checks the final review,
 not an intermediate code-progress update; where local session logs
 exist it counts a PASS only when that session's log shows a reviewer kickoff role ending in
 that verdict. Start the reviewer's report with a `Verdict:` line and use a fresh reviewer session for each
@@ -645,8 +733,9 @@ instructions. No blanket permission for arbitrary repositories or identities.
 
 Use a tournament only when viable options genuinely differ on material
 architecture/dependency, migration, data-loss, security or infrastructure/runtime
-risk, or when a recurring failure needs a discriminating recovery; it is not a
-prerequisite for routine bounded work. Bind its result to that decision; one
+risk, including held specification interpretations that differ on those risks,
+or when a recurring failure needs a discriminating recovery; it is not a
+prerequisite for routine bounded work or a substitute for an owner-intent decision. Bind its result to that decision; one
 allowance per decision survives retries, and rewording a failure does not renew it.
 
 The existing `effort: low|default|high` signal is optional. It is not a model

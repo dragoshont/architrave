@@ -100,6 +100,19 @@ handover for continuing on another machine is #39. See the
 
 ## Spec-driven workflow
 
+Development follows the [case-by-case loop](knowledge/execution-policy.md#development-loop):
+acceptance/design, implementation, focused checks and authorized scoped commit.
+Material specification ambiguity stays held for sidebar research while
+independent cases continue; a sourced, owner or tournament decision is recorded
+as a REQ correction before release.
+All in-scope cases must be code ready before two independent final sidebar
+reviews by default; accepted findings become REQ corrections routed to fresh
+implementers and are resolved before authorized deployment. Recover that phase after interruptions.
+Code ready records written implementation, not successful runtime qualification.
+Permission and qualification holds still block their dependent operations and
+delivery acceptance, not independent source review.
+Review routing and deployment technology come from the task, not a global default.
+
 1. **Specify.** The request becomes REQ rows in `SPEC.md`: id, requirement,
    testable acceptance, owner, status. A bounded task needs one to three rows;
    read-only questions and one-line edits are exempt.
@@ -107,12 +120,13 @@ handover for continuing on another machine is #39. See the
    their REQ ids. When you change your mind, the change is recorded as a typed
    correction row (`add`, `revise`, `retract`, `supersede`, `narrow`) before the
    agent acts on it, so it survives context compaction and session restarts.
-3. **Finish the code, then review.** Task statuses are **Not started**,
+3. **Finish the code, then perform required review.** Task statuses are **Not started**,
    **Started** and **Code ready**. Mark a feature Code ready when its
-   implementation is finished, without waiting for review. Review the complete
-   feature set together only after all feature code is ready, not feature by
-   feature. `python gates/gate_runner.py requirements --done` checks the final
-   evidence and review; Code ready alone does not pass that check.
+   implementation is finished, without waiting for review. When the owner or risk
+   policy requires review, review the complete feature set together only after all
+   feature code is ready, not feature by feature.
+   `python gates/gate_runner.py requirements --done` checks the final evidence
+   and review; Code ready alone does not pass that check.
 4. **Hand off.** The `## Handoff` note (Next, Failed approaches, Verify) lets a
    fresh session resume in minutes without retrying dead ends.
 
