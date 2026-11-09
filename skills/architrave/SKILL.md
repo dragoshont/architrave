@@ -1,6 +1,6 @@
 ---
 name: architrave
-description: "Spec-driven supervision for non-trivial repository changes: testable requirements, direct work or bounded children, and risk-scaled verification. Not for one-line edits or read-only questions."
+description: "Task-driven repository development, bounded delegation and risk-scaled verification."
 ---
 
 Resolve the plugin root from this skill's reported directory (`../..`), not cwd
@@ -9,12 +9,13 @@ contract is already loaded. It is the canonical lead contract; do not load both
 plugin and adopted copies. Repository instructions and the user's mandate apply.
 Use the lead's **Development loop** and restore its phase after interruptions.
 
-Work is spec-driven: record owner outcomes as REQs with observable acceptance in config `requirements`
-(else `SPEC.md`); finish with accepted evidence. Follow **Specifications** in
-`knowledge/execution-policy.md`.
+Track requests, corrections and progress in `tasks.md`; statuses are blank,
+`In progress`, or `Code ready`. Do not create SPEC.md, REQ rows or delivery
+declarations. Legacy requirements/Run operations are explicit opt-in, not
+completion prerequisites.
 
-Declare scope and open and read one scoped program board before implementation
-(`docs/program-board.md`), including direct work. Assigned
+Open and read one tasks board when available (`docs/program-board.md`), including
+direct work; unavailable boards are not approval gates. Assigned
 children/reviewers reuse their parent's scope.
 
 Never add an approval stage or re-ask to proceed with authorized work unless

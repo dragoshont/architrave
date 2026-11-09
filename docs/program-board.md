@@ -1,5 +1,33 @@
 # Program board
 
+## Current task workflow
+
+The board reads `tasks.md` and its `Task | Status` table. Blank statuses are
+Not started, In progress is blue and Code ready is green. Code ready records
+written implementation, not verified delivery or permission to deploy.
+The working-tree task file is authoritative even when an old SPEC.md is present.
+The board shows its filename and SHA256, and refreshes from the same file.
+Missing tasks.md or invalid statuses are reported explicitly; it does not
+silently fall back to a historical SPEC. A failed refresh preserves the last
+valid snapshot.
+
+```text
+python "<kit-root>\harness\program_board.py" --ledger "<repo-root>" --session <session-uuid> --watch 120 --title "Session work"
+```
+
+No REQ selection, delivery declaration or completion barrier is required.
+Open the resulting HTML in the host browser and read it. If that capability is
+unavailable, report the limitation and continue independently authorized work.
+Do not fabricate observations or turn a board into an approval stage.
+Read-only/trivial work and assigned children need no recursive board.
+Existing watcher locking, session history and cost/context observations remain;
+reuse the board rather than starting duplicate watchers.
+
+The command retains explicit `--reqs`/`--all-reqs` compatibility for legacy
+requirements-only repositories. They never override an existing tasks.md.
+The rest of this document describes that optional legacy view and its historical
+evidence protocol, not prerequisites for the current tasks workflow.
+
 A one-page view of scoped work for the browser canvas. It answers
 "what is running, what is done, and what did it cost" without a second state
 store. Startup applies to every non-trivial task, including direct work in a

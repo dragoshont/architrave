@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Copilot startup context, advisory loop detection and declared completion check."""
+"""Copilot startup guidance and advisory loop detection."""
 from __future__ import annotations
 
 import argparse
@@ -26,27 +26,15 @@ def bootstrap_context() -> str:
         "hold unclear specifications for sidebar research; continue independent cases. "
         "Code ready means written implementation; qualification/permission holds block dependent operations. "
         "All code ready before two independent final reviews by default; route accepted findings "
-        "as REQ corrections to fresh implementers; resolve before authorized deployment. "
+        "as task corrections to fresh implementers; resolve before authorized deployment. "
         "Restore case/phase after resume; stop unchanged rereads and take the next authorized action or state the exact hold. "
-        "Before non-trivial implementation: record REQs against original owner messages/references; "
-        "declare scope per docs/program-board.md; open/read ONE scoped board in the host browser canvas. "
+        "Track owner requests, corrections and progress in tasks.md, not SPEC.md or delivery declarations. "
+        "Open/read tasks board when available; boards are not approval gates. "
         "Report unavailable/denied capability. "
-        "Read-only/trivial work needs no declaration, board or sidebar; assigned workers/reviewers reuse parent scope. "
+        "Read-only/trivial work needs no board or sidebar; assigned workers/reviewers reuse parent scope. "
         "No unrequested fakes or feature/integration flags. "
         "Never invent prerequisites; respect scoped grants, stops, host permissions and the owner's selected mode."
     )
-
-
-def _deny(reason: str) -> dict[str, str]:
-    return {"permissionDecision": "deny", "permissionDecisionReason": reason}
-
-
-def _failure(step: str, error: Exception) -> dict[str, str]:
-    # Exception messages can contain input or credentials; retain operation/type.
-    detail = type(error).__name__
-    if isinstance(error, OSError) and error.errno is not None:
-        detail += f", errno {error.errno}"
-    return _deny(f"Architrave {step} failed ({detail}); delivery acceptance is unverified.")
 
 
 def _field(payload: dict[str, object], camel: str, snake: str) -> object:
@@ -56,8 +44,6 @@ def _field(payload: dict[str, object], camel: str, snake: str) -> object:
 
 
 def _report_path(session: str) -> Path:
-    # Match gate.session_home() before importing the delivery checker: an import
-    # failure must not hide an existing declaration or affect an absent one.
     home = Path(os.environ.get("COPILOT_HOME", Path.home() / ".copilot"))
     return home / "session-state" / session / "files" / "architrave-delivery.json"
 
@@ -239,56 +225,7 @@ def pre_tool_use(
     *,
     checker: Callable[[Path, str], list[str]] | None = None,
 ) -> dict[str, str]:
-    tools = [payload[key] for key in ("toolName", "tool_name") if key in payload]
-    if tools and "task_complete" not in tools:
-        return {}
-    try:
-        tool = _field(payload, "toolName", "tool_name")
-    except ValueError:
-        return _deny("Architrave completion input has conflicting toolName/tool_name fields.")
-    if tool != "task_complete":
-        return _deny("Architrave completion input is missing toolName/task_complete identity.")
-    try:
-        session = _field(payload, "sessionId", "session_id")
-        if not isinstance(session, str) or str(UUID(session)) != session.lower():
-            raise ValueError("Session identity must be a UUID")
-        session = session.lower()
-    except (ValueError, AttributeError):
-        return _deny("Architrave completion input has invalid or conflicting sessionId/session_id fields.")
-
-    try:
-        report = _report_path(session)
-        report.lstat()
-    except FileNotFoundError:
-        return {}
-    except (OSError, ValueError) as error:
-        return _failure("delivery declaration lookup", error)
-
-    cwd = payload.get("cwd")
-    if not isinstance(cwd, str) or not cwd or not Path(cwd).is_absolute():
-        return _deny("Architrave declared completion requires an absolute cwd for delivery verification.")
-    try:
-        root = Path(cwd).resolve()
-        if checker is None:
-            from delivery_check import check_session, session_report_path
-
-            if session_report_path(session) != report:
-                return _deny("Architrave delivery checker and hook disagree on the session report path.")
-            arguments = _field(payload, "toolArgs", "tool_input")
-            if isinstance(arguments, str):
-                arguments = json.loads(arguments)
-            summary = arguments.get("summary") if isinstance(arguments, dict) else None
-            errors = check_session(root, session, completion_hook=True, completion_summary=summary)
-        else:
-            errors = checker(root, session)
-        if not isinstance(errors, list) or any(
-            not isinstance(error, str) or not error.strip() for error in errors
-        ):
-            return _deny("Architrave delivery checker returned an invalid error list; acceptance is unverified.")
-    except (ImportError, OSError, ValueError, TypeError, RuntimeError, KeyError, AttributeError) as error:
-        return _failure("delivery checker", error)
-    if errors:
-        return _deny("Architrave delivery is not accepted:\n" + "\n".join(errors))
+    """Compatibility no-op for sessions retaining the retired completion hook."""
     return {}
 
 
@@ -302,18 +239,21 @@ def main() -> int:
         raw = sys.stdin.read()
         if args.event == "session-start":
             result = {"additionalContext": bootstrap_context()}
+        elif args.event == "pre-tool-use":
+            # Retained sessions still invoke this retired SPEC completion hook.
+            result = {}
         else:
             payload = json.loads(raw)
             if not isinstance(payload, dict):
                 raise ValueError("Hook input must be an object")
-            result = post_tool_use(payload) if args.event == "post-tool-use" else pre_tool_use(payload)
+            result = post_tool_use(payload)
     except (ValueError, UnicodeError, OSError) as error:
         if args.event == "session-start":
             result = {"additionalContext": f"Architrave startup input failed ({type(error).__name__}); report this limitation."}
         elif args.event == "post-tool-use":
             result = _loop_failure(error)
         else:
-            result = _failure("completion input", error)
+            result = {}
     print(json.dumps(result, ensure_ascii=True))
     return 0
 

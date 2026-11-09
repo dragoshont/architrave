@@ -132,8 +132,8 @@ class QualityCadenceTests(unittest.TestCase):
 
     def test_scoped_session_hooks_do_not_restore_quality_polling(self):
         hooks = json.loads((ROOT / "hooks.json").read_text(encoding="utf-8"))["hooks"]
-        self.assertEqual({"sessionStart", "preToolUse", "postToolUse"}, set(hooks))
-        self.assertEqual("^task_complete$", hooks["preToolUse"][0]["matcher"])
+        self.assertEqual({"sessionStart", "postToolUse"}, set(hooks))
+        self.assertNotIn("preToolUse", hooks)
         for entries in hooks.values():
             for entry in entries:
                 self.assertEqual("command", entry["type"])
@@ -141,8 +141,8 @@ class QualityCadenceTests(unittest.TestCase):
                     self.assertIn("session_guard.py", command)
                     self.assertNotIn("quality-gate", command)
         docs = (ROOT / "docs" / "quality-check-cadence.md").read_text(encoding="utf-8")
-        self.assertIn("command timeouts fail open", docs)
-        self.assertIn("not complete enforcement", docs)
+        self.assertIn("completion barrier is retired", docs)
+        self.assertIn("normal host permissions", docs)
         self.assertIn("not Claude compatibility", docs.replace("\n", " "))
 
     def test_agent_skill_cadence_and_local_coverage_are_explicit(self):

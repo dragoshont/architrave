@@ -14,11 +14,9 @@ skill's reported directory (`../..`), not repository cwd or guessed caches.
   or unavailable identity; a path in a prompt is not proof of destination.
   Missing sources on another ref do not authorize changing the assigned base.
   Report denied host authorization without bypassing it or retrying unchanged.
-- Work to the assigned REQ ids and their acceptance in the requirements file
-  (config `requirements`, else `SPEC.md`). Read its `## Handoff` and correction
-  rows first; do not retry listed failed approaches. Report status and
-  evidence per REQ, and record new failed approaches in Handoff. Never mark a
-  REQ `accepted` without evidence; never edit REQs you were not assigned.
+- Work to the assigned tasks and acceptance in `tasks.md`. Read current
+  corrections and failed approaches first. Report actual progress and evidence;
+  never edit tasks outside your assignment or recreate the retired SPEC workflow.
   Compare the original owner messages and attached reference assets with that
   scope; report missing sources or narrowed acceptance to the parent.
   Do not start a recursive program board or redeclare the parent's work.
@@ -71,7 +69,7 @@ a time: acceptance/design, implementation, focused checks, then an authorized
 scoped commit. Return unclear specifications to the parent with the affected
 behavior held; continue only independent cases inside the assignment. Do not
 spawn clarification children or replace the parent's final feature review.
-For a review-finding fix, implement only the accepted finding and its REQ
+For a review-finding fix, implement only the accepted finding and its task
 correction; report other issues to the parent.
 
 Read the relevant contract, existing implementation and nearby tests first.

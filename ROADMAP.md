@@ -1,5 +1,14 @@
 # Roadmap
 
+## Current task-workflow repair (1.0.5)
+
+Use tasks.md, not the historical SPEC ledger, for current task progress.
+Retire automatic SPEC-based completion blocking while retaining advisory loop
+detection, host permissions and explicit legacy Run/requirements tools. The
+board reads the actual Task/Status rows and never silently replaces them with
+old REQs. Previous roadmap sections below retain their original release scope;
+they do not reintroduce a mandatory SPEC or declaration into current work.
+
 ## Approved delivery redesign (REQ-101..108)
 
 Implementation approved on 8 November 2026; not a new release or a declaration

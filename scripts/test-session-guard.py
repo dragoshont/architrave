@@ -216,11 +216,6 @@ class SessionGuardTests(unittest.TestCase):
         self.assertIn("loop monitoring unavailable (TimeoutError)", result["additionalContext"])
         self.assertFalse(self.report.with_name("architrave-loop.json").exists())
 
-    def assert_denied(self, result):
-        self.assertEqual({"permissionDecision", "permissionDecisionReason"}, set(result))
-        self.assertEqual("deny", result["permissionDecision"])
-        self.assertTrue(result["permissionDecisionReason"].strip())
-
     def test_start_is_compact_path_bound_context_only(self):
         for payload in (
             {"sessionId": self.session, "cwd": str(ROOT), "source": "startup",
@@ -239,14 +234,14 @@ class SessionGuardTests(unittest.TestCase):
             self.assertIn("Code ready means written implementation", context)
             self.assertIn("qualification/permission holds block dependent operations", context)
             self.assertIn("All code ready before two independent final reviews by default", context)
-            self.assertIn("route accepted findings as REQ corrections to fresh implementers", context)
+            self.assertIn("route accepted findings as task corrections to fresh implementers", context)
             self.assertIn("resolve before authorized deployment", context)
             self.assertIn("Never invent prerequisites; respect scoped grants, stops, host permissions and the owner's selected mode", context)
-            self.assertIn("declare scope per docs/program-board.md", context)
+            self.assertIn("Track owner requests, corrections and progress in tasks.md", context)
+            self.assertIn("not SPEC.md or delivery declarations", context)
             self.assertIn("Restore case/phase after resume; stop unchanged rereads and take the next authorized action or state the exact hold", context)
-            self.assertLess(context.index("Development loop:"), context.index("Before non-trivial implementation:"))
             self.assertIn("Read-only/trivial", context)
-            self.assertIn("work needs no declaration, board or sidebar", context)
+            self.assertIn("work needs no board or sidebar", context)
             self.assertIn("assigned workers/reviewers", context)
             self.assertNotIn("PRIVATE_PROMPT_MUST_NOT_BE_ECHOED", context)
         self.assertEqual([], list(self.home.iterdir()))
@@ -266,7 +261,7 @@ class SessionGuardTests(unittest.TestCase):
                 **self.payload, "toolName": tool,
             }))
 
-    def test_real_checker_rejects_incomplete_and_malformed_declarations(self):
+    def test_retired_completion_command_does_not_consult_declarations(self):
         from delivery_check import check_session, session_report_path
 
         self.assertEqual(self.report, session_report_path(self.session))
@@ -279,8 +274,7 @@ class SessionGuardTests(unittest.TestCase):
         ):
             with self.subTest(content=content):
                 self.write_report(content)
-                errors = check_session(ROOT, self.session)
-                self.assertTrue(errors)
+                self.assertTrue(check_session(ROOT, self.session))
                 before = self.report.read_bytes()
                 for payload in (
                     self.payload,
@@ -288,20 +282,17 @@ class SessionGuardTests(unittest.TestCase):
                      "tool_name": "task_complete", "tool_input": {}},
                 ):
                     result = self.invoke("pre-tool-use", payload)
-                    self.assert_denied(result)
-                    for error in errors:
-                        self.assertIn(error, result["permissionDecisionReason"])
+                    self.assertEqual({}, result)
                 self.assertEqual(before, self.report.read_bytes())
 
-    def test_unreadable_report_shape_and_missing_active_cwd_deny(self):
+    def test_retired_completion_command_ignores_missing_cwd_and_unreadable_old_report(self):
         self.report.mkdir(parents=True)
-        self.assert_denied(self.invoke("pre-tool-use", self.payload))
-        self.assert_denied(self.invoke("pre-tool-use", {
+        self.assertEqual({}, self.invoke("pre-tool-use", self.payload))
+        self.assertEqual({}, self.invoke("pre-tool-use", {
             "sessionId": self.session, "toolName": "task_complete",
         }))
 
-    def test_adapter_only_explicit_checker_results_never_grant_permission(self):
-        # These results exercise decision mapping only, not delivery verification.
+    def test_retired_adapter_never_invokes_an_old_checker(self):
         self.write_report('{"schema":"architrave.delivery.v1","state":"prepared"}')
         calls = []
 
@@ -310,14 +301,13 @@ class SessionGuardTests(unittest.TestCase):
             return []
 
         self.assertEqual({}, guard.pre_tool_use(self.payload, checker=accepted))
-        self.assertEqual([(ROOT, self.session)], calls)
+        self.assertEqual([], calls)
         result = guard.pre_tool_use(
             self.payload, checker=lambda root, session: ["Required board observation is missing"],
         )
-        self.assert_denied(result)
-        self.assertIn("Required board observation is missing", result["permissionDecisionReason"])
+        self.assertEqual({}, result)
 
-    def test_adapter_only_checker_failures_are_denied_without_logging_inputs(self):
+    def test_retired_adapter_does_not_import_or_run_failing_checkers(self):
         def missing_checker(root, session):
             raise ImportError("DO_NOT_LOG")
 
@@ -328,25 +318,24 @@ class SessionGuardTests(unittest.TestCase):
                 raise error
 
             result = guard.pre_tool_use(self.payload, checker=failed)
-            self.assert_denied(result)
-            self.assertIn(type(error).__name__, result["permissionDecisionReason"])
+            self.assertEqual({}, result)
             self.assertNotIn("DO_NOT_LOG", json.dumps(result))
         for invalid in (None, False, "", [None], [""]):
             result = guard.pre_tool_use(
                 self.payload, checker=lambda root, session: invalid,
             )
-            self.assert_denied(result)
+            self.assertEqual({}, result)
 
-    def test_malformed_completion_identity_cannot_escape_scope(self):
+    def test_retired_command_never_accesses_any_scope(self):
         for session in ("../another-session", "", None):
-            self.assert_denied(self.invoke("pre-tool-use", {
+            self.assertEqual({}, self.invoke("pre-tool-use", {
                 **self.payload, "sessionId": session,
             }))
         self.write_report("{invalid")
-        self.assert_denied(self.invoke("pre-tool-use", {
+        self.assertEqual({}, self.invoke("pre-tool-use", {
             **self.payload, "session_id": str(uuid4()),
         }))
-        self.assert_denied(self.invoke("pre-tool-use", {
+        self.assertEqual({}, self.invoke("pre-tool-use", {
             **self.payload, "tool_name": "view",
         }))
 
@@ -355,9 +344,9 @@ class SessionGuardTests(unittest.TestCase):
         self.assertEqual("hooks.json", manifest["hooks"])
         hooks = json.loads((ROOT / manifest["hooks"]).read_text(encoding="utf-8"))
         self.assertEqual(1, hooks["version"])
-        self.assertEqual({"sessionStart", "preToolUse", "postToolUse"}, set(hooks["hooks"]))
+        self.assertEqual({"sessionStart", "postToolUse"}, set(hooks["hooks"]))
         for event, command in (
-            ("sessionStart", "session-start"), ("preToolUse", "pre-tool-use"),
+            ("sessionStart", "session-start"),
             ("postToolUse", "post-tool-use"),
         ):
             entries = hooks["hooks"][event]
@@ -370,10 +359,7 @@ class SessionGuardTests(unittest.TestCase):
             self.assertIn('"${PLUGIN_ROOT}\\gates\\session_guard.py" ' + command, entry["powershell"])
             self.assertLessEqual(entry["timeoutSec"], 30)
             self.assertFalse({"env", "cwd", "prompt", "exec"} & set(entry))
-        matcher = hooks["hooks"]["preToolUse"][0]["matcher"]
-        self.assertTrue(re.fullmatch(matcher, "task_complete"))
-        for tool in ("task", "view", "powershell", "not_task_complete", "task_complete_extra"):
-            self.assertIsNone(re.fullmatch(matcher, tool))
+        self.assertNotIn("preToolUse", hooks["hooks"])
         matcher = hooks["hooks"]["postToolUse"][0]["matcher"]
         for tool in ("view", "rg", "grep", "glob", "web_fetch", "web_search",
                      "semantic_code_search", "read_file", "functions.view"):

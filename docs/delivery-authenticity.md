@@ -1,5 +1,10 @@
 # Delivery authenticity
 
+The current task workflow uses `tasks.md`. The SPEC/REQ completion barrier is
+retired; startup guidance and advisory loop detection remain. The commands below
+are legacy explicit opt-in checks, not prerequisites to close an ordinary turn.
+Retained pre-tool-use handlers leave old declarations untouched and return `{}`.
+
 The owner's requested outcome is the acceptance target. Working UI, storage or
 orchestration is not evidence that an unexecuted provider worked. A test-only
 label, an earlier result or a narrower agent-written requirement cannot replace

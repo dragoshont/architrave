@@ -30,6 +30,54 @@ def events(path: Path, rows: list[dict]) -> None:
 
 
 class ProgramBoard(unittest.TestCase):
+    def test_tasks_are_authoritative_without_requirements_or_scope_flags(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Path(tmp)
+            (ledger / "tasks.md").write_text(
+                "# Tasks\n\nFeature ready:\n\n| Task | Status |\n| --- | --- |\n"
+                "| First & <task> | |\n| Implement behavior | In progress |\n"
+                "| Existing code | Code ready |\n", encoding="utf-8")
+            output = ledger / "board.html"
+            command = [sys.executable, str(ROOT / "harness/program_board.py"),
+                       "--ledger", str(ledger), "--session", COORD, "--output", str(output)]
+            env = dict(os.environ, COPILOT_HOME=str(ledger / "home"))
+            for stale_spec in (False, True):
+                if stale_spec:
+                    (ledger / "SPEC.md").write_text("Obsolete malformed ledger", encoding="utf-8")
+                result = subprocess.run(command, capture_output=True, text=True, env=env)
+                self.assertEqual(0, result.returncode, result.stderr)
+                page = output.read_text(encoding="utf-8")
+                self.assertIn("<b>1/3</b>", page)
+                self.assertIn("working-tree tasks.md", page)
+                self.assertIn("First &amp; &lt;task&gt;", page)
+                self.assertIn("In progress", page)
+                self.assertIn("<h2>Tasks</h2>", page)
+                self.assertNotIn("requirements --done", page)
+                self.assertNotIn("working-tree SPEC.md", page)
+                self.assertNotIn("Repository-wide requirements", page)
+            (ledger / "tasks.md").write_text(
+                "| Task | Status |\n| --- | --- |\n| New task | Code ready |\n", encoding="utf-8")
+            result = subprocess.run(command, capture_output=True, text=True, env=env)
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertIn("<b>1/1</b>", output.read_text(encoding="utf-8"))
+            (ledger / "tasks.md").write_text(
+                "| Task | Status |\n| --- | --- |\n| New task | approved-ish |\n", encoding="utf-8")
+            result = subprocess.run(command, capture_output=True, text=True, env=env)
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("unsupported task status", result.stderr)
+            self.assertIn("<b>1/1</b>", output.read_text(encoding="utf-8"))
+
+    def test_missing_tasks_do_not_silently_load_old_spec_by_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Path(tmp)
+            (ledger / "SPEC.md").write_text("Old requirements", encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "harness/program_board.py"), "--ledger", str(ledger),
+                 "--session", COORD, "--output", str(ledger / "board.html")],
+                capture_output=True, text=True)
+            self.assertEqual(2, result.returncode)
+            self.assertIn("tasks.md", result.stderr)
+
     def test_board_shows_lane_dots_children_and_metrics(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -423,8 +471,7 @@ class EvidenceAndSnapshots(unittest.TestCase):
                    "--session", COORD, "--output", str(self.base / "scoped.html")]
         missing = subprocess.run(command, capture_output=True, text=True)
         self.assertEqual(missing.returncode, 2)
-        self.assertIn("--reqs", missing.stderr)
-        self.assertIn("--all-reqs", missing.stderr)
+        self.assertIn("tasks.md", missing.stderr)
         for flags in (["--reqs", " , "], ["--reqs", "REQ-1", "--all-reqs"]):
             rejected = subprocess.run(command + flags, capture_output=True, text=True)
             self.assertEqual(rejected.returncode, 2, rejected.stderr)

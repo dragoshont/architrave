@@ -1,5 +1,12 @@
 # Feature evaluation rubric (the Evaluator)
 
+Current reviews compare the original owner requests, `tasks.md`, changed source
+and actual behavior. Do not demand SPEC/REQ rows or delivery declarations for
+the current task workflow, and do not resurrect the retired completion barrier.
+Legacy requirement-specific rules below apply only to explicitly selected
+requirements/Run operations. Actual safety, host permissions and evidence
+obligations remain binding.
+
 The criteria the **Adversarial Judge** applies to grade a *proposal* (pre‑implementation) or *implementation* (post‑implementation) against its specs and the established design language. It is the canonical rubric for the judge gates inside the **Architrave** harness. Platform‑agnostic: it is resolved per repo through `architrave.config.json` + the matching platform knowledge pack (`knowledge/apple.md` | `microsoft.md` | `web.md`, plus `knowledge/backend.md` for the backend / infra lane, `knowledge/operations-ux.md` for operational/admin product patterns, `knowledge/yagni.md` for minimum-sufficient-change discipline, and `knowledge/learning-loop.md` for durable memory/audit behavior).
 
 Grounded in modern eval practice:

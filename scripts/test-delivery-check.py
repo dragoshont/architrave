@@ -128,6 +128,11 @@ class DeliveryChecks(unittest.TestCase):
              "delivery-audit", "--repo", str(self.repo), "--session", SESSION, *args],
             capture_output=True, text=True, encoding="utf-8")
 
+    def legacy_completion_errors(self, payload):
+        return check.check_session(
+            Path(payload["cwd"]), payload["sessionId"], completion_hook=True,
+            completion_summary=payload["toolArgs"].get("summary"))
+
     def scoped(self):
         self.report["source_paths"] = ["provider.py"]
         self.report["audit"] = audit.scan(
@@ -378,15 +383,15 @@ class DeliveryChecks(unittest.TestCase):
         summary = check.terminal_summary(paused)
         payload = {"sessionId": SESSION, "cwd": str(self.repo), "toolName": "task_complete",
                    "toolArgs": {"summary": summary}}
-        self.assertEqual(session_guard.pre_tool_use(payload), {})
+        self.assertEqual(self.legacy_completion_errors(payload), [])
         payload["toolArgs"]["summary"] = "Everything delivered."
-        self.assertEqual(session_guard.pre_tool_use(payload)["permissionDecision"], "deny")
+        self.assertTrue(self.legacy_completion_errors(payload))
         self.assertTrue(check.check_session(self.repo, SESSION, allow_withdrawal=False))
         self.assertEqual(self.command("--check").returncode, 2)
         self.assertEqual(self.command("--seal").returncode, 2)
         (self.repo / "unrelated.py").write_text("unrelated = 1\n")
         payload["toolArgs"]["summary"] = summary
-        self.assertEqual(session_guard.pre_tool_use(payload), {})
+        self.assertEqual(self.legacy_completion_errors(payload), [])
         self.assertEqual(self.command("--resume").returncode, 0)
         self.assertEqual(check.read_json(check.session_report_path(SESSION))["state"], "prepared")
 
@@ -404,15 +409,15 @@ class DeliveryChecks(unittest.TestCase):
         self.log.append({"id": "reminder", "timestamp": "2026-01-03T10:00:00Z", "type": "user.message",
                          "data": {"content": "You have not yet marked the task as complete"}})
         self.write_log(SESSION, self.log)
-        self.assertEqual(session_guard.pre_tool_use(payload), {})
+        self.assertEqual(self.legacy_completion_errors(payload), [])
         self.assertNotEqual(self.requirements_command("--delivery-session", SESSION).returncode, 0)
         before = (self.repo / "provider.py").read_bytes()
         (self.repo / "provider.py").write_text("result = different.execute(request)\n")
-        self.assertEqual(session_guard.pre_tool_use(payload)["permissionDecision"], "deny")
+        self.assertTrue(self.legacy_completion_errors(payload))
         self.assertEqual(self.command("--resume").returncode, 2)
         (self.repo / "provider.py").write_bytes(before)
         self.proof.write_text("changed evidence")
-        self.assertEqual(session_guard.pre_tool_use(payload)["permissionDecision"], "deny")
+        self.assertTrue(self.legacy_completion_errors(payload))
 
     def test_cross_repository_handoff_allows_only_validated_non_delivery(self):
         import session_guard
@@ -429,7 +434,7 @@ class DeliveryChecks(unittest.TestCase):
         payload = {"sessionId": SESSION, "cwd": str(caller), "toolName": "task_complete",
                    "toolArgs": {"summary": check.terminal_summary(paused)}}
         before = check.session_report_path(SESSION).read_bytes()
-        self.assertEqual(session_guard.pre_tool_use(payload), {})
+        self.assertEqual(self.legacy_completion_errors(payload), [])
         self.assertEqual(check.session_report_path(SESSION).read_bytes(), before)
         self.assertTrue(check.check_session(caller, SESSION))
         self.assertTrue(check.check_session(self.repo, SESSION, allow_withdrawal=False))
@@ -440,13 +445,13 @@ class DeliveryChecks(unittest.TestCase):
             malformed = copy.deepcopy(paused)
             malformed[field] = value
             check.write_report(check.session_report_path(SESSION), malformed)
-            self.assertEqual(session_guard.pre_tool_use(payload)["permissionDecision"], "deny")
+            self.assertTrue(self.legacy_completion_errors(payload))
         check.write_report(check.session_report_path(SESSION), paused)
         payload["toolArgs"]["summary"] = "Everything delivered."
-        self.assertEqual(session_guard.pre_tool_use(payload)["permissionDecision"], "deny")
+        self.assertTrue(self.legacy_completion_errors(payload))
         payload["toolArgs"]["summary"] = check.terminal_summary(paused)
         (self.repo / "provider.py").write_text("result = different.execute(request)\n")
-        self.assertEqual(session_guard.pre_tool_use(payload)["permissionDecision"], "deny")
+        self.assertTrue(self.legacy_completion_errors(payload))
 
     def test_foreign_active_declaration_cannot_use_non_delivery_or_followup_to_escape(self):
         caller = self.root / "caller"
@@ -481,7 +486,7 @@ class DeliveryChecks(unittest.TestCase):
         terminal = {"type": "session.task_complete", "timestamp": completed_at.isoformat(),
                     "data": {"summary": "Unrelated task completion"}}
         self.write_log(SESSION, [*self.log, terminal])
-        self.assertEqual(session_guard.pre_tool_use(payload)["permissionDecision"], "deny")
+        self.assertTrue(self.legacy_completion_errors(payload))
         first_plain = self.root / "first-plain"
         first_plain.mkdir()
         self.assertEqual(check.check_session(first_plain, SESSION, completion_hook=True,
@@ -490,11 +495,11 @@ class DeliveryChecks(unittest.TestCase):
                                             completion_summary="The improvement plan has five areas."))
         terminal["data"]["summary"] = check.terminal_summary(paused)
         self.write_log(SESSION, [*self.log, terminal])
-        self.assertEqual(session_guard.pre_tool_use(payload), {})
+        self.assertEqual(self.legacy_completion_errors(payload), [])
         plain = self.root / "plain-folder"
         plain.mkdir()
         payload["cwd"] = str(plain)
-        self.assertEqual(session_guard.pre_tool_use(payload), {})
+        self.assertEqual(self.legacy_completion_errors(payload), [])
         payload["cwd"] = str(caller)
         for root in (self.repo, caller):
             payload["cwd"] = str(root)
@@ -516,7 +521,7 @@ class DeliveryChecks(unittest.TestCase):
         self.assertTrue(recovered.stdout.startswith(
             "Unrelated follow-up (prior scope remains NOT DELIVERED): "), recovered.stdout)
         payload["toolArgs"]["summary"] = recovered.stdout.strip()
-        self.assertEqual(session_guard.pre_tool_use(payload), {})
+        self.assertEqual(self.legacy_completion_errors(payload), [])
         self.assertEqual(path.read_bytes(), before)
         malformed_reports = []
         for field, value in (("owner_requests", []), ("reqs", []), ("repo", str(self.repo / "subdir"))):
@@ -528,20 +533,20 @@ class DeliveryChecks(unittest.TestCase):
         malformed_reports.append(missing_owners)
         for malformed in malformed_reports:
             check.write_report(check.session_report_path(SESSION), malformed)
-            self.assertEqual(session_guard.pre_tool_use(payload)["permissionDecision"], "deny")
+            self.assertTrue(self.legacy_completion_errors(payload))
             self.assertEqual(self.command("--completion-summary").returncode, 2)
         check.write_report(check.session_report_path(SESSION), paused)
         (self.repo / "provider.py").write_text("changed_by_another_writer()\n")
-        self.assertEqual(session_guard.pre_tool_use(payload), {})
+        self.assertEqual(self.legacy_completion_errors(payload), [])
         recovered = self.command("--completion-summary")
         self.assertEqual(recovered.returncode, 0, recovered.stderr)
         self.assertTrue(recovered.stdout.startswith(
             "Unrelated follow-up (prior scope remains NOT DELIVERED): "), recovered.stdout)
         payload["toolArgs"]["summary"] = "The improvement plan has five areas."
-        self.assertEqual(session_guard.pre_tool_use(payload), {})
+        self.assertEqual(self.legacy_completion_errors(payload), [])
         for summary in (None, "", "   "):
             payload["toolArgs"]["summary"] = summary
-            self.assertEqual(session_guard.pre_tool_use(payload)["permissionDecision"], "deny")
+            self.assertTrue(self.legacy_completion_errors(payload))
         payload["toolArgs"]["summary"] = "The improvement plan has five areas."
         for target in (self.repo / "provider.py", caller / "SPEC.md"):
             edit = {"type": "tool.execution_start",
@@ -549,7 +554,7 @@ class DeliveryChecks(unittest.TestCase):
                     "data": {"toolName": "apply_patch", "arguments":
                              f"*** Begin Patch\n*** Update File: {target}\n+x\n*** End Patch"}}
             self.write_log(SESSION, [*self.log, terminal, edit])
-            self.assertEqual(session_guard.pre_tool_use(payload)["permissionDecision"], "deny")
+            self.assertTrue(self.legacy_completion_errors(payload))
             recovered = subprocess.run(
                 [sys.executable, "-B", str(ROOT / "gates" / "gate_runner.py"),
                  "delivery-audit", "--completion-summary", "--repo", str(self.repo), "--session", SESSION],

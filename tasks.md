@@ -26,3 +26,6 @@ Feature ready:
 | Publish 1.0.4 and install it from the public release on this machine. | Code ready |
 | Remove superseded Architrave versions after affected sessions load the update. | In progress |
 | Install 1.0.4 for Codex from the public release and verify its release package. | Code ready |
+| Retire the obsolete SPEC/REQ completion barrier while retaining loop detection and host permissions. | Code ready |
+| Make the program board use tasks.md and its task statuses instead of requiring SPEC.md. | Code ready |
+| Review, publish and install the 1.0.5 task-workflow repair for Copilot and Codex. | In progress |

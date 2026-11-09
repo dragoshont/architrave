@@ -5,6 +5,19 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## 1.0.5 (2026-11-09)
+
+- Retire the obsolete SPEC/REQ completion hook. Retained pre-tool-use commands
+  are no-ops that neither read nor rewrite historical declarations, including
+  when the old requirements file has moved. Host permissions remain unchanged.
+- Use tasks.md for current task tracking in the lead, skills and startup
+  guidance. Do not recreate SPEC.md or introduce approval stages to close turns.
+- Make the program board read tasks.md by default, display its actual progress
+  and source identity, and prefer it over an old SPEC. Invalid task statuses
+  report an error without replacing the last good board.
+- Retain automatic read/search loop detection and explicit legacy Run/requirements
+  tools; they no longer run as an automatic completion barrier.
+
 ## 1.0.4 (2026-11-09)
 
 - Add automatic Copilot `postToolUse` repetition detection: four identical

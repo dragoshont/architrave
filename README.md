@@ -9,10 +9,14 @@ accountability from initial investigation to verified delivery. It runs as a
 plugin for Copilot, Claude Code, Codex and OpenCode, and uses the host's own
 sessions, tools and permissions rather than its own runtime.
 
-Everything lives in one committed requirements file (`SPEC.md` or the
-configured `requirements`), checked by one Python gate
-(`python gates/gate_runner.py requirements`). Simple tasks need only a few REQ
-rows; the extra tables below appear only for consequential work.
+Current work lives in **`tasks.md`**, with blank, **In progress** and **Code ready**
+statuses. Preserve the owner's requests and corrections and verify actual
+behavior. The program board reads tasks, not historical SPEC rows. The obsolete
+SPEC/REQ completion barrier is retired; automatic loop detection remains.
+Do not create a SPEC, delivery declaration or extra approval stage to close a turn.
+
+The requirements/Run tools below are retained for explicitly selected legacy
+workflows. They are not the current default or a `task_complete` prerequisite.
 
 | Stage | What the file records | What the gate enforces |
 |---|---|---|
@@ -51,6 +55,11 @@ Two lanes could not run: a turn started by another session cannot show the
 owner a permission prompt. Sustained parallel delivery across many children
 (REQ-30/36) is **not yet proven**. Validation for this delivery runs locally;
 releases are cut manually without enabling CI.
+
+**1.0.5.** Retires SPEC/REQ completion blocking, including a compatibility no-op
+for retained hook commands. The board reads tasks.md without requiring a SPEC or
+REQ selection, and the lead/skill follow that same task source. Historical
+evidence stays unchanged. Normal host permissions and owner stops still apply.
 
 **1.0.4.** A local Copilot hook automatically detects four identical
 read/search results within 24 observations and injects a corrective nudge.
@@ -179,10 +188,10 @@ instructions or the [optional repo profile](knowledge/learning-loop.md#repo-prof
 ## Delivery authenticity and default-session startup
 
 The Copilot plugin adds a small session-start pointer to Architrave, not a full
-crew of always-loaded instructions. Non-trivial work declares its REQs and
-original owner references, then starts one scoped program board and opens/reads
-it in the browser canvas before implementation. Read-only questions, trivial
-edits and assigned child reviewers do not create another coordinator.
+crew of always-loaded instructions. Current work is tracked in tasks.md; the
+tasks board shows its actual progress and is opened when available.
+Read-only questions, trivial edits and assigned child reviewers do not create
+another coordinator or require a declaration.
 Its read/search hook automatically nudges repeated unchanged investigation;
 it does not run quality checks after every tool or force continuation.
 
@@ -193,25 +202,24 @@ safety controls. Approved official local DTS/Azurite and publishing-time Azure
 endpoint/adapter selection remain valid; they do not authorize fake application
 results or establish cloud deployment.
 
-`delivery-audit` inventories source/config/launcher/test candidates, binds source
+The optional legacy `delivery-audit` inventories source/config/launcher/test candidates, binds source
 and contract identities to an explicit Git base, and retains original owner and
 visual-reference identities. Candidate words are not printed as values and do
 not automatically establish authorization. Review compares owner intent,
 requirements/docs, actual wiring, effective configuration and same-run
 provider/result evidence. Source-only, rendered and runtime claims stay separate.
 
-The existing requirements gate and a narrow Copilot `task_complete` hook verify
-declared work's source-bound evidence and digest-bound independent review.
-Missing/stale evidence, an unexecuted/disabled provider or old-result readback
-cannot accept a fresh integration. No full post-edit hook or stop-loop is added.
-The inventory is heuristic; a clean scan is not integration PASS. Hooks can be
-unavailable/disabled and host timeouts can fail open; writable logs are not
-tamper-proof. Declaration and semantic review remain essential.
+The SPEC/REQ `task_complete` barrier is retired. Old declarations are retained
+as historical evidence, not read or rewritten by retained completion commands.
+The optional legacy checks remain explicit tools, not automatic prerequisites.
+Missing evidence, a disabled provider or old-result readback still cannot
+establish a fresh integration: the agent must verify the requested behavior.
+No full post-edit quality hook, forced-continuation loop or permission bypass is
+added. The inventory is heuristic; a clean scan is not integration PASS.
 
 See [the workflow, commands and exact limits](docs/delivery-authenticity.md).
-The local session-evidence verifier and bootstrap hooks currently target
-Copilot's documented event format; other hosts retain explicit source/review
-checks rather than a claimed equivalent automatic completion barrier.
+The startup and advisory loop hooks target Copilot's documented event format;
+Codex/ChatGPT use the task guidance without a claimed equivalent loop detector.
 
 ![Workflow diagram: a request and repository context lead to direct work or up to three scoped child sessions, then integration, checks, and a result; a dashed deployment-only branch adds scoped approval and live verification](assets/workflow.svg)
 
@@ -447,7 +455,7 @@ Install Architrave in an agent client you already use.
 With **GitHub Copilot** (CLI, desktop app, or VS Code):
 
 ```bash
-copilot plugin marketplace add dragoshont/architrave#v1.0.4
+copilot plugin marketplace add dragoshont/architrave#v1.0.5
 copilot plugin install architrave@architrave
 ```
 
@@ -461,7 +469,7 @@ claude plugin install architrave@architrave
 With **Codex CLI**, pinned to the public release:
 
 ```bash
-codex plugin marketplace add dragoshont/architrave --ref v1.0.4
+codex plugin marketplace add dragoshont/architrave --ref v1.0.5
 codex plugin add architrave@architrave
 ```
 

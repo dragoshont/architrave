@@ -17,15 +17,6 @@
         "powershell": "python -B \"${PLUGIN_ROOT}\\gates\\session_guard.py\" post-tool-use",
         "timeoutSec": 5
       }
-    ],
-    "preToolUse": [
-      {
-        "type": "command",
-        "matcher": "^task_complete$",
-        "bash": "python3 -B \"${PLUGIN_ROOT}/gates/session_guard.py\" pre-tool-use",
-        "powershell": "python -B \"${PLUGIN_ROOT}\\gates\\session_guard.py\" pre-tool-use",
-        "timeoutSec": 30
-      }
     ]
   }
 }

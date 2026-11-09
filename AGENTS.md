@@ -1,9 +1,10 @@
 # AGENTS.md — Architrave
 
 Architrave is a **spec-driven, cross-platform, judge-gated durable software-build control plane**.
-Every non-trivial task starts as REQ rows with testable acceptance in the repository
-requirements file (config `requirements`, else `SPEC.md`); work traces to REQ ids and is
-done only when they are accepted with evidence. It covers
+The current task source is `tasks.md`, with blank, In progress and Code ready
+statuses. Preserve owner corrections and verify actual behavior; do not create
+SPEC/REQ declarations or use the retired completion barrier. Legacy Run and
+requirements commands remain explicit opt-in operations. It covers
 knowledge/automation, UI, backend, full-stack, plan-only infrastructure, optional
 runtime observation/verification, adaptive execution intent, and durable
 learning/audit artifacts. It is distributed as a Copilot / Claude / Codex /
@@ -14,8 +15,8 @@ defaults to deny; explicit Run policy may authorize a bounded target and operati
 
 ## What's here
 - `agents/` — fourteen optional roles: **Architrave**, **CTO**, **Product Research**, **Operations UX**, **UX Architect**, **UI Visual**, **Platform Design**, **Service Architect**, **Backend Planner**, **Backend Implementer**, **Infra Engineer**, **Runtime Observer**, **Tournament Analyst**, and **Adversarial Judge**. Shared `.agent.md` format across VS Code / Copilot CLI / the Copilot app / Claude Code; role availability is not a reason to spawn.
-- `SPEC.md` — Architrave's own requirements (dogfooded by `checks`).
-- `gates/` — deterministic gates in one Python CLI, `gate_runner.py` (`checks`, `reconcile`, `quality-gate`, `backend-checks`, `components`, `requirements`, `message-lint`, `delivery-audit`) + `rubric.md`. `hooks.json` supplies a compact Copilot session-start pointer, advisory repeated-read loop detection and a declared-work `task_complete` check; no automatic post-edit quality or stop-loop hooks.
+- `tasks.md` — current task tracking. `SPEC.md` retains historical requirements.
+- `gates/` — deterministic optional gates in `gate_runner.py` + `rubric.md`. `hooks.json` supplies a compact Copilot session-start pointer and advisory repeated-read loop detection; the SPEC-based completion barrier is retired. No automatic post-edit quality or stop-loop hooks.
 - `harness/` — durable run-artifact helpers (`init-run`, `validate-run`, `semantic-review`, semantic learning review/recovery) as `architrave_cli.py` subcommands plus schemas, and the Python Run v2 state machine, worker/workspace adapters, invariants, product legibility, and v1/v2 validation.
 - `knowledge/` — platform packs (`apple.md`, `microsoft.md`, `web.md`) + `backend.md` + `operations-ux.md` + `design-tokens.md` + `execution-policy.md` + `learning-loop.md` + `yagni.md` + `runtime-v2.md` for durable control-plane semantics.
 - `kit/` — `architrave.config.schema.json` (the per-repo config keystone) + `examples/`.

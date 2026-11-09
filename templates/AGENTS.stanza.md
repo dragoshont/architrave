@@ -10,19 +10,18 @@ instructions without claiming adoption.
 Read-only questions and trivial edits need no board or sidebar.
 
 Development loop: one case, acceptance/design, focused checks, authorized commit;
-hold unclear specifications until a sidebar-researched REQ decision; all code
-ready, then two independent reviews; fix findings via REQ corrections before
+hold unclear specifications until a sidebar-researched task decision; all code
+ready, then two independent reviews; fix findings via task corrections before
 authorized deployment; restore case/phase after interruptions.
 
-Spec-driven: record requests and owner corrections as REQ rows with observable
-acceptance in configured requirements (else `SPEC.md`) before non-trivial work.
-Follow **Specifications** in `knowledge/execution-policy.md`: preserve owner-goal
-coverage and observable behavior.
-Before non-trivial implementation, including direct work, declare scope and
-open/read one scoped program board (`docs/program-board.md`).
-Report unavailable/denied canvas; children/reviewers reuse parent scope.
+Track requests, corrections and progress in `tasks.md`; preserve owner-goal
+coverage and observable acceptance. Statuses are blank, In progress and Code ready.
+Do not create SPEC.md, REQ rows or delivery declarations for routine work.
+Open/read one tasks board when available (`docs/program-board.md`).
+Report unavailable/denied canvas without blocking independent authorized work;
+children/reviewers reuse parent scope.
 Build behavior first; show evidence.
 Host permissions and scoped grants/holds remain binding; infrastructure/runtime
 mutation defaults to deny. Preserve secrets and uncertain-side-effect recovery.
-Copilot hooks bootstrap, nudge repeated-read loops and check declared completion;
+Copilot hooks bootstrap and nudge repeated-read loops; completion is not gated by SPEC.
 no automatic PostToolUse quality hooks.

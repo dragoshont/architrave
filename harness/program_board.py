@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Program board: one standalone HTML view of a coordinated program.
 
-Usage: python harness/program_board.py --ledger <dir with SPEC.md> --reqs REQ-1,REQ-2 --session <coordinator-session-id> --output <file.html>
+Usage: python harness/program_board.py --ledger <dir with tasks.md> --session <coordinator-session-id> --output <file.html>
 
 Reads working-tree ledger tables (REQs, lanes) and the host's local session logs
 (~/.copilot/session-state/<id>/events.jsonl) for the coordinator and the child
@@ -304,16 +304,38 @@ def repository_name(path: Path) -> str:
     return match[1].strip("/").removesuffix(".git") if match else path.name
 
 
+def task_rows(text: str) -> dict:
+    rows = gate.ledger_table(text, ("task", "status"), ("task", "status"))
+    statuses = {"": "not started", "not started": "not started",
+                "in progress": "started", "started": "started", "code ready": "code ready"}
+    tasks = {}
+    for index, row in enumerate(rows, 1):
+        status = row["status"].strip().strip("*").lower()
+        if status not in statuses:
+            raise ValueError(f"unsupported task status in tasks.md row {index}: {row['status']}")
+        if not row["task"].strip():
+            raise ValueError(f"empty task in tasks.md row {index}")
+        tasks[f"TASK-{index}"] = {"requirement": row["task"], "status": statuses[status],
+                                 "evidence": "", "owner": ""}
+    if not tasks and not re.search(r"\|\s*Task\s*\|\s*Status\s*\|", text, re.I):
+        raise ValueError("tasks.md needs a Task | Status table")
+    return tasks
+
+
 def build(ledger: Path, coordinator: str, selected: list[str] | None = None, title: str | None = None) -> dict:
-    path = ledger / "SPEC.md"
+    task_mode = (ledger / "tasks.md").is_file()
+    path = ledger / ("tasks.md" if task_mode else "SPEC.md")
     source_bytes = path.read_bytes()
     text = source_bytes.decode("utf-8-sig")
-    reqs, _corrections, errors = gate.parse_requirements(text)
-    lanes = gate.ledger_table(text, ("lane", "repo", "project id"), gate.LANE_COLUMNS)
     config = gate.load_config(ledger) if (ledger / "architrave.config.json").is_file() else {}
-    more, blockers, notes = gate.chain_errors(ledger, text, reqs, config)
-    cap, cap_error = gate.parallel_cap(config)
-    errors += more + gate.header_errors(text) + gate.lane_errors(text, reqs, cap) + ([cap_error] if cap_error else [])
+    if task_mode:
+        reqs, lanes, errors, blockers, notes = task_rows(text), [], [], [], []
+    else:
+        reqs, _corrections, errors = gate.parse_requirements(text)
+        lanes = gate.ledger_table(text, ("lane", "repo", "project id"), gate.LANE_COLUMNS)
+        more, blockers, notes = gate.chain_errors(ledger, text, reqs, config)
+        cap, cap_error = gate.parallel_cap(config)
+        errors += more + gate.header_errors(text) + gate.lane_errors(text, reqs, cap) + ([cap_error] if cap_error else [])
     if selected is not None:
         if not selected:
             raise ValueError("session scope needs at least one REQ ID")
@@ -342,7 +364,7 @@ def build(ledger: Path, coordinator: str, selected: list[str] | None = None, tit
     laned = {rid.upper() for lane in lanes for rid in re.findall(r"REQ-[A-Za-z0-9_.-]+", lane["req ids"], re.I)}
     loose = [rid for rid, r in reqs.items() if rid not in laned and r["status"].lower() not in gate.REQ_CLOSED]
     if loose:
-        lanes = lanes + [dict.fromkeys(gate.LANE_COLUMNS, "") | {"lane": "Not in a lane" if lanes else "Requirements",
+        lanes = lanes + [dict.fromkeys(gate.LANE_COLUMNS, "") | {"lane": "Tasks" if task_mode else "Not in a lane" if lanes else "Requirements",
                                                                  "repo": ledger.name, "state": "idle", "req ids": ", ".join(loose), "synthetic": True}]
     commit = gate.git(ledger, "rev-parse", "HEAD") or "unavailable (no repository HEAD)"
     tracked = gate.git(ledger, "ls-files", "--error-unmatch", "--", path.name) is not None
@@ -383,7 +405,7 @@ def build(ledger: Path, coordinator: str, selected: list[str] | None = None, tit
             "identities": identities, "notes": notes, "blockers": blockers,
             "configured": (ledger / "architrave.config.json").is_file(), "source_state": source_state,
             "source_digest": source_digest, "selected": selected, "title": title or "Session work",
-            "repositories": sorted(repositories)}
+            "repositories": sorted(repositories), "task_mode": task_mode, "source_name": path.name}
 
 
 def ring(value: int, total: int, radius: float, tone: str) -> str:
@@ -467,6 +489,8 @@ def timeline(sessions: list[dict], lane_by_session: dict, remote: list[dict] = (
 
 def render(data: dict) -> str:
     reqs, lanes, sessions = data["reqs"], data["lanes"], data["sessions"]
+    task_mode = data.get("task_mode", False)
+    labels = {**REQ_LABEL, "active": "In progress"} if task_mode else REQ_LABEL
     active_req = {rid: r for rid, r in reqs.items() if r["status"].lower() not in gate.REQ_CLOSED}
     ready = sum(1 for r in active_req.values() if r["status"].lower() in gate.REQ_CODE_READY)
     total_in, total_out = sum(s["input"] for s in sessions), sum(s["output"] for s in sessions)
@@ -494,14 +518,14 @@ def render(data: dict) -> str:
     primary = "".join(f"<div><b>{esc(v)}</b><span>{esc(k)}</span></div>" for k, v in primary_stats)
     boxes = []
     for lane in lanes:
-        ids = [rid.upper() for rid in re.findall(r"REQ-[A-Za-z0-9_.-]+", lane["req ids"], re.I)]
+        ids = [rid.upper() for rid in re.findall(r"(?:REQ|TASK)-[A-Za-z0-9_.-]+", lane["req ids"], re.I)]
         ids = [rid for rid in ids if rid in active_req]
         if not ids:
             continue
         squares = "".join(
             f"<button class='sq {REQ_TONE.get(reqs[r]['status'].lower(), 'open')}' "
-            f"data-d='{esc(r)} · {REQ_LABEL[REQ_TONE.get(reqs[r]['status'].lower(), 'open')]} · {esc(reqs[r]['requirement'])} · {esc(data['identities'].get(r, {}).get('detail', 'no evidence'))}' "
-            f"aria-label='{esc(r)} {REQ_LABEL[REQ_TONE.get(reqs[r]['status'].lower(), 'open')]}: {esc(reqs[r]['requirement'])}'></button>" for r in ids)
+            f"data-d='{esc(r)} · {labels[REQ_TONE.get(reqs[r]['status'].lower(), 'open')]} · {esc(reqs[r]['requirement'])} · {esc(data['identities'].get(r, {}).get('detail', 'no evidence'))}' "
+            f"aria-label='{esc(r)} {labels[REQ_TONE.get(reqs[r]['status'].lower(), 'open')]}: {esc(reqs[r]['requirement'])}'></button>" for r in ids)
         done = sum(1 for r in ids if reqs[r]["status"].lower() in gate.REQ_CODE_READY)
         tone = LANE_TONE.get(lane["state"].lower(), "open")
         boxes.append(f"<section class='box {tone}' data-synthetic='{'true' if lane.get('synthetic') else 'false'}'><h3>{esc(lane['lane'])}</h3>"
@@ -588,7 +612,7 @@ details,details>*,details::details-content{display:block;content-visibility:visi
 }
 """
     legend = ("<div class='legend'><span><i class='open'></i>Not started</span>"
-              "<span><i class='active'></i>Started</span><span><i class='done'></i>Code ready</span></div>"
+              f"<span><i class='active'></i>{labels['active']}</span><span><i class='done'></i>Code ready</span></div>"
               "<p class='note'>Review the complete feature set after all feature code is ready.</p>")
     script = ("<script>const d=document.getElementById('detail');document.querySelectorAll('button.sq').forEach(b=>b.onclick=()=>{"
               "document.querySelectorAll('.sq.sel').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');d.textContent=b.dataset.d});"
@@ -621,6 +645,10 @@ details,details>*,details::details-content{display:block;content-visibility:visi
     scope_summary = (f"Scope: {len(data['selected'])} session requirement{'s' if len(data['selected']) != 1 else ''}"
                      if data["selected"] is not None
                      else "Scope: all repository requirements")
+    if task_mode:
+        completion = "not enforced by this board; Code ready is implementation progress, not verified delivery"
+        scope = "Tasks from tasks.md; historical SPEC.md is not used"
+        scope_summary = f"Scope: {len(reqs)} tasks from tasks.md"
     identity_rows = "".join(f"<li class='evidence-record'>{esc(rid)}: {esc(identity['state'])} · {esc(identity['detail'])}</li>"
                             for rid, identity in data["identities"].items() if rid in active_req
                             and (rid in unverified or identity["state"] == "verified"))
@@ -639,7 +667,7 @@ details,details>*,details::details-content{display:block;content-visibility:visi
             + ("<ul class='issues'>" + "".join(f"<li>{esc(e)}</li>" for e in data["errors"]) + "</ul>" if data["errors"] else "")
             + ("<ul class='issues'>" + "".join(f"<li>Open serious finding blocks completion: {esc(e)}</li>" for e in data["blockers"]) + "</ul>" if data["blockers"] else "")
             + ("<ul class='note'>" + "".join(f"<li>{esc(e)}</li>" for e in data["notes"]) + "</ul>" if data["notes"] else "")
-            + f"<h2>{'Lanes' if workers else 'Requirements'}</h2>{legend}<div class='boxes'>{''.join(boxes) or '<p class=note>No requirements.</p>'}</div>"
+            + f"<h2>{'Tasks' if task_mode else 'Lanes' if workers else 'Requirements'}</h2>{legend}<div class='boxes'>{''.join(boxes) or '<p class=note>No tasks.</p>'}</div>"
             f"<p id='detail' role='status'></p>"
             + (f"<details{' open' if unverified else ''}><summary>{'Evidence issues' if unverified else 'Artifact details'}</summary><ul>{identity_rows}</ul></details>" if identity_rows else "")
             + f"<h2>Session history <span class='note'>· cumulative</span></h2>"
@@ -649,7 +677,7 @@ details,details>*,details::details-content{display:block;content-visibility:visi
             f"<details class='board-details'><summary>Board details</summary><div class='note provenance'>"
             f"<p id='requirement-scope'>{esc(scope)}</p>"
             f"<p id='snapshot' data-snapshot='{esc(snapshot)}'>{esc(mode)} · generated bytes at {esc(generated)} UTC</p>"
-            f"<p>Repository HEAD: {esc(data['commit'])}<br>Ledger: working-tree SPEC.md ({esc(data['source_state'])}) · SHA256 {data['source_digest']}</p>"
+            f"<p>Repository HEAD: {esc(data['commit'])}<br>Ledger: working-tree {esc(data.get('source_name', 'SPEC.md'))} ({esc(data['source_state'])}) · SHA256 {data['source_digest']}</p>"
             f"<p>Session-log observation cutoff: {esc(max((s['end'].astimezone(timezone.utc) for s in sessions), default='unavailable'))} · {esc(terminal)}</p>"
             f"<p id='page-observation'>Page observation unavailable until loaded in a script-enabled consumer.</p></div>"
             f"<p id='export-observation' class='note print-only'>No print/export observation recorded in these generated bytes.</p>"
@@ -718,14 +746,14 @@ def audit_panel(data: dict) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--ledger", help="directory with the requirements file (default: resolved from the current repo)")
+    parser.add_argument("--ledger", help="directory with tasks.md (default: current repo)")
     parser.add_argument("--session", default=os.environ.get("COPILOT_AGENT_SESSION_ID"), help="coordinator session id (default: this session)")
     parser.add_argument("--output", help="HTML file (default: this session's files/program-board.html)")
     parser.add_argument("--title", help="short description of this session's work")
     parser.add_argument("--watch", type=int, metavar="SECONDS", help="regenerate every SECONDS until the program is quiet for 2 hours")
-    scope = parser.add_mutually_exclusive_group(required=True)
-    scope.add_argument("--reqs", help="comma-separated REQ IDs handled by this session")
-    scope.add_argument("--all-reqs", action="store_true", help="deliberately show the entire repository ledger, including history")
+    scope = parser.add_mutually_exclusive_group()
+    scope.add_argument("--reqs", help="legacy requirement scope; tasks.md still takes precedence when present")
+    scope.add_argument("--all-reqs", action="store_true", help="explicit legacy requirements view when tasks.md is absent")
     args = parser.parse_args()
     if args.reqs is not None:
         args.reqs = list(dict.fromkeys(rid.strip().upper() for rid in args.reqs.split(",") if rid.strip()))
@@ -740,15 +768,16 @@ def main() -> int:
         return 2
     if args.ledger:
         ledger = Path(args.ledger).expanduser().resolve()
-    elif (Path.cwd() / "SPEC.md").is_file():
+    elif (Path.cwd() / "tasks.md").is_file():
         ledger = Path.cwd().resolve()
     else:
         root = Path(gate.git(Path.cwd(), "rev-parse", "--show-toplevel") or Path.cwd())
-        value = gate.configured_requirements(root, gate.load_config(root))
-        ledger = (root / str(value)).resolve().parent if value else root
+        ledger = root
     args.output = args.output or str(STATE_HOME / args.session / "files" / "program-board.html")
-    if not (ledger / "SPEC.md").is_file():
-        print(f"program-board: {ledger}/SPEC.md not found", file=sys.stderr)
+    if not (ledger / "tasks.md").is_file() and not (
+        (args.reqs is not None or args.all_reqs) and (ledger / "SPEC.md").is_file()
+    ):
+        print(f"program-board: {ledger / 'tasks.md'} not found", file=sys.stderr)
         return 2
     try:
         initial_data = build(ledger, args.session, args.reqs, args.title)

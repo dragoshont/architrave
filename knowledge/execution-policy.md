@@ -1,5 +1,20 @@
 # Execution and verification policy
 
+## Current task workflow
+
+The current default uses `tasks.md`, with blank, In progress and Code ready
+statuses. Original owner requests and later corrections govern scope; tasks,
+observable behavior and actual evidence govern progress. Do not create SPEC.md,
+REQ rows, delivery declarations or new approval stages to perform ordinary work.
+The program board reads tasks.md; unavailable boards do not block independently
+authorized actions. Copilot's SPEC/REQ completion barrier is retired. Retained
+pre-tool-use commands are compatibility no-ops; never delete or rewrite historical
+evidence to get a turn to close. Startup guidance and advisory loop detection remain.
+
+The legacy requirements, delivery-audit and canonical Run sections below apply
+only when those operations are explicitly selected. They do not reintroduce
+mandatory SPEC/REQ tracking or completion checks into the current task workflow.
+
 Concrete model, provider, reasoning and context mappings belong to the user and
 the active host harness, not repository policy, generated roles or WorkPackets.
 An explicitly configured user pin may be passed to a documented per-child host

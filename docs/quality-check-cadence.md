@@ -1,5 +1,15 @@
 # Quality cadence and scoped session hooks
 
+## Current task workflow
+
+The SPEC/REQ completion barrier is retired. Copilot registers only startup
+guidance and advisory read/search loop detection. Retained `pre-tool-use`
+commands return `{}` without reading or changing old declarations, including
+when their requirements file has moved. They do not grant permission or prove
+delivery; normal host permissions, owner stops and truthful verification remain.
+Use `tasks.md` for current work. Do not recreate SPEC.md or repair old evidence
+just to close a turn.
+
 Architrave does not install or refresh automatic PostToolUse quality commands.
 **Executable logic remains:** profile/config validity, existing configured
 design-source/map/token JSON validity and configured product-copy rules.
@@ -26,18 +36,17 @@ evidence checks.
 ## Compact default-session bootstrap
 
 The Copilot plugin's `plugin.json` references root `hooks.json`. Its command
-registrations are `sessionStart`, a read/search-only `postToolUse` matcher, and
-an exact `preToolUse` `^task_complete$` matcher, all running `gates/session_guard.py`.
+registrations are `sessionStart` and a read/search-only `postToolUse` matcher,
+both running `gates/session_guard.py`. No `task_complete` matcher is registered.
 `sessionStart` returns only `additionalContext` (at most 140 words), pointing
 to that installed kit's skill and canonical lead paths. It does not inject the
 whole contract, submit a prompt, start a board, change permissions or write
 state. The default agent loads details on demand.
 
-For non-trivial direct or coordinated work the lead records REQs, declares
-session scope, then opens and reads one scoped existing program board before
-implementation (`docs/program-board.md`). Read-only/trivial work and assigned
-children/reviewers do not start recursive boards. An unavailable or denied
-canvas must be reported, not replaced with invented observations.
+For non-trivial direct or coordinated work the lead uses tasks.md and opens
+one tasks board when available (`docs/program-board.md`). Read-only/trivial work
+and assigned children/reviewers do not start recursive boards. An unavailable
+canvas is reported, not replaced with invented observations or an approval gate.
 
 ## Automatic repeated-investigation detection
 
@@ -81,7 +90,11 @@ may ignore a nudge. An installed plugin must actually load this registration;
 building a new archive does not refresh already-running sessions. Process tests
 prove the packaged detector and protocol, not live-host loading or agent recovery.
 
-## Scoped completion barrier
+## Legacy explicit delivery checks (not registered as hooks)
+
+The following describes the retained optional `delivery-audit` commands and
+their historical completion policy. It is not the current task workflow, does
+not run automatically, and is not required for `task_complete`.
 
 The adapter locates the declaration only at the current session's
 `<COPILOT_HOME>/session-state/<uuid>/files/architrave-delivery.json`;
