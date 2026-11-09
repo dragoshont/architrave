@@ -23,5 +23,5 @@ Feature ready:
 | Prepare 1.0.4 with the delivery-focus and session-recovery improvements. | Code ready |
 | Address Task completion focus issues and build 1.0.4 locally. | Code ready |
 | Include automatic repeated-investigation loop detection in the local 1.0.4 build. | Code ready |
-| Publish 1.0.4 and install it from the public release on this machine. | In progress |
+| Publish 1.0.4 and install it from the public release on this machine. | Code ready |
 | Remove superseded Architrave versions after affected sessions load the update. | In progress |
