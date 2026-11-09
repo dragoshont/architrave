@@ -305,25 +305,60 @@ def repository_name(path: Path) -> str:
 
 
 def task_rows(text: str) -> dict:
-    rows = gate.ledger_table(text, ("task", "status"), ("task", "status"))
     statuses = {"": "not started", "not started": "not started",
                 "in progress": "started", "started": "started", "code ready": "code ready"}
     tasks = {}
-    for index, row in enumerate(rows, 1):
-        status = row["status"].strip().strip("*").lower()
-        if status not in statuses:
-            raise ValueError(f"unsupported task status in tasks.md row {index}: {row['status']}")
-        if not row["task"].strip():
-            raise ValueError(f"empty task in tasks.md row {index}")
-        tasks[f"TASK-{index}"] = {"requirement": row["task"], "status": statuses[status],
-                                 "evidence": "", "owner": ""}
-    if not tasks and not re.search(r"\|\s*Task\s*\|\s*Status\s*\|", text, re.I):
+    lines, found, fenced = text.splitlines(), False, None
+
+    def cells(line):
+        line = line.strip()
+        leading_pipe = line.startswith("|")
+        if leading_pipe:
+            line = line[1:]
+        if (line.endswith("|") and not line.endswith("\\|")
+                and (leading_pipe or len(re.split(r"(?<!\\)\|", line)) > 2)):
+            line = line[:-1]
+        return [cell.strip().replace("\\|", "|") for cell in re.split(r"(?<!\\)\|", line)]
+
+    index = 0
+    while index < len(lines):
+        line = lines[index].strip()
+        fence = re.match(r"^(`{3,}|~{3,})", line)
+        if fence:
+            if fenced is None:
+                fenced = fence[1]
+            elif fence[1][0] == fenced[0] and len(fence[1]) >= len(fenced):
+                fenced = None
+            index += 1
+            continue
+        if fenced or [cell.lower() for cell in cells(line)] != ["task", "status"]:
+            index += 1
+            continue
+        found = True
+        index += 1
+        separator = cells(lines[index]) if index < len(lines) else []
+        if len(separator) != 2 or not all(re.fullmatch(r":?-{3,}:?", cell) for cell in separator):
+            raise ValueError("tasks.md Task | Status header needs a Markdown separator row")
+        index += 1
+        while index < len(lines) and lines[index].strip() and "|" in lines[index]:
+            row = cells(lines[index])
+            if len(row) != 2 or not row[0]:
+                raise ValueError(f"tasks.md line {index + 1} needs a nonempty task and one status cell")
+            status = row[1].strip("*").lower()
+            if status not in statuses:
+                raise ValueError(f"unsupported task status in tasks.md line {index + 1}: {row[1]}")
+            tasks[f"TASK-{len(tasks) + 1}"] = {
+                "requirement": row[0], "status": statuses[status], "evidence": "", "owner": ""}
+            index += 1
+    if not found:
         raise ValueError("tasks.md needs a Task | Status table")
     return tasks
 
 
-def build(ledger: Path, coordinator: str, selected: list[str] | None = None, title: str | None = None) -> dict:
-    task_mode = (ledger / "tasks.md").is_file()
+def build(ledger: Path, coordinator: str, selected: list[str] | None = None,
+          title: str | None = None, *, task_mode: bool | None = None) -> dict:
+    if task_mode is None:
+        task_mode = (ledger / "tasks.md").is_file()
     path = ledger / ("tasks.md" if task_mode else "SPEC.md")
     source_bytes = path.read_bytes()
     text = source_bytes.decode("utf-8-sig")
@@ -780,7 +815,8 @@ def main() -> int:
         print(f"program-board: {ledger / 'tasks.md'} not found", file=sys.stderr)
         return 2
     try:
-        initial_data = build(ledger, args.session, args.reqs, args.title)
+        task_mode = (ledger / "tasks.md").is_file()
+        initial_data = build(ledger, args.session, args.reqs, args.title, task_mode=task_mode)
     except (OSError, ValueError) as exc:
         print(f"program-board: cannot start: {exc}", file=sys.stderr)
         return 2
@@ -826,7 +862,8 @@ def main() -> int:
                                            "interval": max(args.watch, 30), "reqs": args.reqs}), encoding="utf-8")
         while True:
             try:
-                data = initial_data if initial_data is not None else build(ledger, args.session, args.reqs, args.title)
+                data = initial_data if initial_data is not None else build(
+                    ledger, args.session, args.reqs, args.title, task_mode=task_mode)
                 initial_data = None
                 data["refresh"] = max(args.watch, 30) if args.watch else None
                 tmp = out.with_suffix(f".{os.getpid()}.tmp")
@@ -855,7 +892,7 @@ def main() -> int:
     finally:
         if args.watch:
             try:
-                data = build(ledger, args.session, args.reqs, args.title)
+                data = build(ledger, args.session, args.reqs, args.title, task_mode=task_mode)
                 data["stopped"] = True
                 tmp = out.with_suffix(f".{os.getpid()}.tmp")
                 tmp.write_text(render(data), encoding="utf-8")

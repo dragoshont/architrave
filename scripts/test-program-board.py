@@ -225,6 +225,52 @@ class Parsing(unittest.TestCase):
 
 
 class EvidenceAndSnapshots(unittest.TestCase):
+    def test_tasks_parse_optional_outer_pipes_and_reject_malformed_tables(self):
+        rows = self.pb.task_rows(
+            "Task | Status\n--- | ---\n| Done | Code ready |\n"
+            "| Pending | In progress\nNo outer pipes | \n| Escaped \\| pipe | |\n")
+        self.assertEqual(len(rows), 4)
+        self.assertEqual(rows["TASK-2"]["status"], "started")
+        self.assertEqual(rows["TASK-3"]["status"], "not started")
+        self.assertEqual(rows["TASK-4"]["requirement"], "Escaped | pipe")
+        for malformed in (
+            "The | Task | Status | header is only prose.",
+            "| Task | Status |\nNot a table separator\n",
+            "| Task | Status |\n| --- | --- |\n| Pending |\n",
+            "| Task | Status |\n| --- | --- |\n| Pending | | Extra |\n",
+            "```\nTask | Status\n--- | ---\nExample | Code ready\n```\n",
+        ):
+            with self.subTest(malformed=malformed):
+                with self.assertRaises(ValueError):
+                    self.pb.task_rows(malformed)
+
+    def test_task_watcher_keeps_source_pinned_when_tasks_disappear(self):
+        tasks = self.ledger / "tasks.md"
+        tasks.write_text("| Task | Status |\n| --- | --- |\n| Current work | In progress |\n")
+        out = self.base / "task-watch.html"
+        (self.state / COORD / "events.jsonl").write_text(json.dumps({
+            "type": "session.start", "timestamp": datetime.now(timezone.utc).isoformat(), "data": {}}) + "\n")
+        process = subprocess.Popen(
+            [sys.executable, str(ROOT / "harness/program_board.py"), "--ledger", str(self.ledger),
+             "--session", COORD, "--output", str(out), "--watch", "30"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.addCleanup(lambda: process.kill() if process.poll() is None else None)
+        self.assertIn("program-board:", process.stdout.readline())
+        before = out.read_bytes()
+        tasks.unlink()
+        try:
+            process.communicate(timeout=40)
+            self.fail("A failed task refresh should leave the watcher available for recovery")
+        except subprocess.TimeoutExpired:
+            process.terminate()
+            _, errors = process.communicate(timeout=10)
+        self.assertIn("refresh failed", errors)
+        self.assertIn("tasks.md", errors)
+        self.assertEqual(before, out.read_bytes())
+        self.assertNotIn("Initial task", out.read_text(encoding="utf-8"))
+        with self.assertRaises(FileNotFoundError):
+            self.pb.build(self.ledger, COORD, task_mode=True)
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
