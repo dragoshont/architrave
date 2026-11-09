@@ -458,12 +458,18 @@ claude plugin marketplace add dragoshont/architrave
 claude plugin install architrave@architrave
 ```
 
-With **Codex CLI**, from a local clone of this repository:
+With **Codex CLI**, pinned to the public release:
 
 ```bash
-codex plugin marketplace add /path/to/architrave
+codex plugin marketplace add dragoshont/architrave --ref v1.0.4
 codex plugin add architrave@architrave
 ```
+
+The release ZIP and tarball include `.codex-plugin/plugin.json` and the Codex
+marketplace; no separate compilation is needed. If `codex` is not on PATH on
+Windows, use the CLI bundled with the installed Codex app. Restart Codex after
+installation. The automatic read-loop detector is a Copilot hook, not a Codex
+runtime feature.
 
 Desktop plugin discovery is separate from CLI installation; see the
 [host support notes](docs/orchestration-audit.md).

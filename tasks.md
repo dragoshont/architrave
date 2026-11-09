@@ -25,3 +25,4 @@ Feature ready:
 | Include automatic repeated-investigation loop detection in the local 1.0.4 build. | Code ready |
 | Publish 1.0.4 and install it from the public release on this machine. | Code ready |
 | Remove superseded Architrave versions after affected sessions load the update. | In progress |
+| Install 1.0.4 for Codex from the public release and verify its release package. | Code ready |
