@@ -24,10 +24,14 @@ After readiness, the parent releases the exact paths through the existing
 host message once the previous owner and any frozen check are terminal.
 Do not silently expand a file lock to all source work.
 
-Workers report implementation-written, check-start, terminal result and handback
-boundaries without waiting for an owner progress question. A checkpoint names
-the behavior actually written, remaining criterion, command/result and current
-owner; file-touch counts, elapsed time and a busy badge are not completion.
+Workers expose implementation-written, check-start, terminal result and handback
+without four separate messages. Normally coalesce into two short parent updates:
+code-written/check-start, then terminal-result/handback. Extra messages need a
+material blocker, changed next action or explicit question, not a periodic cadence
+or another identical retry result. Keep full logs/evidence with the worker.
+A checkpoint names the behavior actually written, remaining criterion,
+command/result and current owner; file-touch counts, elapsed time and a busy badge
+are not completion.
 The parent distinguishes preparation, ownership-held, implementation, checking,
 and stable handback instead of leaving all phases labelled merely active.
 Check message admission separately from a worker response or action.

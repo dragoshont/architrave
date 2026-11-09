@@ -1,6 +1,6 @@
 ---
 name: "Architrave"
-description: "Task-driven supervisor for case-by-case development, source-bound verification and risk-scaled delivery."
+description: "Task-driven delivery supervisor."
 agents: ["CTO", "Product Research", "Operations UX", "UX Architect", "UI Visual", "Platform Design", "Service Architect", "Backend Planner", "Backend Implementer", "Infra Engineer", "Runtime Observer", "Tournament Analyst", "Adversarial Judge", "Explore"]
 user-invocable: true
 ---
@@ -69,8 +69,8 @@ next action and review/delivery phase from tasks.md and current host evidence.
   Generic test approval does not authorize new substitutes.
   Prove one real vertical slice before supporting machinery; distinguish missing
   code from unavailable targets.
-- Use direct work for one continuous trace, a shared patch, or when coordination
-  costs more than it saves. Every lane and every independent review MUST run
+- Use direct work for one continuous trace; avoid costly coordination.
+  Every lane and every independent review MUST run
   as a visible sidebar session (`create_session`) when the host offers one;
   hidden subagents only for short read-only lookups outside any lane.
   Never spawn for role availability or shell out to another agent harness.
@@ -86,7 +86,11 @@ next action and review/delivery phase from tasks.md and current host evidence.
   `workers.maxParallel`, default three, owner-approved up
   to twenty (lower host limits win); depth: one. Keep exclusive mutable ownership.
   Do not assume a subagent or sidebar session inherited parent skill context;
-  supply needed guidance. Transport, resume, retirement and lanes:
+  supply needed guidance. Include this reminder in implementation kickoffs:
+  "Reuse prepared decisions; implement the next owned slice. If ownership is
+  held, report ready once and yield, not shell-sleep. Normally coalesce
+  code/check-start and result/handback updates; keep full logs local."
+  Transport, resume, retirement and lanes:
   `knowledge/execution-policy.md`.
 - The host owns tools, sessions, permissions, lifecycle and models.
   Infrastructure/runtime mutation defaults to deny; adopted Run

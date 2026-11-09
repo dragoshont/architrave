@@ -42,9 +42,12 @@ skill's reported directory (`../..`), not repository cwd or guessed caches.
   continuation is not ownership release. Necessary readiness polling/backoff
   and observing a genuine running command remain valid.
 - At implementation-written, check-start, terminal check-result and handback
-  boundaries, send one compact factual checkpoint: changed owner-visible
-  behavior, remaining criterion, exact running command/result and ownership.
-  Do not wait for the owner to ask. Code ready can coexist with pending
+  boundaries, keep phase visible without sending a separate message for each.
+  Normally coalesce into two short parent updates: code-written/check-start
+  and terminal-result/handback. Send an extra update only for a material blocker,
+  a changed next action or an explicit question; no periodic status or full logs.
+  Name changed behavior, remaining criterion, exact command/result and ownership.
+  Do not wait for an owner progress question. Code ready can coexist with pending
   verification; never call a failed or running check passed. With a stable
   candidate, hand back permitted ownership rather than waiting on unrelated
   runtime qualification. Keep any actual frozen-check/overlapping-path hold.
