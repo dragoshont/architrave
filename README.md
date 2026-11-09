@@ -60,6 +60,9 @@ releases are cut manually without enabling CI.
 for retained hook commands. The board reads tasks.md without requiring a SPEC or
 REQ selection, and the lead/skill follow that same task source. Historical
 evidence stays unchanged. Normal host permissions and owner stops still apply.
+Worker guidance now separates preparation, ownership-held, implementation,
+checking and handback. A bounded standalone-shell-wait advisory discourages
+synthetic busy waits without treating real testing or ownership holds as stalls.
 
 **1.0.4.** A local Copilot hook automatically detects four identical
 read/search results within 24 observations and injects a corrective nudge.

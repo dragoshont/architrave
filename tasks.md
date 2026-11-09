@@ -29,3 +29,4 @@ Feature ready:
 | Retire the obsolete SPEC/REQ completion barrier while retaining loop detection and host permissions. | Code ready |
 | Make the program board use tasks.md and its task statuses instead of requiring SPEC.md. | Code ready |
 | Review, publish and install the 1.0.5 task-workflow repair for Copilot and Codex. | In progress |
+| Audit the reported held-worker delay and harden phase handoffs and advisory wait detection before release. | Code ready |

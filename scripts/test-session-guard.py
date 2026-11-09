@@ -174,6 +174,36 @@ class SessionGuardTests(unittest.TestCase):
                 self.assertEqual({}, guard.post_tool_use(payload))
         self.assertEqual([], list(self.home.iterdir()))
 
+    def test_standalone_waits_nudge_once_even_when_durations_and_outputs_change(self):
+        first = self.invoke("post-tool-use", self.read_payload(
+            toolName="powershell", toolArgs={"command": "Start-Sleep -Seconds 300"},
+            toolResult={"resultType": "success", "textResultForLlm": "shell 1 completed"},
+        ))
+        self.assertEqual({"additionalContext"}, set(first))
+        self.assertIn("Standalone shell wait", first["additionalContext"])
+        self.assertIn("necessary deliberate backoff", first["additionalContext"])
+        self.assertIn("ownership holds", first["additionalContext"])
+        for tool, command in (
+            ("functions.powershell", "Start-Sleep -Seconds 180"),
+            ("powershell", "Start-Sleep -Milliseconds 120"),
+            ("bash", "sleep 120"),
+        ):
+            self.assertEqual({}, self.invoke("post-tool-use", self.read_payload(
+                toolName=tool, toolArgs={"command": command},
+                toolResult={"resultType": "success", "textResultForLlm": command},
+            )))
+
+    def test_real_commands_and_readiness_checks_are_not_standalone_sleep_signals(self):
+        for command in (
+            "python -m pytest", "Get-Process -Id 123", "echo 'Start-Sleep -Seconds 300'",
+            "while (-not (Test-Path ready)) { Start-Sleep -Seconds 1 }",
+            "sleep 1 && curl --fail http://localhost:3000", "python -c 'import time; time.sleep(1)'",
+        ):
+            self.assertEqual({}, self.invoke("post-tool-use", self.read_payload(
+                toolName="powershell", toolArgs={"command": command},
+            )))
+        self.assertEqual([], list(self.home.iterdir()))
+
     def test_invalid_input_and_broken_cache_warn_without_denying_or_leaking(self):
         for payload in (
             self.read_payload(sessionId="../escape"),
@@ -362,9 +392,9 @@ class SessionGuardTests(unittest.TestCase):
         self.assertNotIn("preToolUse", hooks["hooks"])
         matcher = hooks["hooks"]["postToolUse"][0]["matcher"]
         for tool in ("view", "rg", "grep", "glob", "web_fetch", "web_search",
-                     "semantic_code_search", "read_file", "functions.view"):
+                     "semantic_code_search", "read_file", "functions.view", "powershell", "bash"):
             self.assertIsNotNone(re.fullmatch(matcher, tool), tool)
-        for tool in ("powershell", "bash", "edit", "ask_user", "task_complete", "preview"):
+        for tool in ("edit", "ask_user", "task_complete", "preview"):
             self.assertIsNone(re.fullmatch(matcher, tool), tool)
         claude = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
         self.assertNotIn("hooks", claude)

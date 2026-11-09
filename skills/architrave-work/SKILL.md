@@ -36,6 +36,22 @@ skill's reported directory (`../..`), not repository cwd or guessed caches.
 - Continue authorized work past intermediate status. Research a narrow unknown
   when it changes the next action; return a real blocker after reasonable
   supported alternatives, not a routine phase-approval request.
+- Preparation is not implementation. When ownership is held, send readiness once
+  and yield for the parent's release; do not keep an idle worker alive with
+  shell sleeps, repeated reads or repeated held-status messages. Automatic
+  continuation is not ownership release. Necessary readiness polling/backoff
+  and observing a genuine running command remain valid.
+- At implementation-written, check-start, terminal check-result and handback
+  boundaries, send one compact factual checkpoint: changed owner-visible
+  behavior, remaining criterion, exact running command/result and ownership.
+  Do not wait for the owner to ask. Code ready can coexist with pending
+  verification; never call a failed or running check passed. With a stable
+  candidate, hand back permitted ownership rather than waiting on unrelated
+  runtime qualification. Keep any actual frozen-check/overlapping-path hold.
+- After a failing check, fix the reproduced coupled failure and rerun its
+  narrow selector before another broad suite. Reuse unchanged evidence; a
+  known baseline failure is not a new task. Do not add generic machinery to
+  postpone finishing the assigned case or skip required integration coverage.
 - Before treating a prerequisite as blocking, check current owner direction,
   governing policy or a real host or technical constraint; do not promote an
   agent assumption or recommendation into a requirement. Keep genuine permission,

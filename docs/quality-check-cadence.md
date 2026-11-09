@@ -59,6 +59,16 @@ Interleaved reads count, and changed output resets the count for that request.
 A different query or range is a different request. An edit or file touch does
 not by itself prove progress or reset the detector.
 
+The same hook receives `powershell`/`bash` results but ignores ordinary commands.
+Only a standalone `Start-Sleep -Seconds/-Milliseconds <number>` or
+`sleep <duration>` is an additional signal. The first such observation can
+emit an advisory to report readiness and yield for an ownership/host message,
+not manufacture activity with more shell sleeps. Durations and output text
+share one wait fingerprint so changing them cannot produce repeated reminders.
+The existing 24-observation window and 12-observation cooldown bound both kinds
+of signal. Necessary deliberate backoff and condition-based readiness polling
+remain valid; the hook never cancels a real command or changes permissions.
+
 The reminder directs the agent to reuse findings and take the next authorized
 action, or name the exact missing fact or hold. It explicitly preserves necessary
 research, read-only assignments, owner stops and host permissions. It never
@@ -83,8 +93,8 @@ seconds produces an explicit, input-redacted monitoring-unavailable advisory,
 not a denial. The command has a five-second host timeout. These failures do not
 silently establish that a session is making progress.
 
-This is bounded repetition detection, **not semantic supervision**. Shell
-commands, unknown tools, changing output, different read arguments and model-only
+This is bounded repetition/wait detection, **not semantic supervision**. Ordinary shell
+commands, unknown tools, changing read output, different read arguments and model-only
 planning loops are not detected. A host may disable or skip hooks, and the model
 may ignore a nudge. An installed plugin must actually load this registration;
 building a new archive does not refresh already-running sessions. Process tests

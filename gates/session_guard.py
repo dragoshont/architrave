@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import sys
 import tempfile
 import time
@@ -56,6 +57,10 @@ READ_TOOLS = {
     "view", "read_file", "glob", "grep", "rg",
     "web_fetch", "web_search", "semantic_code_search",
 }
+SHELL_TOOLS = {"powershell", "bash"}
+STANDALONE_WAIT = re.compile(
+    r"\s*(?:Start-Sleep\s+-(?:Seconds|Milliseconds)\s+\d+(?:\.\d+)?"
+    r"|sleep\s+\d+(?:\.\d+)?[smhd]?)\s*;?\s*", re.I)
 
 
 def _digest(value: object) -> str:
@@ -141,7 +146,7 @@ def _loop_state(path: Path) -> dict:
 
 
 def post_tool_use(payload: dict[str, object]) -> dict[str, str]:
-    """Observe successful reads only; never deny a call or change its result."""
+    """Nudge repeated reads or standalone waits without denying or rewriting tools."""
     try:
         tool = _field(payload, "toolName", "tool_name")
         if not isinstance(tool, str):
@@ -149,7 +154,7 @@ def post_tool_use(payload: dict[str, object]) -> dict[str, str]:
         tool = tool.rsplit(".", 1)[-1]
         tool = {"Read": "view", "Grep": "grep", "Glob": "glob",
                 "WebFetch": "web_fetch", "WebSearch": "web_search"}.get(tool, tool)
-        if tool not in READ_TOOLS:
+        if tool not in READ_TOOLS | SHELL_TOOLS:
             return {}
         tool = {"read_file": "view", "rg": "grep"}.get(tool, tool)
         result = _field(payload, "toolResult", "tool_result")
@@ -161,21 +166,28 @@ def post_tool_use(payload: dict[str, object]) -> dict[str, str]:
         text = _field(result, "textResultForLlm", "text_result_for_llm")
         if kind != "success" or not isinstance(text, str):
             raise ValueError("Invalid successful read result")
+        arguments = _field(payload, "toolArgs", "tool_input")
+        if isinstance(arguments, str):
+            arguments = json.loads(arguments)
+        if not isinstance(arguments, dict):
+            raise ValueError("Invalid tool arguments")
+        standalone_wait = tool in SHELL_TOOLS
+        if standalone_wait:
+            command = arguments.get("command")
+            if not isinstance(command, str) or not STANDALONE_WAIT.fullmatch(command):
+                return {}
         session = _field(payload, "sessionId", "session_id")
         if not isinstance(session, str) or str(UUID(session)) != session.lower():
             raise ValueError("Invalid session identity")
         cwd = payload.get("cwd")
         if not isinstance(cwd, str) or not Path(cwd).is_absolute():
             raise ValueError("Missing absolute cwd")
-        arguments = _field(payload, "toolArgs", "tool_input")
-        if isinstance(arguments, str):
-            arguments = json.loads(arguments)
-        if not isinstance(arguments, dict):
-            raise ValueError("Invalid read arguments")
         observation = {
             "request": _digest([os.path.normcase(str(Path(cwd).resolve())),
-                                _field(payload, "agentId", "agent_id"), tool, arguments]),
-            "result": _digest(text),
+                                _field(payload, "agentId", "agent_id"),
+                                "standalone-wait" if standalone_wait else tool,
+                                {} if standalone_wait else arguments]),
+            "result": _digest("standalone-wait" if standalone_wait else text),
         }
         cache = _report_path(session.lower()).with_name("architrave-loop.json")
         cache.parent.mkdir(parents=True, exist_ok=True)
@@ -192,7 +204,8 @@ def post_tool_use(payload: dict[str, object]) -> dict[str, str]:
             since_notice = min(LOOP_COOLDOWN, state["since_notice"] + 1)
             count = history.count(observation)
             fingerprint = _digest(observation)
-            warn = count >= LOOP_REPEATS and fingerprint not in notified and since_notice == LOOP_COOLDOWN
+            threshold = 1 if standalone_wait else LOOP_REPEATS
+            warn = count >= threshold and fingerprint not in notified and since_notice == LOOP_COOLDOWN
             if warn:
                 notified.append(fingerprint)
                 since_notice = 0
@@ -206,9 +219,18 @@ def post_tool_use(payload: dict[str, object]) -> dict[str, str]:
             finally:
                 Path(temporary).unlink(missing_ok=True)
         if warn:
+            if standalone_wait:
+                return {"additionalContext": (
+                    "Standalone shell wait observed, not evidence of product progress. "
+                    "If waiting for ownership or a child message, report readiness once and "
+                    "yield for the host's next message instead of launching more sleeps to stay busy. "
+                    "Keep necessary deliberate backoff and actual readiness checks; this is advisory. "
+                    "Do not duplicate or stop genuine running work, force edits, change mode, "
+                    "claim completion or override ownership holds, explicit stops or host permissions."
+                )}
             return {"additionalContext": (
                 f"Possible investigation loop: {count} identical results for the same read/search "
-                f"within the last {len(history)} observed reads/searches. Reuse retained findings; "
+                f"within the last {len(history)} monitored observations. Reuse retained findings; "
                 "stop redundant confirmation and take the next authorized action, or name the "
                 "exact missing fact or hold. A new question can justify necessary research; "
                 "this signal does not prove that no progress occurred. Respect explicit stops, "

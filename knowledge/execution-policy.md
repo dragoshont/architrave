@@ -15,6 +15,31 @@ The legacy requirements, delivery-audit and canonical Run sections below apply
 only when those operations are explicitly selected. They do not reintroduce
 mandatory SPEC/REQ tracking or completion checks into the current task workflow.
 
+### Worker readiness and observable handback
+
+An implementation child should receive mutable ownership when it can act. If
+early read-only preparation is useful, make that a bounded preparation
+assignment first, not an implementation goal kept alive behind a write hold.
+After readiness, the parent releases the exact paths through the existing
+host message once the previous owner and any frozen check are terminal.
+Do not silently expand a file lock to all source work.
+
+Workers report implementation-written, check-start, terminal result and handback
+boundaries without waiting for an owner progress question. A checkpoint names
+the behavior actually written, remaining criterion, command/result and current
+owner; file-touch counts, elapsed time and a busy badge are not completion.
+The parent distinguishes preparation, ownership-held, implementation, checking,
+and stable handback instead of leaving all phases labelled merely active.
+Check message admission separately from a worker response or action.
+
+While a real command is running, observe that command rather than duplicate it.
+While waiting only for an ownership message, report ready once and yield; do
+not synthesize busyness with standalone shell sleeps. Keep necessary backoff,
+readiness checks, scoped stops and real ownership constraints. The advisory hook
+can flag supported standalone waits, not infer semantic lack of progress or
+guarantee that a worker responds. No arbitrary coding deadline, read quota,
+forced reset, permission override or new approval stage follows.
+
 Concrete model, provider, reasoning and context mappings belong to the user and
 the active host harness, not repository policy, generated roles or WorkPackets.
 An explicitly configured user pin may be passed to a documented per-child host

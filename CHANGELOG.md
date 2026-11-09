@@ -17,6 +17,10 @@ Releases at or before **v0.8.12** are on the
   report an error without replacing the last good board.
 - Retain automatic read/search loop detection and explicit legacy Run/requirements
   tools; they no longer run as an automatic completion barrier.
+- Add one bounded advisory for supported standalone shell sleeps while preserving
+  real commands, readiness polling, necessary backoff and permissions. Harden
+  worker/parent phase checkpoints and stable handback without coding deadlines,
+  false completion or a claimed semantic stall guarantee.
 
 ## 1.0.4 (2026-11-09)
 
