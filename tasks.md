@@ -30,3 +30,4 @@ Feature ready:
 | Make the program board use tasks.md and its task statuses instead of requiring SPEC.md. | Code ready |
 | Review, publish and install the 1.0.5 task-workflow repair for Copilot and Codex. | Code ready |
 | Audit the reported held-worker delay and harden phase handoffs and advisory wait detection before release. | Code ready |
+| Push the harness fixes to the public repository's default branch and clarify the incident-focused changelog and release notes. | Code ready |

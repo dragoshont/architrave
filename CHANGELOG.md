@@ -7,20 +7,66 @@ Releases at or before **v0.8.12** are on the
 
 ## 1.0.5 (2026-11-09)
 
-- Retire the obsolete SPEC/REQ completion hook. Retained pre-tool-use commands
-  are no-ops that neither read nor rewrite historical declarations, including
-  when the old requirements file has moved. Host permissions remain unchanged.
-- Use tasks.md for current task tracking in the lead, skills and startup
-  guidance. Do not recreate SPEC.md or introduce approval stages to close turns.
-- Make the program board read tasks.md by default, display its actual progress
-  and source identity, and prefer it over an old SPEC. Invalid task statuses
-  report an error without replacing the last good board.
-- Retain automatic read/search loop detection and explicit legacy Run/requirements
-  tools; they no longer run as an automatic completion barrier.
-- Add one bounded advisory for supported standalone shell sleeps while preserving
-  real commands, readiness polling, necessary backoff and permissions. Harden
-  worker/parent phase checkpoints and stable handback without coding deadlines,
-  false completion or a claimed semantic stall guarantee.
+**Public Windows candidate / prerelease.** This patch addresses observed agent
+delivery and hook failures; it is not a new execution harness or a guarantee of
+unattended completion.
+
+### Fixed
+
+- **Completed work could not close after its analysis was moved.** The obsolete
+  SPEC/REQ `task_complete` barrier still required the old requirements file.
+  Remove that hook registration and make retained `pre-tool-use` commands inert.
+  They no longer read or rewrite old declarations or demand that SPEC.md be
+  recreated. Historical evidence and normal host permissions are preserved.
+- **The board showed the wrong task source or understated unfinished work.**
+  Use tasks.md by default, even when a historical SPEC.md exists, with blank,
+  In progress and Code ready statuses. Pin that source through refresh and
+  shutdown: a missing task file must not silently switch the board to old REQs.
+  Parse optional table pipes without dropping rows; reject malformed tables and
+  unsupported statuses before replacing the last valid snapshot.
+- **A worker appeared stuck while ownership and checks were unresolved.** A
+  real-session audit found legitimate write holds, actual implementation and
+  debugging, but also standalone shell sleeps and poor phase visibility.
+  Add bounded advice for supported standalone sleeps and distinguish prepared,
+  ownership-held, implementation, checking and handback phases. Include the
+  reminder in implementation kickoffs; normally send only two coalesced parent
+  updates and keep full logs local. Do not replace real progress with status,
+  force edits under a write hold, or treat legitimate testing as a stall.
+- **Instructions could resurrect the retired SPEC workflow.** Align the lead,
+  worker skill, startup pointer, installed stanza and plugin descriptions with
+  tasks.md. Preserve original owner requests and corrections without new REQ,
+  declaration or approval prerequisites. Legacy Run/requirements commands
+  remain explicit opt-in tools.
+
+### Preserved boundaries
+
+- Automatic unchanged-read/search detection from 1.0.4 remains enabled for
+  Copilot. Read-loop and standalone-wait messages are local, bounded advisories:
+  no tool denial, result rewriting, forced continuation, permission grant or
+  false completion. Real backoff, readiness checks, ownership and owner stops
+  remain valid.
+- Codex/ChatGPT receive the same task and worker guidance through the shared
+  release package, not an equivalent Copilot hook runtime. Installing an update
+  does not prove that an existing desktop session has reloaded.
+
+### Evidence and remaining harness limits
+
+- Two independent adversarial source reviews passed after the board defects
+  were corrected. The affected completion retry was accepted through the host.
+  Published source: `b078695105baf061bc614a0dd72c9d3269a12067`.
+- Focused Windows checks cover 22 hook checks, 16 board checks (one optional
+  browser case skipped), 45 explicit legacy delivery checks and 11 quality-cadence
+  checks (three absent-workflow cases skipped), plus instruction contracts.
+  Copilot and Codex installation payloads were verified against the public build.
+- The full manifest run reported a failure in the unchanged native dispatch
+  fixture "one hung batch packet does not hold the other past the deadline".
+  Its isolated rerun passed 151 assertions, but the broad run was stopped
+  incomplete. This is not a full-suite PASS or cross-platform qualification.
+- The detector does not establish semantic lack of progress, interrupt
+  model-only reasoning, or guarantee overnight delivery. Copilot session-host
+  cancellations and event-acknowledgment timeouts remain host failures, not
+  repaired or proven caused by this plugin. Stale plugin-path failures still
+  require safe retained paths and verified session reloads, not cache deletion.
 
 ## 1.0.4 (2026-11-09)
 
@@ -49,9 +95,11 @@ Releases at or before **v0.8.12** are on the
   assuming that a host goal command invokes the skill automatically.
 - Keep the version bump tool's progress output compatible with Windows
   consoles using legacy encodings.
-- Document the stale plugin-path completion-hook failure. This source update
-  cannot repair sessions already retaining a removed plugin directory; restart
-  and verify the loaded version or restore that directory with authorization.
+- Document the observed stale plugin-path completion-hook failure
+  (`os error 267` on Windows). Updating the package cannot repair a running
+  session's reference to a removed directory: retain the path until reload,
+  or restore the exact old package with authorization. This is a migration
+  workaround, not a fix for the host's plugin-path lifecycle.
 
 ## 1.0.2
 
