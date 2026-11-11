@@ -1,8 +1,11 @@
 # AGENTS.md — Architrave
 
 Architrave is a **spec-driven, cross-platform, judge-gated durable software-build control plane**.
-The current task source is `tasks.md`, with blank, In progress and Code ready
-statuses. Preserve owner corrections and verify actual behavior; do not create
+The canonical lifecycle source is `.architrave/state.yaml`, maintained through
+`python harness/architrave_cli.py state`; see `docs/lifecycle-state.md`.
+Existing `tasks.md` is a migration input or generated read-only view, never a
+competing authority once state is selected. Progress stays blank, In progress
+or Code ready, separate from disposition and acceptance. Preserve owner corrections and verify actual behavior; do not create
 SPEC/REQ declarations or use the retired completion barrier. Legacy Run and
 requirements commands remain explicit opt-in operations. It covers
 knowledge/automation, UI, backend, full-stack, plan-only infrastructure, optional
@@ -15,9 +18,10 @@ defaults to deny; explicit Run policy may authorize a bounded target and operati
 
 ## What's here
 - `agents/` — fourteen optional roles: **Architrave**, **CTO**, **Product Research**, **Operations UX**, **UX Architect**, **UI Visual**, **Platform Design**, **Service Architect**, **Backend Planner**, **Backend Implementer**, **Infra Engineer**, **Runtime Observer**, **Tournament Analyst**, and **Adversarial Judge**. Shared `.agent.md` format across VS Code / Copilot CLI / the Copilot app / Claude Code; role availability is not a reason to spawn.
-- `tasks.md` — current task tracking. `SPEC.md` retains historical requirements.
+- `.architrave/state.yaml` — API-owned lifecycle state; `tasks.md` is historical/import input. `SPEC.md` retains historical requirements.
 - `gates/` — deterministic optional gates in `gate_runner.py` + `rubric.md`. `hooks.json` supplies a compact Copilot session-start pointer and advisory repeated-read loop detection; the SPEC-based completion barrier is retired. No automatic post-edit quality or stop-loop hooks.
 - `harness/` — durable run-artifact helpers (`init-run`, `validate-run`, `semantic-review`, semantic learning review/recovery) as `architrave_cli.py` subcommands plus schemas, and the Python Run v2 state machine, worker/workspace adapters, invariants, product legibility, and v1/v2 validation.
+- `harness/board_data.py`, `board_view.py` + `board.css`/`board.js` — bundled YAML-backed work board, bounded observations and advisory insights; see `docs/dashboard.md`.
 - `knowledge/` — platform packs (`apple.md`, `microsoft.md`, `web.md`) + `backend.md` + `operations-ux.md` + `design-tokens.md` + `execution-policy.md` + `learning-loop.md` + `yagni.md` + `runtime-v2.md` for durable control-plane semantics.
 - `kit/` — `architrave.config.schema.json` (the per-repo config keystone) + `examples/`.
 - `plugin.json` + `.github/plugin/marketplace.json` — Copilot agent-plugin + self-hosting marketplace.
@@ -39,6 +43,9 @@ defaults to deny; explicit Run policy may authorize a bounded target and operati
   selection in worker evidence. Never shell out to another harness as a worker.
 - **Run state is API-owned** — never manually edit `run.json`, `events.jsonl`,
 	policy, checkpoints, or task statuses. The Phase Ledger is a projection.
+- **Lifecycle state is API-owned** — one locked restricted-YAML snapshot holds
+  state, corrections and idempotent receipts. The board and scoped agent context
+  read that same revision; human labels and hashes do not authenticate authority.
 - **Default deny** — unconfigured infrastructure/runtime is plan/read-only.
 	Scoped authorized mutation needs checkpoint, receipt, and live verification.
 - **YAGNI is a gate, not a vibe** — use `knowledge/yagni.md`; do not add future-proof abstractions/dependencies/config unless the current task proves they are needed.
@@ -53,6 +60,8 @@ Python or Node CLI.
   and runtime fixtures): `python scripts/check_manifests.py`. It is long-running, must run
   inside a git checkout, needs `npx` for its AJV schema checks, and skips agent/skill YAML
   frontmatter when `ruby` is not on PATH.
+  Release validation uses Python 3.11+ (`tomllib` and `unittest.enterContext` are
+  required by the complete fixture suite), rather than macOS's older system Python.
 - `python scripts/check_manifests.py --scan-only` runs only the repository scans and the
   Python-only entrypoint check. It skips JSON well-formedness, version sync, YAML and
   fixture coverage, so report it as scan-only, never as the full suite.
@@ -62,6 +71,10 @@ Python or Node CLI.
 - Focused runtime suites: `python scripts/test-runtime-v2.py`, `test-worker-adapters.py`,
   `test-invariant-engine.py`, `test-legibility.py`, `test-workspaces.py` and
   `test-longbuild-runtime.py`, plus `node --experimental-vm-modules scripts/test-native-review.mjs`.
+- Canonical lifecycle: `python scripts/test-lifecycle.py` (real store/CLI/board,
+  concurrent writers, crash replacement and scoped correction/recovery paths).
+- Dashboard data/CLI/rendering: `python scripts/test-dashboard.py`; optional real
+  Chromium controls/layout: `python scripts/test-dashboard-browser.py --board <html> --output <session-dir>`.
 - Gates: `python gates/gate_runner.py checks --quick` is the smoke test. `python gates/gate_runner.py checks`
   runs the configured build and test recipes through the host shell (Git Bash when present,
   else `cmd`); on native Windows cite that run, not WSL or a direct test invocation.

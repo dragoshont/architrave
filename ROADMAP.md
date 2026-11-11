@@ -1,5 +1,34 @@
 # Roadmap
 
+## Bundled YAML-backed work board (1.1.0)
+
+Ship the richer board with Architrave first, not a universal plugin rollout.
+The shared read-only renderer consumes canonical scoped state and separately
+validated observation/advisory YAML. Keep written/current readiness/acceptance,
+source coverage, unknowns and clocks separate. Provide task/evidence drill-down,
+map/list filtering with stable totals, themes, controlled refresh and offline HTML.
+Bounded explicit-session collection persists allowlisted facts before display;
+AI commentary is host-authored, optional and never authority or a render-time call.
+
+Existing installer assets and commands own delivery. Standalone distribution
+and additional native harness adapters remain deferred. Browser/API checks do
+not imply loaded-plugin, Windows or other-host qualification.
+
+## Durable lifecycle state (1.1.0)
+
+Replace writable task rows with a single bounded YAML snapshot behind the Python
+state API; deterministic board and scoped agent context consume the same revision.
+Stable IDs, sourced targeted corrections, decisions, separate acceptance,
+exclusive attempts, relevant input fingerprints, idempotent receipts and external
+reconciliation are implemented in source. Deterministic tasks import preserves
+originals; generated tasks are read-only and legacy Run commits cannot compete.
+See [lifecycle state](docs/lifecycle-state.md) and [qualification](docs/lifecycle-evidence.md).
+
+The strict JSON-compatible YAML 1.2 profile preserves stdlib-only installation.
+No daemon, vector service, default REQ barrier or new approval ceremony is added.
+Fixture/CLI evidence is not live-host interruption qualification, installed-plugin
+loading or measured reduction in owner interventions; those remain separate work.
+
 ## Current task-workflow repair (1.0.5)
 
 Use tasks.md, not the historical SPEC ledger, for current task progress.

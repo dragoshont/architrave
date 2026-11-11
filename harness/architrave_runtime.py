@@ -442,6 +442,204 @@ class RunStore:
         self.__objective_capability = object()
         self.__policy_capability = object()
 
+    def _lifecycle_lock(self) -> Any:
+        path = self.repository / ".architrave" / "state.yaml"
+        if not (path.exists() or path.is_symlink()):
+            return contextlib.nullcontext()
+        from lifecycle import StateError, StateStore
+
+        store = StateStore(self.repository)
+        try:
+            store._safe()
+        except StateError as exc:
+            raise RuntimeFailure(exc.code, str(exc)) from exc
+        return FileLock(store.lock)
+
+    def _lifecycle_state(self) -> dict[str, Any] | None:
+        path = self.repository / ".architrave" / "state.yaml"
+        if not (path.exists() or path.is_symlink()):
+            return None
+        from lifecycle import StateError, StateStore, location
+
+        store = StateStore(self.repository)
+        try:
+            state = store._read()
+        except StateError as exc:
+            raise RuntimeFailure(exc.code, str(exc)) from exc
+        if state["location"] != location(self.repository):
+            raise RuntimeFailure("LOCATION_RECONCILIATION", "operation safety state belongs to another host or repository")
+        return state
+
+    def _operation_binding(self, lifecycle: dict[str, Any], identity: dict[str, str],
+                           *, admitting: bool) -> dict[str, Any]:
+        from lifecycle import holds, inputs
+
+        operation = lifecycle["operations"].get(identity["operationId"])
+        if (identity["projectId"] != lifecycle["project_id"] or operation is None
+                or operation["task_id"] != identity["taskId"]):
+            raise RuntimeFailure("LIFECYCLE_OPERATION", "operation must bind this lifecycle project and task")
+        attempt = lifecycle["attempts"][operation["attempt_id"]]
+        if admitting:
+            scope = attempt.get("scope")
+            if not scope or scope["mode"] != "mutable" or not scope["paths"]:
+                raise RuntimeFailure("LIFECYCLE_OPERATION_HELD", "new effects require known nonempty mutable assigned scope")
+            blockers = [item for item in holds(lifecycle, operation["task_id"], ignore_attempt=attempt["id"])
+                        if item != f"operation {operation['id']} requires reconciliation"]
+            if (blockers or operation["outcome"] != "intended" or attempt["stop"] != "none"
+                    or attempt["activity"] in {"cancelled", "failed"}
+                    or operation["inputs"] != inputs(lifecycle, operation["task_id"])):
+                raise RuntimeFailure("LIFECYCLE_OPERATION_HELD", "operation is stale, stopped, terminal or held",
+                                     details={"holds": blockers})
+        return {**identity, "attemptId": attempt["id"], "inputs": operation["inputs"],
+                "target": operation["target"], "action": operation["action"],
+                "artifact": operation["artifact"], "grantRef": operation["grant_ref"]}
+
+    def _assert_lifecycle_safety(
+        self, state: dict[str, Any], event_type: str, *, before: dict[str, Any] | None = None,
+    ) -> None:
+        binding = state["focus"].get("lifecycleOperation")
+        lifecycle = self._lifecycle_state()
+        if lifecycle is None:
+            if binding:
+                raise RuntimeFailure("LIFECYCLE_SELECTED", "operation capsule requires its canonical lifecycle store")
+            return
+        safety_events = {
+            "mutation.allowed", "mutation.denied", "mutation.started", "mutation.reconciled",
+            "external.wait_started", "external.wait_resolved", "external.challenge_renewed",
+            "target.preflight", "policy.amendment_requested", "policy.amended", "artifact.recorded",
+            "gate.passed", "gate.failed", "gate.recorded",
+        }
+        if event_type not in safety_events and not (event_type == "run.created" and binding):
+            raise RuntimeFailure("LIFECYCLE_SELECTED",
+                                 "state.yaml is active; legacy Run task tracking cannot compete with lifecycle state")
+        if binding:
+            identity = {key: binding[key] for key in ("projectId", "taskId", "operationId")}
+            expected = self._operation_binding(lifecycle, identity, admitting=event_type in {"run.created", "mutation.started"})
+            if binding != expected:
+                raise RuntimeFailure("LIFECYCLE_OPERATION", "operation capsule identity no longer matches lifecycle state")
+            if any(entry["scope"] != binding["target"] or entry["operations"] != [binding["action"]]
+                   for entry in state["policy"]["allow"]):
+                raise RuntimeFailure("LIFECYCLE_OPERATION_SCOPE", "capsule grants must name only its exact target and action")
+            if any(action != binding["action"] for action in state["policy"]["confirmationRequired"]):
+                raise RuntimeFailure("LIFECYCLE_OPERATION_SCOPE", "capsule confirmations must name only its action")
+        elif not any(record["kind"] == "legacy"
+                     and record["path"] == f".architrave/runs/{state['runId']}"
+                     and record["state"]["runId"] == state["runId"] for record in lifecycle["imports"]):
+            raise RuntimeFailure("LIFECYCLE_SELECTED", "legacy safety Run was not explicitly selected for migration")
+        if before is None:
+            return
+        mutable = {"status", "policy", "tasks", "checkpoints", "externalCheckpoints", "artifacts",
+                   "gateResults", "targetIdentity"}
+        if any(state[key] != before[key] for key in before if key not in mutable):
+            raise RuntimeFailure("LIFECYCLE_SELECTED", "safety operations cannot change legacy goals or task authority")
+        def contracts(run: dict[str, Any]) -> list[dict[str, Any]]:
+            return [{**{key: value for key, value in task.items() if key not in {"status", "sideEffect"}},
+                     "sideEffect": {key: task["sideEffect"][key] for key in ("operation", "target")}
+                     if task["sideEffect"] else None} for task in run["tasks"]]
+        if contracts(state) != contracts(before):
+            raise RuntimeFailure("LIFECYCLE_SELECTED", "safety task rows are projections, not writable task contracts")
+        if any(task["status"] != old["status"] and task["status"] in {"RUNNING", "COMPLETED"}
+               for old, task in zip(before["tasks"], state["tasks"])):
+            raise RuntimeFailure("LIFECYCLE_SELECTED", "safety task rows cannot dispatch work or declare task completion")
+        if state["checkpoints"][:len(before["checkpoints"])] != before["checkpoints"]:
+            raise RuntimeFailure("LIFECYCLE_SELECTED", "operation safety checkpoints must be preserved")
+        prior_artifacts = {item["id"] for item in before["artifacts"]}
+        if any(item["producer"] not in {"mutation", "reconciliation", "external-proof", "policy-engine"}
+               for item in state["artifacts"] if item["id"] not in prior_artifacts):
+            raise RuntimeFailure("LIFECYCLE_SELECTED", "only operation safety receipts can be added to a selected Run")
+        if any(item["type"] != "reality" for item in state["gateResults"][len(before["gateResults"]):]):
+            raise RuntimeFailure("LIFECYCLE_SELECTED", "selected Runs retain operation verification, not goal acceptance gates")
+
+    def create_lifecycle_operation(
+        self, *, project_id: str, task_id: str, operation_id: str,
+        policy_allow: Sequence[dict[str, Any]] = (), confirmation_required: Sequence[str] = (),
+        target_identity: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Create one safety-only Run for an already recorded lifecycle operation.
+
+        Explicit policy_allow is separate from the nonauthorizing grant_ref; repository
+        autonomy defaults are not inherited. Use the returned runId and projected task
+        ID with policy_check, wait_external/resolve_external, prepare_side_effect and
+        existing receipt/reconciliation producers (including LegibilityRunner).
+        This never admits or dispatches legacy work or updates lifecycle progress.
+        """
+        identity = {"projectId": require_id(project_id, "project id"),
+                    "taskId": require_id(task_id, "task id"),
+                    "operationId": require_id(operation_id, "operation id")}
+        return self._create(
+            goal=f"Safety evidence for lifecycle operation {operation_id}",
+            outcome="Retain scoped authorization, checkpoints and observed external effects; not task acceptance",
+            criteria=[{"id": "operation-evidence", "description": "Operation-specific observed safety evidence",
+                       "verificationType": "reality", "surface": "runtime", "risk": "R3", "blocking": False}],
+            autonomy_scope="current-task", policy_allow=policy_allow,
+            confirmation_required=confirmation_required,
+            run_id=f"operation-{sha256_value(identity)[:32]}",
+            lifecycle_operation=identity, target_identity=target_identity,
+        )
+
+    def lifecycle_operation_observation(self, run_id: str) -> dict[str, Any]:
+        """Return an observe_operation payload from authenticated, consumed safety evidence.
+
+        The caller submits this payload through StateStore.apply with its own command
+        ID and expected revision. The two stores do not share an atomic commit; a lost
+        observation is recovered by reading this same retained Run, never reapplying.
+        """
+        with self._lifecycle_lock():
+            state = self.load(run_id)
+            self._assert_lifecycle_safety(state, "mutation.reconciled")
+            binding = state["focus"].get("lifecycleOperation")
+            if not binding:
+                raise RuntimeFailure("LIFECYCLE_OPERATION", "legacy recovery has no lifecycle operation binding")
+            effect = find_task(state, binding["taskId"])["sideEffect"]
+            if effect["state"] == "UNCERTAIN":
+                return {"id": binding["operationId"], "outcome": "unknown",
+                        "reference": f"run:{run_id}:event:{state['eventCursor']['sequence']}",
+                        "observed_at": state["updatedAt"], "reconciliation": False}
+            reference = effect["reconciliation"]
+            artifact = next((item for item in state["artifacts"] if f"artifact:{item['id']}" == reference), None)
+            if artifact is None or artifact["consumedByTask"] != binding["taskId"]:
+                raise RuntimeFailure("RECONCILIATION_REQUIRED", "operation has no consumed target observation")
+            receipt = self._read_json_receipt(artifact["path"], "operation")
+            if (receipt.get("taskId") != binding["taskId"] or receipt.get("operation") != binding["action"]
+                    or receipt.get("target") != binding["target"]):
+                raise RuntimeFailure("EVIDENCE_REPLAY", "operation receipt identity differs from lifecycle binding")
+            if (effect["state"] == "CONFIRMED" and artifact["producer"] == "mutation"
+                    and receipt.get("result", {}).get("status") == "pass"
+                    and receipt.get("result", {}).get("mismatches") == []):
+                outcome = "succeeded"
+            elif (effect["state"] == "NONE" and artifact["producer"] == "reconciliation"
+                  and receipt.get("outcome") in {"not-applied", "not-applied-closed"}):
+                outcome = "failed"
+            else:
+                raise RuntimeFailure("RECONCILIATION_REQUIRED", "receipt does not prove a supported terminal operation outcome")
+            return {"id": binding["operationId"], "outcome": outcome,
+                    "reference": f"run:{run_id}:{reference}", "observed_at": artifact["createdAt"],
+                    "reconciliation": True}
+
+    def _operation_task(self, state: dict[str, Any], binding: dict[str, Any],
+                        target_identity: dict[str, str] | None) -> dict[str, Any]:
+        task_id = binding["taskId"]
+        objective = state["objective"]["description"]
+        return {
+            "id": task_id, "title": f"Safety projection: {binding['operationId']}", "objective": objective,
+            "status": "READY", "dependencies": [], "workerProfile": "native", "workspace": None,
+            "mutablePaths": [], "tools": [], "risk": "R3", "objectiveVersion": 1, "lane": "product",
+            "workKind": "product", "changeKind": "normal", "operations": [binding["action"]],
+            "targetIdentity": copy.deepcopy(target_identity), "isMinimalAcceptanceTest": False,
+            "largeChange": False, "deferredReason": None, "acceptanceCriteria": ["operation-evidence"],
+            "requiredArtifacts": [], "gate": None,
+            "retryPolicy": {"maxAttempts": 1, "backoffSeconds": 0, "retryable": []},
+            "checkpointPolicy": {"beforeSideEffect": True, "afterCompletion": True},
+            "attempts": 0, "lease": None,
+            "workPacket": normalize_work_packet(None, task_id, normalized_defaults={
+                "objective": objective, "acceptanceCriteria": ["operation-evidence"],
+                "repoScope": str(self.repository), "mutablePaths": [], "tools": [], "worker": "native",
+                "risk": "R3", "expectedArtifacts": [],
+            }),
+            "sideEffect": {"operation": binding["action"], "target": binding["target"],
+                           "state": "NONE", "reconciliation": None},
+        }
+
     def requirements_document(self) -> tuple[dict[str, dict[str, str]], list[dict[str, str]]] | None:
         config_path = self.repository / "architrave.config.json"
         try:
@@ -1439,6 +1637,7 @@ class RunStore:
         payload: dict[str, Any] | None = None,
         evidence_refs: Sequence[str] = (),
     ) -> dict[str, Any]:
+        self._assert_lifecycle_safety(state, event_type)
         if state["status"] == "COMPLETED":
             self._assert_requirements_accepted(state)
         sanitized = redact(state)
@@ -1471,8 +1670,9 @@ class RunStore:
         run_dir = self.run_dir(run_id)
         shared = self.shared_claims_dir()
         shared_lock = FileLock(shared / "claims.lock") if shared is not None else contextlib.nullcontext()
-        with shared_lock, FileLock(self.runs_root / ".requirements.lock"), FileLock(run_dir / ".run.lock"):
+        with self._lifecycle_lock(), shared_lock, FileLock(self.runs_root / ".requirements.lock"), FileLock(run_dir / ".run.lock"):
             _, state = self._load_locked(run_id)
+            self._assert_lifecycle_safety(state, event_type)
             before_state = copy.deepcopy(state)
             before_policy = copy.deepcopy(state["policy"])
             before_objective = copy.deepcopy(state["objective"])
@@ -1563,6 +1763,7 @@ class RunStore:
                         "OBJECTIVE_AUTHORITY",
                         "objective transitions require a consumed trusted checkpoint",
                     )
+            self._assert_lifecycle_safety(state, event_type, before=before_state)
             return self._commit_locked(
                 run_dir,
                 state,
@@ -1587,6 +1788,21 @@ class RunStore:
         primary_paths: Sequence[str] = (),
         primary_threshold: int = PRIMARY_STALL_THRESHOLD,
     ) -> dict[str, Any]:
+        return self._create(
+            goal=goal, outcome=outcome, criteria=criteria, autonomy_scope=autonomy_scope,
+            policy_allow=policy_allow, confirmation_required=confirmation_required, run_id=run_id,
+            primary_criterion=primary_criterion, primary_paths=primary_paths, primary_threshold=primary_threshold,
+        )
+
+    def _create(
+        self, *, goal: str, outcome: str, criteria: Sequence[dict[str, Any]],
+        autonomy_scope: str | None = None, policy_allow: Sequence[dict[str, Any]] | None = None,
+        confirmation_required: Sequence[str] | None = None, run_id: str | None = None,
+        primary_criterion: str | None = None, primary_paths: Sequence[str] = (),
+        primary_threshold: int = PRIMARY_STALL_THRESHOLD,
+        lifecycle_operation: dict[str, str] | None = None,
+        target_identity: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
         # Explicit arguments always win; an omitted (None) argument falls back to the
         # repository's configured `autonomy` defaults, and only then to the built-in default.
         configured_autonomy = repository_config(str(self.repository)).get("autonomy") or {}
@@ -1604,7 +1820,22 @@ class RunStore:
         run_id = run_id or f"run-{dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
         require_id(run_id, "run id")
         run_dir = self.run_dir(run_id)
-        with FileLock(run_dir / ".run.lock"):
+        with self._lifecycle_lock(), FileLock(run_dir / ".run.lock"):
+            lifecycle = self._lifecycle_state()
+            binding = None
+            if lifecycle_operation is not None:
+                if lifecycle is None:
+                    raise RuntimeFailure("LIFECYCLE_OPERATION", "select lifecycle state and record the operation first")
+                binding = self._operation_binding(lifecycle, lifecycle_operation, admitting=True)
+                if binding["action"] == "integrate":
+                    raise RuntimeFailure("LIFECYCLE_OPERATION", "integration needs the existing workspace integration adapter, not an action alias")
+                if target_identity is not None and (
+                    set(target_identity) != TARGET_IDENTITY_FIELDS
+                    or target_identity["acceptanceTarget"] != binding["target"]
+                ):
+                    raise RuntimeFailure("TARGET_IDENTITY_REQUIRED", "operation target identity must name the exact lifecycle target")
+            elif lifecycle is not None:
+                raise RuntimeFailure("LIFECYCLE_SELECTED", "state.yaml is active; cannot create a competing legacy Run")
             if (run_dir / "run.json").exists():
                 raise RuntimeFailure("RUN_EXISTS", f"run already exists: {run_id}")
             run_dir.mkdir(parents=True, exist_ok=True)
@@ -1674,6 +1905,12 @@ class RunStore:
                 state["focus"]["primaryCriterion"] = normalize_primary_criterion(
                     state, primary_criterion, primary_paths, primary_threshold, state["baseline"]["commit"],
                 )
+            if binding:
+                state["focus"]["lifecycleOperation"] = binding
+                state["tasks"] = [self._operation_task(state, binding, target_identity)]
+                state["status"] = "PLANNING"
+                for criterion in state["acceptanceCriteria"]:
+                    criterion["surface"] = "deployment" if binding["action"] == "deploy" else "runtime"
             self._create_human_artifacts(run_dir, state)
             return self._commit_locked(
                 run_dir,
@@ -2806,6 +3043,8 @@ class RunStore:
 
     def ready_tasks(self, run_id: str | None = None) -> list[dict[str, Any]]:
         state = self.load(run_id)
+        if state["focus"].get("lifecycleOperation") or (self.repository / ".architrave" / "state.yaml").exists():
+            return []
         ready = []
         for task in state["tasks"]:
             if task["status"] != "READY":
@@ -3154,6 +3393,8 @@ class RunStore:
     def _assert_task_start_context(
         self, state: dict[str, Any], task: dict[str, Any], events: Sequence[dict[str, Any]],
     ) -> None:
+        if state["focus"].get("lifecycleOperation") or (self.repository / ".architrave" / "state.yaml").exists():
+            raise RuntimeFailure("LIFECYCLE_SELECTED", "lifecycle owns dispatch; legacy Run task tracking cannot compete")
         self._assert_context_scope(state, task)
         self._validate_task_requirements(task)
         pushback = task.get("pushback")
@@ -5582,6 +5823,9 @@ class RunStore:
         integration_source: dict[str, str] | None = None,
         actor: str = "coordinator",
     ) -> dict[str, Any]:
+        before = self.load(run_id)
+        with self._lifecycle_lock():
+            self._assert_lifecycle_safety(before, "mutation.started")
         target_revision = None
         if operation in TARGET_OPERATIONS:
             before = self.load(run_id)
@@ -5631,6 +5875,11 @@ class RunStore:
                         or integration_source.get("workspaceSha256") != workspace_fingerprint(Path(task["workspace"]))
                         or integration_source.get("destinationSha256") != workspace_fingerprint(self.repository)):
                     raise RuntimeFailure("CANDIDATE_SOURCE_STALE", "candidate or destination changed before integration")
+            if self._lifecycle_state() is not None:
+                if task_has_pending_checkpoint(state, task_id):
+                    raise RuntimeFailure("EXTERNAL_CHECKPOINT_PENDING", "resolve every operation checkpoint before mutation")
+                if state["focus"].get("lifecycleOperation") and task["status"] == "READY":
+                    task["status"] = "WAITING_RESOURCE"
             if task["status"] not in {"RUNNING", "WAITING_RESOURCE"}:
                 raise RuntimeFailure("SIDE_EFFECT_NOT_READY", "side effect task must be running or awaiting coordinator validation")
             require_mutation_allowed(state, target, operation, confirmed=confirmed)

@@ -32,7 +32,8 @@ from platform_launch import configured_recipe
 
 class LegibilityTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.temp = tempfile.TemporaryDirectory()
+        # Exact-target observers reject symlink ancestors, including macOS /var.
+        self.temp = tempfile.TemporaryDirectory(dir=Path(tempfile.gettempdir()).resolve())
         self.repo = Path(self.temp.name) / "repo"
         self.repo.mkdir()
         self.git("init", "-q")

@@ -38,6 +38,9 @@ GATE_FILES = (
     "rubric.md",
 )
 GUIDANCE_FILES = (
+    "docs/dashboard.md",
+    "docs/lifecycle-state.md",
+    "docs/lifecycle-evidence.md",
     "docs/program-board.md",
     "docs/delivery-authenticity.md",
     "docs/native-semantic-review.md",
@@ -45,6 +48,12 @@ GUIDANCE_FILES = (
     "kit/examples/requirements.md",
 )
 IGNORE_RULES = (
+    ".architrave/board-*.yaml",
+    ".architrave/board-*.lock",
+    ".architrave/.board-*.yaml.*",
+    ".architrave/state.yaml",
+    ".architrave/state.lock",
+    ".architrave/.state.yaml.*",
     ".architrave/runs/",
     ".architrave/worktrees/",
     ".architrave/runtime.key",
@@ -1406,6 +1415,10 @@ def update_agents_stanza(managed: ManagedRoot, kit: Path) -> None:
 def assert_required_tree_staged(transaction: ManagedTransaction) -> None:
     staged = {str(item["relative"]) for item in transaction.operations if item["kind"] == "write"}
     required = {
+        "harness/board_data.py",
+        "harness/board_view.py",
+        "harness/board.css",
+        "harness/board.js",
         "harness/architrave_runtime.py",
         "harness/native_host.py",
         "gates/gate_runner.py",
@@ -1685,6 +1698,7 @@ def adoption_status(kit: Path, target: Path) -> int:
     """Read-only bytes/provenance; never claims a host loaded these instructions."""
     target = target.resolve()
     paths = {
+        "harness/lifecycle.py": "harness/lifecycle.py",
         "harness/architrave_runtime.py": "harness/architrave_runtime.py",
         "gates/gate_runner.py": "gates/gate_runner.py",
         "agents/architrave.agent.md": ".github/agents/architrave.agent.md",

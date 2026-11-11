@@ -18,3 +18,9 @@ __pycache__/
 .architrave/resources.lock
 .architrave/bench/
 .architrave/test-fixtures/
+.architrave/state.yaml
+.architrave/state.lock
+.architrave/.state.yaml.*
+.architrave/board-*.yaml
+.architrave/board-*.lock
+.architrave/.board-*.yaml.*

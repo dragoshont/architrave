@@ -128,6 +128,22 @@
         "minimalSliceProven": { "type": "boolean" },
         "reviewReopens": { "type": "integer", "minimum": 0 },
         "pushbackRequired": { "type": "boolean" },
+        "lifecycleOperation": {
+          "type": "object",
+          "required": ["projectId", "taskId", "operationId", "attemptId", "inputs", "target", "action", "artifact", "grantRef"],
+          "additionalProperties": false,
+          "properties": {
+            "projectId": { "$ref": "#/definitions/id" },
+            "taskId": { "$ref": "#/definitions/id" },
+            "operationId": { "$ref": "#/definitions/id" },
+            "attemptId": { "$ref": "#/definitions/id" },
+            "inputs": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "target": { "type": "string", "minLength": 1 },
+            "action": { "type": "string", "minLength": 1 },
+            "artifact": { "type": "string", "minLength": 1 },
+            "grantRef": { "type": "string", "minLength": 1 }
+          }
+        },
         "primaryCriterion": {
           "type": "object",
           "required": ["id", "paths", "threshold", "sinceCommit", "declaredAt", "eventSequence"],

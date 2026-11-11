@@ -2,20 +2,39 @@
 
 ## Current task workflow
 
-The board reads `tasks.md` and its `Task | Status` table. Blank statuses are
+The rich YAML-backed dashboard is bundled with Architrave; see
+[dashboard usage and data contracts](dashboard.md). It restores the compact
+task map, scoped metrics and source-backed session waterfall, with a selected
+task/evidence inspector, theme/list controls and accessible pause/manual refresh.
+Optional observations and AI interpretation are validated YAML sidecars, not
+additional task authorities. No model is invoked by rendering.
+
+The board first checks `.architrave/state.yaml`, the active-store marker and
+canonical lifecycle snapshot. It reads one immutable revision through the same
+API as agent context. See [lifecycle state](lifecycle-state.md) for migration,
+commands, ownership and trust boundaries. The lifecycle view shows stable IDs,
+scoped decisions/holds, deferred activation, retained results, evidence kinds,
+input applicability and independently timestamped host observations. Rendering
+does not call an LLM. Malformed selected state never falls back to tasks/SPEC.
+Static/stopped/overdue snapshots are labelled; failed refresh preserves the
+last valid revision with an explicit stale/error banner.
+
+Before migration, the compatibility board reads `tasks.md` and its `Task | Status` table. Blank statuses are
 Not started, In progress is blue and Code ready is green. Code ready records
 written implementation, not verified delivery or permission to deploy.
-The working-tree task file is authoritative even when an old SPEC.md is present.
+The working-tree task file is the import input even when an old SPEC.md is present.
 The board shows its filename and SHA256, and refreshes from the same file.
 Missing tasks.md or invalid statuses are reported explicitly; it does not
-silently fall back to a historical SPEC. A failed refresh preserves the last
-valid snapshot.
+silently fall back to a historical SPEC. A failed compatibility refresh preserves the last valid snapshot.
 
 ```text
 python "<kit-root>\harness\program_board.py" --ledger "<repo-root>" --session <session-uuid> --watch 120 --title "Session work"
 ```
 
 No REQ selection, delivery declaration or completion barrier is required.
+For explicitly selected session observations, add `--collect-observations`.
+Lifecycle watchers run until explicitly stopped; the legacy quiet-exit policy
+below applies only to the compatibility view.
 Open the resulting HTML in the host browser and read it. If that capability is
 unavailable, report the limitation and continue independently authorized work.
 Do not fabricate observations or turn a board into an approval stage.

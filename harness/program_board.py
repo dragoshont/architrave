@@ -356,7 +356,32 @@ def task_rows(text: str) -> dict:
 
 
 def build(ledger: Path, coordinator: str, selected: list[str] | None = None,
-          title: str | None = None, *, task_mode: bool | None = None) -> dict:
+          title: str | None = None, *, task_mode: bool | None = None,
+          task_ids: list[str] | None = None, collect: bool = False) -> dict:
+    from lifecycle import StateStore, snapshot
+    store = StateStore(ledger)
+    if store.selected():
+        require_scope = selected is None
+        if not require_scope:
+            raise ValueError("selected lifecycle store uses stable task IDs, not legacy --reqs")
+        from board_data import collect_observations, dashboard_model
+        collection_error = None
+        if collect:
+            try:
+                collect_observations(store, coordinator, task_ids)
+            except (OSError, ValueError, TypeError, KeyError) as exc:
+                collection_error = f"Observation collection failed ({getattr(exc, 'code', type(exc).__name__)}); retained YAML may be old"
+        generated = datetime.now(timezone.utc)
+        state = store.read()
+        view = snapshot(state, now=generated.isoformat(), task_ids=task_ids)
+        dashboard = dashboard_model(store, state, view, coordinator)
+        if collection_error:
+            dashboard["diagnostics"].append(collection_error)
+        return {"lifecycle": view, "dashboard": dashboard,
+                "title": title or "Session work", "sessions": [], "lanes": [],
+                "generated": generated, "coordinator": coordinator}
+    if task_ids is not None:
+        raise ValueError("--tasks requires selected lifecycle state")
     if task_mode is None:
         task_mode = (ledger / "tasks.md").is_file()
     path = ledger / ("tasks.md" if task_mode else "SPEC.md")
@@ -523,6 +548,8 @@ def timeline(sessions: list[dict], lane_by_session: dict, remote: list[dict] = (
 
 
 def render(data: dict) -> str:
+    if "lifecycle" in data:
+        return render_lifecycle(data)
     reqs, lanes, sessions = data["reqs"], data["lanes"], data["sessions"]
     task_mode = data.get("task_mode", False)
     labels = {**REQ_LABEL, "active": "In progress"} if task_mode else REQ_LABEL
@@ -779,14 +806,25 @@ def audit_panel(data: dict) -> str:
         return heading + f"<p class='issues'>Audit unavailable: {esc(exc)}. Recollect and review the selected sessions.</p></section>"
 
 
+def render_lifecycle(data: dict) -> str:
+    from board_view import render as render_dashboard
+    if "dashboard" not in data:
+        from board_data import presentation_model
+        data = dict(data, dashboard=presentation_model(data["lifecycle"]))
+    return render_dashboard(data)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--ledger", help="directory with tasks.md (default: current repo)")
     parser.add_argument("--session", default=os.environ.get("COPILOT_AGENT_SESSION_ID"), help="coordinator session id (default: this session)")
     parser.add_argument("--output", help="HTML file (default: this session's files/program-board.html)")
     parser.add_argument("--title", help="short description of this session's work")
-    parser.add_argument("--watch", type=int, metavar="SECONDS", help="regenerate every SECONDS until the program is quiet for 2 hours")
+    parser.add_argument("--watch", type=int, metavar="SECONDS", help="regenerate every SECONDS until stopped (legacy quiet exit retained)")
+    parser.add_argument("--collect-observations", action="store_true",
+                        help="persist bounded allowlisted events from the explicitly selected coordinator/assigned sessions")
     scope = parser.add_mutually_exclusive_group()
+    scope.add_argument("--tasks", help="comma-separated stable lifecycle task IDs")
     scope.add_argument("--reqs", help="legacy requirement scope; tasks.md still takes precedence when present")
     scope.add_argument("--all-reqs", action="store_true", help="explicit legacy requirements view when tasks.md is absent")
     args = parser.parse_args()
@@ -794,6 +832,10 @@ def main() -> int:
         args.reqs = list(dict.fromkeys(rid.strip().upper() for rid in args.reqs.split(",") if rid.strip()))
         if not args.reqs:
             parser.error("--reqs needs at least one REQ ID")
+    if args.tasks is not None:
+        args.tasks = list(dict.fromkeys(tid.strip() for tid in args.tasks.split(",") if tid.strip()))
+        if not args.tasks:
+            parser.error("--tasks needs at least one task ID")
     if not args.session:
         print("program-board: no --session and COPILOT_AGENT_SESSION_ID is unset", file=sys.stderr)
         return 2
@@ -809,21 +851,31 @@ def main() -> int:
         root = Path(gate.git(Path.cwd(), "rev-parse", "--show-toplevel") or Path.cwd())
         ledger = root
     args.output = args.output or str(STATE_HOME / args.session / "files" / "program-board.html")
-    if not (ledger / "tasks.md").is_file() and not (
+    from lifecycle import StateStore
+    if not StateStore(ledger).selected() and not (ledger / "tasks.md").is_file() and not (
         (args.reqs is not None or args.all_reqs) and (ledger / "SPEC.md").is_file()
     ):
         print(f"program-board: {ledger / 'tasks.md'} not found", file=sys.stderr)
         return 2
+    out = Path(args.output).expanduser().resolve()
     try:
         task_mode = (ledger / "tasks.md").is_file()
-        initial_data = build(ledger, args.session, args.reqs, args.title, task_mode=task_mode)
+        initial_data = build(ledger, args.session, args.reqs, args.title, task_mode=task_mode,
+                             task_ids=args.tasks, collect=args.collect_observations)
     except (OSError, ValueError) as exc:
         print(f"program-board: cannot start: {exc}", file=sys.stderr)
+        if out.is_file():
+            previous = out.read_text(encoding="utf-8")
+            if "<title>Lifecycle board</title>" in previous:
+                banner = f"<aside role='alert' class='error'>Refresh failed; STALE: {esc(exc)}</aside>"
+                tmp = out.with_suffix(f".{os.getpid()}.tmp")
+                tmp.write_text(re.sub(r"<body\b[^>]*>", lambda match: match[0] + banner, previous, count=1), encoding="utf-8")
+                tmp.replace(out)
         return 2
-    out = Path(args.output).expanduser().resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
     lock = out.with_suffix(".pid")
     if args.watch:
+        last_valid = None
         try:
             fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
         except FileExistsError:
@@ -855,20 +907,23 @@ def main() -> int:
     if args.watch:
         for sig in (signal.SIGTERM, signal.SIGINT):
             handlers[sig] = signal.signal(sig, lambda _sig, _frame: stopped.set())
+    last_valid = None
     try:
         if args.watch:
             pointer.parent.mkdir(parents=True, exist_ok=True)
             pointer.write_text(json.dumps({"pid": os.getpid(), "output": str(out), "ledger": str(ledger),
-                                           "interval": max(args.watch, 30), "reqs": args.reqs}), encoding="utf-8")
+                                           "interval": max(args.watch, 30), "reqs": args.reqs, "tasks": args.tasks}), encoding="utf-8")
         while True:
             try:
                 data = initial_data if initial_data is not None else build(
-                    ledger, args.session, args.reqs, args.title, task_mode=task_mode)
+                    ledger, args.session, args.reqs, args.title, task_mode=task_mode, task_ids=args.tasks,
+                    collect=args.collect_observations)
                 initial_data = None
                 data["refresh"] = max(args.watch, 30) if args.watch else None
                 tmp = out.with_suffix(f".{os.getpid()}.tmp")
                 tmp.write_text(render(data), encoding="utf-8")
                 tmp.replace(out)
+                last_valid = data
                 sidecar = out.with_suffix(".rotate.json")
                 try:
                     previous = json.loads(sidecar.read_text(encoding="utf-8"))
@@ -878,27 +933,43 @@ def main() -> int:
                 sidecar.write_text(json.dumps({x["id"]: {"flag": "rotate", "since": (previous.get(x["id"]) or {}).get("since", now)
                                                          if isinstance(previous.get(x["id"]), dict) else now}
                                                for x in data["sessions"] if x["rotate"] == "hard"}, indent=1), encoding="utf-8")
-                print(f"program-board: {len(data['lanes'])} lanes, {len(data['sessions'])} sessions -> {out}", flush=True)
-                newest = max((x["end"] for x in data["sessions"]), default=None)
+                if "dashboard" in data:
+                    print(f"program-board: {data['dashboard']['counts']['total']} scoped items, "
+                          f"{len(data['dashboard']['sessions'])} observation sources -> {out}", flush=True)
+                else:
+                    print(f"program-board: {len(data['lanes'])} lanes, {len(data['sessions'])} sessions -> {out}", flush=True)
+                newest = (when(data["lifecycle"]["updated_at"]) if "lifecycle" in data
+                          else max((x["end"] for x in data["sessions"]), default=None))
             except Exception as exc:  # keep the last good board, report, retry next interval
                 print(f"program-board: refresh failed: {exc}", file=sys.stderr, flush=True)
+                if last_valid is not None and "lifecycle" in last_valid:
+                    failed = dict(last_valid, refresh_error=str(exc))
+                    tmp = out.with_suffix(f".{os.getpid()}.tmp")
+                    tmp.write_text(render(failed), encoding="utf-8")
+                    tmp.replace(out)
                 if not args.watch:
                     return 1
                 newest = datetime.now(timezone.utc)
-            if not args.watch or newest is None or (datetime.now(timezone.utc) - newest).total_seconds() > 7200:
+            if not args.watch or ("lifecycle" not in data and (
+                    newest is None or (datetime.now(timezone.utc) - newest).total_seconds() > 7200)):
                 return 0
             if stopped.wait(max(args.watch, 30)):
                 return 0
     finally:
         if args.watch:
             try:
-                data = build(ledger, args.session, args.reqs, args.title, task_mode=task_mode)
+                data = build(ledger, args.session, args.reqs, args.title, task_mode=task_mode, task_ids=args.tasks)
                 data["stopped"] = True
                 tmp = out.with_suffix(f".{os.getpid()}.tmp")
                 tmp.write_text(render(data), encoding="utf-8")
                 tmp.replace(out)
             except Exception as exc:
                 print(f"program-board: final stopped snapshot failed; previous bytes retained: {exc}", file=sys.stderr, flush=True)
+                if last_valid is not None and "lifecycle" in last_valid:
+                    failed = dict(last_valid, refresh_error=str(exc), stopped=True)
+                    tmp = out.with_suffix(f".{os.getpid()}.tmp")
+                    tmp.write_text(render(failed), encoding="utf-8")
+                    tmp.replace(out)
             for sig, handler in handlers.items():
                 signal.signal(sig, handler)
         if args.watch and lock.is_file() and lock.read_text().strip() == str(os.getpid()):

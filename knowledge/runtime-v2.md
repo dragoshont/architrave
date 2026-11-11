@@ -4,6 +4,15 @@ Load this pack for non-trivial, multi-task, resumable, deployment-aware, or
 runtime-verified work. The runtime is a local control plane, not a deployment
 platform and not a workflow language for shell commands.
 
+With selected lifecycle state, `.architrave/state.yaml` owns tasks and intent.
+Do not create a competing ordinary Run or dispatch legacy tasks. Explicitly
+imported Runs retain operation safety/recovery; new external operations use
+`RunStore.create_lifecycle_operation` after recording the lifecycle operation.
+The capsule's task row is only a safety projection. Consume retained observations
+back through the lifecycle API, preserving separate transaction boundaries.
+See [scoped operation-safety bridge](../docs/lifecycle-state.md#scoped-operation-safety-bridge)
+for exact APIs, grant/checkpoint/receipt rules and recovery; default deny remains.
+
 ## Requirements binding
 
 A Run checkpoint is not a VM snapshot. The canonical pre-side-effect record and

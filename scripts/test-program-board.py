@@ -30,6 +30,58 @@ def events(path: Path, rows: list[dict]) -> None:
 
 
 class ProgramBoard(unittest.TestCase):
+    def test_selected_lifecycle_startup_failure_marks_previous_board_stale(self):
+        sys.path.insert(0, str(ROOT / "harness"))
+        from lifecycle import StateStore
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Path(tmp)
+            (ledger / "tasks.md").write_text("| Task | Status |\n| --- | --- |\n| Preserve snapshot | |\n")
+            store = StateStore(ledger)
+            store.initialize("board-failure", import_tasks=True)
+            output = ledger / "board.html"
+            command = [sys.executable, str(ROOT / "harness/program_board.py"), "--ledger", str(ledger),
+                       "--session", COORD, "--output", str(output)]
+            first = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(first.returncode, 0, first.stderr)
+            store.path.write_text("invalid YAML")
+            failed = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(failed.returncode, 2, failed.stderr)
+            page = output.read_text()
+            self.assertIn("Preserve snapshot", page)
+            self.assertIn("revision 0", page)
+            self.assertIn("Refresh failed; STALE", page)
+
+    def test_lifecycle_correction_board_preserves_before_after_meaning(self):
+        sys.path.insert(0, str(ROOT / "harness"))
+        from lifecycle import StateStore
+        import program_board
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Path(tmp)
+            (ledger / "tasks.md").write_text("| Task | Status |\n| --- | --- |\n| Original outcome | |\n")
+            store = StateStore(ledger)
+            state = store.initialize("board-corrections", import_tasks=True)
+            def apply(cid, operation, payload):
+                return store.apply(dict(project_id="board-corrections", command_id=cid,
+                                        expected_revision=store.read()["revision"], operation=operation, payload=payload))
+            apply("source", "record_source", dict(id="owner", kind="owner", reference="host:owner-message",
+                                                 excerpt="Use revised outcome", available=True))
+            tid = next(iter(state["tasks"]))
+            apply("correction", "apply_correction", dict(collection="tasks", target=tid,
+                                                        changes={"title": "Revised outcome"},
+                                                        source_refs=["owner"], kind="revise"))
+            page = program_board.render(program_board.build(ledger, COORD, task_ids=[tid]))
+            self.assertIn("before:", page)
+            self.assertIn("after:", page)
+            self.assertIn("Original outcome", page)
+            self.assertIn("Revised outcome", page)
+            apply("written", "record_progress", dict(task_id=tid, progress="Code ready"))
+            apply("new-criterion", "add_criterion",
+                  dict(id="new-acceptance", task_id=tid, expected="New unimplemented outcome",
+                       source_refs=["owner"], kind="implementation"))
+            page = program_board.render(program_board.build(ledger, COORD, task_ids=[tid]))
+            self.assertIn("data-readiness='stale'", page)
+            self.assertIn("data-next-action='reevaluate'", page)
+
     def test_tasks_are_authoritative_without_requirements_or_scope_flags(self):
         with tempfile.TemporaryDirectory() as tmp:
             ledger = Path(tmp)

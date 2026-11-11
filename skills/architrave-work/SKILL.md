@@ -14,7 +14,11 @@ skill's reported directory (`../..`), not repository cwd or guessed caches.
   or unavailable identity; a path in a prompt is not proof of destination.
   Missing sources on another ref do not authorize changing the assigned base.
   Report denied host authorization without bypassing it or retrying unchanged.
-- Work to the assigned tasks and acceptance in `tasks.md`. Read current
+- Work to assigned task/attempt IDs and acceptance from canonical `state context`.
+  Use the parent's state API with `--worker <assigned-id>` for observations,
+  evidence and retained results; do not rewrite state or revise intent.
+  Read `docs/lifecycle-state.md` from the supplied kit when using that protocol.
+  Without selected state, existing tasks.md is migration input only. Read current
   corrections and failed approaches first. Report actual progress and evidence;
   never edit tasks outside your assignment or recreate the retired SPEC workflow.
   Compare the original owner messages and attached reference assets with that

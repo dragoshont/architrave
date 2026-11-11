@@ -96,6 +96,12 @@ def tournament_review(run_dir: Path, execute: bool, result_path: Path | None = N
     return 0
 def main(argv: list[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments[:1] == ["state"]:
+        from lifecycle import cli as state_cli
+        return state_cli(arguments[1:])
+    if arguments[:1] == ["board"]:
+        from board_data import cli as board_cli
+        return board_cli(arguments[1:])
     if arguments[:1] == ["session-audit"]:
         from session_audit import main as audit_cli
         return audit_cli(arguments[1:])
@@ -103,6 +109,10 @@ def main(argv: list[str] | None = None) -> int:
         return runtime_cli(arguments[2:] if arguments[1:2] == ["--"] else arguments[1:])
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
+    state = subparsers.add_parser("state", help="canonical lifecycle state, context and migration")
+    state.add_argument("arguments", nargs=argparse.REMAINDER)
+    board = subparsers.add_parser("board", help="YAML-backed dashboard observations and advisory analysis")
+    board.add_argument("arguments", nargs=argparse.REMAINDER)
     runtime = subparsers.add_parser("runtime")
     runtime.add_argument("arguments", nargs=argparse.REMAINDER)
     audit = subparsers.add_parser("session-audit", help="outcome and approach audit of selected real host sessions")

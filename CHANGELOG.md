@@ -5,6 +5,85 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## 1.1.0 (2026-11-11)
+
+### Added
+
+- **Durable lifecycle state.** A bounded, restricted YAML 1.2 snapshot behind
+  `architrave_cli.py state` holds stable goals/tasks, original source references,
+  scoped corrections/decisions, ownership/attempts, evidence and idempotent
+  receipts. Locked revision checks and one atomic replacement prevent competing
+  updates and mismatched state/receipt commits. Explicit migration preserves task
+  originals and conflicts; `tasks.md` is not a second writable authority.
+- **Rich work board bundled with Architrave.** Scoped progress, task map/list,
+  task/evidence inspector, shared dark/light theme, source-backed session
+  waterfall, separate evidence categories and controlled refresh are shipped
+  through the existing installer. Standalone HTML embeds its assets and data;
+  no frontend build, CDN, extra plugin or render-time model call is required.
+- **Private observation and advisory YAML.** Bounded explicit-session collection
+  persists allowlisted facts before display. Missing metrics remain unknown,
+  recorded windows disclose coverage, and reported context capacity is never
+  reconstructed from prompt size. Optional host-authored AI interpretation has
+  validated references, scoped input fingerprints and no lifecycle or permission
+  authority; stale interpretation is distinct from current recommendations.
+- **Operation-safety continuity.** Explicitly selected legacy Runs retain policy,
+  checkpoints, receipts and reconciliation without competing task dispatch.
+  New lifecycle-operation capsules reuse those controls with exact target/action
+  binding and default deny; retained receipts can be consumed after lost replies
+  without reapplying effects.
+
+### Fixed
+
+- Preserve original mutable assignment paths across later task corrections.
+  Unknown ownership stays held; stop request, acknowledgement and observed
+  terminal execution remain separate.
+- Bind candidate checks to reported attempt, candidate/source/base/check-input
+  identities, including intended and observed integration. Keep incompatible
+  late results inspectable rather than integrating or deleting them.
+- Re-evaluate materially stale written readiness while preserving unaffected
+  work. Read-only review activity no longer changes implementation progress.
+- Retain relevant active/retired/prior-scope constraint and decision correction
+  history, with before/after meaning and source references.
+- Prevent cross-scope AI content from entering an exported board, even as
+  collapsed history. Keep every explicitly selected observation source in
+  coverage counts, including sources an older cache has not collected.
+- Serialize observation capture/merge/write, preserve fractional source times
+  and read exactly the captured file extent. Duplicate delivery, overlapping
+  collectors and source replacement do not silently inflate or rewind counters.
+- Use the configured macOS host name instead of a network-resolved node label.
+  Explicit handoff can record terminal read-only observations, but cannot release
+  mutable/unknown scope or uncertain effects. Missing host identity fails explicitly.
+- Use a physical temporary directory in legibility fixtures on macOS, where
+  `/var` may be a symlink. The exact-target observer's link rejection is unchanged.
+
+### Design decisions and deferred ideas
+
+- YAML carries project facts; formatting and optional AI commentary do not
+  invent progress, acceptance, cost, activity or permissions. Code ready,
+  current input binding, source review, installation and runtime proof are
+  different facts, not one completion percentage or green PASS.
+- Keep the viewer modular inside Architrave first. Separate distribution,
+  schema adapters and additional native harness embeddings remain future work.
+  MCP Apps is a candidate interoperability path, not a promise that every MCP
+  client renders widgets or can access local files. Skills guide invocation;
+  they do not supply UI capabilities or filesystem grants.
+- Preserve host-owned execution, model selection, permissions and lifecycle.
+  No new scheduler, universal interception, vector service, default REQ/SPEC
+  barrier or automatic approval ceremony is introduced.
+
+### Qualification boundaries
+
+- The complete manifest suite passes on macOS with Python 3.12 and Node 22,
+  including AJV, generated-role, runtime and installer checks. Earlier legibility
+  failures remain documented with their physical-temp-path fixture correction.
+- Real store/CLI/installer and desktop/320px Chromium checks exercise the bundled
+  path. Two independent source reviews closed concrete findings after integrated
+  repairs. Simulated events and fault injection are evaluation data, not live
+  provider execution or measured productivity improvement.
+- Installing a package does not refresh already-running sessions. Native Windows,
+  additional host embeddings, full-history/context availability and real external
+  interruption/lost-reply behavior require their own observations.
+
 ## 1.0.6 (2026-11-11)
 
 **Public Windows candidate / prerelease.** Instruction-only clarifications for

@@ -62,14 +62,14 @@ required = {
     "policy defines material ambiguity": (execution, "An ambiguity is material when existing sources leave open observable behavior"),
     "policy non-material choices follow conventions": (execution, "Settle non-material choices from existing code and conventions"),
     "policy ambiguity routes by kind": (execution, "an owner-intent choice goes to the owner and stays held until answered"),
-    "policy ambiguity tournament": (execution, "risk go to a visible tournament"),
-    "policy correction releases hold": (execution, "REQ correction citing its evidence before releasing the hold"),
+    "policy ambiguity tournament": (execution, "risk may justify a visible tournament"),
+    "policy correction releases hold": (execution, "task correction citing its evidence before releasing the hold"),
     "policy behavior before test support": (execution, "Analyze the acceptance and implement the behavior before adding test support"),
     "policy one real regression": (execution, "add one focused regression check that exercises the real behavior"),
     "policy test work is not progress": (execution, "work that does not move an acceptance criterion is not case progress"),
     "policy two final reviews by default": (execution, "run two independent read-only sidebar reviews"),
     "policy independent frozen reviews": (execution, "give both reviewers the same frozen revision, keep each unaware of the other's verdict"),
-    "policy findings become corrections": (execution, "record each accepted finding that changes expected behavior as a `revise` or `add` REQ correction"),
+    "policy findings become corrections": (execution, "record each accepted finding that changes expected behavior as a source-linked task correction"),
     "policy fresh implementers fix findings": (execution, "Route accepted fixes to fresh implementer sidebar sessions"),
     "policy fix round cap": (execution, "After two fix rounds that leave serious findings open"),
     "policy both review verdicts": (execution, "confirm both final verdicts are PASS"),
@@ -113,8 +113,8 @@ required = {
     "policy resumes loop phase": (execution, "At every resumption, recover that loop"),
     "adopted development loop": (stanza, "Development loop: one case"),
     "skill routes development loop": (lead_skill, "**Development loop**"),
-    "skill prohibits extra approval stages": (lead_skill, "Never add an approval stage or re-ask to proceed with authorized work unless the owner requests it"),
-    "skill preserves real stops and permissions": (lead_skill, "Honor actual host permissions and explicit stops; do not extend grants to uncovered operations"),
+    "skill prohibits extra approval stages": (lead_skill, "Never add approval stages for authorized work"),
+    "skill preserves real stops and permissions": (lead_skill, "Honor host permissions, stops and scoped grants"),
     "worker returns unclear contracts": (work_skill, "Return unclear specifications to the parent"),
     "claimed is queued not active": (board_source, '"claimed": "open"'),
     "explicit implementation stays blue": (board_source, '"in-progress": "active"'),
@@ -138,7 +138,7 @@ required = {
     "spec local prerequisites": (execution, "exact criterion a missing input, permission or runtime"),
     "adoption observable acceptance": (stanza, "preserve owner-goal"),
     "spec independent semantic coverage": (rubric, "every distinct owner outcome is covered"),
-    "task guidance via skill": (lead_skill, "Track requests, corrections and progress in `tasks.md`"),
+    "task guidance via skill": (lead_skill, "Track requests, corrections and progress through the canonical state API"),
     "lead keeps integration ownership": (agent, "until an explicit coordinator handoff"),
     "lead recovery triggers": (agent, "At corrections, handoffs, repeated failures or stalled rereads"),
     "lead next owner outcome": (agent, "next missing owner-visible outcome"),
@@ -325,14 +325,14 @@ required = {
     "no unchanged denied retries": (execution, "Never retry permission-denied operations unchanged"),
     "visible-session parallelism": (agent, "Every lane and every independent review MUST run\n  as a visible sidebar session"),
     "spec is source of truth": (execution, "The repository requirements file (config `requirements`, else `SPEC.md`) is the source of truth"),
-    "tasks source of truth": (agent, "Use `tasks.md` as the task source of truth"),
+    "tasks source of truth": (agent, "Use `.architrave/state.yaml` as the task source of truth"),
     "task statuses": (agent, "Task statuses are blank, `In progress`, or `Code ready`"),
     "trace to tasks": (agent, "Commits, child kickoffs, handoffs and reports name the tasks they serve"),
     "corrections retained": (agent, "Preserve owner corrections and never silently narrow an ask"),
     "obsolete completion gate retired": (agent, "The retired SPEC/REQ completion hook is not a prerequisite"),
     "tasks skill": (lead_skill, "Do not create SPEC.md, REQ rows or delivery declarations"),
-    "tasks stanza": (stanza, "Track requests, corrections and progress in `tasks.md`"),
-    "worker task discipline": (work_skill, "Work to the assigned tasks and acceptance in `tasks.md`"),
+    "tasks stanza": (stanza, "Use `python harness/architrave_cli.py state`"),
+    "worker task discipline": (work_skill, "Work to assigned task/attempt IDs and acceptance from canonical `state context`"),
     "rubric grades REQs": (rubric, "Non-trivial work without REQ rows with testable acceptance is a Major finding"),
     "rubric done blocker": (rubric, "Claiming done while an in-scope REQ is not `Code ready` with final evidence and combined review"),
     "rubric legacy acceptance": (rubric, "`accepted` with evidence), or acting on an owner correction"),
@@ -355,7 +355,7 @@ required = {
     "unadopted repo fallback": (agent, "without adoption, use repository sources and the user mandate, not invented adoption"),
     "plugin-only edit authority": (agent, "Plugin-only source edits follow the user's mandate"),
     "adopted lead quality gate": (agent, "In an adopted repo, MUST execute"),
-    "adopted stanza fallback": (stanza, "If this stanza is copied without the rest of the kit"),
+    "adopted stanza fallback": (stanza, "If copied alone, follow repository instructions without claiming adoption"),
     "centralized verification contract": (stanza, "That lead contract owns delegation, verification and stop rules"),
     "optional repo adoption": (readme, "## Optional repository setup"),
     "README CLI delegation fallback": (readme, "In a CLI, Architrave uses native subagents when available"),
@@ -401,7 +401,7 @@ required = {
     "lead multi-repo lanes": (execution, "Native batch is single-repository"),
     "lead child capability": (execution, "confirm the child can run its commands and read its ledger"),
     "lead shared resources": (execution, "heavy builds and disk floors are shared resources"),
-    "lead continues from canonical state": (agent, "read `nextAction` when a Run exists (else reconcile tasks and active owners)"),
+    "lead continues from canonical state": (agent, "otherwise read `state context --tasks <ids>`"),
     "lead never re-dispatches duplicates": (agent, "never re-dispatch duplicates"),
     "lead integrates after every peer": (agent, "Integrate only once every peer is terminal or reconciled"),
     "lead goal-preserving handoff": (agent, "Handoffs carry the verbatim owner quote, task scope and an honest-conflict exit"),
@@ -619,7 +619,7 @@ precaution_scenarios = {
         ("All development requires a sidebar review",)),
     "accepted review findings route to fresh implementers with corrected REQs": (
         execution,
-        ("record each accepted finding that changes expected behavior as a `revise` or `add` REQ correction",
+        ("record each accepted finding that changes expected behavior as a source-linked task correction",
          "Route accepted fixes to fresh implementer sidebar sessions grouped by owned area, never to the reviewers",
          "the original reviewers re-check only the affected findings",
          "stop and bring the exact conflict to the owner"),
@@ -628,7 +628,7 @@ precaution_scenarios = {
         execution,
         ("hold that behavior rather than infer a contract",
          "an owner-intent choice goes to the owner and stays held until answered",
-         "REQ correction citing its evidence before releasing the hold"),
+         "task correction citing its evidence before releasing the hold"),
         ("Release the hold once research returns",)),
     "parallel research preserves implementation and delivery boundaries": (
         execution,
@@ -706,8 +706,8 @@ for text, stale in (
 for name, text in (("skill", lead_skill), ("stanza", stanza)):
     if len(text.split()) > 200:
         missing.append(f"{name} duplicates too much of the lead contract")
-if len(agent.split()) > 1068:
-    missing.append("lead exceeds its 1068-word baseline")
+if len(agent.split()) > 1250:
+    missing.append("lead exceeds its bounded lifecycle-contract budget")
 if agent.find("## Development loop") > agent.find("## Core contract"):
     missing.append("development loop is buried after the core contract")
 loop_contract = execution.split("## Development loop", 1)[-1].split("## Specifications", 1)[0]

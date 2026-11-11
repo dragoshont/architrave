@@ -9,14 +9,38 @@ accountability from initial investigation to verified delivery. It runs as a
 plugin for Copilot, Claude Code, Codex and OpenCode, and uses the host's own
 sessions, tools and permissions rather than its own runtime.
 
-Current work lives in **`tasks.md`**, with blank, **In progress** and **Code ready**
-statuses. Preserve the owner's requests and corrections and verify actual
-behavior. The program board reads tasks, not historical SPEC rows. The obsolete
+Current structured work lives in **`.architrave/state.yaml`**, through
+`python harness/architrave_cli.py state`. The [lifecycle API](docs/lifecycle-state.md)
+maintains stable tasks, original sources, scoped corrections/decisions, attempt
+ownership, evidence and idempotent receipts in one locked snapshot. Existing
+`tasks.md` is a deterministic migration input or generated read-only view, never
+a competing writer after selection. Progress remains blank, **In progress** or
+**Code ready**, separate from acceptance and disposition. The program board and
+scoped agent context read the same revision without model-generated factual fields.
+Preserve the owner's requests and corrections and verify actual behavior. The obsolete
 SPEC/REQ completion barrier is retired; automatic loop detection remains.
 Do not create a SPEC, delivery declaration or extra approval stage to close a turn.
 
 The requirements/Run tools below are retained for explicitly selected legacy
 workflows. They are not the current default or a `task_complete` prerequisite.
+They cannot compete with selected lifecycle task authority. An explicitly
+selected safety-only Run or lifecycle-operation capsule retains scoped policy,
+checkpoints, receipts and reconciliation without reactivating legacy dispatch.
+
+**1.1.0 lifecycle implementation.** Uses a bounded, JSON-compatible YAML
+1.2 profile without new dependencies; preserves stop/unknown ownership and late
+results, rejects stale writes and competing task edits, and records external
+uncertainty without executing host actions. See [evidence and limits](docs/lifecycle-evidence.md).
+Source changes do not reload a running plugin, authenticate human provenance,
+or demonstrate a behavioral benchmark gain.
+
+**1.1.0 bundled work board.** A shared Python/HTML/CSS/SVG renderer now
+provides scoped progress, a task map/list and evidence inspector, source-backed
+session observations, separate verification categories, theme and controlled
+refresh. Optional host-authored AI interpretation stays advisory and YAML-backed;
+opening or refreshing the board never calls a model. It ships through the
+existing installer, with a self-contained browser export and no separate plugin
+or frontend build. See [dashboard usage](docs/dashboard.md).
 
 | Stage | What the file records | What the gate enforces |
 |---|---|---|
@@ -53,8 +77,8 @@ passed independent review, and that whole chain is recorded in the program
 ledger. The gate caught a real file-ownership conflict and short session IDs.
 Two lanes could not run: a turn started by another session cannot show the
 owner a permission prompt. Sustained parallel delivery across many children
-(REQ-30/36) is **not yet proven**. Validation for this delivery runs locally;
-releases are cut manually without enabling CI.
+(REQ-30/36) is **not yet proven**. Validation evidence is recorded per release; publication is explicit.
+Check live workflow state rather than assuming repository automation is disabled.
 
 **1.0.6.** Clarifies the final handoff without changing the working loop:
 Code ready includes in-scope wiring, accepted review fixes are rechecked on
@@ -464,7 +488,7 @@ Install Architrave in an agent client you already use.
 With **GitHub Copilot** (CLI, desktop app, or VS Code):
 
 ```bash
-copilot plugin marketplace add dragoshont/architrave#v1.0.6
+copilot plugin marketplace add dragoshont/architrave#v1.1.0
 copilot plugin install architrave@architrave
 ```
 
@@ -478,7 +502,7 @@ claude plugin install architrave@architrave
 With **Codex CLI**, pinned to the public release:
 
 ```bash
-codex plugin marketplace add dragoshont/architrave --ref v1.0.6
+codex plugin marketplace add dragoshont/architrave --ref v1.1.0
 codex plugin add architrave@architrave
 ```
 

@@ -2,11 +2,15 @@
 
 ## Current task workflow
 
-The current default uses `tasks.md`, with blank, In progress and Code ready
-statuses. Original owner requests and later corrections govern scope; tasks,
+The current default uses the canonical lifecycle API and `.architrave/state.yaml`
+(`docs/lifecycle-state.md`), with blank, In progress and Code ready progress.
+Existing tasks.md is imported once at a reconciled ownership boundary; after
+selection it is historical or a generated compatibility view, not writable authority.
+Original owner requests and later corrections govern scope; tasks,
 observable behavior and actual evidence govern progress. Do not create SPEC.md,
 REQ rows, delivery declarations or new approval stages to perform ordinary work.
-The program board reads tasks.md; unavailable boards do not block independently
+The program board reads the same immutable lifecycle revision as agent context;
+unavailable boards do not block independently
 authorized actions. Copilot's SPEC/REQ completion barrier is retired. Retained
 pre-tool-use commands are compatibility no-ops; never delete or rewrite historical
 evidence to get a turn to close. Startup guidance and advisory loop detection remain.
@@ -98,8 +102,11 @@ Use the existing task/requirements list and Handoff, never a second loop ledger.
    grows while product behavior stays unchanged, return to the case. Mark code ready when implementation is written;
    record checking failures separately. Commit scoped work when authorized,
    without bundling unrelated dirty work or making each case await final review.
-2. Resolve a material specification ambiguity through a bounded read-only sidebar
-   child. An ambiguity is material when existing sources leave open observable
+2. Investigate discoverable facts directly, settle routine choices by repository
+   conventions, and ask only consequential unresolved owner choices. Use a
+   bounded read-only sidebar child when technical research genuinely needs its
+   separate context; do not mandate research children for every uncertainty.
+   An ambiguity is material when existing sources leave open observable
    behavior, a public contract or data shape, persisted data, a security or
    permission effect, or an owner-visible outcome. Settle non-material choices
    from existing code and conventions and state them in the report.
@@ -110,8 +117,8 @@ Use the existing task/requirements list and Handoff, never a second loop ledger.
    interpretations with evidence and a recommendation. A source-settled answer
    is the coordinator's to record; an owner-intent choice goes to the owner and
    stays held until answered; interpretations that differ on material
-   architecture, migration, data-loss, security or runtime risk go to a visible
-   tournament. Record the decision as a `revise` or `add` REQ correction citing
+   architecture, migration, data-loss, security or runtime risk may justify a visible
+   tournament within the owner's mandate. Record the decision as a source-linked task correction citing
    its evidence before releasing the hold. Clarification is not another mutable
    implementation wave. Requested parallel research does not authorize parallel
    implementation or early delivery.
@@ -127,7 +134,7 @@ Use the existing task/requirements list and Handoff, never a second loop ledger.
    need no semantic review unless the owner or risk policy requires it.
    Required checks and higher review floors remain mandatory.
    Triage findings against the original owner asks: record each accepted finding
-   that changes expected behavior as a `revise` or `add` REQ correction and
+   that changes expected behavior as a source-linked task correction and
    reject the rest with a reason. Require a governing criterion, relevant source
    and concrete consequence for each accepted finding; speculation is not a
    verified defect. Route accepted fixes to fresh implementer

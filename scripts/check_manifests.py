@@ -48,6 +48,9 @@ JSON_FILES = (
     'benchmarks/fixtures/tessera-shaped/deploy/live.json',
 )
 PYTHON_FILES = (
+    'harness/board_data.py',
+    'harness/board_view.py',
+    'harness/lifecycle.py',
     'gates/delivery_audit.py',
     'gates/delivery_check.py',
     'gates/session_guard.py',
@@ -77,6 +80,9 @@ PYTHON_FILES = (
     'benchmarks/fixtures/tessera-shaped/tests/*.py',
 )
 RUNTIME_TESTS = (
+    'scripts/test-dashboard.py',
+    'scripts/test-lifecycle.py',
+    'scripts/test-lifecycle-policy.py',
     'scripts/test-delivery-audit.py',
     'scripts/test-delivery-check.py',
     'scripts/test-session-guard.py',
@@ -342,6 +348,12 @@ def validate_all(validator):
                                    ROOT / 'harness/schemas/event-v2.schema.json', '-d', fixture, '--strict=false'])
                 except (OSError, ValueError) as exc:
                     v.error(f'runtime-generated event schema fixture: {exc}')
+                capsule = repo / 'operation-capsule.json'
+                if v.python('scripts/test-lifecycle-policy.py', '--schema-fixture', str(capsule),
+                            message='generate real lifecycle operation capsule'):
+                    v.command('lifecycle operation capsule conforms to v2 schema',
+                              [npx, '--yes', 'ajv-cli@5', 'validate', '-s',
+                               ROOT / 'harness/schemas/run-v2.schema.json', '-d', capsule, '--strict=false'])
     else:
         print('  • npx not found — skipping optional AJV schema checks')
         v.error('Tessera-shaped fixture config schema validation requires npx')

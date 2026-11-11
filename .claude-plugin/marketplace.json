@@ -5,14 +5,14 @@
   },
   "metadata": {
     "description": "Architrave — spec-driven, judge-gated, durable development for long-running agent work.",
-    "version": "1.0.6"
+    "version": "1.1.0"
   },
   "plugins": [
     {
       "name": "architrave",
       "source": ".",
       "description": "Task-driven development using tasks.md, bounded host-native collaboration, source-grounded verification and specialist guidance. Legacy Run and requirements tools remain optional; no automatic SPEC completion barrier.",
-      "version": "1.0.6",
+      "version": "1.1.0",
       "license": "MIT",
       "keywords": [
         "ui",

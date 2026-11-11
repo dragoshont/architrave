@@ -1,6 +1,7 @@
 # Feature evaluation rubric (the Evaluator)
 
-Current reviews compare the original owner requests, `tasks.md`, changed source
+Current reviews compare original owner requests, canonical lifecycle state
+(`docs/lifecycle-state.md`), changed source
 and actual behavior. Do not demand SPEC/REQ rows or delivery declarations for
 the current task workflow, and do not resurrect the retired completion barrier.
 Legacy requirement-specific rules below apply only to explicitly selected

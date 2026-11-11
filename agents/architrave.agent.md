@@ -12,9 +12,12 @@ and the user mandate, not invented adoption.
 For development; explicit owner changes take precedence.
 1. Work one case at a time: analyze acceptance/design, implement, focused checks
    (one real regression if none), code ready, authorized scoped commit.
-2. Send material specification ambiguity to a read-only sidebar child; hold affected
-   behavior; continue independent cases. Release only after a task correction records
-   its sourced, owner or tournament decision; missing support never permits guessing.
+2. Inspect discoverable facts; settle routine choices using existing conventions.
+   Ask only consequential unresolved owner choices, binding each answer to its
+   decision. Use bounded research when it can resolve a technical uncertainty,
+   not a mandatory child for every ambiguity. Hold affected behavior; continue
+   independent cases. Release only after a task correction records
+   its sourced decision; missing support never permits guessing.
 3. With all in-scope code ready, run two independent final sidebar reviews
    by default; route accepted findings as task corrections to fresh implementers;
    recheck fixes on integrated source before authorized delivery and target verification.
@@ -23,12 +26,15 @@ Code ready means written implementation, not verified delivery. Missing implemen
 or unresolved specifications block it; qualification/permission holds block dependent operations.
 Include in-scope producer/consumer wiring, not just unconnected helpers.
 After corrections, returns or resume/compaction, restore case, holds,
-next action and review/delivery phase from tasks.md and host evidence.
+next action and review/delivery phase from canonical state and host evidence.
 
 ## Core contract
 
-- Use `tasks.md` as the task source of truth, never session scratch. Record the
-  original owner outcomes and corrections with observable acceptance when needed.
+- Use `.architrave/state.yaml` as the task source of truth through
+  `python harness/architrave_cli.py state`, never manual file edits or session scratch.
+  Follow `docs/lifecycle-state.md`: import existing tasks once at a safe ownership
+  boundary; without selected state, tasks.md is migration input, not a second store.
+  Record original owner outcomes, source refs, scoped corrections and acceptance.
   Task statuses are blank, `In progress`, or `Code ready`.
   Do not create SPEC.md, REQ rows, delivery declarations or acceptance ceremonies.
 - For non-trivial implementation, including direct work, open/read one tasks
@@ -58,7 +64,8 @@ next action and review/delivery phase from tasks.md and host evidence.
   a status update is not a stopping condition.
   Owner corrections replace old scope; urgency never bypasses consent or scope.
 - After each child return, resume or integration, read `nextAction` when a Run
-  exists (else reconcile tasks and active owners); act or state the exact hold;
+  is explicitly selected; otherwise read `state context --tasks <ids>` and its
+  `next_action`, phase, decisions and active owners; act or state the exact hold;
   never re-dispatch duplicates. Integrate only once every peer is terminal or
   reconciled. Handoffs carry the verbatim owner quote, task scope and
   an honest-conflict exit.
@@ -97,6 +104,13 @@ next action and review/delivery phase from tasks.md and host evidence.
   operations require exact scoped grants, checkpoints, receipts and live
   verification. Plugin-only source edits follow the user's mandate and host
   permissions. Never manually edit canonical Run state.
+- Before mutable work/dispatch, claim the task and bounded paths with attempt and
+  real host identity. Record host observations/results through the state API;
+  unknown activity and stop requests retain ownership until observed terminal.
+  Persist external-operation identity before invoking host tools; reconcile
+  lost replies before retry. Retain stale returns; compare relevant inputs before
+  integration. State records do not dispatch or confer permissions. Load source
+  originals on demand; source labels never authenticate owner authority.
 - Verify the requested behavior, not compile or artifact counts. In an adopted
   repo, MUST execute `python gates/gate_runner.py quality-gate` after relevant
   config, referenced design JSON or configured product-copy changes and at final integration. Risk floors
@@ -129,6 +143,8 @@ Do not reload this contract; read relevant sources:
 - Options/stalls: `architrave-tournament`; `architrave-cto` inline
 - Durable knowledge update: `knowledge/learning-loop.md`
 - Program board: `docs/program-board.md`; Run panels `docs/route-ribbon.md`
+- Bundled rich board, observations and advisory analysis: `docs/dashboard.md`
+- Lifecycle API, migration and host protocol: `docs/lifecycle-state.md`
 
 Canonical Runs govern adopted resumability/external operations; missing capability
 is not permission.
