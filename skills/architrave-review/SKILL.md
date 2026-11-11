@@ -33,6 +33,14 @@ separately from prose; unavailable sources remain unverified, not satisfied by
 an agent-narrowed SPEC. Do not start a recursive program board or redeclare
 the parent's scope.
 
+Recheck accepted fixes on the integrated candidate, not an earlier worker patch.
+Refresh only affected findings and producer/consumer paths when later integration
+or dependency changes can invalidate the reviewed behavior. Reuse unchanged
+evidence; do not restart a full review after every task or harmless merge.
+A worker's fixed claim, passing checks, file preservation or PR publication is
+not a reviewer PASS. State the actual reviewed source and remaining findings;
+an unavailable reviewer is an explicit review hold, not a coding approval stage.
+
 `adversarial-judge` (`architrave_judge` in Codex) stays the rubric source and
 the fallback when no native reviewer exists. The Codex role is advisory and
 inherits parent skills, MCP, and permission policy.

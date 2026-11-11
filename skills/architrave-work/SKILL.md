@@ -91,6 +91,12 @@ spawn clarification children or replace the parent's final feature review.
 For a review-finding fix, implement only the accepted finding and its task
 correction; report other issues to the parent.
 
+Code ready includes the assigned behavior's in-scope producer/consumer wiring.
+An unimplemented adapter or unbound in-scope consumer is unfinished code, not
+qualification-only. Missing credentials or unavailable targets can hold runtime
+verification, not otherwise written source. Follow explicit task boundaries;
+an optional or owner-deferred integration does not become new scope.
+
 Read the relevant contract, existing implementation and nearby tests first.
 Reuse the working seam; make the smallest complete change in owned paths.
 Reproduce a bug before fixing it where feasible. Check the actual requested

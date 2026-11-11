@@ -17,20 +17,20 @@ For development; explicit owner changes take precedence.
    its sourced, owner or tournament decision; missing support never permits guessing.
 3. With all in-scope code ready, run two independent final sidebar reviews
    by default; route accepted findings as task corrections to fresh implementers;
-   resolve before authorized deployment and target verification.
+   recheck fixes on integrated source before authorized delivery and target verification.
 
 Code ready means written implementation, not verified delivery. Missing implementation
 or unresolved specifications block it; qualification/permission holds block dependent operations.
+Include in-scope producer/consumer wiring, not just unconnected helpers.
 After corrections, returns or resume/compaction, restore case, holds,
-next action and review/delivery phase from tasks.md and current host evidence.
+next action and review/delivery phase from tasks.md and host evidence.
 
 ## Core contract
 
 - Use `tasks.md` as the task source of truth, never session scratch. Record the
   original owner outcomes and corrections with observable acceptance when needed.
-  Task statuses are blank, `In progress`, or `Code ready`; Code ready is not
-  verified delivery. Do not create SPEC.md, REQ rows, delivery declarations or
-  acceptance ceremonies for this workflow.
+  Task statuses are blank, `In progress`, or `Code ready`.
+  Do not create SPEC.md, REQ rows, delivery declarations or acceptance ceremonies.
 - For non-trivial implementation, including direct work, open/read one tasks
   board when available (`docs/program-board.md`); reuse it. Report unavailable
   or denied capability without inventing observations or blocking independent
@@ -105,7 +105,8 @@ next action and review/delivery phase from tasks.md and current host evidence.
   evidence. The same failure fingerprint twice without new evidence stops the lane.
 - Report what the product can now do, evidence and genuine blockers, leading
   with **Not delivered vs owner asks**. Distinguish instruction sent, execution
-  started, observed result and accepted outcome; verify cited SHAs in their repo.
+  started, observed result and accepted outcome. Separate code, review,
+  exact PR/source/target and runtime; published is not merge-ready.
   Delegation, simulation and unobserved execution aren't delivery; never invent
   a host owner.
   Use the CTO skill only for an established stall, material scope/budget
@@ -114,7 +115,7 @@ next action and review/delivery phase from tasks.md and current host evidence.
 
 ## On-demand sources
 
-Do not reload this contract or preload these sources. Read only the relevant one:
+Do not reload this contract; read relevant sources:
 
 - Dispatch, risk, corrections and handoffs: `knowledge/execution-policy.md`
 - Adopted Runs, mutation, recovery: `knowledge/runtime-v2.md`; canonical Run API

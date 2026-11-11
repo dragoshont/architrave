@@ -1,6 +1,6 @@
 {
   "name": "architrave",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Task-driven repository workflow: tasks.md progress, bounded collaboration, source-grounded verification, option analysis and independent review.",
   "author": {
     "name": "dragoshont"

@@ -56,6 +56,12 @@ owner a permission prompt. Sustained parallel delivery across many children
 (REQ-30/36) is **not yet proven**. Validation for this delivery runs locally;
 releases are cut manually without enabling CI.
 
+**1.0.6.** Clarifies the final handoff without changing the working loop:
+Code ready includes in-scope wiring, accepted review fixes are rechecked on
+integrated source, and publication reports the actual feature PR separately
+from review and runtime readiness. These are instruction changes, not new hooks
+or approval stages; unavailable credentials do not make written code unfinished.
+
 **1.0.5.** Retires SPEC/REQ completion blocking, including a compatibility no-op
 for retained hook commands. The board reads tasks.md without requiring a SPEC or
 REQ selection, and the lead/skill follow that same task source. Historical
@@ -458,7 +464,7 @@ Install Architrave in an agent client you already use.
 With **GitHub Copilot** (CLI, desktop app, or VS Code):
 
 ```bash
-copilot plugin marketplace add dragoshont/architrave#v1.0.5
+copilot plugin marketplace add dragoshont/architrave#v1.0.6
 copilot plugin install architrave@architrave
 ```
 
@@ -472,7 +478,7 @@ claude plugin install architrave@architrave
 With **Codex CLI**, pinned to the public release:
 
 ```bash
-codex plugin marketplace add dragoshont/architrave --ref v1.0.5
+codex plugin marketplace add dragoshont/architrave --ref v1.0.6
 codex plugin add architrave@architrave
 ```
 

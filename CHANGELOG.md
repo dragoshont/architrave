@@ -5,6 +5,34 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## 1.0.6 (2026-11-11)
+
+**Public Windows candidate / prerelease.** Instruction-only clarifications for
+the delivery gaps observed after the code-ready pass and final review.
+
+- **Code ready includes in-scope wiring.** An unimplemented adapter or
+  unconnected required consumer is unfinished code, not just a runtime
+  qualification hold. Missing credentials or an unavailable service do not
+  prevent otherwise written source from being Code ready. Explicitly optional
+  or owner-deferred integrations stay outside the task.
+- **Close review findings on the integrated candidate.** Recheck accepted fixes
+  and refresh affected producer/consumer paths if later integration or relevant
+  dependencies change them. Reuse unchanged evidence rather than adding a full
+  review after every task or harmless merge. Worker claims, tests and matching
+  file hashes do not substitute for the reviewer's actual result.
+- **Bind publication to the feature, not the coordinator or dependency PR.**
+  Carry the actual repository, branch, commit/tree, target and feature paths in
+  the existing handoff, then read back the live PR identity and diff.
+  Separate code written, review/open findings, publication and observed runtime;
+  non-draft or mechanically mergeable does not mean safe to merge.
+- Keep the working code-ready-first, final-review-at-the-end loop. No runtime
+  code, hooks, task statuses, approval stages, mandatory forms or completion
+  barriers are added. Normal host permissions and scoped owner stops remain.
+- Wording/contract checks and source review verify the instruction changes,
+  not future agent compliance or improved productivity. Broader runtime
+  qualification limits from 1.0.5 remain; this is not a full-suite or
+  cross-platform acceptance claim.
+
 ## 1.0.5 (2026-11-09)
 
 **Public Windows candidate / prerelease.** This patch addresses observed agent

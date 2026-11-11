@@ -17,6 +17,14 @@ mandatory SPEC/REQ tracking or completion checks into the current task workflow.
 
 ### Worker readiness and observable handback
 
+Code ready includes written in-scope behavior and its producer/consumer wiring.
+An interface-only adapter, disabled required composition or unconnected helper
+is missing implementation, not merely absent runtime qualification. Distinguish
+missing code, unresolved contract, external input and permission at the affected
+criterion. Live credentials and an available service are not prerequisites for
+otherwise written source to be Code ready. Explicitly optional or owner-deferred
+integration stays out of scope.
+
 An implementation child should receive mutable ownership when it can act. If
 early read-only preparation is useful, make that a bounded preparation
 assignment first, not an implementation goal kept alive behind a write hold.
@@ -43,6 +51,29 @@ readiness checks, scoped stops and real ownership constraints. The advisory hook
 can flag supported standalone waits, not infer semantic lack of progress or
 guarantee that a worker responds. No arbitrary coding deadline, read quota,
 forced reset, permission override or new approval stage follows.
+
+### Final review and publication handoff
+
+Keep the final feature review after the coding pass. Recheck accepted fixes on
+the actual integrated candidate before calling the review satisfied. If later
+integration or a relevant dependency changes a reviewed producer/consumer path,
+refresh only affected findings and paths; retain unchanged review evidence.
+Do not replace a reviewer result with a worker claim, passing tests or matching
+file hashes, and do not add full reviews after every task or harmless merge.
+Unavailable review remains a review hold, not permission to invent a PASS.
+
+For an authorized publication, carry the actual candidate repository, branch and
+commit/tree, intended target, feature path set and PR identity in the existing
+handoff. Read back the live source/target and feature diff before claiming that
+the requested PR is published. A dependency PR or clean coordinator checkout
+is not the feature candidate. Reuse existing scoped publication authorization;
+this is an identity check, not another owner approval or required artifact.
+
+Report code written, review result/open findings, publication identity and
+observed runtime separately in a compact closeout. Published, non-draft and
+mechanically mergeable do not mean review passed or safe to merge. State actual
+evidence and genuine holds without adding task statuses, periodic messages,
+hooks, completion barriers or a new handoff form.
 
 Concrete model, provider, reasoning and context mappings belong to the user and
 the active host harness, not repository policy, generated roles or WorkPackets.
