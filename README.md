@@ -34,6 +34,13 @@ uncertainty without executing host actions. See [evidence and limits](docs/lifec
 Source changes do not reload a running plugin, authenticate human provenance,
 or demonstrate a behavioral benchmark gain.
 
+**1.1.1 corrective pass.** Explicit consumed-output selection and frozen bindings
+separate artifact applicability from ordering. Comparable-check conflicts and
+linked reruns remain visible without turning integration into acceptance.
+Filesystem-aware ownership preserves case-distinct work where observed and
+handles unknown lookup behavior conservatively. Old state is not silently
+rebound; see the lifecycle API's compatibility and qualification boundaries.
+
 **1.1.0 bundled work board.** A shared Python/HTML/CSS/SVG renderer now
 provides scoped progress, a task map/list and evidence inspector, source-backed
 session observations, separate verification categories, theme and controlled
@@ -488,7 +495,7 @@ Install Architrave in an agent client you already use.
 With **GitHub Copilot** (CLI, desktop app, or VS Code):
 
 ```bash
-copilot plugin marketplace add dragoshont/architrave#v1.1.0
+copilot plugin marketplace add dragoshont/architrave#v1.1.1
 copilot plugin install architrave@architrave
 ```
 
@@ -502,7 +509,7 @@ claude plugin install architrave@architrave
 With **Codex CLI**, pinned to the public release:
 
 ```bash
-codex plugin marketplace add dragoshont/architrave --ref v1.1.0
+codex plugin marketplace add dragoshont/architrave --ref v1.1.1
 codex plugin add architrave@architrave
 ```
 

@@ -103,6 +103,54 @@ were not rewritten as successes.
 This full-suite result is not native Windows, live provider, loaded-session,
 cross-host embedding, intervention-count or behavioral-benefit qualification.
 
+## Corrective pass against 1.1.0
+
+Reviewed baseline: `9ef899a87d51245bd09238e3700c3a548ee1fc70`. Three
+temporary-store probes reproduced the owner-supplied counterexamples before
+changes. This narrows F1 to missing consumed-output selection/binding, F2 to
+qualification/presentation rather than refusing true integration, and F3 to
+filesystem-dependent aliases rather than unconditional case folding.
+
+The corrected lifecycle suite has **70 tests** (17 added); the affected existing
+policy/dashboard/board suites have **15/29/18** cases respectively, with one
+optional board skip. Commands:
+
+```text
+python scripts/test-lifecycle.py
+python scripts/test-lifecycle-policy.py
+python scripts/test-dashboard.py
+python scripts/test-program-board.py
+python gates/gate_runner.py quality-gate
+python gates/gate_runner.py checks --quick
+```
+
+Added cases use actual transitions, restart/CLI/board and operation-capsule
+admission. They cover selected replacement, equivalent and unselected output,
+ordering-only work, transitive consumers, missing legacy bindings, comparable
+conflict despite a selected pass, linked rerun history, separate environments,
+idempotent reruns and observed integration without qualification. A real negative
+process result is asserted as the expected outcome rather than copied as failure.
+
+An independent source review found that integration recorded with no selected
+checks had no late qualification-selection path. A fresh bounded repair added
+optional `select_output.checks`: it selects current subject/environment proof
+without recording another external integration or changing original
+`integration_checks`. Three additional regressions exercise late linked reruns,
+replay/conflicts, wrong/stale subjects and omitted failures. Prior failed reviews
+and the stopped pre-repair full run remain distinct from final qualification.
+
+The native temporary-store volume on this Mac is case-insensitive; simultaneous
+case aliases and nonexistent case-alias targets are rejected there. Pure-policy
+tests cover sensitive/insensitive/unknown comparisons; they are not native Linux
+or Windows qualification. Empty/unavailable parent identity stays conservative.
+Links are tested on this Mac; general hardlink/mount/race protection is not
+claimed. The browser canvas timed out on scoped board navigation/read; generated
+HTML and the real CLI/rendering tests are separate, not a claimed live panel view.
+
+Synthetic identities/observations are explicitly evaluation data, not production
+merges or permission evidence. No fewer-interventions, all-platform reliability
+or live-provider qualification follows from these regressions.
+
 ## Required behavioral evaluation before benefit claims
 
 Run matched baseline / revised-guidance / guidance-plus-state tasks using the

@@ -72,11 +72,19 @@ board with a stale/source-error warning.
 - **Code written** counts `Code ready` declarations within the selected scope.
 - **Current readiness** counts declarations with matching relevant input bindings.
   Stale and unavailable bindings remain separate.
-- **Needs attention** counts blocking holds, not an item's own active reservation.
+- **Needs attention** counts blocking holds and selected-subject qualification
+  failures/conflicts, not an item's own active reservation.
   Recorded owners and unresolved decisions are shown separately.
 - Deferred/proposed/cancelled/retired work is never silently treated as active.
 - Matching recorded evidence is grouped by implementation/review/integration/runtime.
   Empty categories say **Not declared in this scope**, never PASS.
+- Recorded-pass counts cover retained subjects, not acceptance. At the same
+  summary level, applicable failures and unresolved comparable-check conflicts
+  are counted for the explicitly selected/written subject. The inspector retains
+  other candidates/environments, check identity and rerun/supersession references.
+- Consumed producer selections and filesystem ownership-policy availability are
+  inspectable. Replaced consumed outputs stale dependent proof and readiness;
+  ordering-only dependencies are not treated as artifact consumption.
 - A recorded pass is not a fresh verification of the current workspace, delivery,
   runtime behavior or permission. Source identities and limitations stay inspectable.
 

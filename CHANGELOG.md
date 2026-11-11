@@ -5,6 +5,40 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## 1.1.1 (2026-11-11)
+
+### Fixed
+
+- Distinguish ordering dependencies from explicitly consumed producer outputs.
+  Selection is explicit; consumer attempts freeze the producer attempts actually
+  used. Material replacement stales affected proof/readiness transitively and
+  blocks new operation admission. Unselected/equivalent outputs, display renames,
+  list order and unrelated revisions retain valid work.
+- Expose comparable-check conflicts instead of silently counting a selected pass
+  as qualification. Applicable failures in the selected environment participate
+  even when omitted from the check list. Linked reruns retain prior failures and
+  require bound check/environment identity plus distinct result-artifact evidence.
+  Actual integration observations and written progress remain separate from
+  qualification and acceptance, including when checks failed or are absent.
+  Later checks can be explicitly selected without pretending a second external
+  integration occurred; original integration/check history is retained.
+- Freeze filesystem-aware per-parent ownership case policy. Known-sensitive
+  components stay distinct; case aliases and unknown parents are conservative.
+  New mutable scopes reject links/reparse points before directory reads, while
+  literal display paths and old assignment history are preserved.
+
+### Compatibility and qualification
+
+- Optional v1 fields do not rewrite old state, receipts or evidence on load.
+  Missing consumed/check bindings remain unavailable; old readers reject new
+  fields rather than silently accepting them. A deliberate downgrade requires
+  closed-owner recovery, not deleting canonical state.
+- Added real API/CLI/board and operation-bridge regressions, with negative
+  controls for unselected/equivalent outputs, unrelated evidence and native
+  case-insensitive lookup. Pure policy tests are not native Windows/Linux proof.
+  Neither the collision policy nor reported evidence identities are a sandbox
+  or authenticated execution guarantee. See `docs/lifecycle-evidence.md`.
+
 ## 1.1.0 (2026-11-11)
 
 ### Added

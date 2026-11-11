@@ -472,7 +472,7 @@ class RunStore:
 
     def _operation_binding(self, lifecycle: dict[str, Any], identity: dict[str, str],
                            *, admitting: bool) -> dict[str, Any]:
-        from lifecycle import holds, inputs
+        from lifecycle import attempt_applicability, holds, inputs
 
         operation = lifecycle["operations"].get(identity["operationId"])
         if (identity["projectId"] != lifecycle["project_id"] or operation is None
@@ -487,6 +487,7 @@ class RunStore:
                         if item != f"operation {operation['id']} requires reconciliation"]
             if (blockers or operation["outcome"] != "intended" or attempt["stop"] != "none"
                     or attempt["activity"] in {"cancelled", "failed"}
+                    or attempt_applicability(lifecycle, attempt) != "current"
                     or operation["inputs"] != inputs(lifecycle, operation["task_id"])):
                 raise RuntimeFailure("LIFECYCLE_OPERATION_HELD", "operation is stale, stopped, terminal or held",
                                      details={"holds": blockers})

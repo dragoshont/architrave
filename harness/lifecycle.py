@@ -43,10 +43,10 @@ FIELDS = {
 }
 OPTIONAL_FIELDS = {
     "sources": {"timestamp"},
-    "tasks": {"ready_inputs"},
+    "tasks": {"ready_inputs", "ready_attempt", "consumes", "selected_output", "path_policy"},
     "decisions": {"superseded_by"},
-    "attempts": {"scope"},
-    "evidence": {"identity", "attempt_id"},
+    "attempts": {"scope", "consumed", "integration_checks", "qualification_checks"},
+    "evidence": {"identity", "attempt_id", "check", "supersedes"},
     "operations": {"identity"},
 }
 TERMINAL = {"completed", "failed", "cancelled"}
@@ -212,6 +212,17 @@ def validate(state: dict) -> None:
         require(row["progress"] in {"", "In progress", "Code ready"}, "PROGRESS", "invalid progress")
         require(row["activation"] in {"automatic", "explicit_owner_direction"}, "ACTIVATION", "invalid activation")
         validate_paths(row["paths"])
+        if "consumes" in row:
+            require(unique(row["consumes"]) and set(row["consumes"]) <= set(row["depends_on"]),
+                    "CONSUMES", "consumed producers must be declared dependencies")
+        if "path_policy" in row:
+            validate_path_policy(row["path_policy"], row["paths"])
+        for field in ("ready_attempt", "selected_output"):
+            if field in row:
+                require(row[field] in state["attempts"] and state["attempts"][row[field]]["task_id"] == row["id"],
+                        "REFERENCE", "selected subject must belong to this task")
+        if "selected_output" in row:
+            require(state["attempts"][row["selected_output"]]["integrated"], "OUTPUT", "select an observed integrated output")
         if "ready_inputs" in row:
             require(text(row["ready_inputs"]), "PROGRESS", "readiness needs its reported semantic input binding")
     visiting, visited = set(), set()
@@ -248,11 +259,31 @@ def validate(state: dict) -> None:
                 and type(row["integrated"]) is bool, "ATTEMPT", "invalid attempt")
         scope = row.get("scope")
         if "scope" in row:
-            keys(scope, {"mode", "paths"})
+            keys(scope, {"mode", "paths"}, {"path_policy"})
             validate_paths(scope["paths"])
             require(scope["mode"] in {"mutable", "read_only"}
                     and (scope["mode"] == "read_only" or bool(scope["paths"])),
                     "SCOPE", "mutable attempts need a nonempty frozen assigned scope")
+            if "path_policy" in scope:
+                validate_path_policy(scope["path_policy"], scope["paths"])
+        if "consumed" in row:
+            require(isinstance(row["consumed"], dict), "CONSUMES", "frozen consumption must be a mapping")
+            for producer, aid in row["consumed"].items():
+                require(producer in state["tasks"] and aid in state["attempts"]
+                        and state["attempts"][aid]["task_id"] == producer
+                        and state["attempts"][aid]["integrated"], "CONSUMES", "consumed output must retain its integrated producer")
+        if "integration_checks" in row:
+            refs(state, row["integration_checks"], "evidence")
+            require(row["integrated"] and all(state["evidence"][eid].get("attempt_id") == row["id"]
+                    for eid in row["integration_checks"]), "CHECKS", "integrated check subjects must be retained")
+        if "qualification_checks" in row:
+            refs(state, row["qualification_checks"], "evidence")
+            require(row["integrated"] and row["result"] is not None
+                    and "identity" in row["result"]
+                    and all(state["evidence"][eid].get("attempt_id") == row["id"]
+                            and state["evidence"][eid].get("identity") == row["result"]["identity"]
+                            for eid in row["qualification_checks"]),
+                    "CHECKS", "qualification check subjects must retain the exact integrated result")
         if row["result"] is not None:
             keys(row["result"], {"artifact", "summary"}, {"identity"})
             require(text(row["result"]["artifact"]) and text(row["result"]["summary"]), "RESULT", "invalid result")
@@ -265,7 +296,9 @@ def validate(state: dict) -> None:
                 other_scope = other.get("scope")
                 require(other["task_id"] != row["task_id"]
                         and not (scope and other_scope and scope["mode"] == other_scope["mode"] == "mutable"
-                                 and overlaps(scope["paths"], other_scope["paths"])),
+                                 and overlaps(scope["paths"], other_scope["paths"],
+                                              left_policy=scope.get("path_policy"),
+                                              right_policy=other_scope.get("path_policy"))),
                         "OWNERSHIP", "live attempts overlap; unknown owners remain live")
             owners.append(row)
     for row in state["evidence"].values():
@@ -279,6 +312,23 @@ def validate(state: dict) -> None:
             require(row["attempt_id"] in state["attempts"]
                     and state["attempts"][row["attempt_id"]]["task_id"] == state["criteria"][row["criterion_id"]]["task_id"],
                     "EVIDENCE", "checked attempt must belong to the criterion task")
+        if "check" in row:
+            keys(row["check"], {"name", "environment"})
+            require(all(text(v) for v in row["check"].values()) and "attempt_id" in row and "identity" in row,
+                    "CHECK", "comparable checks need name/environment and an exact checked attempt/identity")
+        if "supersedes" in row:
+            refs(state, row["supersedes"], "evidence")
+            require("check" in row and all(eid != row["id"] and "check" in state["evidence"][eid]
+                    and check_key(row) == check_key(state["evidence"][eid])
+                    and row["artifact"] != state["evidence"][eid]["artifact"]
+                    for eid in row["supersedes"]), "SUPERSESSION", "reruns need comparable checks and distinct result artifacts")
+    pending = set(state["evidence"])
+    settled = set()
+    while pending:
+        ready = {eid for eid in pending if set(state["evidence"][eid].get("supersedes", [])) <= settled}
+        require(bool(ready), "SUPERSESSION_CYCLE", "evidence rerun references must be acyclic")
+        pending -= ready
+        settled |= ready
     for row in state["operations"].values():
         require(row["task_id"] in state["tasks"] and row["attempt_id"] in state["attempts"]
                 and state["attempts"][row["attempt_id"]]["task_id"] == row["task_id"]
@@ -303,8 +353,68 @@ def validate(state: dict) -> None:
             "UNSUPPORTED_EDIT", "snapshot integrity mismatch; do not silently repair or fall back")
 
 
-def overlaps(left: list, right: list) -> bool:
-    return any(a == b or a.startswith(b + "/") or b.startswith(a + "/") for a in left for b in right)
+def validate_path_policy(policy: object, paths: list) -> None:
+    parents = {"/".join(p.split("/")[:i]) for p in paths for i in range(len(p.split("/")))}
+    require(isinstance(policy, dict) and set(policy) == parents
+            and all(v in {"sensitive", "insensitive", "unknown"} for v in policy.values()),
+            "PATH_POLICY", "every assigned parent needs a reported case policy")
+
+
+def observe_path_policy(root: Path, paths: list) -> dict:
+    """Bounded read-only lookup observations; unknown parents stay conservative."""
+    policy = {}
+    for path in paths:
+        parts = path.split("/")
+        current = root
+        for part in parts:
+            current /= part
+            try:
+                info = current.lstat()
+            except FileNotFoundError:
+                break
+            require(not stat.S_ISLNK(info.st_mode) and not getattr(info, "st_file_attributes", 0) & 0x400,
+                    "PATH_IDENTITY", "mutable scopes cannot traverse links or reparse points")
+        for i in range(len(parts)):
+            parent = "/".join(parts[:i])
+            if parent in policy:
+                continue
+            directory = root / parent
+            mode = "unknown"
+            try:
+                with os.scandir(directory) as entries:
+                    for _, entry in zip(range(32), entries):
+                        if not any("a" <= c.lower() <= "z" for c in entry.name):
+                            continue
+                        alternate = directory / entry.name.swapcase()
+                        try:
+                            same = os.path.samestat(entry.stat(follow_symlinks=False), alternate.lstat())
+                        except FileNotFoundError:
+                            same = False
+                        mode = "insensitive" if same else "sensitive"
+                        break
+            except OSError:
+                mode = "unknown"
+            policy[parent] = mode
+    return policy
+
+
+def overlaps(left: list, right: list, *, left_policy: dict | None = None,
+             right_policy: dict | None = None) -> bool:
+    for a in left:
+        for b in right:
+            aa, bb = a.split("/"), b.split("/")
+            for i, (x, y) in enumerate(zip(aa, bb)):
+                if left_policy is None and right_policy is None:
+                    equal = x == y
+                else:
+                    sensitive = ((left_policy or {}).get("/".join(aa[:i])) == "sensitive"
+                                 and (right_policy or {}).get("/".join(bb[:i])) == "sensitive")
+                    equal = x == y if sensitive else x.casefold() == y.casefold()
+                if not equal:
+                    break
+            else:
+                return True
+    return False
 
 
 def applicable_constraints(state: dict, tid: str) -> list:
@@ -332,6 +442,8 @@ def inputs(state: dict, tid: str, criterion: str | None = None, *, _memo: dict |
                                    resolution=d["resolution"])
                               for d in sorted(current_decisions(state), key=lambda d: d["id"]) if tid in d["affected"]],
                 "dependencies": {dep: inputs(state, dep, _memo=memo) for dep in sorted(task["depends_on"])}}
+    if task.get("consumes"):
+        relevant["consumes"] = sorted(task["consumes"])
     memo[key] = sha256_value(relevant)
     return memo[key]
 
@@ -342,15 +454,62 @@ def readiness(state: dict, tid: str) -> str:
         return "not_ready"
     if "ready_inputs" not in task:
         return "unavailable"
-    return "current" if task["ready_inputs"] == inputs(state, tid) else "stale"
+    if task["ready_inputs"] != inputs(state, tid):
+        return "stale"
+    if task.get("consumes"):
+        aid = task.get("ready_attempt")
+        return consumption_applicability(state, state["attempts"][aid]) if aid else "unavailable"
+    return "current"
 
 
-def scope_conflicts(attempt: dict, tid: str, paths: list, *, read_only: bool = False) -> bool:
+def consumption_applicability(state: dict, attempt: dict, memo: dict | None = None) -> str:
+    memo = {} if memo is None else memo
+    if attempt["id"] in memo:
+        return memo[attempt["id"]]
+    required = set(state["tasks"][attempt["task_id"]].get("consumes", []))
+    frozen = attempt.get("consumed")
+    status = "current"
+    if required and frozen is None:
+        status = "unavailable"
+    elif set(frozen or {}) != required:
+        status = "stale" if frozen is not None else "unavailable"
+    else:
+        for tid in sorted(required):
+            selected = state["tasks"][tid].get("selected_output")
+            if not selected:
+                status = "unavailable"
+                break
+            previous, current = state["attempts"][frozen[tid]], state["attempts"][selected]
+            old_result, new_result = previous["result"], current["result"]
+            if not old_result or not new_result or "identity" not in old_result or "identity" not in new_result:
+                status = "unavailable"
+                break
+            if (current["inputs"] != inputs(state, tid)
+                    or any(old_result["identity"][k] != new_result["identity"][k] for k in ("candidate", "source", "base"))):
+                status = "stale"
+                break
+            inherited = consumption_applicability(state, current, memo)
+            if inherited != "current":
+                status = inherited
+                break
+    memo[attempt["id"]] = status
+    return status
+
+
+def attempt_applicability(state: dict, attempt: dict) -> str:
+    if attempt["inputs"] != inputs(state, attempt["task_id"]):
+        return "stale"
+    return consumption_applicability(state, attempt)
+
+
+def scope_conflicts(attempt: dict, tid: str, paths: list, *, read_only: bool = False,
+                    path_policy: dict | None = None) -> bool:
     if attempt["task_id"] == tid:
         return True
     scope = attempt.get("scope")
     # Missing legacy scope is unknown, never reconstructed from a corrected task.
-    return not read_only and (scope is None or scope["mode"] == "mutable" and overlaps(paths, scope["paths"]))
+    return not read_only and (scope is None or scope["mode"] == "mutable" and overlaps(
+        paths, scope["paths"], left_policy=path_policy or {}, right_policy=scope.get("path_policy")))
 
 
 def evidence_applicability(state: dict, evidence: dict) -> str:
@@ -360,15 +519,55 @@ def evidence_applicability(state: dict, evidence: dict) -> str:
     if evidence["inputs"] != inputs(state, criterion["task_id"], criterion["id"]):
         return "stale"
     if "attempt_id" in evidence:
-        result = state["attempts"][evidence["attempt_id"]]["result"]
+        attempt = state["attempts"][evidence["attempt_id"]]
+        result = attempt["result"]
         if result is None or "identity" not in result:
             return "unavailable"
         if evidence["identity"] != result["identity"]:
             return "stale"
+        return consumption_applicability(state, attempt)
+    if state["tasks"][criterion["task_id"]].get("consumes"):
+        return "unavailable"
     return "current"
 
 
-def holds(state: dict, tid: str, *, ignore_attempt: str | None = None, read_only: bool = False) -> list[str]:
+def check_key(evidence: dict) -> str:
+    return sha256_value({k: evidence.get(k) for k in ("criterion_id", "inputs", "attempt_id", "identity", "check")})
+
+
+def require_current_checks(state: dict, attempt: dict, checks: list) -> None:
+    refs(state, checks, "evidence")
+    require(all(state["criteria"][state["evidence"][eid]["criterion_id"]]["task_id"] == attempt["task_id"]
+                and evidence_applicability(state, state["evidence"][eid]) == "current"
+                and state["evidence"][eid].get("attempt_id") == attempt["id"]
+                and state["evidence"][eid].get("identity") == attempt["result"]["identity"]
+                for eid in checks), "CHECKS", "check references must bind this exact current attempt/candidate")
+
+
+def qualification(state: dict, cid: str, aid: str | None, *, selected_checks: list | None = None) -> dict:
+    groups = {}
+    environments = None if selected_checks is None else {
+        state["evidence"][eid].get("check", {}).get("environment") for eid in selected_checks}
+    superseded = {eid for e in state["evidence"].values() for eid in e.get("supersedes", [])}
+    for proof in state["evidence"].values():
+        if (proof["criterion_id"] == cid and proof.get("attempt_id") == aid and aid is not None
+                and evidence_applicability(state, proof) == "current" and proof["id"] not in superseded
+                and (environments is None or proof.get("check", {}).get("environment") in environments
+                     or environments and "check" not in proof)):
+            groups.setdefault(check_key(proof), []).append(proof)
+    checks = []
+    for key, proofs in sorted(groups.items()):
+        results = {p["result"] for p in proofs}
+        status = ("conflict" if {"pass", "fail"} <= results else "fail" if "fail" in results
+                  else "unavailable" if "check" not in proofs[0] else "unknown" if "unknown" in results else "pass")
+        checks.append(dict(key=key, check=proofs[0].get("check"), status=status, evidence_ids=sorted(p["id"] for p in proofs)))
+    statuses = {c["status"] for c in checks}
+    status = next((v for v in ("conflict", "fail", "unavailable", "unknown", "pass") if v in statuses), "unavailable")
+    return dict(attempt_id=aid, status=status, checks=checks)
+
+
+def holds(state: dict, tid: str, *, ignore_attempt: str | None = None, read_only: bool = False,
+          path_policy: dict | None = None) -> list[str]:
     task = state["tasks"][tid]
     result = []
     if task["disposition"] != "active":
@@ -382,11 +581,17 @@ def holds(state: dict, tid: str, *, ignore_attempt: str | None = None, read_only
     result += [f"dependency {dep}" for dep in task["depends_on"]
                if readiness(state, dep) != "current"
                or state["tasks"][dep]["disposition"] != "active"]
+    for dep in task.get("consumes", []):
+        selected = state["tasks"][dep].get("selected_output")
+        if not selected or attempt_applicability(state, state["attempts"][selected]) != "current":
+            result.append(f"consumed output {dep} unavailable or stale")
+    policy = path_policy if path_policy is not None else task.get("path_policy")
     result += [f"attempt {a['id']} ({a['activity']}, stop {a['stop']})"
                for a in state["attempts"].values() if a["activity"] not in TERMINAL and a["id"] != ignore_attempt
-               and scope_conflicts(a, tid, task["paths"], read_only=read_only)]
+               and scope_conflicts(a, tid, task["paths"], read_only=read_only, path_policy=policy)]
     result += [f"operation {op['id']} requires reconciliation" for op in state["operations"].values()
-               if scope_conflicts(state["attempts"][op["attempt_id"]], tid, task["paths"], read_only=read_only)
+               if scope_conflicts(state["attempts"][op["attempt_id"]], tid, task["paths"],
+                                  read_only=read_only, path_policy=policy)
                and op["outcome"] in {"intended", "unknown"}]
     result += [f"migration conflict: {c['id']}" for c in state["conflicts"] if c["resolution"] is None
                and (not c["affected"] or tid in c["affected"])]
@@ -412,11 +617,25 @@ def snapshot(state: dict, *, now: str, task_ids: list[str] | None = None) -> dic
         task["owners"] = [copy.deepcopy(a) for a in state["attempts"].values()
                           if a["task_id"] == tid and a["activity"] not in TERMINAL]
         task["acceptance"] = []
+        subject = task.get("selected_output") or task.get("ready_attempt")
+        task["qualification_subject"] = subject
+        selected_checks = (state["attempts"][subject].get(
+            "qualification_checks", state["attempts"][subject].get("integration_checks", [])) if subject else [])
+        task["consumed_outputs"] = {dep: state["tasks"][dep].get("selected_output") for dep in task.get("consumes", [])}
+        task["ownership_policy"] = ("observed" if task.get("path_policy")
+                                    and "unknown" not in task["path_policy"].values() else "conservative / unavailable")
         for cid in task["criteria"]:
             criterion = copy.deepcopy(state["criteria"][cid])
             criterion["inputs"] = inputs(state, tid, cid)
             criterion["evidence"] = [copy.deepcopy(dict(e, applicability=evidence_applicability(state, e)))
                                      for e in state["evidence"].values() if e["criterion_id"] == cid]
+            for proof in criterion["evidence"]:
+                proof["superseded_by"] = sorted(e["id"] for e in state["evidence"].values()
+                                                 if proof["id"] in e.get("supersedes", []))
+            criterion["qualification"] = qualification(
+                state, cid, subject, selected_checks=selected_checks)
+            criterion["subjects"] = [qualification(state, cid, aid) for aid in sorted(
+                {e["attempt_id"] for e in criterion["evidence"] if "attempt_id" in e})]
             task["acceptance"].append(criterion)
         task["constraints"] = copy.deepcopy(applicable_constraints(state, tid))
         tasks.append(task)
@@ -457,7 +676,7 @@ def snapshot(state: dict, *, now: str, task_ids: list[str] | None = None) -> dic
                                  timestamp=state["sources"][sid].get("timestamp"))
                         for sid in sorted(source_ids)},
             "attempts": [copy.deepcopy(dict(a, scope_status="available" if "scope" in a else "unavailable",
-                                           applicability="current" if a["inputs"] == inputs(state, a["task_id"]) else "stale"))
+                                           applicability=attempt_applicability(state, a)))
                          for a in state["attempts"].values() if a["task_id"] in selected],
             "operations": copy.deepcopy([o for o in state["operations"].values() if o["task_id"] in selected]),
             "next_action": {"kind": "reevaluate" if eligible[0]["progress"] == "Code ready" else "work",
@@ -639,7 +858,7 @@ class StateStore:
                                      ("criteria", p["criteria"]), ("constraints", p["constraints"])):
                 require(isinstance(rows, list), "SHAPE", "request collections must be lists")
                 for row in rows:
-                    keys(row, FIELDS[collection])
+                    keys(row, FIELDS[collection], {"consumes"} if collection == "tasks" else set())
                     if collection == "goals" and row["id"] in s["goals"]:
                         require(row == s["goals"][row["id"]], "IDENTITY", "use a sourced correction to revise existing goal")
                         continue
@@ -663,11 +882,15 @@ class StateStore:
             require(p["kind"] in {"revise", "defer", "cancel", "retire", "activate", "reorder"}, "CORRECTION", "invalid change kind")
             row = s[collection][p["target"]]
             allowed = FIELDS[collection] - {"id", "goal_id", "task_id", "progress"}
+            if collection == "tasks":
+                allowed |= {"consumes"}
             require(isinstance(p["changes"], dict) and bool(p["changes"]) and p["changes"].keys() <= allowed,
                     "CORRECTION", "unsupported correction fields")
             owner_sources(p["source_refs"])
             before = copy.deepcopy(row)
             row.update(copy.deepcopy(p["changes"]))
+            if collection == "tasks" and "paths" in p["changes"]:
+                row.pop("path_policy", None)
             row["source_refs"] = list(dict.fromkeys(row["source_refs"] + p["source_refs"]))
             s["corrections"].append(dict(collection=collection, target=p["target"], kind=p["kind"],
                                          before=before, after=copy.deepcopy(row), source_refs=p["source_refs"],
@@ -710,20 +933,41 @@ class StateStore:
             s["tasks"][p["task_id"]]["progress"] = p["progress"]
             if p["progress"] == "Code ready":
                 s["tasks"][p["task_id"]]["ready_inputs"] = inputs(s, p["task_id"])
+                s["tasks"][p["task_id"]].pop("ready_attempt", None)
+        elif op == "select_output":
+            keys(p, {"task_id", "attempt_id"}, {"checks"})
+            row = attempt(p["attempt_id"])
+            require(row["task_id"] == p["task_id"] and row["integrated"] and row["result"]
+                    and "identity" in row["result"], "OUTPUT", "select an explicitly integrated producer result")
+            require(attempt_applicability(s, row) == "current", "OUTPUT", "selected output must have applicable inputs")
+            if "checks" in p:
+                require_current_checks(s, row, p["checks"])
+                row["qualification_checks"] = copy.deepcopy(p["checks"])
+            s["tasks"][p["task_id"]]["selected_output"] = row["id"]
         elif op == "claim_task":
-            keys(p, {"id", "task_id", "worker", "host"}, {"read_only"})
+            keys(p, {"id", "task_id", "worker", "host"}, {"read_only", "consumed"})
             require(p["id"] not in s["attempts"] and p["task_id"] in s["tasks"], "REFERENCE", "invalid attempt/task")
             read_only = p.get("read_only", False)
             require(type(read_only) is bool, "SCOPE", "read_only must be explicit boolean")
             paths = copy.deepcopy(s["tasks"][p["task_id"]]["paths"])
             require(read_only or bool(paths), "SCOPE", "mutable claim needs known nonempty paths; use read_only for reviews")
-            blockers = holds(s, p["task_id"], read_only=read_only)
+            consumed = p.get("consumed", {})
+            required = s["tasks"][p["task_id"]].get("consumes", [])
+            require(isinstance(consumed, dict) and (read_only and not consumed or set(consumed) == set(required)),
+                    "CONSUMES", "name the exact selected producer attempts used, not guessed artifact identities")
+            for dep, aid in consumed.items():
+                require(aid == s["tasks"][dep].get("selected_output"), "CONSUMES", "consumed output is not selected")
+            policy = observe_path_policy(self.root, paths) if not read_only else None
+            blockers = holds(s, p["task_id"], read_only=read_only, path_policy=policy)
             require(not blockers, "HELD", "; ".join(blockers))
             s["attempts"][p["id"]] = dict(id=p["id"], task_id=p["task_id"], worker=p["worker"], host=p["host"],
                                           scope=dict(mode="read_only" if read_only else "mutable", paths=paths),
                                           inputs=inputs(s, p["task_id"]), activity="unknown",
-                                          stop="none", observation=None, result=None, integrated=False)
+                                          stop="none", observation=None, result=None, integrated=False,
+                                          consumed=copy.deepcopy(consumed))
             if not read_only:
+                s["attempts"][p["id"]]["scope"]["path_policy"] = policy
+                s["tasks"][p["task_id"]]["path_policy"] = policy
                 s["tasks"][p["task_id"]]["progress"] = "In progress"
         elif op == "request_stop":
             keys(p, {"attempt_id"})
@@ -758,14 +1002,9 @@ class StateStore:
                     "RESULT", "requires completed, unintegrated result")
             require("identity" in row["result"], "IDENTITY_UNAVAILABLE", "legacy result has no checked candidate identity")
             require(row["inputs"] == inputs(s, row["task_id"]), "STALE_INPUTS", "candidate retained but no longer applicable")
+            require(consumption_applicability(s, row) == "current", "CONSUMED_OUTPUT", "consumed output is stale or unavailable")
             require(not holds(s, row["task_id"]), "HELD", "; ".join(holds(s, row["task_id"])))
-            refs(s, p["checks"], "evidence")
-            require(bool(p["checks"]) and all(s["evidence"][eid]["result"] == "pass"
-                    and s["criteria"][s["evidence"][eid]["criterion_id"]]["task_id"] == row["task_id"]
-                    and evidence_applicability(s, s["evidence"][eid]) == "current"
-                    and s["evidence"][eid].get("attempt_id") == row["id"]
-                    and s["evidence"][eid].get("identity") == row["result"]["identity"]
-                    for eid in p["checks"]), "CHECKS", "integration needs current passing checks for this exact attempt/candidate")
+            require_current_checks(s, row, p["checks"])
             operation = s["operations"].get(p["operation_id"])
             require(operation is not None and operation["attempt_id"] == row["id"]
                     and operation["outcome"] == "succeeded" and operation["action"] == "integrate"
@@ -775,10 +1014,15 @@ class StateStore:
                     and operation["observation"].get("identity") == row["result"]["identity"],
                     "OPERATION", "record observed integration separately; this command never mutates git")
             row["integrated"] = True
+            row["integration_checks"] = copy.deepcopy(p["checks"])
             s["tasks"][row["task_id"]]["progress"] = "Code ready"
             s["tasks"][row["task_id"]]["ready_inputs"] = inputs(s, row["task_id"])
+            s["tasks"][row["task_id"]]["ready_attempt"] = row["id"]
+            return {"operation": op, "qualification": {
+                cid: qualification(s, cid, row["id"], selected_checks=p["checks"])
+                for cid in s["tasks"][row["task_id"]]["criteria"]}}
         elif op == "record_evidence":
-            keys(p, FIELDS["evidence"] | {"identity"}, {"attempt_id"})
+            keys(p, FIELDS["evidence"] | {"identity"}, {"attempt_id", "check", "supersedes"})
             require(p["criterion_id"] in s["criteria"] and p["id"] not in s["evidence"], "REFERENCE", "invalid criterion/evidence")
             validate_identity(p["identity"])
             if "attempt_id" in p:
@@ -793,6 +1037,7 @@ class StateStore:
             row = attempt(p["attempt_id"])
             require(p["id"] not in s["operations"], "IDENTITY", "operation identity already exists")
             require(row["inputs"] == inputs(s, row["task_id"]), "STALE_INPUTS", "operation inputs changed")
+            require(consumption_applicability(s, row) == "current", "CONSUMED_OUTPUT", "operation consumed inputs changed")
             require(row["stop"] == "none", "STOP", "stop requested; no new external operation")
             require(row.get("scope") is not None, "SCOPE_UNAVAILABLE", "legacy assigned scope is unknown; reconcile before mutation")
             require(row["scope"]["mode"] == "mutable", "READ_ONLY", "read-only attempts cannot record external mutation")

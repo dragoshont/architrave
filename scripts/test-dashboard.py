@@ -95,7 +95,8 @@ class Dashboard(unittest.TestCase):
         small = self.model([self.ids[0]])
         self.assertEqual(small["counts"]["total"], 1)
         self.assertEqual(small["counts"]["current"], 1)
-        self.assertEqual(small["evidence_kinds"]["runtime"], {"declared": 0, "recorded_pass": 0})
+        self.assertEqual(small["evidence_kinds"]["runtime"],
+                         {"declared": 0, "recorded_pass": 0, "unresolved_fail": 0, "conflicts": 0})
 
     def test_collector_persists_yaml_and_display_never_reads_host_logs_directly(self):
         path = self.events([self.event("session.usage_record", {"usage": {"inputTokens": 10, "outputTokens": 0}})])

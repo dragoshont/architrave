@@ -123,12 +123,13 @@ New active intent needs an available reported owner source.
 | `apply_correction` | Source-backed change to one stable entity; retain before/after, kind and source; no deletion |
 | `record_question`, `resolve_decision`, `supersede_decision` | Consequential alternatives and one owner-sourced scoped answer; explicit supersession retains the old decision, never clears unrelated ones |
 | `record_progress`, `set_phase` | Written implementation and resumable implementation/review/delivery/held phase, not acceptance |
-| `claim_task` | Freeze the assignment's literal mutable paths exclusively, or explicitly declare a read-only attempt, with worker/host/attempt identity |
+| `claim_task` | Freeze literal mutable paths, observed case policy and explicit consumed producer attempts, or declare read-only work |
+| `select_output` | Explicitly select an integrated producer attempt and optionally current qualification checks; not inferred from timestamps or insertion order |
 | `request_stop`, `observe_attempt` | Distinguish requested stop, acknowledgement and observed terminal execution |
 | `record_result` | Retain immutable result/artifact and exact reported subject identity, including late/stale candidates |
 | `record_evidence` | Criterion fingerprint, checked subject/attempt, artifact, method, result, observed time and limitations |
 | `record_operation`, `observe_operation` | Persist external intention before host action; record unknown outcome and target reconciliation |
-| `integrate_candidate` | Record observed integration with current task-bound evidence and applicable completed result; never runs git |
+| `integrate_candidate` | Record observed integration of an applicable completed result; return recorded-check qualification separately; never runs git |
 | `resolve_import`, `reconcile_location` | Sourced migration resolution or verified closed-owner handoff |
 
 Use `state source --id <source-id>` to recover an original on demand.
@@ -186,6 +187,104 @@ meaning before issuing a new command. Never blind-overwrite newer state.
    display-title renames and reordering do not. Update actual outcomes/criteria,
    not only display titles, when interpreting a behavioral correction.
    Resume from current phase, scoped holds and next eligible work.
+
+### Consumed outputs versus ordering
+
+`depends_on` retains its existing scheduling/intent meaning. An optional task
+`consumes` list names the subset whose actual outputs the candidate uses. Declare
+it in `record_request` or a sourced task correction. After observing producer
+integration, use `select_output` with its task/attempt IDs. Selection is routine
+agent bookkeeping of the relevant output, not another owner-approval stage.
+Integration alone does not silently select or replace a dependency.
+
+A consuming `claim_task` supplies `consumed: {"producer-task": "selected-attempt"}`.
+The API verifies selection and freezes these provenance references; result
+records are immutable. Do not copy the current selection onto an old attempt.
+Applicability compares candidate/source/base output identity, not the producer's
+check execution identity, timestamp, display title or attempt ID. Thus equivalent
+outputs and unselected attempts do not force reruns. Selecting a materially
+different output stales affected consumer proof/readiness transitively. Declared
+intent fingerprints remain separate. Operation admission and the Run safety
+bridge also check consumed applicability; already observed effects remain history.
+
+Missing selection or old attempts without required consumed bindings are
+unavailable, never manufactured during loading. Scoped context and the board
+show selected output references and attempt/evidence applicability from the same
+revision. `ready_attempt` binds written readiness to the integrated subject;
+manual progress without an actual consumed binding remains unavailable.
+
+### Comparable checks and disputed qualification
+
+An evidence record may add `check: {"name": "stable-check", "environment":
+"reported-target-identity"}`. Comparable checks share criterion and its input fingerprint, exact attempt,
+candidate/source/base/check-input identity, name and environment. Method text and
+timestamps neither establish comparability nor determine a winner. Legacy
+evidence stays readable: its recorded pass/fail and subject applicability survive,
+but an unreported comparable-check identity cannot become qualified by inference.
+A legacy pass/fail contradiction for the same subject is still shown explicitly.
+
+`integrate_candidate.checks` identifies the reported qualification environments,
+not a passing subset of check names or criteria. All current, unsuperseded checks
+for those environments participate, including omitted failures and unknown legacy
+environments. The command returns `qualification` and retains `integration_checks`.
+Comparable pass plus fail is `conflict`; any failing check is `fail`; unknown/missing identity is
+not pass. Different environments, candidates and criteria stay separately
+inspectable. Selecting no checks yields unavailable qualification. This operation
+can record a true observed integration even with failed or absent checks.
+`Code ready` still means written implementation, not acceptance or permission.
+
+After integration, `select_output` accepts optional `checks: ["evidence-id"]`
+alongside `task_id` and `attempt_id` to explicitly select current qualification
+environments without repeating an external integration. Every reference must
+bind that exact integrated attempt/result identity and currently applicable
+criterion and consumed inputs. The attempt retains these references separately
+as `qualification_checks`; original `integration_checks`, result, frozen scope,
+consumed bindings and operation observations remain unchanged. The snapshot,
+scoped context and board use this selection, falling back to original integration
+checks only when no explicit qualification selection exists. Omitting `checks`
+preserves the prior selection; an explicit empty list selects no environments
+and yields unavailable qualification. All relevant checks in selected environments
+still participate, including omitted names/criteria and unknown legacy failures.
+Later evidence can change qualification, never the truth of the integration.
+Selection is routine bookkeeping, not owner approval or an acceptance claim;
+identical command replay and changed-payload rejection follow the usual receipts.
+
+A new rerun can supply `supersedes: ["prior-proof-id"]`. It must have a bound
+comparable check identity and a distinct result-artifact reference. References
+must exist and be acyclic; neither a label change nor a later timestamp can
+dismiss a failure. The original evidence is retained with its rerun links. New
+unlinked failures remain unresolved. These are reported execution/artifact
+references, not authenticated host proof: the host must retain and verify the
+actual run. For old unbound checks, produce a new fully bound subject rather than
+inventing the old environment. No universal acceptance barrier is introduced.
+
+### Filesystem-aware ownership
+
+Mutable admission freezes a per-parent `path_policy` alongside literal assigned
+paths. A bounded read-only lookup of existing directory entries and their
+case-swapped identities observes sensitive/aliasing lookup behavior. No OS-wide
+case assumption or probe file is used. Missing/empty/inaccessible parents remain
+explicitly `unknown`; comparisons conservatively fold only affected components.
+Known-sensitive components remain case-distinct, including ancestor comparisons.
+The policy is refreshed by a new claim, not by read-only rendering or intent edits.
+
+Legacy frozen scopes without this observation remain readable and conservative
+when compared with new claims. Existing historical assignments are not rewritten.
+Links/reparse points in a new mutable scope are rejected before directory reads;
+read-only work remains possible. This is advisory collision bookkeeping, not a
+sandbox or protection against all hardlink/mount aliases or concurrent filesystem
+substitution. Host execution must still enforce its actual write boundaries.
+
+### Compatibility
+
+These are optional extensions of `architrave.lifecycle.v1`, following its existing
+optional identity/scope convention. Existing v1 snapshots, originals and receipts
+load unchanged; exact old command replays retain their original receipts. New
+fields are added only by explicit commands. No background migration, task reimport
+or inference of old bindings occurs. Unknown schemas/fields fail explicitly.
+Older readers cannot interpret the extensions; a downgrade requires a deliberate
+closed-owner recovery with an appropriate earlier snapshot, never deletion of
+the selected store or an automatic fallback.
 
 Do not move a live state to another machine and reclaim owners. Writes on a
 different machine/path require `reconcile_location` and terminal attempts plus

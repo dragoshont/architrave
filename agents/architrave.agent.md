@@ -109,7 +109,11 @@ next action and review/delivery phase from canonical state and host evidence.
   unknown activity and stop requests retain ownership until observed terminal.
   Persist external-operation identity before invoking host tools; reconcile
   lost replies before retry. Retain stale returns; compare relevant inputs before
-  integration. State records do not dispatch or confer permissions. Load source
+  integration, including consumed outputs. Keep ordering distinct; select outputs
+  and freeze consumed attempts without owner ceremony. Expose comparable-check
+  conflicts and provenance-linked reruns, never infer acceptance from passes or
+  timestamps.
+  State records do not dispatch or confer permissions. Load source
   originals on demand; source labels never authenticate owner authority.
 - Verify the requested behavior, not compile or artifact counts. In an adopted
   repo, MUST execute `python gates/gate_runner.py quality-gate` after relevant

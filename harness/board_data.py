@@ -228,11 +228,13 @@ def presentation_model(view: dict, *, sessions=(), analysis=None, diagnostics=()
     for row in projected["tasks"]:
         own = {f"attempt {a['id']} ({a['activity']}, stop {a['stop']})" for a in row["owners"]}
         row["blocking_holds"] = [hold for hold in row["holds"] if hold not in own]
+        row["qualification_attention"] = any(c.get("qualification", {}).get("status") in {"fail", "conflict"}
+                                             for c in row["acceptance"])
         counts["written"] += row["progress"] == "Code ready"
         counts["current"] += row["readiness"] == "current"
         counts["stale"] += row["readiness"] == "stale"
         counts["unavailable"] += row["readiness"] == "unavailable"
-        counts["held"] += bool(row["blocking_holds"])
+        counts["held"] += bool(row["blocking_holds"]) or row["qualification_attention"]
         counts["owned"] += bool(row["owners"])
         counts["deferred"] += row["disposition"] == "deferred"
     counts["decisions"] = sum(d["resolution"] is None and not d.get("superseded_by") for d in view["decisions"])
@@ -240,7 +242,9 @@ def presentation_model(view: dict, *, sessions=(), analysis=None, diagnostics=()
     for kind in ("implementation", "review", "integration", "runtime"):
         criteria = [c for t in view["tasks"] for c in t["acceptance"] if c["kind"] == kind]
         kinds[kind] = {"declared": len(criteria), "recorded_pass": sum(any(e["result"] == "pass"
-                       and e["applicability"] == "current" for e in c["evidence"]) for c in criteria)}
+                       and e["applicability"] == "current" for e in c["evidence"]) for c in criteria),
+                       "unresolved_fail": sum(c.get("qualification", {}).get("status") in {"fail", "conflict"} for c in criteria),
+                       "conflicts": sum(c.get("qualification", {}).get("status") == "conflict" for c in criteria)}
     return {"schema": "architrave.dashboard-view.v1", "lifecycle": projected, "counts": counts,
             "evidence_kinds": kinds, "sessions": list(sessions), "insights": analysis, "diagnostics": list(diagnostics),
             "observations_identity": sha256_value(observations) if observations else None,

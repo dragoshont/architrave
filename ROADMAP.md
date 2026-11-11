@@ -1,5 +1,14 @@
 # Roadmap
 
+## Bounded lifecycle corrections (1.1.1)
+
+Separate explicitly consumed outputs from ordering, freeze actual producer
+bindings, and expose stale qualification transitively. Retain check conflicts and
+rerun provenance without refusing true integration observations or inventing
+acceptance. Observe filesystem case behavior per affected parent, preserving
+known-sensitive work and conservative unknown scopes. Native Windows/Linux,
+live host behavior and measured owner-effort benefits remain separately qualified.
+
 ## Bundled YAML-backed work board (1.1.0)
 
 Ship the richer board with Architrave first, not a universal plugin rollout.

@@ -70,9 +70,19 @@ def task_inspector(task, view) -> str:
                 ("Observed", proof["observed_at"]), ("Binding", applicability),
                 ("Checked subject", json.dumps(proof.get("identity", "unavailable"), sort_keys=True)),
                 ("Attempt", proof.get("attempt_id", "unavailable")), ("Limitations", proof["limitations"]),
+                ("Comparable check", json.dumps(proof.get("check", "unavailable"), sort_keys=True)),
+                ("Superseded by rerun", ", ".join(proof.get("superseded_by", [])) or "None"),
             ]), "proof"))
+        qualified = criterion.get("qualification", {})
+        subjects = listing(
+            f"{q['attempt_id']} / {json.dumps(check['check'], sort_keys=True)}: {check['status']}; "
+            f"evidence {', '.join(check['evidence_ids'])}"
+            for q in criterion.get("subjects", []) for check in q["checks"])
         criteria.append(f"<li class='criterion'><span class='kind'>{esc(criterion['kind'])}</span>"
                         f"<p>{esc(criterion['expected'])}</p>"
+                        f"<p>Recorded-check qualification: {esc(qualified.get('status', 'unavailable'))}"
+                        f" / subject {esc(qualified.get('attempt_id') or 'not selected')}</p>"
+                        + details("Retained subject/check outcomes", subjects)
                         + ("".join(proofs) if proofs else "<p class='muted'>Acceptance unverified: no evidence recorded.</p>") + "</li>")
     corrections = [c for c in view["corrections"] if c["target"] == task["id"]
                    or c["collection"] in {"constraints", "decisions", "goals"}]
@@ -95,6 +105,8 @@ def task_inspector(task, view) -> str:
             + details("Task provenance & history", facts([
                 ("Stable ID", task["id"]), ("Goal", task["goal_id"]), ("Activation", task["activation"]),
                 ("Dependencies", ", ".join(task["depends_on"]) or "None"),
+                ("Consumed selected outputs", json.dumps(task.get("consumed_outputs", {}), sort_keys=True)),
+                ("Ownership case policy", task.get("ownership_policy", "unavailable")),
                 ("Source references", ", ".join(task["source_refs"])),
             ]) + audit)
             + "</div></details>")
@@ -183,7 +195,7 @@ def render(data: dict) -> str:
             status = f"{label}; readiness {task['readiness']}; {task['disposition']}"
             attrs = (f"data-task='{esc(task['id'])}' data-progress='{progress}' "
                      f"data-readiness='{esc(task['readiness'])}' data-disposition='{esc(task['disposition'])}' "
-                     f"data-attention='{'yes' if task['blocking_holds'] or task['readiness'] in {'stale', 'unavailable'} else 'no'}' "
+                     f"data-attention='{'yes' if task['blocking_holds'] or task.get('qualification_attention') or task['readiness'] in {'stale', 'unavailable'} else 'no'}' "
                      f"data-search='{esc(task['title'].lower() + ' ' + task['id'].lower())}'")
             squares.append(f"<a class='task-square' href='#task-{esc(task['id'])}' {attrs} "
                            f"aria-label='{esc(task['title'] + ': ' + status)}' title='{esc(task['title'] + ': ' + status)}'>"
@@ -218,8 +230,11 @@ def render(data: dict) -> str:
         next_label = f"{counts['owned']} items have recorded owners. No unclaimed work is currently eligible."
     next_link = f"<a href='#task-{esc(tid)}' data-select='{esc(tid)}'>{esc(next_label)}</a>" if tid in task_by_id else esc(next_label)
     evidence = "".join(f"<div><h3>{esc(kind.capitalize())}</h3><p>"
-                       + (f"<strong>{count['recorded_pass']}/{count['declared']}</strong> criteria with matching recorded passes"
+                       + (f"<strong>{count['recorded_pass']}/{count['declared']}</strong> criteria with matching recorded passes "
+                          "(retained subjects; not acceptance)"
                           if count["declared"] else "Not declared in this scope")
+                       + f"<br>{count.get('unresolved_fail', 0)} applicable failures / "
+                         f"{count.get('conflicts', 0)} unresolved conflicts for the selected/written subject"
                        + "</p></div>" for kind, count in model["evidence_kinds"].items())
     decisions = [d for d in view["decisions"] if d["resolution"] is None and not d.get("superseded_by")]
     decision_html = "".join(f"<li><strong>{esc(d['question'])}</strong><p>{esc(' / '.join(d['alternatives']))}</p>"
