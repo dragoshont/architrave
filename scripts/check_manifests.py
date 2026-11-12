@@ -41,6 +41,7 @@ JSON_FILES = (
     'benchmarks/results.schema.json',
     'benchmarks/scenarios.json',
     'benchmarks/routing-scenarios.json',
+    'benchmarks/domain-host-cases.json',
     'kit/examples/runtime-v2.architrave.json',
     'benchmarks/fixtures/tessera-shaped/architrave.config.json',
     'benchmarks/fixtures/tessera-shaped/runtime/release-state.json',
@@ -67,6 +68,7 @@ PYTHON_FILES = (
     'scripts/test-benchmark-tools.py',
     'scripts/test-domain-fidelity.py',
     'benchmarks/fixtures/domain-audit/*.py',
+    'benchmarks/fixtures/domain-host/*.py',
     'scripts/test-codex-runtime.py',
     'scripts/fixtures/codex_fake.py',
     'scripts/test-runtime-v2.py',
@@ -314,7 +316,7 @@ def validate_all(validator):
         for path in sorted((ROOT / 'kit/examples').glob('*.architrave.json')):
             v.command(f'schema: {path.relative_to(ROOT)}', [npx, '--yes', 'ajv-cli@5', 'validate',
                       '-s', ROOT / 'kit/architrave.config.schema.json', '-d', path])
-        for filename in ('benchmarks/scenarios.json', 'benchmarks/routing-scenarios.json'):
+        for filename in ('benchmarks/scenarios.json', 'benchmarks/routing-scenarios.json', 'benchmarks/domain-host-cases.json'):
             v.command(f'schema: {filename}', [npx, '--yes', 'ajv-cli@5', 'validate',
                       '-s', ROOT / 'benchmarks/scenarios.schema.json', '-d', ROOT / filename])
         v.command('schema: Tessera-shaped fixture config', [npx, '--yes', 'ajv-cli@5', 'validate',

@@ -9,6 +9,10 @@ import json
 import tempfile
 import unittest
 import subprocess
+import os
+import shutil
+import sys
+import shlex
 from pathlib import Path
 from unittest.mock import patch
 
@@ -229,6 +233,54 @@ class JudgeSecurityTests(unittest.TestCase):
         redacted = JUDGE.redact_producer_identity(patch, {})
         self.assertNotIn("secret profile", redacted)
         self.assertIn("src/a.py", redacted)
+
+    def test_blinding_preserves_sources_and_domain_text_across_arms(self) -> None:
+        sources = {
+            "api.py": 'ROUTE = "/parcels/approved"\n',
+            "carrier.ts": "export const isDone = (status: string) => /^done$/.test(status);\n",
+            "candidate.py": "def valid(candidate):\n    return candidate.approved\n",
+        }
+        source_text = "".join(sources.values())
+        patch_text = "diff --git a/candidate.py b/candidate.py\n+" + source_text
+        payload = {
+            "target_sources": sources,
+            "diff_patch_tail": patch_text,
+            "observed_tool_calls": [{"arguments": {"path": "candidate.py", "patch": patch_text}}],
+            "question_requests": [{"arguments": {"question": source_text, "choices": ["candidate", "/parcels/approved"]}}],
+            "findings": {"records": [{"code": {"path": "candidate.py"}, "excerpt": source_text,
+                                      "candidate": {"approved": True}}]},
+            "validation_outputs": [{"stdout": source_text}],
+        }
+        presentations = []
+        for arm in ("baseline-1.1.1", "candidate"):
+            with self.subTest(arm=arm):
+                blinded = JUDGE.blind_evidence(payload, {"arm": arm})
+                self.assertEqual(payload, blinded)
+                presentations.append(blinded)
+        self.assertEqual(presentations[0], presentations[1])
+
+    def test_blinding_limits_metadata_redaction_to_metadata_and_captured_roots(self) -> None:
+        target = "/experiment/candidate/worktree"
+        row = {"arm": "candidate", "worktree": target}
+        payload = {
+            "target_sources": {"candidate.py": f'ROOT = "{target}"\nmodel = "candidate"\n'},
+            "observed_tool_calls": [{"arguments": {
+                "path": target + "/candidate.py", "candidate": "candidate",
+                "nested": {"arm": "candidate", "model": "candidate"},
+                "patch": f'*** Update File: {target}/candidate.py\n+route = "/parcels/approved"'}}],
+            "question_requests": [{"question": f"Inspect {target}/candidate.py or /parcels/approved?"}],
+            "live_interruption": {"events": "/Users/producer/.copilot/events.jsonl"},
+        }
+        blinded = JUDGE.blind_evidence(payload, row)
+        self.assertEqual(payload["target_sources"], blinded["target_sources"])
+        arguments = blinded["observed_tool_calls"][0]["arguments"]
+        self.assertEqual("<target>/candidate.py", arguments["path"])
+        self.assertEqual("candidate", arguments["candidate"])
+        self.assertEqual({"arm": "<redacted-producer>", "model": "<redacted-producer>"}, arguments["nested"])
+        self.assertEqual('*** Update File: <target>/candidate.py\n+route = "/parcels/approved"', arguments["patch"])
+        self.assertEqual("Inspect <target>/candidate.py or /parcels/approved?",
+                         blinded["question_requests"][0]["question"])
+        self.assertEqual("<absolute-path>/events.jsonl", blinded["live_interruption"]["events"])
 
     def test_family_requires_observed_vendor_or_model(self) -> None:
         metadata = {"models": ["claude-local"], "model_reasoning": [{"model": "claude-local", "vendor": "anthropic", "reasoningEffort": "high"}]}
@@ -578,6 +630,722 @@ class BenchmarkExecutionTests(unittest.TestCase):
         self.assertIn("durable evidence", summary)
         self.assertIn("1/2 (50.0%)", summary)
         self.assertIn("| 50.0 |", summary)
+
+
+class DomainHostTests(unittest.TestCase):
+    def run_domain_case(self, root, *, audit=False, source=None, answer='{"findings":[]}',
+                        validation_edit=None, extra_options=None, source_files=None):
+        fixture = root / "source"
+        shutil.copytree(ROOT / "benchmarks/fixtures/domain-host/source", fixture)
+        for name, text in (source_files or {}).items():
+            (fixture / name).write_text(text, encoding="utf-8")
+        options = {"oracle": str(ROOT / "benchmarks/fixtures/domain-host/oracle.py"),
+                   **({"audit": True, "readonly": True} if audit else {"behavior": "handling"}),
+                   **(extra_options or {})}
+        scenario = {"id": "case", "fixture": str(fixture), "lane": "backend", "prompt": "Bounded case",
+                    "scoring": {"domainHost": options}}
+        config = root / "cases.json"
+        config.write_text(json.dumps({
+            "arms": [{"id": "test", "runner": "copilot", "pluginDir": str(root),
+                      "allowAll": False, "noAskUser": False}], "scenarios": [scenario]}))
+
+        def observed_step(arm, target, prompt, cell, *args):
+            if source is not None:
+                (target / "billing.py").write_text(source)
+            (cell / "agent.stdout").write_text(json.dumps({
+                "type": "assistant.message", "data": {"content": answer}}) + "\n")
+            return {"returncode": 0, "timed_out": False, "duration_ms": 1}
+
+        real_validation = BENCH.run_validation
+
+        def validation(*args, **kwargs):
+            result = real_validation(*args, **kwargs)
+            if validation_edit:
+                validation_edit(args[2] / "validation-1.stdout")
+            return result
+
+        argv = ["bench", "--scenarios", str(config), "--all-enabled", "--execute",
+                "--out", str(root / "runs"), "--run-id", "admission"]
+        with patch.object(BENCH, "run_arm", side_effect=observed_step), \
+             patch.object(BENCH.shutil, "which", return_value=sys.executable), \
+             patch.object(BENCH, "run_validation", side_effect=validation), \
+             patch.object(BENCH.sys, "argv", argv), redirect_stdout(io.StringIO()):
+            status = BENCH.main()
+        row = json.loads((root / "runs/admission/results.jsonl").read_text())
+        schema = json.loads((ROOT / "benchmarks/results.schema.json").read_text())
+        self.assertIn(row["failure_mode"], schema["properties"]["failure_mode"]["enum"])
+        return status, row, scenario
+
+    def test_runner_requires_completed_matching_oracle_result(self) -> None:
+        repaired = ("def handling_fee(units, cancelled=False):\n"
+                    "    if not isinstance(units, int) or units < 0: raise ValueError('units')\n"
+                    "    return 0 if cancelled or units == 0 else 250\n")
+        for control in ("valid", "import-exit", "call-exit", "missing", "malformed",
+                        "wrong-check", "wrong-target", "wrong-result-id", "wrong-variation", "incomplete"):
+            with self.subTest(control=control), tempfile.TemporaryDirectory() as directory:
+                source = repaired
+                if control == "import-exit":
+                    source = "raise SystemExit(0)\n"
+                elif control == "call-exit":
+                    source = "def handling_fee(units, cancelled=False): raise SystemExit(0)\n"
+
+                def edit(path):
+                    if control == "missing":
+                        path.unlink()
+                    elif control == "malformed":
+                        path.write_text("not JSON")
+                    elif control.startswith("wrong-") or control == "incomplete":
+                        report = json.loads(path.read_text())
+                        key = control.removeprefix("wrong-").replace("-", "_")
+                        report["completed" if control == "incomplete" else key] = False if control == "incomplete" else "different"
+                        path.write_text(json.dumps(report))
+
+                status, row, scenario = self.run_domain_case(Path(directory), source=source, validation_edit=edit)
+                expected = control == "valid"
+                self.assertEqual(expected, row["passed"])
+                self.assertEqual(expected, row["domain"]["completion"])
+                self.assertEqual(expected, row["domain"]["oracle_completion"]["valid"])
+                self.assertEqual(0 if expected else 1, status)
+                self.assertEqual(None if expected else "validation_failed", row["failure_mode"])
+                if control.endswith("exit"):
+                    self.assertIn("SystemExit", row["domain"]["oracle_completion"]["report"]["reason"])
+                judged, public = self.judge_domain_case(Path(directory), row, scenario)
+                self.assertEqual(expected, judged["gate_eligible"])
+                self.assertEqual(expected, public["gate_eligible"])
+
+    def judge_domain_case(self, root, row, scenario):
+        config, results, output = root / "judge-cases.json", root / "producer.jsonl", root / "judge.jsonl"
+        config.write_text(json.dumps({"scenarios": [scenario]}))
+        results.write_text(json.dumps(row) + "\n")
+        records = (row["domain"].get("findings") or {}).get("records", [])
+        assessment = {"identified_defects": 0, "false_positives": 0, "correct_unknowns": 0,
+                      "valid_alternatives": 0, "completion": True, "question_necessity": "none-observed",
+                      "assessments": [{"finding_id": finding["id"], "determination": "unsupported",
+                                       "evidence": "diagnostic judgment"} for finding in records]}
+        optimistic = {"scores": dict.fromkeys(("correctness", "clarity", "yagni", "process", "repo_fit"), 5),
+                      "verdict": "PASS", "findings": [], "human_review_recommended": False,
+                      "domain_assessment": assessment}
+        metadata = {"returncode": 0, "tool_requests": 0, "models": ["gpt-observed"]}
+        argv = ["judge", "--scenarios", str(config), "--results", str(results), "--out", str(output)]
+        with patch.object(JUDGE, "require_copilot_judge_capabilities"), \
+             patch.object(JUDGE, "copilot_complete", return_value=(json.dumps(optimistic), metadata)), \
+             patch.object(sys, "argv", argv), redirect_stdout(io.StringIO()):
+            self.assertEqual(0, JUDGE.main())
+        self.assertEqual(row, json.loads(results.read_text()))
+        return (json.loads(output.read_text().splitlines()[-1]),
+                json.loads(output.with_suffix(".public.jsonl").read_text().splitlines()[-1]))
+
+    def test_judge_keeps_failed_rows_diagnostic_and_valid_audit_eligible(self) -> None:
+        controls = ("valid", "boundary", "inputs", "sources", "readonly", "mechanical",
+                    "findings", "missing-findings", "missing-boundary", "missing-inputs",
+                    "missing-validation", "null-validation", "validation-failed", "required-validation",
+                    "missing-artifacts", "missing-snapshot", "interruption", "required-interruption",
+                    "controls", "agent", "null-agent", "failure-mode", "scenario")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _, original, original_scenario = self.run_domain_case(root, audit=True)
+            self.assertFalse(original["passed"])
+            self.assertEqual("semantic_adjudication_unset", original["failure_mode"])
+            for control in controls:
+                with self.subTest(control=control):
+                    row, scenario = json.loads(json.dumps(original)), json.loads(json.dumps(original_scenario))
+                    domain = row["domain"]
+                    if control == "boundary":
+                        domain["boundary_error"] = "target changed"
+                    elif control == "inputs":
+                        domain["inputs_unchanged"] = False
+                    elif control == "sources":
+                        domain["protected_sources_changed"] = ["docs/decision.md"]
+                    elif control == "readonly":
+                        domain["changed_paths"] = ["app.py"]
+                    elif control == "mechanical":
+                        domain["mechanical_checks_passed"] = False
+                    elif control == "findings":
+                        domain["findings"]["mechanical_valid"] = False
+                    elif control == "missing-findings":
+                        del domain["findings"]
+                    elif control == "missing-boundary":
+                        del domain["git_metadata_after"]
+                    elif control == "missing-inputs":
+                        del domain["inputs_after"]
+                    elif control == "missing-validation":
+                        del row["validation"]
+                    elif control == "null-validation":
+                        row["validation"] = None
+                    elif control == "validation-failed":
+                        row["validation"] = [{"returncode": 1, "timed_out": False}]
+                    elif control == "required-validation":
+                        scenario["scoring"]["domainHost"] = {"oracle": "external"}
+                        scenario["validation"] = ["required command"]
+                        domain["readonly"] = False
+                        domain["inputs_before"]["scenario_sha256"] = BENCH.digest(scenario)
+                        domain["inputs_after"]["scenario_sha256"] = BENCH.digest(scenario)
+                    elif control == "missing-artifacts":
+                        del row["artifacts"]
+                    elif control == "missing-snapshot":
+                        del domain["target_before"]
+                    elif control == "interruption":
+                        row["agent"]["interruption"] = {"outcome": "interruption-unobserved"}
+                    elif control == "required-interruption":
+                        scenario["scoring"]["domainHost"]["interruption"] = {"marker": "required"}
+                        domain["inputs_before"]["scenario_sha256"] = BENCH.digest(scenario)
+                        domain["inputs_after"]["scenario_sha256"] = BENCH.digest(scenario)
+                    elif control == "controls":
+                        row["execution"]["controlStatus"]["model"] = "unobserved"
+                    elif control == "agent":
+                        del row["agent"]["timed_out"]
+                    elif control == "null-agent":
+                        row["agent"] = None
+                    elif control == "failure-mode":
+                        row["failure_mode"] = "target_boundary_changed"
+                    elif control == "scenario":
+                        scenario["prompt"] = "different instruction"
+                    judged, public = self.judge_domain_case(root, row, scenario)
+                    eligible = control == "valid"
+                    self.assertEqual(eligible, judged["gate_eligible"], judged)
+                    self.assertEqual(eligible, public["gate_eligible"])
+                    if eligible:
+                        self.assertEqual("PASS", public["verdict"])
+                        self.assertTrue(public["semantic_adjudication"]["completion"])
+                    else:
+                        self.assertEqual("FAIL", judged["verdict"])
+                        self.assertFalse(judged["domain_assessment"]["completion"])
+                        self.assertTrue(judged["diagnostic_judgment"]["domain_assessment"]["completion"])
+                        self.assertIsNone(public["semantic_adjudication"])
+                        self.assertIsNone(public["verdict"])
+                        self.assertTrue(judged["deterministic_admission_errors"])
+
+    def test_invalid_finding_shapes_and_references_fail_producer_and_judge(self) -> None:
+        invalid_reference = {
+            "id": "bad", "classification": "confirmed violation",
+            "code": {"path": "missing.py", "start_line": 1, "end_line": 4},
+            "source": {"path": "docs/decisions/018-stock.md", "start_line": 1, "end_line": 7,
+                       "status": "Accepted", "authority": "Store Operations"},
+            "scenario": "negative reservation", "alternative_or_unknown": "unknown concurrency",
+            "remedy": "reject nonpositive quantity", "falsifier": "reserve(8,-2) must throw", "confidence": "high"}
+        for answer in ("not JSON", '{"findings":{}}', json.dumps({"findings": [invalid_reference]})):
+            with self.subTest(answer=answer), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                _, row, scenario = self.run_domain_case(root, audit=True, answer=answer)
+                self.assertFalse(row["domain"]["findings"]["mechanical_valid"])
+                self.assertFalse(row["domain"]["mechanical_checks_passed"])
+                self.assertEqual("finding_validation_failed", row["failure_mode"])
+                judged, public = self.judge_domain_case(root, row, scenario)
+                self.assertFalse(judged["gate_eligible"])
+                self.assertIsNone(public["semantic_adjudication"])
+
+    def test_source_evidence_must_match_producer_and_original_target(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _, original, scenario = self.run_domain_case(root, audit=True)
+            path = Path(original["domain"]["source_evidence"])
+            captured = path.read_bytes()
+            for control in ("valid", "tampered", "missing", "malformed", "missing-binding",
+                            "wrong-snapshot", "wrong-original", "wrong-redacted", "changed-manifest"):
+                with self.subTest(control=control):
+                    path.write_bytes(captured)
+                    row = json.loads(json.dumps(original))
+                    binding = row["domain"]["source_evidence_binding"]
+                    if control == "tampered":
+                        changed = json.loads(captured)
+                        changed["carrier.py"] = "changed after capture"
+                        path.write_text(json.dumps(changed))
+                    elif control == "missing":
+                        path.unlink()
+                    elif control == "malformed":
+                        path.write_text("invalid JSON")
+                        binding["sha256"] = BENCH.hashlib.sha256(path.read_bytes()).hexdigest()
+                    elif control == "missing-binding":
+                        del row["domain"]["source_evidence_binding"]
+                    elif control == "wrong-snapshot":
+                        binding["target_sha256"] = "wrong"
+                    elif control == "wrong-original":
+                        binding["files"]["carrier.py"]["original_sha256"] = "wrong"
+                    elif control == "wrong-redacted":
+                        binding["files"]["carrier.py"]["redacted_sha256"] = "wrong"
+                    elif control == "changed-manifest":
+                        del binding["files"]["carrier.py"]
+                    evidence = JUDGE.benchmark_evidence(row, scenario, 12000)
+                    judged, public = self.judge_domain_case(root, row, scenario)
+                    self.assertEqual(control == "valid", judged["gate_eligible"])
+                    if control != "valid":
+                        self.assertIsNone(evidence["target_sources"])
+                        self.assertIsNone(public["semantic_adjudication"])
+                        self.assertTrue(any("source evidence" in error for error in judged["deterministic_admission_errors"]))
+                    else:
+                        self.assertIn("carrier.py", evidence["target_sources"])
+
+    def test_bound_source_fidelity_matches_between_arms(self) -> None:
+        sources = {
+            "api.py": 'ROUTE = "/parcels/approved"\n',
+            "carrier.ts": "export const isDone = (status: string) => /^done$/.test(status);\n",
+            "candidate.py": "def valid(candidate):\n    return candidate.approved\n",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            _, row, scenario = self.run_domain_case(Path(directory), audit=True, source_files=sources)
+            bound_sources, errors = JUDGE.source_evidence(row)
+            self.assertEqual([], errors)
+            for name, text in sources.items():
+                self.assertEqual(text, bound_sources[name])
+            presentations = []
+            for arm in ("baseline-1.1.1", "candidate"):
+                with self.subTest(arm=arm):
+                    row["arm"] = arm
+                    evidence = JUDGE.benchmark_evidence(row, scenario, 12000)
+                    self.assertEqual([], evidence["deterministic_admission_errors"])
+                    self.assertEqual(bound_sources, evidence["target_sources"])
+                    presentations.append(evidence["target_sources"])
+            self.assertEqual(presentations[0], presentations[1])
+
+    def test_sanitized_source_binding_preserves_original_snapshot_identity(self) -> None:
+        source = ROOT / "benchmarks/fixtures/domain-host/source/carrier.py"
+        sensitive = source.read_text().splitlines()[0]
+        self.assertTrue(sensitive)
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TEST_SECRET": sensitive}):
+            _, row, scenario = self.run_domain_case(Path(directory), audit=True)
+            binding = row["domain"]["source_evidence_binding"]["files"]["carrier.py"]
+            self.assertEqual(row["domain"]["target_after"]["files"]["carrier.py"]["sha256"], binding["original_sha256"])
+            self.assertNotEqual(binding["original_sha256"], binding["redacted_sha256"])
+            evidence = JUDGE.benchmark_evidence(row, scenario, 12000)
+            self.assertNotIn(sensitive, evidence["target_sources"]["carrier.py"])
+            sources, errors = JUDGE.source_evidence(row)
+            self.assertEqual([], errors)
+            self.assertEqual(sources, evidence["target_sources"])
+            self.assertEqual([], evidence["deterministic_admission_errors"])
+            judged, public = self.judge_domain_case(Path(directory), row, scenario)
+            self.assertTrue(judged["gate_eligible"])
+            self.assertTrue(public["semantic_adjudication"]["completion"])
+
+    def test_judge_recursively_blinds_complete_evidence_before_hash_and_envelope(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _, row, scenario = self.run_domain_case(root, audit=True)
+            target, cell = row["worktree"], row["cell_dir"]
+            row["arm"] = "baseline-1.1.1"
+            row["execution"]["requested"]["model"] = "private-producer-model"
+            row["agent"].update({
+                "observed_tool_calls": [{"name": "view", "arguments": {
+                    "path": target + "/billing.py", "nested": [cell + "/note", "baseline-1.1.1",
+                                                              {"model": "private-producer-model"}]}}],
+                "question_requests": [{"arguments": {"question": f"Use {target}/billing.py?",
+                                                    "choices": [f"{cell}/choice", "baseline-1.1.1"]}}],
+                "interruption": {"events": "/Users/producer/.copilot/events.jsonl",
+                                 "nested": {"checkpoint": target + "/checkpoint/ready.json",
+                                            "instruction": "private-producer-model at " + cell}},
+            })
+            row["validation"] = [{"command": f"python {target}/billing.py --out {cell}/result",
+                                  "returncode": 0, "timed_out": False}]
+            row["domain"]["findings"] = {"mechanical_valid": True, "records": [
+                {"id": "one", "code": {"path": "billing.py", "start_line": 1},
+                 "source": {"path": "docs/decisions/010-billing.md", "start_line": 2}}]}
+            scenario["validation"] = [f"python {target}/billing.py"]
+            evidence = JUDGE.benchmark_evidence(row, scenario, 12000)
+            serialized = json.dumps(evidence)
+            for private in (target, cell, str(root), "baseline-1.1.1", "private-producer-model", "/Users/producer"):
+                self.assertNotIn(private, serialized)
+            self.assertEqual("<target>/billing.py", evidence["observed_tool_calls"][0]["arguments"]["path"])
+            self.assertIn("<target>/billing.py", evidence["validation"][0]["command"])
+            self.assertEqual("billing.py", evidence["findings"]["records"][0]["code"]["path"])
+            self.assertEqual("docs/decisions/010-billing.md", evidence["findings"]["records"][0]["source"]["path"])
+            self.assertIn("billing.py", evidence["target_sources"])
+            self.assertEqual("<absolute-path>/events.jsonl", evidence["live_interruption"]["events"])
+            prompt = JUDGE.prompt_for(row, scenario, "rubric", 12000, nonce="fixed")
+            enclosed = prompt.split("BEGIN_UNTRUSTED_BENCHMARK_EVIDENCE_fixed\n")[1].split(
+                "\nEND_UNTRUSTED_BENCHMARK_EVIDENCE_fixed")[0]
+            self.assertEqual(JUDGE.evidence_sha256(evidence), JUDGE.evidence_sha256(json.loads(enclosed)))
+            windows = JUDGE.blind_evidence({"path": r"C:\experiment\candidate\worktree\billing.py",
+                                           "code": r'return "a\nb"', "comment": "// keep comment",
+                                           "relative": "docs/decisions/010-billing.md"},
+                                          {"arm": "candidate", "worktree": r"C:\experiment\candidate\worktree"})
+            self.assertEqual("<target>/billing.py", windows["path"])
+            self.assertEqual(r'return "a\nb"', windows["code"])
+            self.assertEqual("// keep comment", windows["comment"])
+            self.assertEqual("docs/decisions/010-billing.md", windows["relative"])
+
+    def test_domain_git_guard_rejects_metadata_and_symlink_redirection_before_git(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source"
+            source.mkdir()
+            (source / "file.py").write_text("value = 1\n")
+            target = root / "target"
+            BENCH.create_fixture_worktree(source, target)
+            before = BENCH.git_metadata_snapshot(target)
+            for name in ("HEAD", "config"):
+                metadata = target / ".git" / name
+                original = metadata.read_text()
+                metadata.write_text(original + "\nchanged\n")
+                with patch.object(BENCH, "run", side_effect=AssertionError("Git must not run before admission")):
+                    with self.assertRaisesRegex(ValueError, "metadata changed"):
+                        BENCH.check_domain_boundary(target, before, True, False, [])
+                metadata.write_text(original)
+            with self.assertRaisesRegex(ValueError, "inputs changed"):
+                BENCH.check_domain_boundary(target, before, False, False, [])
+            if os.name == "posix":
+                (target / "escape").symlink_to(root / "source", target_is_directory=True)
+                with self.assertRaisesRegex(ValueError, "target symlink"):
+                    BENCH.check_domain_boundary(target, before, True, False, ["escape"])
+                (target / "escape").unlink()
+                (target / ".git").rename(target / "saved-git")
+                (target / ".git").symlink_to(target / "saved-git", target_is_directory=True)
+                with self.assertRaisesRegex(ValueError, "owned directory"):
+                    BENCH.check_domain_boundary(target, before, True, False, [])
+
+    def test_domain_validation_scrubs_provider_header_and_credential_environment(self) -> None:
+        secret_keys = ["OPENAI_API_KEY", "CUSTOM_PROVIDER_HEADERS", "GITHUB_TOKEN", "AWS_ACCESS_KEY_ID",
+                       "GIT_CONFIG_VALUE_0", "COPILOT_PROVIDER_HEADERS", "AUTHORIZATION"]
+        keys = secret_keys + ["PATH", "DOTNET_ROOT"]
+        program = f"import json,os; print(json.dumps({{key:key in os.environ for key in {keys!r}}}))"
+        arguments = [sys.executable, "-c", program]
+        command = subprocess.list2cmdline(arguments) if os.name == "nt" else shlex.join(arguments)
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+                os.environ, {**dict.fromkeys(secret_keys, "synthetic-private-value"), "DOTNET_ROOT": "/test/dotnet"}):
+            root = Path(directory)
+            results = BENCH.run_validation(root, [command], root, 10, scrub_credentials=True)
+            self.assertEqual(0, results[0]["returncode"])
+            observed = json.loads((root / "validation-1.stdout").read_text())
+            self.assertTrue(all(not observed[key] for key in secret_keys))
+            self.assertTrue(observed["PATH"])
+            self.assertTrue(observed["DOTNET_ROOT"])
+
+    def test_audit_runner_skips_execution_and_refuses_writes_before_git_diff(self) -> None:
+        # Substitute only the AUTE boundary to exercise runner admission, not model behavior.
+        for mutate in (False, True):
+            with self.subTest(mutate=mutate), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                fixture = root / "source"
+                fixture.mkdir()
+                (fixture / "app.py").write_text("raise RuntimeError('must never execute audit target')\n")
+                oracle = root / "oracle.py"
+                oracle.write_text("raise RuntimeError('must never execute audit oracle')\n")
+                config = root / "cases.json"
+                config.write_text(json.dumps({
+                    "arms": [{"id": "test", "runner": "copilot", "pluginDir": str(root),
+                              "allowAll": False, "noAskUser": False}],
+                    "scenarios": [{"id": "audit", "fixture": str(fixture), "lane": "backend", "prompt": "Audit only",
+                                   "validation": ["{python} app.py"],
+                                   "scoring": {"domainHost": {"oracle": str(oracle), "audit": True, "readonly": True}}}]}))
+
+                def observed_step(arm, target, prompt, cell, *args):
+                    if mutate:
+                        (target / "unexpected.txt").write_text("write observation")
+                    (cell / "agent.stdout").write_text(json.dumps({
+                        "type": "assistant.message", "data": {"content": '{"findings":[]}'}}) + "\n")
+                    return {"returncode": 0, "timed_out": False, "duration_ms": 1}
+
+                argv = ["bench", "--scenarios", str(config), "--all-enabled", "--execute",
+                        "--out", str(root / "runs"), "--run-id", "admission"]
+                with patch.object(BENCH, "run_arm", side_effect=observed_step), \
+                     patch.object(BENCH.shutil, "which", return_value=sys.executable), \
+                     patch.object(BENCH, "run_validation", side_effect=AssertionError("audit validation invoked")), \
+                     patch.object(BENCH.sys, "argv", argv), redirect_stdout(io.StringIO()):
+                    if mutate:
+                        with patch.object(BENCH, "diff_metrics", side_effect=AssertionError("diff before audit-write refusal")):
+                            self.assertEqual(1, BENCH.main())
+                    else:
+                        self.assertEqual(1, BENCH.main())
+                row = json.loads((root / "runs/admission/results.jsonl").read_text())
+                schema = json.loads((ROOT / "benchmarks/results.schema.json").read_text())
+                self.assertIn(row["failure_mode"], schema["properties"]["failure_mode"]["enum"])
+                if mutate:
+                    self.assertEqual("target_boundary_changed", row["failure_mode"])
+                    self.assertIn("read-only target changed", row["domain"]["boundary_error"])
+                else:
+                    self.assertEqual([], row["validation"])
+                    self.assertEqual("semantic_adjudication_unset", row["failure_mode"])
+
+    def test_domain_matrix_keeps_oracle_and_answers_outside_agent_input(self) -> None:
+        config_path = ROOT / "benchmarks/domain-host-cases.json"
+        config = BENCH.load_config(config_path)
+        self.assertEqual([], BENCH.benchmark_config_errors(config))
+        self.assertEqual(7, len(config["scenarios"]))
+        for scenario in config["scenarios"]:
+            options = BENCH.domain_options(scenario)
+            source = BENCH.resolve_repo(scenario["fixture"], config_path.parent)
+            oracle = BENCH.resolve_repo(options["oracle"], config_path.parent)
+            self.assertFalse(oracle.is_relative_to(source))
+            self.assertFalse((source / "oracle.py").exists())
+            prompt = BENCH.prompt_for(scenario, config["arms"][0], 0)
+            self.assertNotIn(str(oracle), prompt)
+            self.assertNotIn("reviewTopics", prompt)
+            self.assertNotIn("expected", prompt)
+            self.assertNotIn("Do not ask the user", prompt)
+            self.assertNotIn("250", prompt)
+            self.assertNotIn("175", prompt)
+
+    def test_domain_controls_do_not_grant_shell_external_paths_or_disable_questions(self) -> None:
+        command = BENCH.copilot_command(
+            {"runner": "copilot", "allowAll": False, "noAskUser": False, "pluginDir": "/plugin"},
+            Path("/owned/target"), "task", Path("/owned/session.md"),
+            {"privatePaths": ["/private/oracle"], "session_id": "uuid"})
+        for forbidden in ("--allow-all", "--allow-all-tools", "--allow-all-paths", "--no-ask-user"):
+            self.assertNotIn(forbidden, command)
+        self.assertIn("--deny-tool=shell", command)
+        self.assertIn("--disallow-temp-dir", command)
+        self.assertIn("--allow-tool=write(/owned/target/**)", command)
+        self.assertIn("--deny-tool=read(/private/oracle/**)", command)
+        self.assertIn("--session-id=uuid", command)
+        resumed = BENCH.copilot_command({}, Path("/owned/target"), "new instruction", Path("/owned/session.md"),
+                                       {"session_id": "uuid", "resume": True})
+        self.assertIn("--resume=uuid", resumed)
+        self.assertNotIn("--session-id=uuid", resumed)
+
+    def test_snapshot_detects_ignored_untracked_and_symlink_without_git_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / ".git").mkdir()
+            (root / ".git/config").write_text("private git state")
+            (root / ".gitignore").write_text("cache/\n")
+            (root / "cache").mkdir()
+            (root / "cache/local").write_text("original")
+            (root / "new.py").write_text("x = 1")
+            first = BENCH.target_snapshot(root)
+            (root / "cache/local").write_text("modified")
+            (root / ".git/config").write_text("irrelevant metadata change")
+            second = BENCH.target_snapshot(root)
+            self.assertNotEqual(first["sha256"], second["sha256"])
+            self.assertIn("cache/local", first["files"])
+            self.assertIn("new.py", first["files"])
+            self.assertNotIn(".git/config", first["files"])
+            if os.name == "posix":
+                (root / "outside").symlink_to(root.parent, target_is_directory=True)
+                self.assertEqual("symlink", BENCH.target_snapshot(root)["files"]["outside"]["kind"])
+
+    def test_actual_question_requests_are_distinct_from_mentions_and_deduplicated(self) -> None:
+        text = "\n".join(json.dumps(event) for event in [
+            {"type": "assistant.message", "data": {"content": "The docs mention ask_user",
+                "toolRequests": [{"id": "q1", "name": "ask_user", "arguments": {"question": "Which rate?"}}]}},
+            {"type": "tool.execution_start", "data": {"toolCallId": "q1", "toolName": "ask_user",
+                "arguments": {"question": "Which rate?"}}},
+            {"type": "tool.execution_complete", "data": {"toolCallId": "q1", "success": False}},
+            {"type": "session.tools_updated", "data": {"model": "reported"}},
+        ])
+        observed = BENCH.event_observations(text)
+        self.assertEqual(1, len(observed["question_requests"]))
+        self.assertEqual(1, len(observed["tools"]))
+        self.assertFalse(observed["tools"][0]["success"])
+        self.assertIsNone(observed["tool_catalogue"])
+        self.assertEqual([], BENCH.event_observations("ask_user could you clarify?")["question_requests"])
+
+    def test_instruction_evidence_is_hash_only_not_loaded_role_attestation(self) -> None:
+        observed = BENCH.event_observations(json.dumps({
+            "type": "instruction.update", "data": {"name": "role", "content": "private text", "authority": "agent"}}))
+        self.assertNotIn("private text", json.dumps(observed))
+        self.assertIsNone(observed["instruction_hashes"][0]["loaded_role_content_match"])
+
+    def test_readonly_and_unobserved_interruption_do_not_pass_from_exit_zero(self) -> None:
+        base = {"agent": {"returncode": 0}, "passed": False,
+                "execution": {"controlStatus": {"model": "not-requested", "reasoningEffort": "not-requested"}},
+                "domain": {"inputs_unchanged": True, "readonly": True, "changed_paths": ["ignored/cache"]}}
+        self.assertEqual("readonly_target_changed", BENCH.failure_mode(base))
+        base["domain"]["changed_paths"] = []
+        self.assertEqual("semantic_adjudication_unset", BENCH.failure_mode(base))
+        base["agent"]["interruption"] = {"outcome": "interruption-unobserved"}
+        self.assertEqual("live_interruption_unverified", BENCH.failure_mode(base))
+
+    def test_domain_failure_classification_matches_result_contract(self) -> None:
+        schema = json.loads((ROOT / "benchmarks/results.schema.json").read_text())
+        base = {"agent": {"returncode": 0}, "passed": False,
+                "execution": {"controlStatus": {"model": "not-requested", "reasoningEffort": "not-requested"}},
+                "domain": {"inputs_unchanged": True, "readonly": True, "changed_paths": []}}
+        changes = [
+            ({}, "semantic_adjudication_unset"),
+            ({"boundary_error": "metadata changed"}, "target_boundary_changed"),
+            ({"inputs_unchanged": False}, "frozen_inputs_changed"),
+            ({"protected_sources_changed": ["docs/rule.md"]}, "source_authority_changed"),
+            ({"changed_paths": ["app.py"]}, "readonly_target_changed"),
+            ({"findings": {"mechanical_valid": False}}, "finding_validation_failed"),
+        ]
+        for change, expected in changes:
+            row = {**base, "domain": {**base["domain"], **change}}
+            observed = BENCH.failure_mode(row)
+            self.assertEqual(expected, observed)
+            self.assertIn(observed, schema["properties"]["failure_mode"]["enum"])
+        interrupted = {**base, "agent": {"returncode": 0, "interruption": {"outcome": "interruption-unobserved"}}}
+        self.assertEqual("live_interruption_unverified", BENCH.failure_mode(interrupted))
+        self.assertIn(BENCH.failure_mode(interrupted), schema["properties"]["failure_mode"]["enum"])
+
+    def test_secret_values_are_redacted_without_opt_in_and_exported_to_cli_filter(self) -> None:
+        env = {"PRIVATE_API_KEY": "very-private-value", "NORMAL": "public"}
+        self.assertNotIn("very-private-value", BENCH.redact_text("very-private-value public", env))
+        with patch.dict(os.environ, env):
+            command = BENCH.copilot_command({}, Path("target"), "task", Path("session.md"))
+        self.assertTrue(any("PRIVATE_API_KEY" in item and item.startswith("--secret-env-vars=") for item in command))
+
+    def test_public_receipt_excludes_reasoning_account_data_and_personal_paths(self) -> None:
+        text = "\n".join(json.dumps(item) for item in [
+            {"type": "assistant.reasoning", "data": {"content": "hidden-thought"}},
+            {"type": "assistant.message", "data": {"content": "Visible report",
+                                                   "reasoningText": "hidden-text", "encryptedContent": "opaque"}},
+            {"type": "tool.execution_start", "data": {"toolName": "view",
+                "arguments": {"path": "/Users/private-person/source.py"}}},
+        ])
+        public = BENCH.visible_transcript(text)
+        for forbidden in ("hidden-thought", "hidden-text", "opaque", "private-person"):
+            self.assertNotIn(forbidden, public)
+        self.assertIn("Visible report", public)
+        usage = BENCH.public_usage({"currentModel": "observed", "totalNanoAiu": 12,
+                                    "accountId": "private-account", "reasoningBlocks": ["private"],
+                                    "tokenDetails": {"input": {"tokenCount": 8, "accountId": "private"}}})
+        self.assertEqual(8, usage["tokenDetails"]["input"])
+        self.assertIsNone(usage["tokenDetails"]["output"])
+        self.assertIsNone(usage["totalPremiumRequestCost"])
+        self.assertNotIn("private", json.dumps(usage))
+
+    def test_redaction_preserves_json_numbers_and_single_event_jsonl(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "agent.stdout"
+            path.write_text(json.dumps({"count": 1, "secret": "1", "escaped": "line\nsecret"}))
+            BENCH.redact_file(path, {"TEST_TOKEN": "1", "OTHER_SECRET": "line\nsecret"})
+            value = json.loads(path.read_text())
+            self.assertEqual(1, value["count"])
+            self.assertNotEqual("1", value["secret"])
+            self.assertNotIn("line", value["escaped"])
+            self.assertEqual(1, len(path.read_text().splitlines()))
+
+    def test_grounded_record_checks_do_not_manufacture_semantic_counts(self) -> None:
+        source = ROOT / "benchmarks/fixtures/domain-host/source"
+        finding = {
+            "id": "finding-1", "classification": "confirmed violation",
+            "code": {"path": "inventory.py", "start_line": 1, "end_line": 4},
+            "source": {"path": "docs/decisions/018-stock.md", "start_line": 1, "end_line": 7,
+                       "status": "Accepted", "authority": "Store Operations"},
+            "scenario": "negative reservation", "alternative_or_unknown": "upstream serialization is unknown",
+            "remedy": "reject nonpositive quantity", "falsifier": "reserve(8,-2) must throw", "confidence": "high"}
+        report = SEMANTIC.check_host_findings(json.dumps({"findings": [finding]}), source)
+        self.assertTrue(report["mechanical_valid"])
+        self.assertIsNone(report["identified_defects"])
+        self.assertIsNone(report["semantic_adjudication"])
+        for mutation in ("bad-line", "outside-target", "wrong-status", "missing-alternative"):
+            changed = json.loads(json.dumps(finding))
+            if mutation == "bad-line":
+                changed["code"]["end_line"] = 10000
+            elif mutation == "outside-target":
+                changed["code"]["path"] = "../oracle.py"
+            elif mutation == "wrong-status":
+                changed["source"]["status"] = "Proposed"
+            else:
+                del changed["alternative_or_unknown"]
+            self.assertFalse(SEMANTIC.check_host_findings(json.dumps({"findings": [changed]}), source)["mechanical_valid"])
+
+    def test_qualified_source_status_keeps_exact_status_and_line_checks(self) -> None:
+        source = ROOT / "benchmarks/fixtures/domain-host/source"
+        finding = {
+            "id": "clearance", "classification": "confirmed violation",
+            "code": {"path": "carrier.py", "start_line": 1, "end_line": 3},
+            "source": {"path": "docs/decisions/015-clearance.md", "start_line": 1, "end_line": 8,
+                       "status": "Accepted", "authority": "Compliance"},
+            "scenario": "express parcel with unmet obligations", "alternative_or_unknown": "unknown caller validation",
+            "remedy": "require every listed obligation", "falsifier": "unmet obligation blocks release",
+            "confidence": "high",
+        }
+        for status in ("Accepted", " Accepted; supersedes 005-clearance ",
+                       "accepted (supersedes 005-clearance)", "Accepted, supersedes 005-clearance",
+                       "Proposed", "Proposed; supersedes 005-clearance", "Accept"):
+            with self.subTest(status=status):
+                finding["source"]["status"] = status
+                report = SEMANTIC.check_host_findings(json.dumps({"findings": [finding]}), source)
+                self.assertEqual(status.strip().casefold().startswith("accepted"), report["mechanical_valid"], report)
+                self.assertIsNone(report["semantic_adjudication"])
+                self.assertIsNone(report["identified_defects"])
+        finding["source"]["status"] = "Accepted; supersedes 005-clearance"
+        for reference in ("source", "code"):
+            for start, end in ((0, 4), (4, 1), (1, 10000)):
+                with self.subTest(reference=reference, start=start, end=end):
+                    changed = json.loads(json.dumps(finding))
+                    changed[reference].update(start_line=start, end_line=end)
+                    report = SEMANTIC.check_host_findings(json.dumps({"findings": [changed]}), source)
+                    self.assertFalse(report["mechanical_valid"])
+                    self.assertIn(f"clearance: {reference} line range outside file", report["errors"])
+        finding["classification"] = "not applicable"
+        finding["source"].update(path="docs/decisions/005-clearance.md", end_line=6)
+        for status, valid in (("Superseded", True), ("Superseded by 015-clearance", True),
+                              ("Superseded; by 015-clearance", True), ("Super", False),
+                              ("Accepted", False), ("Accepted; historical", False)):
+            with self.subTest(historical_status=status):
+                finding["source"]["status"] = status
+                report = SEMANTIC.check_host_findings(json.dumps({"findings": [finding]}), source)
+                self.assertEqual(report["mechanical_valid"], valid, report)
+
+    def test_independent_assessment_counts_must_bind_to_real_finding_ids(self) -> None:
+        evidence = {"findings": {"records": [{"id": "a"}]}}
+        assessment = {"identified_defects": 1, "false_positives": 0, "correct_unknowns": 0,
+                      "valid_alternatives": 0, "completion": True, "question_necessity": "none-observed",
+                      "assessments": [{"finding_id": "a", "determination": "correct-defect",
+                                       "evidence": "code and accepted source support counterexample"}]}
+        JUDGE.validate_domain_assessment({"domain_assessment": assessment}, evidence)
+        with self.assertRaisesRegex(ValueError, "counts"):
+            JUDGE.validate_domain_assessment({"domain_assessment": {**assessment, "identified_defects": 2}}, evidence)
+        with self.assertRaisesRegex(ValueError, "unknown"):
+            JUDGE.validate_domain_assessment({"domain_assessment": assessment}, {"findings": {"records": []}})
+
+    def test_hidden_behavior_oracle_rejects_original_and_checks_composed_python_route(self) -> None:
+        source = ROOT / "benchmarks/fixtures/domain-host/source"
+        oracle = ROOT / "benchmarks/fixtures/domain-host/oracle.py"
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "target"
+            shutil.copytree(source, target)
+            command = [sys.executable, str(oracle), "handling", str(target)]
+            original = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(1, original.returncode, original.stdout)
+            (target / "billing.py").write_text(
+                "def handling_fee(units, cancelled=False):\n"
+                "    if not isinstance(units, int) or units < 0: raise ValueError('units')\n"
+                "    return 0 if cancelled or units == 0 else 250\n")
+            repaired = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(0, repaired.returncode, repaired.stdout + repaired.stderr)
+            (target / "api.py").write_text("def quote(request): return {'handling_cents': 999}\n")
+            broken_caller = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(1, broken_caller.returncode)
+
+    def test_carrier_variations_use_external_oracle_not_agent_modified_authority(self) -> None:
+        oracle = ROOT / "benchmarks/fixtures/domain-host/oracle.py"
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "target"
+            shutil.copytree(ROOT / "benchmarks/fixtures/domain-host/source", target)
+            (target / "carrier.py").write_text(
+                "def customer_state(value):\n"
+                "    return {'queued':'pending','done':'delivered','lost':'exception'}.get(value,'unknown')\n")
+            north = subprocess.run([sys.executable, str(oracle), "carrier", str(target), "0"], capture_output=True)
+            south = subprocess.run([sys.executable, str(oracle), "carrier", str(target), "1"], capture_output=True)
+            self.assertEqual(0, north.returncode)
+            self.assertEqual(1, south.returncode)
+
+    @unittest.skipUnless(shutil.which("node"), "Node unavailable: functional TypeScript not evaluated")
+    def test_real_functional_typescript_and_python_counterexample(self) -> None:
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "benchmarks/fixtures/domain-host/oracle.py"), "functional",
+             str(ROOT / "benchmarks/fixtures/domain-host/source")], capture_output=True, text=True)
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
+    @unittest.skipUnless(shutil.which("dotnet"), ".NET unavailable: C# invariant not evaluated")
+    def test_real_csharp_counterexample_and_repair(self) -> None:
+        oracle = ROOT / "benchmarks/fixtures/domain-host/oracle.py"
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "target"
+            shutil.copytree(ROOT / "benchmarks/fixtures/domain-host/source", target)
+            command = [sys.executable, str(oracle), "dispatch", str(target)]
+            broken = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(1, broken.returncode, broken.stdout + broken.stderr)
+            policy = target / "Dispatch/ReleasePolicy.cs"
+            original = policy.read_text()
+            policy.write_text(original.replace(
+                "return clearance.WorkflowComplete;",
+                "return clearance.WorkflowComplete && !clearance.Revoked\n"
+                "            && clearance.CertificateRevision == clearance.ApprovedRevision\n"
+                "            && (clearance.Express || (clearance.Obligations.Length > 0\n"
+                "            && clearance.Obligations.All(value => value)));"))
+            waived_obligations = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(1, waived_obligations.returncode, waived_obligations.stdout + waived_obligations.stderr)
+            self.assertIn("AssertionError", json.loads(waived_obligations.stdout)["reason"])
+            policy.write_text(original.replace(
+                "return clearance.WorkflowComplete;",
+                "return clearance.WorkflowComplete && !clearance.Revoked\n"
+                "            && clearance.CertificateRevision == clearance.ApprovedRevision\n"
+                "            && (clearance.Express || clearance.Obligations.Length > 0)\n"
+                "            && clearance.Obligations.All(value => value);"))
+            repaired = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(0, repaired.returncode, repaired.stdout + repaired.stderr)
 
 
 if __name__ == "__main__":

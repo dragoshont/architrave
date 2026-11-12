@@ -94,7 +94,7 @@ Some apps have no separate service process: SwiftUI, AppKit, MAUI, or desktop ap
 
 ## 4. Data & migrations (reversible by default)
 - **Expand → migrate → contract.** Add the new column/table (expand, backward-compatible) → backfill/migrate → remove the old (contract) only after readers move. Keep each step deployable on its own.
-- **No destructive change without an approved rollback.** Every migration ships with how to reverse it; the Backend Planner records it; the user approves it.
+- **No destructive change without an approved rollback.** Every migration ships with how to reverse it; the responsible implementer records it, reusing Planner output when available; the user approves it.
 - **Idempotent + ordered.** Migrations re-runnable and applied in order; never edit a shipped migration — add a new one.
 - Treat data loss as a Blocker, not a risk.
 

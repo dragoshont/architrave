@@ -1,15 +1,126 @@
 # Unified domain/service extension: evidence and limits
 
-This records the **1.2.0 prerelease**, not completion of the full release
-qualification matrix. The owner authorized packaging, publication and local
-installation after the reviewed source landed on main. Those operations need
-their own observed receipts; a manifest version does not prove publication or
-loading. Historical source-stage snapshots below retain their original scope.
+This records the **1.2.1 stable corrective distribution** and its bounded
+qualification, followed by historical 1.2.0 evidence. The owner explicitly
+requested a normal release instead of another preview. That channel decision
+does not convert missing evidence or failed agent tasks into passes.
+Publication and local installation have separate, later receipts in the
+[release assets](https://github.com/dragoshont/architrave/releases/tag/v1.2.1);
+a manifest version does not prove either operation or private prompt loading.
 This is not another architecture policy or lifecycle authority.
 The existing Service Architect and `knowledge/backend.md` supply guidance;
 `.architrave/state.yaml` remains API-owned.
 
-## Candidate and replacement matrix
+## 1.2.1 executed host experiments
+
+On macOS arm64, native Copilot CLI 1.0.108 ran seven scenarios twice for each
+arm: **28 actual cells**, not replayed responses. Baseline is
+`e4135ef5ee1e6d500accb11809c2bb27f16ede58` (1.1.1); the candidate uses the
+reviewed role/skill bytes and the then-current backend pack. A later one-line
+pack correction replaces the residual named-Planner migration recorder with
+the responsible implementer, retaining rollback approval. The matched trials
+were not rerun for that wording change. The experiment-time manifest still
+said 1.2.0: the version bump followed execution. Runtime-only
+projections excluded `benchmarks/`, `scripts/`, the evidence report and ignored
+local state in both arms. Explicit plugin-only discovery, file tools and
+target-scoped write permissions were identical; no model was pinned.
+Actual host telemetry reported `gpt-6.1-sol`, medium effort, in both arms.
+Python 3.13.18, Node 22.23.5 and .NET SDK 10.0.404 were available.
+
+The cases cover a small authorized edit, unresolved insurance policy, competing
+carrier-context sources, a C# clearance invariant, functional-design audit,
+live correction and a read-only injection attempt. North/south source
+variations are absent from the task prompt. The model cannot read the oracle.
+The profile intentionally denies shell/network/delegation tools; the evaluator
+executes implementation checks afterward. It is not a full unrestricted
+development workflow or an OS sandbox for generated implementation code.
+
+| Observed matched result | Baseline, 14 cells | Candidate, 14 cells |
+| --- | --- | --- |
+| Executable implementation checks after corrected revalidation | 8/8 | 7/8 |
+| Audit/clarification mechanical references and boundaries | 5/6 | 6/6 |
+| Median agent duration | 50.4 seconds | 53.7 seconds |
+| Host-reported total NanoAIU (not currency) | 79,684,790,000 | 85,059,380,000 |
+| Observed `ask_user` tool calls | 0 | 0 |
+
+These are not semantic acceptance percentages. Visible clarification questions
+must be assessed separately from tool-call counts. The candidate's first
+correction trial returned a flat 175 cents instead of 175 multiplied by units;
+that failure remains. One baseline injection-audit response cited lines beyond
+the source file; that failure also remains. The fixed-order, two-repeat sample,
+cache effects and concurrent local checking do not support causal improvement.
+**No performance gain was demonstrated.**
+
+All four correction cells observed persisted history, an actual owned-process
+SIGINT/termination, and resume under the same session ID with the newer source.
+Successful resume is not successful implementation: the failed fee case above
+is included. All 12 synthetic audit/clarification targets were unchanged,
+including ignored/untracked files. A separate positive native control actually
+used `apply_patch` under the same writable file profile. No global tool
+catalogue or arbitrary external-effect isolation was observed.
+
+Four additional native read-only audits used an **11-file actual Architrave
+policy/lifecycle slice** from `13f0218`, with original versus corrected Backend
+Implementer content. All four targets remained unchanged. This is a bounded
+real-repository audit, not a complete application audit or unseen third-party
+application qualification.
+
+An independent, identity-masked review assessed all 32 trajectories and 88
+submitted finding records: 22 accepted completions, four correct business-rule
+holds, two deterministic failures, and four real-source audits not accepted in
+their entirety. Record determinations were 30 correct defects, 37 valid
+alternatives, 17 correct unknowns, three false positives and one unsupported
+claim; these are not unique-defect counts or recall. The real-source audits
+correctly exposed the residual migration-recorder wording, but also overstated
+tasks.md shorthand and generic testing advice despite explicit overriding
+constraints. Only the supported wording issue was corrected. No unnecessary
+visible question was established; visible decision holds are not tool calls.
+
+### Evaluator corrections and provenance
+
+Two independent source reviews reproduced early-exit false passes, a missing
+express-parcel obligation counterexample, optimistic judgment admission over
+deterministic failures, unbound source captures, result-schema omissions and
+producer-identity leakage. A subsequent recheck caught source corruption by
+overbroad blinding. Focused fixes preserve actual source/relative references,
+bind oracle completion and captured source identities, and leave semantic
+counts unset until independent adjudication. Actual findings also exposed a
+status-grader false rejection: `Accepted; supersedes 005` is not a contradiction
+of `Status: Accepted` plus a separate supersession statement. Qualifier
+entailment remains a semantic question; different statuses and invalid ranges
+still fail.
+
+The original 28 rows predate the corrected capture contract and remain
+immutable, **unqualified original receipts**. A separate post-run verification
+reread retained files against their original post-agent hashes, captured new
+source bindings, and reran the corrected executable checks. It did not rerun
+models, replace responses, invent an earlier binding timestamp, or erase
+failures. The four later real-repository audits used the corrected producer
+capture contract directly. Release assets retain this distinction, source
+hashes, visible evidence, exact commands/toolchain and check/review reports;
+raw private histories and hidden reasoning are excluded.
+
+### Acceptance evidence levels
+
+| Criteria / claim | Evidence level and limit |
+| --- | --- |
+| I02/I03: one route, removal of mandatory Planner contradiction | **Independently verified** source inspection, direct-path controls and disposable installer parity; not every host |
+| I08-I12/I15-I19: evaluator mechanics, adverse invariants, references and source-bound admission | **Independently verified** bounded negative/positive controls; semantic findings require their separate adjudication |
+| I01/I04/I05: inventory, lifecycle continuity and small-change behavior | **Builder-reported, not independently rerun** current host/source checks; earlier lifecycle evidence remains separately scoped |
+| I06/I14/I20: unchanged audit targets and live correction/resume | **Builder-reported, not independently rerun** native observations; no universal sandbox or broad interruption guarantee |
+| I13/I21/I22: clarification and matched outcomes/cost | **Builder-reported, not independently rerun** fixed small sample; no causal gain, zero observed question-tool calls is not zero visible questions |
+| I07: fresh installed 1.2.1 host readback | **Not yet observed in this pre-publication source snapshot**; subsequent exact installation/fresh-context receipts belong in release assets |
+| I23: independent adversarial review and supported corrections | **Independently verified** source rechecks; representative runtime interpretation is separately reported, not an independent rerun |
+| I24: research | **Independently verified** prior bounded source research below; bibliography/abstract/full-text limitations remain |
+| I25: publication and installation | **Not yet observed in this source snapshot**; verify normal-release metadata and downloaded/installed bytes from later release receipts |
+| Other hosts, full private role-prompt payload, large unseen applications and general behavioral improvement | **Not yet observed**; not implied by version, source PASS or this sample |
+
+Reproduce the native trials using `benchmarks/domain-host-cases.json` and the
+commands in `benchmarks/README.md`. The release evidence bundle contains exact
+runtime projection hashes and invocation parameters; toolchain prerequisites
+and model availability remain host-specific.
+
+## Historical 1.2.0 candidate and replacement matrix
 
 Baseline: `e4135ef5ee1e6d500accb11809c2bb27f16ede58`, freshly fetched
 `origin/main`, initially clean. Branch: `dragoshont-microsoft-domain-driven-release`.
@@ -157,7 +268,11 @@ actions, costs or runtime correctness. Expected answers stay out of blind output
 Live audit/review must separately inspect original rules and composed code.
 Temporary installer byte equality is not native host loading.
 
-## Release status and holds
+## Historical 1.2.0 source-stage status and holds
+
+The following is retained history, not the current 1.2.1 status. The section
+above supersedes its unexecuted native/C#/matched-trial observations where new
+evidence exists; it does not rewrite the earlier reviews or failed attempts.
 
 Source implementation is written. Both independent final reviews of frozen
 candidate `sha256:bd98e611505a21ef206e4aa0f947c8a72b423b76bbff00523ade2db688599b17`

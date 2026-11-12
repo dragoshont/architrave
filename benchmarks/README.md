@@ -1,5 +1,197 @@
 # Architrave Benchmarks
 
+## Real host domain matrix
+
+`domain-host-cases.json` extends the existing Copilot runner, not the semantic
+answer-key calibration. Its seven cases cover a small authorized change without
+a Planner, a genuinely missing business decision, conflicting status-labelled
+sources, a .NET invariant repair, functional Python/TypeScript audit controls,
+live owner correction, and read-only audit with writable tools and source bait.
+The same small parcel application includes accepted, superseded and proposed
+decisions and a documented express-shipping exception. Two integration variations
+are selected by repetition index for the conflict and injection cases; the task
+prompt does not disclose their expected outcomes.
+
+Only `fixtures/domain-host/source` plus the selected variation is copied into the
+agent's target. `fixtures/domain-host/oracle.py` stays outside, as do the scenario,
+review topics and hidden behavioral assertions. The agent receives its task and
+the application sources, not expected findings or validator text. Protected
+authority documents cannot be rewritten to make a wrong implementation pass.
+The oracle exercises composed Python API calls, actual TypeScript functions and
+an authentic package-free `net10.0` console project. Missing Node/.NET is
+unavailable, never a successful language check.
+
+### Matched runs
+
+Supply independently pinned plugin directories; do not install/uninstall global
+plugins. The baseline must be the owner's verified 1.1.1 source, not a moving
+branch. The candidate must be frozen before the comparison. Configuration allows
+environment substitution only in `pluginDir`; no model/provider is selected here.
+Use the same native executable, host defaults, tool profile and budgets for both
+arms. Actual default models can change; compare recorded observations and reject
+unmatched or unobserved cells rather than assuming equal models.
+
+```bash
+export ARCHITRAVE_BENCH_BASELINE_PLUGIN=/absolute/pinned-1.1.1
+export ARCHITRAVE_BENCH_CANDIDATE_PLUGIN=/absolute/candidate
+# Put the owner's chosen native Copilot, Python, Node and .NET 10 on PATH.
+python scripts/bench-architrave.py --scenarios benchmarks/domain-host-cases.json --validate
+python scripts/bench-architrave.py --scenarios benchmarks/domain-host-cases.json --list
+python scripts/bench-architrave.py --scenarios benchmarks/domain-host-cases.json \
+  --all-enabled --repeats 2 --execute --out /absolute/private-evidence \
+  --agent-timeout 600 --validation-timeout 180 --run-timeout 18000 \
+  --heartbeat-interval 60
+```
+
+Default invocation still lists/plans; only `--execute` launches agents. A run
+directory must be new: existing targets are never deleted or silently reused.
+`--cleanup-worktrees` removes only targets created by that invocation. Preserve
+private evidence until independent review has consumed it.
+
+Domain runs set `COPILOT_PLUGIN_DIR_ONLY=true` and use the explicit plugin path.
+They retain the actual invocation, executable/version, fixture/scenario/oracle
+hashes and role/pack hashes before and after each cell. Configured agent/path
+and content hashes are not proof that the host loaded those bytes. Host-reported
+role fields and instruction-event hashes are separate; an instruction hash alone
+does not attest a selected role. No concrete model, provider or reasoning level
+is pinned. `--usage-output-file` supplements JSONL observations, retaining only
+reported values (unknown remains null, not zero).
+
+### Tools, read-only observations and interruption
+
+The domain profile exposes `view,glob,rg,apply_patch,ask_user,skill`, disables
+built-in MCPs, omits shell/network/delegation tools, denies shell/URL/memory
+operations, and scopes write approval to the disposable target. It does not use
+legacy `--allow-all`, disable questions, or grant all filesystem paths. Native
+option availability is checked before launch; unsupported controls fail closed.
+Tool names accepted by an option are not necessarily exposed by a host.
+`tool_catalogue` is null when the host does not publish names (native 1.0.108
+`session.tools_updated` may report only the model). Successful `apply_patch`
+calls are positive observations; audit abstention alone does not prove a writable
+capability. Retain a same-profile positive capability control with real host
+evidence before interpreting the audit cells.
+
+The agent cannot execute application tests under this deliberately restricted
+profile. The evaluator runs those tests afterward, outside the agent fixture.
+Worktree isolation is not a security sandbox. Before/after snapshots cover
+tracked, untracked, ignored files and symlink identities without following links;
+only root `.git` metadata is excluded, with HEAD/status recorded separately.
+Snapshots precede **all** post-agent Git access and validation. Domain fixtures
+also freeze the owned `.git` directory's HEAD, config, refs, index and trust-related
+files. A changed Git pointer, trust metadata, oracle/config/source identity,
+target symlink or read-only target write blocks post-agent Git and validation.
+No domain diff runs `git add -N`; read-only Git observations disable global/system
+configuration, fsmonitor, external diff and text conversion. Rejected Git metadata
+is reported without following its pointer to another repository.
+
+Audit/read-only cases never execute target code or their configured validation
+commands, even when a benchmark configuration lists one. Implementation validators
+receive an environment stripped of credential variables, provider settings,
+provider headers and injected Git configuration. They still execute modified
+application code with the host's available OS permissions: environment filtering
+is not filesystem/network isolation or protection from malicious implementations.
+Use a separately authorized host sandbox when that boundary is needed.
+Evaluator-generated files are not attributed to the agent. Snapshots cannot
+detect a transient write restored before the snapshot, or
+prove that no external effect occurred. Observed tool calls supplement snapshots;
+global read-only compliance remains advisory, not universally enforced.
+
+The correction case supplies a first safe step and a marker, without a sleep
+barrier. The runner requires the **same generated session UUID** in the persisted
+host event log plus actual prior tool events and the marker while its child is
+still running. It signals only that owned process group, records prior event
+count/hash, PID, signal, observed termination and return code, writes the
+source-bound newer owner decision, then invokes `--resume=<same UUID>`. The
+resumed session identity must be observed again. A process that finishes before
+interruption, a missing persisted event, timeout or unverifiable resume is an
+explicit nonpass, never relabelled as interruption. A two-turn completed handoff
+is not this experiment. Native sidebar interruption may be evaluated separately
+when the CLI cannot expose the required observation.
+
+### Evidence and adjudication
+
+`results.jsonl` remains the detailed private receipt; `public-summary.jsonl`
+contains sanitized machine-readable metrics and identities, not raw session
+content. Public fields are allowlisted: usage counts/model, file and input hashes,
+observed tool names, completion and checks. Personal absolute paths become
+placeholders; account metadata and hidden reasoning/encrypted reasoning fields
+are excluded. Full exact local invocations stay in private evidence; public
+invocations use relocatable path placeholders. CLI exports, usage,
+command/validation logs and source evidence are
+redacted for detected secret environment names and credential patterns.
+`ARCHITRAVE_BENCH_SECRET_ENV_VARS` adds nonstandard secret names to both CLI shell
+filtering and redaction. These are best-effort protections: review the summary
+before publication and never publish raw host histories, credentials or private
+traces. Host-owned persisted session files are not rewritten by the runner.
+
+Completion, executable behavior and semantic judgment are separate. A successful
+implementation oracle establishes only its tested behavior. Audit exit zero or
+an answer matching JSON shape cannot pass an audit: semantic adjudication,
+identified defects, false positives and correct unknowns remain **null** until a
+real independent review. The ambiguous case likewise remains unadjudicated;
+stopping for necessary input is not implemented completion. An overall nonzero
+exit can therefore mean pending semantic review rather than a failed behavior
+test; retain all rows, including failures.
+
+Behavior completion requires both successful execution and the evaluator's
+completed JSON result matching the selected check, target, variation and fresh
+invocation ID. Missing, malformed, mismatched and premature-exit reports fail.
+The Python oracle catches target `SystemExit`, including exit zero, before
+reporting assertion completion. This is a validation-process contract, not
+authentication or a sandbox against arbitrary malicious target code. Native
+dispatch checks include satisfied, unsatisfied and mixed nonempty express
+obligations; express waives only the empty-list restriction.
+
+The existing scorer can validate finding references without judging semantics:
+
+```bash
+python scripts/score-semantic-cases.py --host-findings /private/findings.json \
+  --target /private/run/scenario/arm/rep-0/worktree
+```
+
+Each record requires code and source paths/line ranges, source status/authority,
+scenario, alternative/unknown, remedy, falsifier and confidence. Mechanical
+validation checks existing references and declared statuses, not whether the
+passage supports the conclusion. The existing independent `judge-bench.py`
+receives source snapshots, findings, changes, observed question/tool requests
+and behavior results. For domain rows it must separately adjudicate each finding;
+counts must bind to those records. Producer receipts bind sanitized source
+artifact bytes and each captured file to the original target snapshot and
+redacted-text hashes. The judge verifies that binding before using source text;
+missing bindings (including older receipts), missing files and digest mismatches
+cannot qualify. A new review digest does not retroactively bind old evidence.
+
+Deterministic boundary, frozen-input, authority, finding-reference, required
+validation and interruption failures or missing mandatory observations override
+optimistic reviewer JSON. Failed rows remain available for diagnostic judgment,
+but cannot produce gate-eligible PASS or semantic completion. An audit whose
+only pending outcome is `semantic_adjudication_unset` remains eligible when its
+mechanical evidence is positive. Valid structured output alone is not a claim
+that the reviewer is correct. Its evidence digest binds the review, and unknown
+reviewer-family telemetry or failed reviewer execution cannot qualify a semantic
+result. Producer rows remain immutable; retain the independently judged JSONL
+alongside the summary. Domain judgments also emit `<judge-output>.public.jsonl`
+(replacing its original suffix) with evidence-bound independently adjudicated
+counts, or null when the reviewer result cannot qualify.
+
+`question_request_count` counts observed `ask_user` tool requests, deduplicated
+by call ID. The old lexical mention metric remains for compatibility and does
+not measure genuine questions or necessity; answers and necessity stay unknown
+unless independently inspected. Review complete outcome evidence for unnecessary
+questions, missing defects, invented behavior and false positives.
+
+Focused source checks (not agent-under-test qualification):
+
+```bash
+python scripts/test-benchmark-tools.py
+python scripts/test-benchmark-runtime.py
+python benchmarks/fixtures/domain-host/oracle.py functional benchmarks/fixtures/domain-host/source
+```
+
+These include real Python/TypeScript/C# counterexamples and repairs when their
+toolchains are available, plus owned-process control tests. No scripted process
+test is evidence of a live Copilot interruption or of agent defect recognition.
+
 ## Domain fidelity (1.2.0 prerelease)
 
 Use the existing scorer with `--domain --blind` to obtain D01-D13 without
@@ -255,8 +447,11 @@ python3 scripts/judge-bench.py --results .architrave/bench/runs/<run-id>/results
 ```
 
 The benchmark judge is fail-closed and tool-free. It receives nonce-delimited
-untrusted evidence, blinds producer identity and host-selected execution
-metadata, verifies zero tool requests, and keys resumability by reviewer,
+untrusted evidence, recursively blinds producer identity and absolute target,
+cell and source paths across the entire evidence object before hashing or
+enveloping it (including tool/question arguments, validation commands and
+interruption metadata), preserves file-relative source locations, verifies zero
+tool requests, and keys resumability by reviewer,
 prompt, and rubric configuration. Independent reviewer identity must be
 demonstrable; model choice remains user/host-owned.
 

@@ -54,7 +54,7 @@
     },
     "failure_mode": {
       "type": ["string", "null"],
-      "enum": [null, "timeout", "agent_error", "setup_error", "validation_timeout", "validation_failed", "artifact_missing", "control_unhonored", "run_budget_exhausted", "unknown"]
+      "enum": [null, "timeout", "agent_error", "setup_error", "validation_timeout", "validation_failed", "artifact_missing", "control_unhonored", "run_budget_exhausted", "target_boundary_changed", "frozen_inputs_changed", "source_authority_changed", "readonly_target_changed", "live_interruption_unverified", "finding_validation_failed", "semantic_adjudication_unset", "unknown"]
     },
     "run_budget_seconds": { "type": "integer", "minimum": 1 },
     "budget_remaining_at_start_ms": { "type": "integer", "minimum": 0 },

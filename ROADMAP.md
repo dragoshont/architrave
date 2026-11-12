@@ -1,15 +1,17 @@
 # Roadmap
 
-## Unified domain/service guidance (1.2.0 prerelease)
+## Unified domain/service guidance (1.2.1 corrective release)
 
 Extend the existing Service Architect in place: authoritative contextual rules
 and invariant behavior precede contracts, with proportional tactics and read-only
 application audits challenged by the existing Judge. Preserve corrections and
 source bindings in the current lifecycle rather than adding state or a second
 architecture route. Distribution and runnable audit/correction probes accompany
-the instruction changes. Loaded-host qualification, repeated matched comparisons
-and the owner's real-application audit remain separate evidence requirements;
-see [release evidence](docs/domain-release-evidence.md). Prerelease publication
+the instruction changes. The corrective release adds 28 real matched native
+trials and four read-only audits of an actual Architrave policy/lifecycle slice,
+with retained failures, corrected behavioral oracles and source-bound judging.
+The stable channel does not claim generalized improvement or cross-host safety;
+see [release evidence](docs/domain-release-evidence.md). Publication
 does not complete those requirements; do not promote it to a fully qualified
 stable release until the required evidence is demonstrated.
 

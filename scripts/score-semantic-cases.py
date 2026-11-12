@@ -12,8 +12,75 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import sys
+import re
+import argparse
 
 CASES = Path(__file__).resolve().parents[1] / "benchmarks/semantic-cases.json"
+
+
+def check_host_findings(text: str, target: Path) -> dict:
+    """Validate references and record shape, never infer a semantic verdict."""
+    errors = []
+    records = []
+    try:
+        stripped = text.strip()
+        if stripped.startswith("```json") and stripped.endswith("```"):
+            stripped = stripped[7:-3].strip()
+        answer = json.loads(stripped)
+        if not isinstance(answer, dict) or not isinstance(answer.get("findings"), list):
+            raise ValueError("answer must contain a findings array")
+        allowed = {"confirmed violation", "supported concern", "unknown/needs domain input",
+                   "valid alternative/no violation", "not applicable"}
+        ids = set()
+        for index, finding in enumerate(answer["findings"]):
+            if not isinstance(finding, dict):
+                errors.append(f"finding {index}: must be an object")
+                continue
+            records.append(finding)
+            label = str(finding.get("id", index))
+            for key in ("id", "scenario", "alternative_or_unknown", "remedy", "falsifier", "confidence"):
+                if not isinstance(finding.get(key), str) or not finding[key].strip():
+                    errors.append(f"{label}: missing {key}")
+            if label in ids:
+                errors.append(f"{label}: duplicate id")
+            ids.add(label)
+            if finding.get("classification") not in allowed:
+                errors.append(f"{label}: invalid classification")
+            for key in ("code", "source"):
+                reference = finding.get(key)
+                if not isinstance(reference, dict) or not isinstance(reference.get("path"), str):
+                    errors.append(f"{label}: missing {key} reference")
+                    continue
+                relative = Path(reference["path"])
+                resolved = (target / relative).resolve()
+                if relative.is_absolute() or not resolved.is_relative_to(target.resolve()) or not resolved.is_file():
+                    errors.append(f"{label}: {key} must name an existing target file")
+                    continue
+                try:
+                    content = resolved.read_text(encoding="utf-8")
+                except (OSError, UnicodeDecodeError) as exc:
+                    errors.append(f"{label}: unreadable {key}: {exc}")
+                    continue
+                start, end = reference.get("start_line"), reference.get("end_line")
+                if type(start) is not int or type(end) is not int or not 1 <= start <= end <= len(content.splitlines()):
+                    errors.append(f"{label}: {key} line range outside file")
+                if key == "source":
+                    for field in ("status", "authority"):
+                        if not isinstance(reference.get(field), str) or not reference[field].strip():
+                            errors.append(f"{label}: source missing {field}")
+                    declared = re.search(r"(?im)^Status:\s*(.+)$", content)
+                    status = reference.get("status")
+                    if declared and isinstance(status, str):
+                        # Qualifiers are reviewed semantically; compare the declared status itself.
+                        document_status = re.split(r"[;,(]|\s+by\s+", declared[1], maxsplit=1, flags=re.I)[0].strip().casefold()
+                        reported_status = re.split(r"[;,(]|\s+by\s+", status, maxsplit=1, flags=re.I)[0].strip().casefold()
+                        if document_status != reported_status:
+                            errors.append(f"{label}: source status contradicts document label")
+    except (ValueError, TypeError) as exc:
+        errors.append(str(exc))
+    return {"mechanical_valid": not errors, "errors": errors, "records": records,
+            "semantic_adjudication": None, "identified_defects": None, "false_positives": None,
+            "correct_unknowns": None, "basis": "shape, existing paths/lines and declared status only; entailment unassessed"}
 
 
 def read_answers(cases: list[dict]) -> dict[str, dict]:
@@ -56,6 +123,14 @@ def analysis(cases: list[dict]) -> int:
 
 
 def main() -> int:
+    if "--host-findings" in sys.argv:
+        parser = argparse.ArgumentParser(description="Mechanical evidence validation only; no semantic PASS.")
+        parser.add_argument("--host-findings", type=Path, required=True)
+        parser.add_argument("--target", type=Path, required=True)
+        args = parser.parse_args()
+        report = check_host_findings(args.host_findings.read_text(encoding="utf-8"), args.target)
+        print(json.dumps(report, indent=2))
+        return 0 if report["mechanical_valid"] else 1
     data = json.loads(CASES.read_text(encoding="utf-8"))
     if sum(flag in sys.argv for flag in ("--hard", "--analysis", "--domain")) > 1:
         raise ValueError("choose one of --hard, --analysis or --domain")

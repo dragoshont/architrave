@@ -9,9 +9,13 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import importlib.util
 
 
 ROOT = Path(__file__).resolve().parents[1]
+_spec = importlib.util.spec_from_file_location("benchmark", ROOT / "scripts/bench-architrave.py")
+BENCH = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(BENCH)
 
 
 class BenchmarkRuntimeTests(unittest.TestCase):
@@ -198,6 +202,57 @@ class BenchmarkRuntimeTests(unittest.TestCase):
         self.assertTrue(rows[0]["budget_exhausted"])
         self.assertEqual("run_budget_exhausted", rows[0]["failure_mode"])
         self.assertEqual("run_budget", rows[0]["agent"]["timeout_reason"])
+
+    def test_existing_run_directory_is_not_deleted_or_reused(self) -> None:
+        output = self.base / "existing-runs"
+        previous = output / "stable-id"
+        previous.mkdir(parents=True)
+        sentinel = previous / "owner-data"
+        sentinel.write_text("keep")
+        result = self.run_benchmark("--scenario", "fixture-failure", "--execute",
+                                    "--out", str(output), "--run-id", "stable-id", "--cleanup-worktrees")
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual("keep", sentinel.read_text())
+
+    @unittest.skipUnless(os.name == "posix", "owned-process signal test uses POSIX")
+    def test_owned_process_interruption_requires_persisted_session_and_marker(self) -> None:
+        # This verifies the process-control helper, not a Copilot host/model run.
+        events = self.base / "events.jsonl"
+        marker = self.base / "checkpoint.json"
+        script = (
+            "import json, pathlib, signal\n"
+            "signal.signal(signal.SIGINT, lambda *_: exit(23))\n"
+            f"p=pathlib.Path({str(events)!r})\n"
+            "p.write_text(json.dumps({'type':'session.start','data':{'sessionId':'owned-test'}})+'\\n'"
+            "+json.dumps({'type':'tool.execution_start','data':{'toolName':'apply_patch','toolCallId':'step'}})+'\\n')\n"
+            f"pathlib.Path({str(marker)!r}).write_text('ready')\n"
+            "signal.pause()\n"
+        )
+        observation = {"marker": marker.name, "events": str(events), "session_id": "owned-test"}
+        code, timed_out, _ = BENCH.run_to_files(
+            [sys.executable, "-c", script], self.base, os.environ.copy(), 5,
+            self.base / "process.stdout", self.base / "process.stderr", 60, interruption=observation)
+        self.assertEqual(23, code)
+        self.assertFalse(timed_out)
+        self.assertTrue(observation["terminated"])
+        self.assertTrue(observation["observed"])
+        self.assertEqual(2, observation["prior_event_count"])
+        self.assertTrue((self.base / "interrupted.events.jsonl").is_file())
+        with self.assertRaises(ProcessLookupError):
+            os.kill(observation["pid"], 0)
+
+    def test_marker_without_matching_persisted_session_is_not_interruption(self) -> None:
+        marker = self.base / "checkpoint.json"
+        marker.write_text("ready")
+        events = self.base / "events.jsonl"
+        events.write_text(json.dumps({"type": "session.start", "data": {"sessionId": "different"}}))
+        observation = {"marker": marker.name, "events": str(events), "session_id": "owned-test"}
+        code, timed_out, _ = BENCH.run_to_files(
+            [sys.executable, "-c", "print('finished')"], self.base, os.environ.copy(), 5,
+            self.base / "process.stdout", self.base / "process.stderr", 60, interruption=observation)
+        self.assertEqual(0, code)
+        self.assertFalse(timed_out)
+        self.assertNotIn("observed", observation)
 
 
 if __name__ == "__main__":

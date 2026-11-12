@@ -185,6 +185,9 @@ required = {
     "backend one scope boundary": (implementer, "DO NOT implement beyond the mandate-covered scope or contract"),
     "backend no phase ceremony": (planner, "all covered dependency-ready slices may continue without new phase approvals"),
     "backend no ledger prerequisite": (implementer, "use them rather than demanding another artifact"),
+    "backend direct authorized source": (implementer, "owner-authorized task"),
+    "backend optional planner source": (implementer, "Use Planner outputs only when a planner was actually used"),
+    "backend existing authorization sufficient": (implementer, "Existing authorization is sufficient"),
     "infra no circular backup": (infra, "not a mandatory fresh VM snapshot"),
     "observer no circular backup": (observer, "no circular creation-evidence gate"),
     "lead action advances full acceptance": (agent, "next missing owner-visible outcome toward full acceptance with authorization"),
@@ -672,6 +675,10 @@ for name, (text, positive, negative) in precaution_scenarios.items():
 for name, text, stale in (
     ("backend one-phase cap", planner, "At most one phase should be approved"),
     ("backend unconditional ledger gate", implementer, "If the plan is missing a phase ledger"),
+    ("backend mandatory sign-off description", implementer, "Routed by Architrave after plan sign-off"),
+    ("backend planner-only input", implementer, "You implement the **approved** slice from the Backend Planner"),
+    ("backend mandatory planner ledger", implementer, "Implement only the approved phase/slice from the Backend Planner's phase ledger"),
+    ("backend mandatory migration recorder", backend, "the Backend Planner records it"),
     ("backend contradictory phase stop", implementer, "rather than improvising architecture or silently starting the next phase"),
 ):
     if contains_guidance(text, stale):

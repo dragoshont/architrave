@@ -5,6 +5,35 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## 1.2.1 (2026-11-12)
+
+**Stable corrective release**, as requested by the owner. This is a distribution
+channel, not a claim that every agent task or original qualification criterion
+passes.
+
+### Fixed
+
+- Remove mandatory Backend Planner/sign-off language; preserve direct,
+  owner-authorized work and optional repository configuration. Make the migration
+  rollback recorder the responsible implementer, without weakening owner approval.
+- Extend the existing benchmark runner with seven actual host scenarios,
+  source-discovery variations, native C# checks, writable-capable read-only
+  audits and observed same-session interruption/correction.
+- Reject early-exit oracle false passes, invalid finding references, changed
+  target/source evidence and optimistic judgments over deterministic failures.
+  Bind captured source text to its target snapshot; preserve source semantics
+  while hiding producer metadata. Keep qualified status labels distinct from
+  genuinely conflicting statuses.
+- Add express-obligation counterexamples, result-schema coverage and regression
+  checks for the independently reproduced evaluator defects.
+
+The 28 matched native cells and four real-repository slice audits are retained,
+including a candidate correction failure and a baseline audit with invalid line
+references. Corrected checks revalidated the original outputs without rerunning
+or replacing their model responses. No causal performance gain, universal
+read-only sandbox or private prompt-content attestation is claimed.
+See `docs/domain-release-evidence.md` and the release's sanitized evidence bundle.
+
 ## 1.2.0 (2026-11-12)
 
 **Prerelease:** source implementation and deterministic checks are qualified;
