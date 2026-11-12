@@ -633,6 +633,40 @@ class BenchmarkExecutionTests(unittest.TestCase):
 
 
 class DomainHostTests(unittest.TestCase):
+    def test_live_correction_fee_contract_and_oracle_reject_flat_amount(self) -> None:
+        """Corrected owner intent and the executable oracle must agree on fee basis."""
+        cases = json.loads((ROOT / "benchmarks/domain-host-cases.json").read_text())
+        scenario = next(row for row in cases["scenarios"] if row["id"] == "domain-live-correction")
+        correction = scenario["scoring"]["domainHost"]["interruption"]["correction"]
+        self.assertIn("Each unit in the quote represents one outbound parcel", correction["content"])
+        self.assertIn("175 * units", correction["content"])
+        self.assertIn("the total scales with units", correction["instruction"])
+        for example in ("0 units -> 0 cents", "1 -> 175", "2 -> 350", "17 -> 2975"):
+            with self.subTest(example=example):
+                self.assertIn(example, correction["content"])
+
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "source"
+            shutil.copytree(ROOT / "benchmarks/fixtures/domain-host/source", target)
+            billing = target / "billing.py"
+            correct = (
+                "def handling_fee(units, cancelled=False):\n"
+                "    if type(units) is not int or units < 0: raise ValueError('units')\n"
+                "    return 0 if cancelled else 175 * units\n"
+            )
+            oracle = ROOT / "benchmarks/fixtures/domain-host/oracle.py"
+
+            def run() -> subprocess.CompletedProcess:
+                return subprocess.run([sys.executable, str(oracle), "correction", str(target)],
+                                      capture_output=True, text=True, timeout=30)
+
+            billing.write_text(correct, encoding="utf-8")
+            self.assertEqual(run().returncode, 0, "per-unit implementation must qualify")
+            billing.write_text(correct.replace("175 * units", "175 if units else 0"), encoding="utf-8")
+            failure = run()
+            self.assertEqual(failure.returncode, 1, "flat-fee regression must fail")
+            self.assertIn('"status": "failed"', failure.stdout)
+
     def run_domain_case(self, root, *, audit=False, source=None, answer='{"findings":[]}',
                         validation_edit=None, extra_options=None, source_files=None):
         fixture = root / "source"
