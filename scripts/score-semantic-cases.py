@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Score semantic calibration outputs (REQ-39, REQ-49).
 
-Usage: python scripts/score-semantic-cases.py [--hard|--analysis] <output.json>
+Usage: python scripts/score-semantic-cases.py [--hard|--analysis|--domain] <output.json>
 --blind prints the cases without expected outcomes, for the judge prompt.
 Judge output: [{"case": "C1", "verdict": "REVISE", "responsibilities": {"R1": "preserved", ...}}, ...]
 Analysis output: [{"case": "A1", "result": {...}, "rationale": "..."}]
@@ -57,8 +57,10 @@ def analysis(cases: list[dict]) -> int:
 
 def main() -> int:
     data = json.loads(CASES.read_text(encoding="utf-8"))
-    if "--hard" in sys.argv and "--analysis" in sys.argv:
-        raise ValueError("choose --hard or --analysis, not both")
+    if sum(flag in sys.argv for flag in ("--hard", "--analysis", "--domain")) > 1:
+        raise ValueError("choose one of --hard, --analysis or --domain")
+    if "--domain" in sys.argv:
+        return analysis(data["domain_cases"])
     if "--analysis" in sys.argv:
         return analysis(data["analysis_cases"])
     if "--hard" in sys.argv:

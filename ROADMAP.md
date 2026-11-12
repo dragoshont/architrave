@@ -1,5 +1,17 @@
 # Roadmap
 
+## Unified domain/service guidance (unreleased 1.2 candidate)
+
+Extend the existing Service Architect in place: authoritative contextual rules
+and invariant behavior precede contracts, with proportional tactics and read-only
+application audits challenged by the existing Judge. Preserve corrections and
+source bindings in the current lifecycle rather than adding state or a second
+architecture route. Distribution and runnable audit/correction probes accompany
+the instruction changes. Loaded-host qualification, repeated matched comparisons
+and the owner's real-application audit remain separate evidence requirements;
+see [release evidence](docs/domain-release-evidence.md). Do not release 1.2.0
+until its required qualification is demonstrated.
+
 ## Bounded lifecycle corrections (1.1.1)
 
 Separate explicitly consumed outputs from ordering, freeze actual producer

@@ -3,11 +3,14 @@ name: architrave
 description: "Task-driven repository development, bounded delegation and risk-scaled verification."
 ---
 
-Resolve the plugin root from this skill's reported directory (`../..`), not cwd
-or guessed caches. Read `agents/architrave.agent.md` there once, unless that
+Resolve plugin root from this skill (`../..`), not cwd or caches.
+Read `agents/architrave.agent.md` once, unless that
 contract is already loaded. It is the canonical lead contract; do not load both
 plugin and adopted copies. Repository instructions and the user's mandate apply.
 Use the lead's **Development loop** and restore its phase after interruptions.
+
+Domain/service/audit: existing Service Architect, `knowledge/backend.md`;
+source-backed meaning before contracts, proportional modeling, audit read-only.
 
 Track requests, corrections and progress through the canonical state API
 (`docs/lifecycle-state.md`). Import tasks.md once after ownership reconciliation;

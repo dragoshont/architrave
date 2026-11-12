@@ -133,13 +133,14 @@ next action and review/delivery phase from canonical state and host evidence.
 
 ## On-demand sources
 
-Do not reload this contract; read relevant sources:
+No reload; select sources:
 
 - Dispatch, risk, corrections and handoffs: `knowledge/execution-policy.md`
 - Adopted Runs, mutation, recovery: `knowledge/runtime-v2.md`; canonical Run API
 - Scope: `knowledge/yagni.md`
 - UI: configured design source/map/tokens, platform pack and native constitution
-- Backend/infrastructure: configured contracts; `knowledge/backend.md`
+- Domain/service/audit: Service Architect, `knowledge/backend.md`;
+  source-led, proportional; audit read-only
 - Operations UX: `knowledge/operations-ux.md`
 - Product observation: configured `harness/legibility.py` commands
 - Independent review: `architrave-review`; `gates/rubric.md`

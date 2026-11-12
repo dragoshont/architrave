@@ -41,6 +41,15 @@ Filesystem-aware ownership preserves case-distinct work where observed and
 handles unknown lookup behavior conservatively. Old state is not silently
 rebound; see the lifecycle API's compatibility and qualification boundaries.
 
+**Domain-aware extension (unreleased 1.2 candidate).** The existing Service
+Architect now follows source-backed business language, rules, ownership and
+consistency into technical contracts, with a read-only application-audit operation
+using the same Judge. Functional/procedural designs and monoliths are valid;
+routine work needs no modeling ceremony. No new role, lifecycle, DDD flag or
+architecture dependency is added. See the [replacement and evidence record](docs/domain-release-evidence.md).
+The version remains **1.1.1** until required release qualification is complete;
+source/install fixtures do not establish loaded-host parity or measured improvement.
+
 **1.1.0 bundled work board.** A shared Python/HTML/CSS/SVG renderer now
 provides scoped progress, a task map/list and evidence inspector, source-backed
 session observations, separate verification categories, theme and controlled
@@ -658,8 +667,28 @@ python3 /path/to/architrave/tools/install_update.py update /path/to/your/repo
 ```
 
 The updater leaves the repository's config and local agents alone by default.
-Use `--agents` only when you also want to refresh copied Architrave roles; use
-`--codex` to refresh generated Codex project roles.
+That plain update is intentionally partial: new packs can coexist with old
+copied roles. It does **not** qualify adoption of the unreleased domain-aware
+candidate (version remains 1.1.1).
+
+For that candidate, first compare copied/customized roles with the candidate,
+reconcile local rules into repository guidance or reviewed role changes, and
+obtain authorization to replace the affected copies. Do not overwrite
+customizations automatically. Once reconciled and authorized, run:
+
+```bash
+python3 /path/to/candidate/tools/install_update.py update --agents /path/to/your/repo
+# When the repository uses generated Codex project roles:
+python3 /path/to/candidate/tools/install_update.py update --agents --codex /path/to/your/repo
+```
+
+Read back the effective Service Architect, Planner, Implementer, Judge and
+backend pack paths and content identities against that exact candidate; include
+the generated Codex Judge where used. A version stamp alone is insufficient.
+Reload affected native-host sessions and verify which role/skill/pack paths and
+identities actually loaded before claiming qualified adoption or host parity.
+Unresolved customization or unavailable loading evidence holds that claim, not
+independent source work. See [migration guidance](kit/MIGRATION.md).
 
 ## Checks and experiments
 

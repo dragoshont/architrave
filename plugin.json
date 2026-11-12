@@ -1,6 +1,6 @@
 {
   "name": "architrave",
-  "description": "Task-driven development for coding agents. Track requests and progress in tasks.md, research and implement connected behavior, use bounded host-native collaboration and verify delivery. Includes advisory loop detection, specialist guidance and optional legacy Run and requirements tools; no automatic SPEC completion barrier.",
+  "description": "Task-driven domain-aware development and read-only application audits, with canonical lifecycle state, bounded host-native collaboration and independent review. No mandatory modeling ceremony.",
   "version": "1.1.1",
   "author": {
     "name": "dragoshont"

@@ -1,5 +1,25 @@
 # Architrave Benchmarks
 
+## Domain fidelity (unreleased candidate)
+
+Use the existing scorer with `--domain --blind` to obtain D01-D13 without
+expected answers, then `python scripts/score-semantic-cases.py --domain answers.json`.
+Answers use the same `{"case", "result", "rationale"}` objects as analysis
+calibration. Typed correctness and nonempty rationale are mechanical checks,
+not independent assessment of reasoning, tool actions or business correctness.
+
+`python scripts/test-domain-fidelity.py` executes the intentionally defective
+Python and functional TypeScript application under `fixtures/domain-audit`.
+It reproduces positive/negative rules, distinct actor boundaries, incorrect
+translations and a coordinated two-thread revocation race; it also exercises
+valid guards and unknown-preserving translations. The synthetic accepted rules
+are in `domain.md`, not inferred from code. TypeScript needs Node 22.7+ with
+default module detection and `--experimental-strip-types` (22.23.5 exercised);
+a skip is not a qualified language run.
+This tests the audit substrate, not agent behavior, actual host loading or an
+owner application. See [release evidence](../docs/domain-release-evidence.md)
+for source qualification and unresolved empirical/release holds.
+
 The existing analysis suite also includes D1-D6 delivery-authenticity decisions:
 original mandate versus a narrowed SPEC, fake/flag-off fresh-demo rejection,
 approved local emulators and environment selection, explicitly requested
@@ -32,22 +52,31 @@ Each benchmark run emits one JSONL row per `(scenario, arm, repeat)`.
 **Correctness and safety**
 - deterministic validation command return codes;
 - Architrave gate pass/fail (`gates/gate_runner.py checks`, backend checks, Storybook build/test where configured);
-- expected artifact checks (run artifacts, Storybook files, contract/docs updates);
+- task-required artifact checks (Storybook files, contract/docs updates; Run or learning paths only for explicitly selected experiments);
 - optional LLM/human judge verdicts.
 
 **Implementation clarity and maintainability**
 - changed files, additions, deletions, net LOC;
 - dependency/config churn (`package.json`, `*.csproj`, `project.yml`, lockfiles);
 - YAGNI findings: speculative abstraction, unused config, wrapper-only layers, reinvention of repo/native/stdlib capability;
-- Storybook-first evidence for UI and contract-first evidence for backend.
+- Storybook-first evidence for UI and source-backed domain meaning before derived backend contracts.
 
 **Agent process quality**
-- visible intake present;
-- Tournament of Options present;
-- YAGNI ladder considered;
-- recommended plan present;
-- judge gate evidence present;
-- learning artifacts created/updated.
+- requested observable behavior delivered against original sources and applicable checks;
+- settled domain decisions reused, consequential unknowns kept explicit;
+- existing seams reused and unnecessary abstractions/ceremony avoided;
+- option comparison only where materially different alternatives warrant it;
+- applicable independent review evidence, not document or agent counts;
+- Run/recovery/learning artifacts only when the experiment explicitly requires them.
+
+Routine tasks do not require a tournament, plan document, `.architrave/runs`
+or learning files. Their absence must not reject an otherwise successful row.
+The explicit LongBuild, recovery, checkpoint, deployment-policy and learning
+experiments retain their declared artifacts and checks; keep those legacy Run
+experiments separate when interpreting current-workflow qualification. Removing
+irrelevant artifact requirements does not waive failed behavior, validation,
+agent execution or requested-control checks. Mechanical row success still needs
+source-grounded review of actual outcomes; an existing file is not proof of them.
 
 **Efficiency**
 - wall-clock time;
@@ -155,7 +184,7 @@ Use existing repositories, but never mutate their real working trees. Each scena
 - `lane`: `ui`, `ux`, `backend`, `full-stack`, `infra`, `ops`, `learning`, `yagni`, or `knowledge`;
 - `prompt`: the benchmark task;
 - `validation`: shell commands run after the agent finishes;
-- `expectedArtifacts`: files/directories that should exist after the run;
+- `expectedArtifacts`: task-required files/directories; every missing entry fails the row, so never require optional process artifacts for routine work;
 - `scoring`: rubric notes for human/LLM review.
 
 The runner creates `.architrave/bench/runs/<run-id>/<scenario>/<arm>/worktree` using `git worktree add --detach`. This makes it cheap to go back to older changesets, replay old product work, and compare agent variants against the same starting point.
@@ -179,7 +208,7 @@ For a credible enterprise benchmark, use 10-20 curated scenarios first:
 - **UI / Storybook:** add or modify a visible UI state; must start in Storybook, not app code.
 - **UX:** change navigation/empty/loading/error behavior; must capture interaction states.
 - **Backend:** extend an existing service seam; must not invent parallel abstractions.
-- **Full-stack:** contract-first API/UI change; UI and backend bind to the same contract.
+- **Full-stack:** source/domain-grounded API/UI change; derive the contract before implementation and bind UI and backend to it.
 - **YAGNI:** request tempting over-build; agent should reuse native/stdlib/existing repo feature.
 - **Learning loop:** repeated gotcha should update repo profile/lessons without bloating config.
 - **Tournament:** ambiguous implementation with multiple viable choices; agent must compare tradeoffs.

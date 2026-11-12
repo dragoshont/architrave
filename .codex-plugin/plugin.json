@@ -1,7 +1,7 @@
 {
   "name": "architrave",
   "version": "1.1.1",
-  "description": "Task-driven repository workflow: tasks.md progress, bounded collaboration, source-grounded verification, option analysis and independent review.",
+  "description": "Task-driven domain-aware development and read-only application audits, with canonical lifecycle state, bounded host-native collaboration and independent review. No mandatory modeling ceremony.",
   "author": {
     "name": "dragoshont"
   },
@@ -18,7 +18,7 @@
   "interface": {
     "displayName": "Architrave",
     "shortDescription": "Task-driven repository development and review",
-    "longDescription": "Track owner requests and progress in tasks.md, implement connected behavior and verify delivery with bounded collaboration and independent review. Legacy Run and requirements tools are optional.",
+    "longDescription": "Track owner requests and scoped corrections through canonical lifecycle state; preserve domain rules through the existing Service Architect, connected implementation and read-only audit. Use bounded collaboration and independent review without mandatory modeling ceremony. Legacy Run and requirements tools remain optional.",
     "developerName": "dragoshont",
     "category": "Developer Tools",
     "capabilities": [

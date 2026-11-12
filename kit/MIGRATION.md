@@ -7,8 +7,31 @@ Architrave is meant to replace most project-specific development agents with one
 1. **Inventory existing agents.** Capture each agent's mission, tools, trigger phrases, handoffs, and hard rules.
 2. **Map reusable behavior to Architrave.** Move general behaviors into Architrave agents, knowledge packs, or `gates/rubric.md`; leave product/domain facts in the app repo.
 3. **Archive, don't delete.** Move old agents into `docs/archive/<old-agent-set>/` with a README explaining the replacement mapping.
-4. **Adopt the repo.** Add `architrave.config.json`, copy agents/gates/knowledge/harness with `python tools/install_update.py install`, and refresh copied `gates/` + `knowledge/` + `harness/` + the Architrave `AGENTS.md` stanza with `python tools/install_update.py update`. Use `update --agents` only when you deliberately want to refresh copied Architrave agents after archiving bespoke repo agents.
+4. **Adopt the repo.** Add `architrave.config.json`, copy agents/gates/knowledge/harness with `python tools/install_update.py install <repo>`, and refresh copied `gates/` + `knowledge/` + `harness/` + the Architrave `AGENTS.md` stanza with `python tools/install_update.py update <repo>`. Plain update intentionally preserves copied agents; it is a partial update, not proof of a unified role migration.
 5. **Validate.** Run `gates/gate_runner.py checks`, `gates/gate_runner.py backend-checks` when configured, and any app-specific test/screenshot gates.
+
+## Unreleased domain-aware candidate adoption
+
+The candidate retains version 1.1.1 and the existing Service Architect identity.
+Its domain-first backend pack must not be qualified alongside an unreconciled
+technical-first copied architect. Inventory copied/customized Architrave roles
+and generated Codex roles, compare them with the exact candidate, and reconcile
+local product rules into repository guidance or reviewed role changes first.
+Preserve customizations; an update command is not permission to discard them.
+
+After explicit authorization for the reconciled replacement, run the candidate
+kit's `python tools/install_update.py update --agents <repo>`. Add `--codex`
+when generated Codex project roles are used. Plain update remains a supported
+preservation operation, but cannot complete this candidate's role migration.
+
+Read back the installed Service Architect, Backend Planner, Backend Implementer,
+Adversarial Judge, backend pack and applicable generated Codex Judge against the
+candidate's paths and content identities, documenting any reviewed local delta.
+Verify lead/worker/review skills from the effective plugin path as well. Reload
+affected native-host sessions and verify the actual loaded identities before
+claiming qualified adoption. Version stamps, updater success and temporary byte
+parity do not establish native loading. Keep adoption held for unresolved local
+rules or unavailable host evidence; do not silently select the old architect.
 
 ## Common Mappings
 

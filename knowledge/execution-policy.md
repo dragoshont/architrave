@@ -19,6 +19,19 @@ The legacy requirements, delivery-audit and canonical Run sections below apply
 only when those operations are explicitly selected. They do not reintroduce
 mandatory SPEC/REQ tracking or completion checks into the current task workflow.
 
+Domain/service reasoning stays in the existing Service Architect and
+`knowledge/backend.md`, applied inline when direct work suffices. Preserve the
+context, exact source, actor, invariant, permitted exceptions and consistency
+boundary in existing task criteria/contracts/handoffs, not new lifecycle fields
+or a domain ledger. Discover settled answers before asking; unresolved intent
+holds only dependent work. On correction/resume, read current canonical context,
+revise affected acceptance and reconcile stale attempts/proof through the API.
+Retain unrelated work; a late worker cannot restore a superseded domain rule.
+An existing-application audit is read-only through the same architect and Judge:
+source-backed findings, valid alternatives and unknowns, no automatic fixes or
+compliance score. Architecture tools enforce only declared supported rules;
+they neither determine business truth nor grant mutation authority.
+
 ### Worker readiness and observable handback
 
 Code ready includes written in-scope behavior and its producer/consumer wiring.

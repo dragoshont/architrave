@@ -1053,6 +1053,48 @@ StateStore(sys.argv[2]).apply(dict(project_id='project', command_id='crash', exp
         self.assertEqual(view["tasks"][0]["readiness"], "unavailable")
         self.assertEqual(view["next_action"], {"kind": "reevaluate", "task_id": "local"})
 
+    def test_domain_correction_stales_late_worker_and_proof_not_unrelated_work(self):
+        self.request("review")
+        self.request("billing")
+        self.correction("criterion-review", {
+            "expected": "Review: responsible actor and all mandatory evidence; Workflow done is not approval"
+        }, collection="criteria")
+        self.candidate("review", "review-old", "tree:strict-review", integrate=False)
+        self.candidate("billing", "billing-current", "tree:billing", integrate=False)
+        self.command("record_source", dict(
+            id="waiver-owner", kind="owner", reference="message:waiver",
+            excerpt="Permit an authorized safety waiver in Review only; Workflow done still does not approve.",
+            available=True,
+        ))
+        self.correction("criterion-review", {
+            "expected": "Review: responsible actor and evidence OR authorized safety waiver; Workflow done is not approval",
+            "source_refs": ["owner", "waiver-owner"],
+        }, collection="criteria", source="waiver-owner")
+        resumed = StateStore(self.root).read()
+        self.assertEqual(attempt_applicability(resumed, resumed["attempts"]["review-old"]), "stale")
+        self.assertEqual(evidence_applicability(resumed, resumed["evidence"]["proof-review-old"]), "stale")
+        self.assertEqual(attempt_applicability(resumed, resumed["attempts"]["billing-current"]), "current")
+        with self.assertRaisesRegex(StateError, "STALE_INPUTS"):
+            self.operation("late-review", "integrate", aid="review-old")
+
+    def test_domain_resume_keeps_context_exception_and_resolved_source_without_new_store(self):
+        self.request("review")
+        self.command("record_question", dict(
+            id="meaning", question="Does Workflow done approve Review?",
+            alternatives=["No", "Yes"], affected=["review"], source_refs=["owner"],
+            resolution=None, resolution_sources=[],
+        ))
+        self.command("resolve_decision", dict(id="meaning", resolution="No", source_refs=["owner"]))
+        self.correction("criterion-review", {
+            "expected": "Review approval: actor plus evidence or explicitly authorized waiver; Workflow done is execution only"
+        }, collection="criteria")
+        resumed = snapshot(StateStore(self.root).read(), now=NOW, task_ids=["review"])
+        self.assertEqual(resumed["decisions"][0]["resolution"], "No")
+        self.assertEqual(resumed["decisions"][0]["resolution_sources"], ["owner"])
+        self.assertIn("waiver", resumed["tasks"][0]["acceptance"][0]["expected"])
+        self.assertIn("Workflow done is execution only", resumed["tasks"][0]["acceptance"][0]["expected"])
+        self.assertNotIn("decision meaning", resumed["tasks"][0]["holds"])
+
     def test_scoped_context_keeps_constraint_and_decision_correction_meanings_and_sources(self):
         self.request()
         self.request("unrelated")

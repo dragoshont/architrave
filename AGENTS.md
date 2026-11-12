@@ -13,7 +13,9 @@ runtime observation/verification, adaptive execution intent, and durable
 learning/audit artifacts. It is distributed as a Copilot / Claude / Codex /
 ChatGPT plugin plus a per-repo installer. Knowledge profiles ground in repository
 sources without inventing UI; UI grounds in Storybook + design tokens; backend
-grounds in architecture docs + contracts; IaC is proposal/plan-only. Mutation
+grounds in authoritative contextual rules, architecture docs + contracts through
+the existing Service Architect; application audits use the same route read-only.
+Domain modeling is proportional, not required for routine work. IaC is proposal/plan-only. Mutation
 defaults to deny; explicit Run policy may authorize a bounded target and operation.
 
 ## What's here

@@ -45,7 +45,7 @@ class SemanticCalibrationTests(unittest.TestCase):
                 return SEMANTIC.main()
 
     def answers(self, key: str) -> list[dict]:
-        if key == "analysis_cases":
+        if key in {"analysis_cases", "domain_cases"}:
             return [{"case": c["id"], "result": c["expected"], "rationale": "fixture"} for c in self.data[key]]
         if key == "hard_cases":
             return [{"case": c["id"], **c["expected"]} for c in self.data[key]]
@@ -98,7 +98,8 @@ class SemanticCalibrationTests(unittest.TestCase):
                 self.assertEqual(self.score("--analysis", altered), 1)
 
     def test_modes_reject_duplicate_and_unknown_case_ids(self) -> None:
-        for mode, key in (("", "cases"), ("--hard", "hard_cases"), ("--analysis", "analysis_cases")):
+        for mode, key in (("", "cases"), ("--hard", "hard_cases"), ("--analysis", "analysis_cases"),
+                          ("--domain", "domain_cases")):
             answers = self.answers(key)
             with self.subTest(mode=mode):
                 with self.assertRaisesRegex(ValueError, "duplicate"):
@@ -107,7 +108,8 @@ class SemanticCalibrationTests(unittest.TestCase):
                     self.score(mode, answers + [{"case": "invented"}])
 
     def test_all_blind_modes_hide_expected_outcomes(self) -> None:
-        for mode, key in (("", "cases"), ("--hard", "hard_cases"), ("--analysis", "analysis_cases")):
+        for mode, key in (("", "cases"), ("--hard", "hard_cases"), ("--analysis", "analysis_cases"),
+                          ("--domain", "domain_cases")):
             out = io.StringIO()
             args = ["score-semantic-cases.py", "--blind"] + ([mode] if mode else [])
             with patch.object(SEMANTIC.sys, "argv", args), redirect_stdout(out):
@@ -115,6 +117,41 @@ class SemanticCalibrationTests(unittest.TestCase):
             blind = json.loads(out.getvalue())
             self.assertEqual(len(blind), len(self.data[key]))
             self.assertTrue(all("expected" not in case for case in blind))
+
+    def test_domain_rejects_missing_cases_and_lost_unknown_or_authority(self) -> None:
+        answers = self.answers("domain_cases")
+        self.assertEqual(self.score("--domain", answers), 0)
+        for case, field, wrong in (
+            ("D04", "correct_kind", "approved"),
+            ("D07", "claim_violation", True),
+            ("D09", "use_old_rule", True),
+            ("D13", "mutate_target", True),
+        ):
+            altered = json.loads(json.dumps(answers))
+            next(row for row in altered if row["case"] == case)["result"][field] = wrong
+            with self.subTest(case=case):
+                self.assertEqual(self.score("--domain", altered), 1)
+        self.assertEqual(self.score("--domain", answers[:-1]), 1)
+        answers[0]["rationale"] = ""
+        self.assertEqual(self.score("--domain", answers), 1)
+
+    def test_domain_cannot_silently_override_another_mode(self) -> None:
+        for other in ("--analysis", "--hard"):
+            with patch.object(SEMANTIC.sys, "argv", ["score-semantic-cases.py", "--domain", other]):
+                with self.assertRaisesRegex(ValueError, "choose one"):
+                    SEMANTIC.main()
+
+    def test_domain_blind_authority_protocol_requires_a_path_and_keeps_strict_scoring(self) -> None:
+        out = io.StringIO()
+        with patch.object(SEMANTIC.sys, "argv", ["score-semantic-cases.py", "--domain", "--blind"]), redirect_stdout(out):
+            self.assertEqual(SEMANTIC.main(), 0)
+        case = next(row for row in json.loads(out.getvalue()) if row["id"] == "D10")
+        self.assertIn("exact repository-relative persisted canonical authority file path", case["scenario"])
+        self.assertNotIn("expected", case)
+        answers = self.answers("domain_cases")
+        self.assertEqual(self.score("--domain", answers), 0)
+        next(row for row in answers if row["case"] == "D10")["result"]["authority"] = "canonical state"
+        self.assertEqual(self.score("--domain", answers), 1)
 
 
 class JudgeSecurityTests(unittest.TestCase):
@@ -228,6 +265,65 @@ class JudgeSecurityTests(unittest.TestCase):
 
 
 class BenchmarkExecutionTests(unittest.TestCase):
+    def test_routine_scenarios_do_not_require_optional_process_artifacts(self) -> None:
+        config = json.loads((ROOT / "benchmarks/scenarios.json").read_text(encoding="utf-8"))
+        routine_ids = (
+            "architrave-change-agent-role", "architrave-author-a-skill",
+            "architrave-design-mcp-integration", "phonodeck-ui-storybook-empty-state",
+            "sideport-yagni-native-form-control", "sideport-backend-contract-first-refresh-status",
+            "tessera-fullstack-contract-and-ui", "sideport-infra-plan-only-state-persistence",
+            "sideport-ops-readonly-runtime-drift-report",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            worktree = Path(directory)
+            for scenario in config["scenarios"]:
+                if scenario["id"] not in routine_ids:
+                    continue
+                for arm in config["arms"]:
+                    with self.subTest(scenario=scenario["id"], arm=arm["id"]):
+                        artifacts = BENCH.artifact_results(
+                            worktree, BENCH.arm_values(scenario, "expectedArtifacts", arm["id"]),
+                        )
+                        self.assertFalse(any(item["path"].startswith((
+                            ".architrave/runs", ".architrave/learning",
+                        )) for item in artifacts))
+                        if scenario["lane"] == "backend":
+                            self.assertEqual(artifacts, [])
+                            self.assertEqual(len(BENCH.arm_values(scenario, "validation", arm["id"])), 2)
+
+    def test_explicit_experiments_and_failed_checks_retain_failure_evidence(self) -> None:
+        config = json.loads((ROOT / "benchmarks/scenarios.json").read_text(encoding="utf-8"))
+        scenarios = {row["id"]: row for row in config["scenarios"]}
+        with tempfile.TemporaryDirectory() as directory:
+            worktree = Path(directory)
+            for scenario_id in (
+                "longbuild-tessera-shaped-release", "runtime-kill-resume-no-repeat",
+                "runtime-external-checkpoint-parallel", "runtime-scoped-deployment-authorization",
+                "phonodeck-learning-repeated-build-gotcha", "phonodeck-learning-promote-validated-lesson",
+            ):
+                with self.subTest(scenario=scenario_id):
+                    artifacts = BENCH.artifact_results(
+                        worktree, BENCH.arm_values(scenarios[scenario_id], "expectedArtifacts", "copilot-architrave"),
+                    )
+                    self.assertTrue(artifacts)
+                    self.assertTrue(any(not item["exists"] for item in artifacts))
+                    self.assertEqual(BENCH.failure_mode({
+                        "passed": False, "agent": {"returncode": 0},
+                        "validation": [], "artifacts": artifacts,
+                    }), "artifact_missing")
+            validation = BENCH.run_validation(
+                worktree, ['{python} -c "raise SystemExit(1)"'], worktree, 10,
+            )
+            self.assertEqual(validation[0]["returncode"], 1)
+            self.assertEqual(BENCH.failure_mode({
+                "passed": False, "agent": {"returncode": 0},
+                "validation": validation,
+                "artifacts": BENCH.artifact_results(worktree, BENCH.arm_values(
+                    scenarios["sideport-backend-contract-first-refresh-status"],
+                    "expectedArtifacts", "copilot-architrave",
+                )),
+            }), "validation_failed")
+
     def test_question_metric_is_lexical_and_preserves_legacy_consumers(self) -> None:
         # A log mentioning the tool and a legitimate decision question look the
         # same to the old regex. Neither proves an unnecessary intervention.

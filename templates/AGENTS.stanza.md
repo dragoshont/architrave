@@ -21,7 +21,8 @@ Open/read one tasks board when available (`docs/program-board.md`).
 Report unavailable/denied canvas without blocking independent authorized work;
 children/reviewers reuse parent scope.
 Build behavior first; show evidence.
+Domain/service/audit: existing Service Architect, `knowledge/backend.md`;
+source-backed meaning before contracts, proportional modeling, audit read-only.
 Host permissions and scoped grants/holds remain binding; infrastructure/runtime
 mutation defaults to deny. Preserve secrets and uncertain-side-effect recovery.
-Copilot hooks bootstrap and nudge repeated-read loops; completion is not gated by SPEC.
-no automatic PostToolUse quality hooks.
+Hooks are advisory, not SPEC completion gates.

@@ -5,6 +5,24 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## Unreleased
+
+### Changed
+
+- Replace technical-first Service Architect guidance in place with source-backed
+  contextual language, rules, invariants and consistency before contracts.
+  Align lead, planner, implementer, worker, Judge/rubric and adoption guidance.
+  Routine work gains no role, ceremony, state schema or configuration switch.
+- Add read-only application audits through that same architecture/review route,
+  with source/code/scenario evidence, valid-alternative challenges and explicit
+  unknowns. No compliance score or automatic repair.
+- Extend existing calibration with blind domain cases and executable Python/
+  functional TypeScript counterexamples, correction/resume regressions and
+  installed-role parity checks. These are not loaded-host or empirical proof.
+
+The 1.2 candidate is not release-validated; manifest versions remain 1.1.1.
+See `docs/domain-release-evidence.md` for replacement mapping and qualification.
+
 ## 1.1.1 (2026-11-11)
 
 ### Fixed

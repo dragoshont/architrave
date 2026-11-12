@@ -27,6 +27,11 @@ API event recording remains intact; artifact/event counts never measure progress
 
 ## Promotion rules
 
+- A reconstructed domain model or repeated code behavior is not automatically
+  business policy. Retain context, authoritative source, decision status and
+  exceptions; validate them before promotion. Corrections supersede only
+  affected lessons/proof through the existing lifecycle, not a second domain
+  store. Missing domain input stays unknown, not an inferred standing rule.
 - Do not write one-off discoveries directly into `architrave.config.json`. Config is for stable pointers, policy knobs, source-of-truth paths, and verified commands.
 - Add a candidate lesson when a fact would save a future agent time or prevent a repeated mistake. Include evidence: run id, file/command, current branch/source, and whether it was validated.
 - Repeated observations can justify proposing a lesson; occurrence counts never authorize its application. The old promotion-threshold config keys are deprecated and ignored.

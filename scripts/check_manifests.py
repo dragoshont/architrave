@@ -65,6 +65,8 @@ PYTHON_FILES = (
     'scripts/judge-bench.py',
     'scripts/summarize-bench.py',
     'scripts/test-benchmark-tools.py',
+    'scripts/test-domain-fidelity.py',
+    'benchmarks/fixtures/domain-audit/*.py',
     'scripts/test-codex-runtime.py',
     'scripts/fixtures/codex_fake.py',
     'scripts/test-runtime-v2.py',
@@ -428,6 +430,7 @@ def validate_all(validator):
     except (OSError, ValueError, py_compile.PyCompileError) as exc:
         v.error(f'Python syntax problem: {exc}')
     v.python('scripts/test-benchmark-tools.py', message='adaptive benchmark fixtures')
+    v.python('scripts/test-domain-fidelity.py', message='domain audit counterexamples (not an agent grader)')
 
     print('== durable Run v2 control-plane fixtures ==')
     for filename in ('test-native-review.mjs', 'test-ribbon.mjs', 'test-session-companion.mjs'):

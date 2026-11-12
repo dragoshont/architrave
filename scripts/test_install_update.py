@@ -24,6 +24,15 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "install_update.py"
+ADOPTION_BASELINE = ROOT / "scripts" / "fixtures" / "adoption-baseline-1.1.1.json"
+
+
+def adoption_baseline(relative: str) -> bytes:
+    entry = json.loads(ADOPTION_BASELINE.read_text(encoding="utf-8"))["files"][relative]
+    content = entry["content"].encode("utf-8")
+    if hashlib.sha256(content).hexdigest() != entry["sha256"]:
+        raise ValueError(f"adoption baseline SHA256 mismatch: {relative}")
+    return content
 
 
 def load_cli_module():
@@ -125,6 +134,39 @@ class InstallUpdateTests(unittest.TestCase):
         self.assertFalse((application / "gates/hooks").exists())
         for relative in self.module.GUIDANCE_FILES:
             self.assertEqual((application / relative).read_bytes(), (ROOT / relative).read_bytes())
+        for role in ("service-architect", "backend-planner", "backend-implementer", "adversarial-judge"):
+            relative = f"{role}.agent.md"
+            self.assertEqual(
+                (application / ".github/agents" / relative).read_bytes(),
+                (ROOT / "agents" / relative).read_bytes(),
+            )
+        self.assertEqual(
+            (application / "knowledge/backend.md").read_bytes(),
+            (ROOT / "knowledge/backend.md").read_bytes(),
+        )
+        installed_roles = {p.name for p in (application / ".github/agents").glob("*.agent.md")}
+        self.assertEqual(installed_roles, {p.name for p in (ROOT / "agents").glob("*.agent.md")})
+        baseline_roles = {}
+        for role in ("service-architect", "backend-planner", "backend-implementer", "adversarial-judge"):
+            relative = f"{role}.agent.md"
+            baseline_roles[relative] = adoption_baseline(f"agents/{relative}")
+            (application / ".github/agents" / relative).write_bytes(baseline_roles[relative])
+        (application / "knowledge/backend.md").write_bytes(adoption_baseline(
+            "knowledge/backend.md",
+        ))
+        self.run_cli("update", str(application))
+        for relative, original in baseline_roles.items():
+            self.assertEqual((application / ".github/agents" / relative).read_bytes(), original)
+        self.assertEqual(
+            (application / "knowledge/backend.md").read_bytes(),
+            (ROOT / "knowledge/backend.md").read_bytes(),
+        )
+        self.run_cli("update", "--agents", str(application))
+        for relative in baseline_roles:
+            self.assertEqual(
+                (application / ".github/agents" / relative).read_bytes(),
+                (ROOT / "agents" / relative).read_bytes(),
+            )
 
         self.run_cli(
             "install",
@@ -167,6 +209,10 @@ class InstallUpdateTests(unittest.TestCase):
                 (ROOT / "knowledge/execution-policy.md").read_bytes(),
                 (target / "knowledge/execution-policy.md").read_bytes(),
             )
+            self.assertEqual(
+                (ROOT / "agents/adversarial-judge.agent.md").read_bytes(),
+                (target / ".github/agents/adversarial-judge.agent.md").read_bytes(),
+            )
             self.assertIn(
                 (ROOT / "templates/AGENTS.stanza.md").read_text(encoding="utf-8").rstrip(),
                 (target / "AGENTS.md").read_text(encoding="utf-8"),
@@ -190,9 +236,16 @@ class InstallUpdateTests(unittest.TestCase):
         custom.write_text("custom\n", encoding="utf-8")
         shutil.copy2(ROOT / "agents/ui-visual.agent.md", application_agent)
 
+        codex_judge = target / ".codex/agents/architrave-judge.toml"
+        baseline_judge = adoption_baseline(".codex/agents/architrave-judge.toml")
+        codex_judge.write_bytes(baseline_judge)
+        self.run_cli("update", str(target))
+        self.assertEqual(codex_judge.read_bytes(), baseline_judge)
         self.run_cli("update", "--codex", str(target))
+        self.assertEqual(codex_judge.read_bytes(), (ROOT / ".codex/agents/architrave-judge.toml").read_bytes())
         self.assertTrue(application_agent.exists())
         self.run_cli("update", "--agents", "--codex", str(target))
+        self.assertEqual(codex_judge.read_bytes(), (ROOT / ".codex/agents/architrave-judge.toml").read_bytes())
         self.assertFalse(application_agent.exists())
         self.assertEqual(custom.read_text(encoding="utf-8"), "custom\n")
         self.assertEqual(
@@ -210,6 +263,16 @@ class InstallUpdateTests(unittest.TestCase):
         updated = snapshot(target)
         self.run_cli("update", "--agents", "--codex", str(target))
         self.assertEqual(snapshot(target), updated)
+
+    def test_adoption_baseline_rejects_modified_content(self) -> None:
+        fixture = json.loads(ADOPTION_BASELINE.read_text(encoding="utf-8"))
+        relative = "agents/service-architect.agent.md"
+        fixture["files"][relative]["content"] += "\nmodified baseline\n"
+        corrupted = self.workspace / "corrupted-baseline.json"
+        corrupted.write_text(json.dumps(fixture), encoding="utf-8")
+        with mock.patch(__name__ + ".ADOPTION_BASELINE", corrupted):
+            with self.assertRaisesRegex(ValueError, "adoption baseline SHA256 mismatch"):
+                adoption_baseline(relative)
 
     def test_executor_install_uses_private_user_state_and_pins_exact_target(self) -> None:
         state = self.workspace / "user state" / ".architrave"

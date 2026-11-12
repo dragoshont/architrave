@@ -102,6 +102,17 @@ verification, not otherwise written source. Follow explicit task boundaries;
 an optional or owner-deferred integration does not become new scope.
 
 Read the relevant contract, existing implementation and nearby tests first.
+For domain/service work, read the authoritative rule sources before their
+derived contract. Carry source/context/actor/invariant/exception and consistency
+bindings through the assigned slice and handback. Restore current canonical
+corrections after interruption; stale code or tests cannot revive an old rule.
+Protect behavior on the composed mutation path, including applicable races,
+not merely field validation. Functional/procedural and existing module designs
+are valid; add no pattern, role or modeling ceremony without a concrete need.
+Read-only audit assignments follow the existing Service Architect/backend pack
+and Judge: no target writes or repair-first classification, no invented rules,
+and explicit valid alternatives/unknowns. Findings need source/code/scenario,
+confidence, minimal remedy and a falsifying test; they are not implementation grants.
 Reuse the working seam; make the smallest complete change in owned paths.
 Reproduce a bug before fixing it where feasible. Check the actual requested
 behavior with focused existing tests/builds, including relevant error paths.

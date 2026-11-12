@@ -1,28 +1,77 @@
 # Backend & infrastructure pack
 
-The cited rule base Architrave's **backend lane** grounds in: how the thin orchestrator routes, how the service tier is built, and how infrastructure is changed **safely**. Loaded when `architrave.config.json` sets a `backend` and/or `iac` block. Repos without those blocks do not run this lane. Resolved per repo through `config.backend` (`stack`, `solution`, `architectureDocs`, `contracts`) and `config.iac` (`kind`, `path`, `plan`, `policy`).
+The shared rule base for the existing Service Architect, backend implementation
+and read-only application audit. Load relevant sections for domain/service work;
+do not force this lane on routine configuration/docs changes. Resolve configured
+paths and recipes through `config.backend` and `config.iac`. An unadopted app can
+be inspected using its actual sources without adding configuration.
 
 Grounded in current practice:
 - **Anthropic — *Building effective agents* / *multi-agent research system*:** the **orchestrator-workers** pattern (a lead agent decomposes, delegates to specialized workers, synthesizes) and **evaluator-optimizer** loop; "maintain simplicity," show planning steps, **scale effort to complexity**, give each worker a clear objective/output/boundary, and prefer **artifacts over a "game of telephone."**
-- **OpenAI — *Agent orchestration*:** **agents-as-tools (manager)** vs **handoffs**. Use the **manager** pattern when one agent must own the final answer and enforce shared guardrails in one place. Specialized agents beat one general agent.
+- **OpenAI — *Agent orchestration*:** manager versus handoff patterns describe responsibility, not proof that additional agents improve every task.
 - **OWASP / 12-factor / evolutionary-database (Fowler):** boundary validation, secrets out of code, and **expand → migrate → contract** schema evolution.
 
 ## 1. Thin orchestration (how Architrave routes)
 - Architrave is a **manager (agents-as-tools)**, not a handoff: it keeps control of the final answer + the gates and delegates **bounded** subtasks to specialists, then synthesizes. It does not surrender the conversation to a sub-agent.
-- **Scale the crew to the task.** A one-line change is one slice with one specialist — not the whole pipeline. Reserve the full architect → planner → implementer → judge chain for non-trivial work. (Multi-agent burns ~15× the tokens of a single chat; only spend it when the task warrants.)
-- **Shared artifact, not telephone.** The **contract** (`config.backend.contracts`) and the **plan** are written to disk; specialists read/write the artifact rather than relaying everything through the orchestrator. This is the single biggest reliability lever for cross-tier work.
-- **High-dependency caveat.** Full-stack features have many cross-tier dependencies (contract, sequencing) — the case multi-agent systems handle *worst*. Mitigate with contract-first (below), tight sequencing, and end-state evaluation at checkpoints rather than naive parallelism.
+- **Scale effort, not ceremony.** Direct work is the default. A one-line change
+  needs no specialist, workshop, tournament or new artifact. Internal D0/D1/D2
+  depth means localized/feature/strategic reasoning, not workflow configuration.
+- **One architecture route.** The existing Service Architect owns discovery
+  through contracts and audit; the lead can apply the same guidance inline.
+  Roles are optional expertise, not a mandatory architect/planner/implementer chain.
+- **Shared meaning, not telephone.** Reuse canonical task/criterion/source
+  references and the configured contract. Preserve contextual rules through
+  handoffs and corrections; do not require a separate domain ledger or plan file.
+- **Dependency-aware sequencing.** Inspect coupled producers/consumers and
+  source-derived outcomes; avoid parallel edits to unsettled contracts.
 
-## 2. Contract-first (the cross-tier handshake — the linchpin)
-A UI+backend feature fails when the tiers drift (the UI mocks a shape the backend didn't build, or claims a capability the service can't perform). So **before any code**, the Service Architect defines the contract both lanes bind to:
+## 2. Domain meaning before technical contracts
+Start with authoritative owner/domain sources, accepted stories and current
+corrections. Record the affected capability, actors, context-specific terms,
+rules, exceptions and consequential unknowns in existing task/contract text.
+Read discoverable answers before asking; hold only work dependent on unresolved
+business intent. Code and generated tests are implementation evidence, not
+automatic authority. Preserve the actual status and scope of ADRs: proposed,
+WIP and superseded decisions are not accepted obligations.
+
+Bind each material rule to its source, context and observable transition:
+starting state, actor/action, allowed/forbidden result and exceptions.
+Workflow completion is not approval; recorded approval is not necessarily current
+validity. Protect the documented invariant through real mutation paths and its
+actual consistency boundary, including concurrency/revocation/retries where
+relevant. A source permitting authorized exceptions must not become a universal
+prohibition. Conflicting authoritative sources require a scoped decision, not a
+silent preference for old code.
+
+Bounded contexts follow language and responsibility, not deployment or API counts.
+One deployment may hold several contexts; several services may share one model.
+Same-name concepts may differ legitimately. Local copies, DTOs and projections
+are not automatically duplicated policy ownership. Translate external semantics
+where incompatible, preserving unknown/error states and upstream provenance;
+no mandatory anti-corruption layer when a direct mapping is correct.
+
+Choose tactical patterns only to solve a demonstrated need: identity (entity),
+value equality (value object), atomic invariant (aggregate/transaction boundary),
+business operation (domain function/service), or meaningful occurrence (event).
+Functions, procedural modules, transaction scripts and database constraints are
+valid. Do not prescribe OOP, repositories, CQRS, events, microservices or one
+aggregate per table. Explain cross-object transactions from the actual rule and
+consistency needs rather than rejecting them by pattern name.
+
+Then derive the cross-tier contract both lanes bind to:
 - endpoint/method/DTO shapes; pagination; idempotency keys where relevant;
 - **error modes + empty/loading/partial/blocked semantics** the UI must render;
 - **auth scope** per operation;
 - **capability honesty** — only what the backend can truthfully deliver; no capability the UI will then claim that the service can't perform.
-Sequence: **contract + migration → handler → UI binds to it.** The UI lane and backend lane both ground in the one contract artifact.
+Sequence: **source-backed behavior → contract/migration as needed → handler →
+consuming UI**. Both lanes use the same configured contract; it preserves domain
+meaning rather than making transport shapes the business model.
 
 ## 3. Implementation discipline (reproduce the seams)
-- **Reproduce, don't reinvent.** Ground in `config.backend.architectureDocs` (ADRs) + the `config.backend.solution` layout. Put each concern in the project that owns it; do not create a parallel abstraction or cross a boundary the Architect didn't sanction. When no ADR governs a lasting decision, **write the ADR first**.
+- **Reproduce, don't reinvent.** Ground in applicable architecture docs and the
+  actual solution. Respect ownership; inspect a conflict with source-backed
+  behavior rather than preserving a known defect. Record a consequential new
+  decision in an existing contract or warranted ADR, not an ADR for every change.
 - **Idempotency & retries.** External-effecting operations are idempotent (idempotency keys / natural keys); assume at-least-once delivery for messaging/brokers; make handlers safe to retry.
 - **Retained replay ordering.** Define the immutable duplicate key and content identity; resolve a retained replay before comparing mutable projections or re-running new-work selection. The same key with changed immutable content is a conflict, not a replay. Preserve current authorization/disclosure checks and the contract's retention boundary; retained success neither authorizes a new effect nor impersonates fresh execution. Probe an identical retry after the current selection changes and a conflicting retry under the same key.
 - **Constructible identity.** Separate semantic identity from the content digest. Specify canonical bytes and covered fields; exclude the resulting hash from its own preimage (or use the contract's explicit detached envelope). Trace actual producer serialization into consumer verification; a schema that permits a hash field does not prove a constructible round trip. Probe changed covered content, reordered equivalent content where canonicalization permits it, and accidental self-hashing.
@@ -91,10 +140,42 @@ Some repos can optionally expose runtime truth through `config.ops` and tools su
 	allowed the target/operation and receipt plus live verification passed.
 Run via `python gates/gate_runner.py backend-checks` on any platform.
 
-## 9. Evaluation (judge dimensions for the backend lane)
+## 9. Evaluation and read-only audit
+Audit through the same Service Architect and existing Judge. Establish repository,
+ref/dirty state, source authority and inspection coverage, then map domain
+rules to entrypoints, functions/types, mutation paths, transactions, imports,
+storage and external producers/consumers. Reproduce consequential positive and
+negative scenarios only within the audit's read-only/isolated execution authority;
+do not modify target code, run migrations or attempt repairs to classify findings.
+
+Each finding needs an ID, applicable source rule/status, exact code/ref,
+distinguishing scenario/reproducer, severity/impact, confidence/blind spots,
+credible valid alternative and discriminating evidence, minimal remedy/migration
+risk, and falsifying/fixing test. Dispositions are `confirmed violation`,
+`supported concern`, `unknown/needs domain input`, `valid alternative/no violation`,
+or `not applicable`. Unknown source/retrieval/runtime evidence is not a violation.
+Do not invent policy from names or issue compliance percentages.
+
+Only declared, applicable dependency rules can be checked deterministically.
+Reuse stack-matched installed tools when useful; import rules cannot prove
+business meaning, and no new analyzer is required absent a demonstrated gap.
+Read-only recommendations become code only through the existing authorized
+correction/implementation path.
+
 The Adversarial Judge grades the backend lane on, in addition to the shared rubric: **contract conformance**, **data-migration safety + rollback**, **idempotency**, **least-privilege / IaC safety (default-deny, no secret leak)**, and **capability honesty**. Prefer **end-state evaluation at checkpoints** over turn-by-turn. A destructive migration without rollback, a secret in code/IaC, an ungranted apply, a missing/mismatched deployment receipt, or a contract the service cannot honor is an automatic **FAIL/Blocker**.
+Also challenge domain-language fidelity, source-backed invariant behavior,
+context ownership, translation and tactical proportionality. Independently
+compare original intent with code/tests; agreement between them is not proof
+when both implement the wrong rule.
 
 ## Citations
 - Anthropic — *Building effective agents* (orchestrator-workers, evaluator-optimizer, "maintain simplicity"); *How we built our multi-agent research system* (scale effort to complexity, clear worker objectives, artifacts over telephone, end-state evaluation, token cost).
-- OpenAI — *Agent orchestration* (agents-as-tools / manager vs handoffs; specialized over general agents).
+- OpenAI — *Agent orchestration* (manager versus handoff).
+- Fowler — [Bounded Context](https://martinfowler.com/bliki/BoundedContext.html),
+  [DDD Aggregate](https://martinfowler.com/bliki/DDD_Aggregate.html),
+  [Multiple Canonical Models](https://martinfowler.com/bliki/MultipleCanonicalModels.html).
+- DDD Crew — [context mapping](https://github.com/ddd-crew/context-mapping),
+  [bounded context canvas](https://github.com/ddd-crew/bounded-context-canvas),
+  [aggregate design canvas](https://github.com/ddd-crew/aggregate-design-canvas).
+  These support focused questions, not mandatory artifacts or deployment styles.
 - Martin Fowler — *Evolutionary Database Design* (expand/migrate/contract). OWASP Top 10 (boundary validation, secrets handling).

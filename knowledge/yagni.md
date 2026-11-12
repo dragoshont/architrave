@@ -64,7 +64,7 @@ Use these in judge findings and self-review when a diff gets larger than needed:
 
 ## Positioning consequence
 
-Generic development agents are broad and easy to forget. Architrave should position itself as a specialist: **the Storybook-first, contract-first agent that builds only the repo-proven slice**. Its wedge is not "agent that codes." It is "asked for UI, starts in Storybook; asked for full-stack, starts with the contract; asked for infra, stops at plan; all of it passes YAGNI and judge gates."
+Generic development agents are broad and easy to forget. Architrave should position itself as a specialist: **the source-grounded agent that builds only the repo-proven slice**. Its wedge is not "agent that codes." It is "asked for UI, starts in Storybook; asked for full-stack business behavior, establishes source-backed domain meaning before deriving the contract; asked for infra, stops at plan; all of it passes applicable YAGNI and judge gates." Routine changes reuse settled meaning without a modeling ceremony.
 
 ## Citations
 

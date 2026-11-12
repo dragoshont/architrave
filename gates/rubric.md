@@ -20,16 +20,27 @@ Apply configured/required checks to the actual changed surface. Do not demand
 uninstalled gates or irrelevant design/runtime evidence. Required safety and
 release checks cannot be waived because a tool or target is unavailable.
 
-1. **Deterministic gates (code‑graded — rule‑based):** `gate_runner.py checks` (`config.generate` + `config.build` + `config.test` + `config.designMap` / `config.tokens` JSON valid) and `gate_runner.py reconcile` (design↔code token drift), plus explicit `gate_runner.py quality-gate` at the relevant-change and final-integration cadence in `docs/quality-check-cadence.md` (no automatic PostToolUse registration); for the backend lane, `gate_runner.py backend-checks` (build/test + migration safety + secret scan + IaC plan/policy, **never apply**); plus Run v2 validation, invariant checks, configured E2E/reality checks, and policy/receipt validation. Objective ground truth; they **override optimistic or semantic claims** and must be green.
+1. **Deterministic gates (code-graded, rule-based):** `gate_runner.py checks`
+   runs configured generation/build/test and configured design JSON validation;
+   `reconcile` checks applicable design/code drift. Run `quality-gate` at the
+   cadence in `docs/quality-check-cadence.md` (no automatic PostToolUse hook).
+   `backend-checks` runs configured `backend.build`, `backend.test`, `iac.plan`
+   and `iac.policy` recipes from `architrave.config.json`: it does not provide
+   intrinsic migration, secret, domain-rule or IaC analysis. Require the actual
+   applicable checks, Run validation and mutation-policy evidence; configuration
+   and passing unrelated recipes are not proof those concerns were checked.
+   Gate failures override optimistic semantic claims. Never authorize apply.
 2. **Semantic gate (LLM‑as‑judge):** this rubric, applied adversarially according to `knowledge/execution-policy.md`, by one independent reviewer for R3/R4 (two of different families, both PASS, only when `review.crossFamily` is true). R2 uses one fresh-context reviewer. Low-risk mechanical work may close with deterministic evidence only when every acceptance criterion is mechanically decided and no semantic/high-risk floor applies. Model choice belongs to the user and host.
 
 ## Before grading
-Grade against the repository requirements file (config `requirements`, else
-`SPEC.md`): its REQ rows, acceptance and correction rows. Derive only missing
+Grade against original owner/domain sources, current canonical tasks/criteria
+and corrections, plus applicable contracts. Only explicitly selected legacy
+requirements operations use the configured requirements file or `SPEC.md` REQ
+rows as their record. Derive only missing
 checks needed to decide the result; do not require other intake or planning
 documents. Load only relevant repository
 sources and rubric dimensions. For knowledge work, do not invent a UI lane.
-Compare original owner messages and attached reference assets with those rows
+Compare original owner messages and attached reference assets with that acceptance
 and docs, retaining source identities/digests and any genuine permission grants.
 An agent-narrowed SPEC is not a replacement for original owner intent.
 Missing original sources stay unverified, not implicitly waived.
@@ -73,11 +84,11 @@ Score each **Pass / Concern / Fail** with a severity and cite evidence (a spec l
 
 1. **Spec & acceptance‑criteria conformance** — every requested criterion met;
    no scope drift; honest about unfinished work. Grade the behavior against the
-   REQ rows and their acceptance. Non-trivial work without REQ rows with testable
-   acceptance is a Major finding. Claiming done while an in-scope REQ is not
-   `Code ready` with final evidence and combined review (or historically
-   `accepted` with evidence), or acting on an owner correction that was never
-   recorded as a correction row, is a Blocker. Missing other planning documents
+   current source-backed tasks and acceptance, not mandatory REQ rows.
+   Claiming delivery while requested behavior is missing/unverified, or
+   silently discarding an owner correction instead of updating current
+   acceptance through the selected API, is a Blocker. Code ready progress is
+   not release/runtime acceptance. Missing other planning documents
    are not findings; scope mistakes and unverified claims are.
    Required non-trivial board startup includes direct work: verify one scoped
    board was opened and read before implementation, or an explicit unavailable/
@@ -100,8 +111,8 @@ Score each **Pass / Concern / Fail** with a severity and cite evidence (a spec l
    resumability or external operations. Use canonical API-owned state, events,
    truthful checkpoints and required evidence; views are on-demand projections,
    not additional files to maintain. Ordinary direct source work does not need
-   a Run or phase ledger merely because it is non-trivial; the requirements file
-   is its spec and acceptance record.
+   a Run or phase ledger merely because it is non-trivial; current canonical
+   tasks and original sources retain scope and acceptance.
    Required scoped mutation grants, consent, receipts and uncertain-side-effect
    recovery remain mandatory. Repeating completed work, manual state edits or
    false completion is a Blocker.
@@ -176,6 +187,25 @@ Score each **Pass / Concern / Fail** with a severity and cite evidence (a spec l
     language in user-facing UI strings is a Major concern.
 
 ### Backend‑lane dimensions (apply when `config.backend` / `config.iac` are set — see `knowledge/backend.md`)
+Domain/service review and read-only application audit also apply when requested
+without adoption. Check contextual vocabulary, source-backed rules/exceptions,
+actual ownership and consistency, invariant enforcement through composed paths,
+and honest translation/unknown states. Do not equate completion with approval,
+code with business authority, services with contexts, or class names with DDD.
+Positive/negative and applicable race/retry scenarios must distinguish correct
+behavior from code/tests sharing a wrong interpretation.
+
+Audit findings cite the applicable source rule and actual ADR status, exact
+code/ref, scenario/reproducer, severity/impact, confidence/blind spots, legitimate
+alternative and discriminating evidence, minimal remedy/migration risk and a
+falsifying test. Use `confirmed violation`, `supported concern`,
+`unknown/needs domain input`, `valid alternative/no violation`, `not applicable`.
+Keep coverage separate from findings and verdict; no compliance percentage.
+Missing evidence is not noncompliance. Valid functional/procedural designs,
+monoliths, cross-object transactions and justified local representations must
+not fail merely for departing from an OO/layering preference. No target edits,
+migrations or repair attempts during audit; remedies need separate authorization.
+
 15. **Contract conformance** — the implementation honors the agreed contract (`config.backend.contracts`): shapes, errors, auth scope, pagination; UI and backend bind to the *same* contract (no drift); capability honesty (nothing claimed that the service can't perform). For operational/admin work, the contract includes capability matrix, preflight, operation/job schema, readiness/health source, diagnostic evidence, audit, and scarce-limit fields from `knowledge/operations-ux.md`.
 16. **Data & migration safety** — schema/data changes are reversible + idempotent, follow expand → migrate → contract, and ship with an approved rollback; no destructive step without it. Data loss = Blocker.
 17. **Idempotency & resilience** — external‑effecting operations are idempotent / retry‑safe; at‑least‑once messaging assumed; honest failure / blocked / scarce states.
