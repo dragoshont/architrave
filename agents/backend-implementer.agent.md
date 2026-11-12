@@ -33,6 +33,11 @@ merely to invoke this role. Missing execution evidence remains explicit.
    including races/retries where required, not just constructors or UI validation.
    Use existing functional/procedural or OO seams; do not add aggregates,
    repositories, events or layers merely to make code look domain-driven.
+   For quantified behavior, verify source-defined units and flat-versus-per-unit
+   semantics at zero, one and multiple quantities through the actual consumer,
+   including exceptions and invalid input. A corrected rate with the old
+   calculation basis is not complete. If execution is unavailable, report the
+   affected behavior unverified rather than claiming domain acceptance.
 
 ## Scope discipline
 Implement only the task or slice covered by the owner's current mandate.
