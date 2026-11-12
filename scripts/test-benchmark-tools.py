@@ -649,6 +649,8 @@ class DomainHostTests(unittest.TestCase):
             target = Path(directory) / "source"
             shutil.copytree(ROOT / "benchmarks/fixtures/domain-host/source", target)
             billing = target / "billing.py"
+            api = target / "api.py"
+            api.write_text(api.read_text(encoding="utf-8") + "\\n\\ndef parcel_label(parcel_id):\\n    return 'Parcel ' + parcel_id\\n", encoding="utf-8")
             correct = (
                 "def handling_fee(units, cancelled=False):\n"
                 "    if type(units) is not int or units < 0: raise ValueError('units')\n"
