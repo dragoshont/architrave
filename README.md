@@ -41,14 +41,15 @@ Filesystem-aware ownership preserves case-distinct work where observed and
 handles unknown lookup behavior conservatively. Old state is not silently
 rebound; see the lifecycle API's compatibility and qualification boundaries.
 
-**Domain-aware extension (unreleased 1.2 candidate).** The existing Service
+**1.2.0 prerelease: domain-aware extension.** The existing Service
 Architect now follows source-backed business language, rules, ownership and
 consistency into technical contracts, with a read-only application-audit operation
 using the same Judge. Functional/procedural designs and monoliths are valid;
 routine work needs no modeling ceremony. No new role, lifecycle, DDD flag or
 architecture dependency is added. See the [replacement and evidence record](docs/domain-release-evidence.md).
-The version remains **1.1.1** until required release qualification is complete;
-source/install fixtures do not establish loaded-host parity or measured improvement.
+This is a source-qualified prerelease, not completion of the broader release
+qualification: source/install fixtures do not establish loaded-host parity or
+measured improvement.
 
 **1.1.0 bundled work board.** A shared Python/HTML/CSS/SVG renderer now
 provides scoped progress, a task map/list and evidence inspector, source-backed
@@ -504,7 +505,7 @@ Install Architrave in an agent client you already use.
 With **GitHub Copilot** (CLI, desktop app, or VS Code):
 
 ```bash
-copilot plugin marketplace add dragoshont/architrave#v1.1.1
+copilot plugin marketplace add dragoshont/architrave#v1.2.0
 copilot plugin install architrave@architrave
 ```
 
@@ -518,7 +519,7 @@ claude plugin install architrave@architrave
 With **Codex CLI**, pinned to the public release:
 
 ```bash
-codex plugin marketplace add dragoshont/architrave --ref v1.1.1
+codex plugin marketplace add dragoshont/architrave --ref v1.2.0
 codex plugin add architrave@architrave
 ```
 
@@ -668,8 +669,8 @@ python3 /path/to/architrave/tools/install_update.py update /path/to/your/repo
 
 The updater leaves the repository's config and local agents alone by default.
 That plain update is intentionally partial: new packs can coexist with old
-copied roles. It does **not** qualify adoption of the unreleased domain-aware
-candidate (version remains 1.1.1).
+copied roles. It does **not** qualify adoption of the domain-aware 1.2.0
+prerelease.
 
 For that candidate, first compare copied/customized roles with the candidate,
 reconcile local rules into repository guidance or reviewed role changes, and

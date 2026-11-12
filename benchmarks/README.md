@@ -1,6 +1,6 @@
 # Architrave Benchmarks
 
-## Domain fidelity (unreleased candidate)
+## Domain fidelity (1.2.0 prerelease)
 
 Use the existing scorer with `--domain --blind` to obtain D01-D13 without
 expected answers, then `python scripts/score-semantic-cases.py --domain answers.json`.

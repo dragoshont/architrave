@@ -5,13 +5,13 @@
   },
   "metadata": {
     "description": "Architrave - source-grounded development, domain-aware service design and independent review.",
-    "version": "1.1.1"
+    "version": "1.2.0"
   },
   "plugins": [
     {
       "name": "architrave",
       "description": "Task-driven domain-aware development and read-only application audits, with canonical lifecycle state, bounded host-native collaboration and independent review. No mandatory modeling ceremony.",
-      "version": "1.1.1",
+      "version": "1.2.0",
       "source": ".",
       "license": "MIT",
       "keywords": [

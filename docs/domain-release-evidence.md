@@ -1,8 +1,11 @@
 # Unified domain/service extension: evidence and limits
 
-This is the **unreleased 1.2 candidate**, not a validated 1.2.0 release.
-The installed/released version remains 1.1.1. This records changes and
-qualification; it is not another architecture policy or lifecycle authority.
+This records the **1.2.0 prerelease**, not completion of the full release
+qualification matrix. The owner authorized packaging, publication and local
+installation after the reviewed source landed on main. Those operations need
+their own observed receipts; a manifest version does not prove publication or
+loading. Historical source-stage snapshots below retain their original scope.
+This is not another architecture policy or lifecycle authority.
 The existing Service Architect and `knowledge/backend.md` supply guidance;
 `.architrave/state.yaml` remains API-owned.
 
@@ -47,8 +50,8 @@ corrections; integrated rechecks remain required.
 | `README.md`: backend description and `Updates` plain refresh | Unified route; `Updates` distinguishes partial preservation from reconciled, authorized `--agents`/`--codex` adoption and native identity readback | I baseline-role preservation/refresh; Review; load hold explicit |
 | `kit/MIGRATION.md`: `Migration Pattern` optional role refresh | Candidate-specific reconciliation, authorized replacement, actual role/pack identity and native loading | I same supported CLI route; Review; customizations never silently overwritten |
 | `knowledge/yagni.md`: `Positioning consequence`, full-stack starts with contract | Same section establishes source/domain meaning before deriving contract; routine work reuses settled meaning | F/Review; no modeling ceremony |
-| `ROADMAP.md`: no candidate qualification entry | Unreleased unified-domain work and outstanding qualification | Review against retained logs/holds; M version still 1.1.1 |
-| `CHANGELOG.md`: no unreleased domain entry | Unreleased implementation and evidence limitations | Review; M; not a release claim |
+| `ROADMAP.md`: no candidate qualification entry | Unified-domain prerelease and outstanding stable qualification | Review against retained logs/holds; M synchronized |
+| `CHANGELOG.md`: no domain entry | 1.2.0 prerelease implementation and evidence limitations | Review; M; no claim that broader qualification is complete |
 | `plugin.json`: description | Same manifest describes source-grounded/domain-aware existing route | M manifest/version checks; no version bump |
 | `.github/plugin/marketplace.json`: metadata/plugin descriptions | Same distribution metadata, one existing plugin | M; no host-load claim |
 | `.claude-plugin/plugin.json`: description | Same plugin description, existing role inventory | M; native loading held |
@@ -243,9 +246,11 @@ separate parent-owned work and holds.
   application audit is **deferred**, not a prerequisite or blocker for this
   repository's source work. Real-application/held-out release qualification
   remains unexecuted; synthetic examples do not satisfy that evidence gap.
-- Host loading: **unverified**. Copilot/Codex/Claude executables are unavailable
-  on this host's PATH; source and temporary installation checks cannot substitute.
-  Loaded installed 1.1.1 Service Architect SHA256 was
+- Historical source-stage host loading: **unverified**. The client executables
+  were unavailable on PATH at that stage. Native Copilot plugin management was
+  subsequently resolved through Agency; installation and fresh-context loading
+  still require separate observations. Source and temporary-copy checks do not
+  substitute. The installed 1.1.1 Service Architect SHA256 at that stage was
   `93fc477ffc8f5994b757dcd4c9aad36d999ceae7146939386253480a769bf11c`,
   equal to baseline source, not the current modified role.
 - Matched repeated baseline/current trials and measured benefit: **not yet
@@ -253,11 +258,13 @@ separate parent-owned work and holds.
 - Native C#, declared dependency-cycle enforcement, real-app held-out examples,
   broad live interruption behavior and other unexecuted H/I scenarios remain
   unverified, not implicit passes.
-- Independent integrated rechecks and applicable different-family proof remain
-  held; two independent GPT-family contexts do not establish the latter.
-- Version bump/release/publication: **held** until required qualification and
-  scoped authorization. Skill-improvement proposals need human approval;
-  evaluation is not merge consent.
+- Subsequent full independent source reviews and integrated rechecks passed;
+  that does not supply applicable different-family proof. Two GPT-family
+  contexts do not establish the latter.
+- The owner authorized versioning, prerelease publication and local installation
+  of 1.2.0. **Fully qualified stable release remains held** by the unexecuted
+  evidence above. Publication, installation and existing-session reload are
+  separate observations, not implied by source review or a version stamp.
 
 An audit must leave its target unchanged. Recommendations route through
 authorized task corrections, not audit-time repairs.

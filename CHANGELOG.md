@@ -5,7 +5,11 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
-## Unreleased
+## 1.2.0 (2026-11-12)
+
+**Prerelease:** source implementation and deterministic checks are qualified;
+broader native-host, repeated comparative and held-out application evaluation
+remains incomplete. Publication does not claim that evidence.
 
 ### Changed
 
@@ -20,7 +24,8 @@ Releases at or before **v0.8.12** are on the
   functional TypeScript counterexamples, correction/resume regressions and
   installed-role parity checks. These are not loaded-host or empirical proof.
 
-The 1.2 candidate is not release-validated; manifest versions remain 1.1.1.
+Manifest versions are 1.2.0. The package is a prerelease, not a fully validated
+completion of the original release qualification matrix.
 See `docs/domain-release-evidence.md` for replacement mapping and qualification.
 
 ## 1.1.1 (2026-11-11)
