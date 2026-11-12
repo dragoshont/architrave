@@ -53,6 +53,19 @@ validity is not entailment; independent trajectory assessments are separate
 release evidence. Zero tool calls is not absence of visible clarification.
 The host file-tool profile does not establish a universal read-only sandbox.
 
+Independent masked adjudication accepted **16 implemented outcomes and eight
+audits**; four appropriate insurance decision holds remain incomplete, not
+implemented successes. All 77 submitted audit records were assessed: 35
+supported defects/concerns (including three qualified precision concerns), 29
+valid alternatives/nonapplications and 13 correct unknowns, with no identified
+false positives in this sample. These are submitted-record counts, not unique
+defects, exhaustive recall or proof that every possible issue was detected.
+A second independent review verified all four correction trajectories,
+including successful helper writes before interruption, billing-only changes
+after resume, and the supplemental caller/insurance checks. Private raw
+histories were not reread by those reviewers; masked source-bound evidence and
+its projection hashes delimit their observation.
+
 Requested source checks passed on `19113cb`: focused regression **1**, benchmark
 helpers **77**, benchmark runtime **7**, domain fidelity **4**, with no skips in
 those directly reported suites. The complete manifest suite and quality gate
