@@ -1,6 +1,6 @@
 {
   "name": "architrave",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Task-driven domain-aware development and read-only application audits, with canonical lifecycle state, bounded host-native collaboration and independent review. No mandatory modeling ceremony.",
   "author": {
     "name": "dragoshont"

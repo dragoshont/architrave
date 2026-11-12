@@ -10,10 +10,11 @@ Architrave is meant to replace most project-specific development agents with one
 4. **Adopt the repo.** Add `architrave.config.json`, copy agents/gates/knowledge/harness with `python tools/install_update.py install <repo>`, and refresh copied `gates/` + `knowledge/` + `harness/` + the Architrave `AGENTS.md` stanza with `python tools/install_update.py update <repo>`. Plain update intentionally preserves copied agents; it is a partial update, not proof of a unified role migration.
 5. **Validate.** Run `gates/gate_runner.py checks`, `gates/gate_runner.py backend-checks` when configured, and any app-specific test/screenshot gates.
 
-## 1.2.1 domain-aware adoption
+## 1.2.2 domain-aware adoption
 
-The 1.2.1 release retains the existing Service Architect identity and removes
-the Backend Implementer's obsolete mandatory Planner/sign-off language.
+The 1.2.2 release retains the existing Service Architect identity and the
+optional Planner contract. Its Backend Implementer and backend pack now require
+source-defined quantitative units, calculation bases and composed-caller checks.
 Its domain-first backend pack must not be qualified alongside an unreconciled
 technical-first copied architect. Inventory copied/customized Architrave roles
 and generated Codex roles, compare them with the exact candidate, and reconcile

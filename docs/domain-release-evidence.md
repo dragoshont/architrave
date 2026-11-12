@@ -1,15 +1,73 @@
 # Unified domain/service extension: evidence and limits
 
-This records the **1.2.1 stable corrective distribution** and its bounded
+This records the **1.2.2 quantitative correction** and earlier bounded
 qualification, followed by historical 1.2.0 evidence. The owner explicitly
 requested a normal release instead of another preview. That channel decision
 does not convert missing evidence or failed agent tasks into passes.
 Publication and local installation have separate, later receipts in the
-[release assets](https://github.com/dragoshont/architrave/releases/tag/v1.2.1);
+[release assets](https://github.com/dragoshont/architrave/releases/tag/v1.2.2);
 a manifest version does not prove either operation or private prompt loading.
 This is not another architecture policy or lifecycle authority.
 The existing Service Architect and `knowledge/backend.md` supply guidance;
 `.architrave/state.yaml` remains API-owned.
+
+## 1.2.2: PR #91 fresh corrective verification
+
+The original correction said "175 cents per parcel" without defining whether
+`units` counted parcels or contents. The earlier rule was explicitly flat per
+quote. Thus the retained flat-175 result was ambiguous evidence of an agent
+misunderstanding. PR #91 defines the quantity and basis in the accepted
+correction, including zero/one/multiple quantities. The executable oracle and
+original 250-cent decision are unchanged; no historical response is rewritten.
+General backend guidance remains free of parcel-specific values or terminology.
+
+Fresh native execution used source
+`19113cb5d194c0dfcb15c3941a1049e07378ceae` (the corrected PR source before release
+metadata) versus pinned pre-1.2
+`e4135ef5ee1e6d500accb11809c2bb27f16ede58`. Both arms received the same clarified
+scenario, allowed tools and budgets: seven scenarios, two repeats, **28 new
+cells**. None reuses the earlier 28 responses. The native CLI was 1.0.108;
+every cell reported `gpt-6.1-sol`, medium effort, without model pins. Python
+3.13.18, Node 22.23.5 and .NET SDK 10.0.404 executed the checks.
+
+| Fresh observation | Baseline 1.1.1 | Corrected candidate |
+| --- | --- | --- |
+| Implementation oracle passes | 8/8 | 8/8 |
+| Actual interrupted/resumed correction passes | 2/2 | 2/2 |
+| Mechanical checks, including audit references | 14/14 | 14/14 |
+| Median agent duration | 63.3 seconds | 64.3 seconds |
+| Reported NanoAIU (not currency) | 82,905,760,000 | 93,174,170,000 |
+| Observed question-tool calls | 0 | 0 |
+
+All four live correction cells observed the marker, owned-process termination
+and same-session resume. Additional real post-run assertions exercised
+`api.quote` with negative/fractional quantities, including cancelled requests,
+because the unchanged oracle's invalid-input checks cover the helper only.
+All four passed those checks; insurance function ASTs remained unchanged and
+the helper returned its required value. First-phase visible tool evidence is
+retained for independent preservation assessment. The extra assertions do not
+silently replace or extend the recorded oracle result.
+
+All twelve audit/clarification targets remained unchanged. Mechanical reference
+validity is not entailment; independent trajectory assessments are separate
+release evidence. Zero tool calls is not absence of visible clarification.
+The host file-tool profile does not establish a universal read-only sandbox.
+
+Requested source checks passed on `19113cb`: focused regression **1**, benchmark
+helpers **77**, benchmark runtime **7**, domain fidelity **4**, with no skips in
+those directly reported suites. The complete manifest suite and quality gate
+also passed; the wrapper does not report an aggregate unittest/skip count.
+The focused case overlaps the 77-test suite and is not an additional distinct
+test. Two independent source reviews exercised actual negative/positive oracle
+controls against the frozen source, not merely the new text.
+
+The corrected task succeeded in this sample, but **no comparative reliability
+gain was demonstrated**: both arms succeeded, the sample is small and fixed in
+order, and the historical scenario had different authority text. There is no
+ablation separating clearer task wording from new general guidance. Preserve
+that limitation rather than attributing improvement to the instructions.
+Release metadata and later independent review reports bind their own exact
+source revisions; publication is not implied by this pre-publication document.
 
 ## 1.2.1 executed host experiments
 
