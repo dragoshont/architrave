@@ -36,6 +36,13 @@ WIP and superseded decisions are not accepted obligations.
 
 Bind each material rule to its source, context and observable transition:
 starting state, actor/action, allowed/forbidden result and exceptions.
+For quantitative rules, establish what each unit counts and whether a charge,
+limit or rate applies once per request or separately per unit. Especially after
+an owner correction changes the charging basis, compare source-derived examples
+for zero, one and multiple units through the composed caller, including applicable
+exemptions and invalid inputs. If unit meaning is consequential and not settled
+by available authority, hold only the affected calculation and ask; never infer
+it from superseded code or make an unverified test result sound like proof.
 Workflow completion is not approval; recorded approval is not necessarily current
 validity. Protect the documented invariant through real mutation paths and its
 actual consistency boundary, including concurrency/revocation/retries where

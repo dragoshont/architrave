@@ -5,6 +5,25 @@ All notable changes to **Architrave** are documented here. This project follows
 Releases at or before **v0.8.12** are on the
 [GitHub Releases](https://github.com/dragoshont/architrave/releases) page.
 
+## 1.2.2 (2026-11-12)
+
+### Fixed
+
+- Clarify the live correction's authoritative quantity definition and
+  per-unit calculation; preserve the original flat-fee decision, unchanged
+  executable oracle and historical failed run.
+- Extend the existing backend pack and implementer with general unit/basis,
+  zero/one/many, exception and composed-caller verification guidance.
+- Add a real oracle regression rejecting a flat-fee substitute, preserving
+  unrelated insurance functions and requiring a completed, bound result.
+
+Fresh matched native trials executed all seven scenarios twice per arm.
+Both pinned 1.1.1 and the corrected candidate passed all eight implementation
+cells, including both live correction/resume trials per arm. This is bounded
+observed success on clarified requirements, not proof of comparative model or
+instruction improvement. Audits and clarification holds retain separate
+independent semantic determinations. See `docs/domain-release-evidence.md`.
+
 ## 1.2.1 (2026-11-12)
 
 **Stable corrective release**, as requested by the owner. This is a distribution

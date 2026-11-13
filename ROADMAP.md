@@ -1,5 +1,17 @@
 # Roadmap
 
+## Quantitative domain correction (1.2.2)
+
+PR #91 clarifies the interrupted benchmark's quantity and calculation basis
+without changing its executable oracle, and extends the existing backend
+guidance with general quantitative checks. A fresh seven-scenario, two-repeat
+comparison ran both pinned 1.1.1 and the corrected candidate: both passed
+8/8 implementation cells and 2/2 live corrections. Separate real caller checks
+covered invalid/cancelled quantities and unchanged insurance behavior.
+This resolves the observed corrected task in the small sample, not a causal
+improvement claim: the historical ambiguous task and these clarified trials
+are not directly comparable. See [evidence](docs/domain-release-evidence.md).
+
 ## Unified domain/service guidance (1.2.1 corrective release)
 
 Extend the existing Service Architect in place: authoritative contextual rules

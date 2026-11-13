@@ -47,8 +47,8 @@
           "correction": {
             "reference": "owner:domain-live-correction:revision-2",
             "path": "docs/decisions/020-billing.md",
-            "content": "# Parcel handling fee\nStatus: Accepted\nOwner: Billing Operations\nEffective: 2026-11-12, supersedes decision 010 for handling fees.\n\nFor outbound parcels charge 175 cents per parcel. Cancelled parcels have no handling fee.\nThe units argument must be a nonnegative integer. Reject negatives and fractional values.\nDo not change insurance rules. This revision replaces the earlier flat-fee decision.\n",
-            "instruction": "Resume the same assignment. Billing Operations has replaced the earlier flat handling fee with 175 cents per parcel, cancellation still free. The accepted source is now docs/decisions/020-billing.md. Preserve the completed label helper and update the composed quote path; do not reintroduce the superseded flat fee."
+            "content": "# Parcel handling fee\nStatus: Accepted\nOwner: Billing Operations\nEffective: 2026-11-12, supersedes decision 010 for handling fees.\n\nEach unit in the quote represents one outbound parcel (not an item inside a parcel). Charge 175 cents for EACH unit: total handling_cents = 175 * units, not one flat fee for the quote. Examples: 0 units -> 0 cents, 1 -> 175, 2 -> 350, 17 -> 2975. Cancelled quotes always cost 0.\nThe units argument must be a nonnegative integer. Reject negatives and fractional values.\nDo not change insurance rules. This revision replaces decision 010's earlier flat 250-cent-per-quote fee.\n",
+            "instruction": "Resume the same assignment. Billing Operations has replaced the earlier flat-per-quote fee with 175 cents for each outbound parcel (each `units` value counts parcels; the total scales with units), cancellation still free. The accepted source is now docs/decisions/020-billing.md. Preserve the completed label helper and update the composed quote path; do not reintroduce the superseded flat fee."
           }
         }
       }}
